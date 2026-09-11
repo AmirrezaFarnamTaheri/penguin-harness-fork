@@ -1,5 +1,5 @@
 ---
-name: image-generation
+name: image-generate
 description: Image generation skill based on Alibaba Cloud DashScope, supporting the creation of high-quality hand-drawn or standard images from user descriptions.
 version: 1.0.0
 license: MIT

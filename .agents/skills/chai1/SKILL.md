@@ -1,6 +1,6 @@
 ---
 name: chai1
-description: >
+description: "Chai-1 biomolecular structure prediction for protein, nucleic-acid, and small-molecule complexes."
   Structure prediction for protein, nucleic-acid, and small-molecule complexes
   with the Chai-1 foundation model (Chai Discovery 2024,
   github.com/chaidiscovery/chai-lab). Reach for this skill to predict an

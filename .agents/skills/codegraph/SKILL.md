@@ -1,5 +1,5 @@
 ---
-name: codegraph-qa
+name: codegraph
 description: Use CodeScope to analyze any indexed codebase via its graph database (neug) and vector index (zvec). Supports Python, JavaScript/TypeScript, C, and Java (including Hadoop-scale repositories). Covers call graphs, dependency analysis, dead code detection, hotspots, module coupling, architectural layering, commit history, change attribution, semantic code search, impact analysis, full architecture reports, and bug root cause analysis from GitHub issues. Use this skill whenever the user asks about code structure, code dependencies, who calls what, why something changed, finding similar functions, generating architecture reports, understanding module boundaries, analyzing GitHub issues/bugs, finding bug root causes, understanding why a project has many bugs, tracing bugs to code, indexing Java projects, or any question that benefits from a code knowledge graph — even if they don't mention "CodeScope" by name. If a `.codegraph` or similar index directory exists in the workspace, this skill applies.
 ---
 

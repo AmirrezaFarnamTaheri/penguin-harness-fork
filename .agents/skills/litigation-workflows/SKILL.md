@@ -1,6 +1,6 @@
 ---
 name: litigation-workflows
-description: Consolidated workflow layer copied and merged from litigation-legal. Use this skill as the exposed entry point while preserving detailed source workflows under references/source-workflows.
+description: "Litigation legal practice, courtroom filing deadlines, trial binder preparation, and litigation case briefs."
 ---
 
 # Litigation Legal Workflows

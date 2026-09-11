@@ -1,5 +1,5 @@
 ---
-name: "stage-runtime-skill"
+name: stage-runtime
 description: "Used to query or process existing stage accelerator instances, stages, and tasks. Use when the user mentions stage status, stage tasks, completion, submit after filling, save flow layout form, terminal-state prerequisite task, returned task, move to stage, trigger, reactivate, cancel, change handler, recalculate assignees, disassociate, asynchronous move-to result, or rollback validation. First select a unique reference by intent; changes must confirm the target and parameters; queries or validations must not automatically perform changes."
 apiName: "stage_runtime_skill_mcp"
 ---

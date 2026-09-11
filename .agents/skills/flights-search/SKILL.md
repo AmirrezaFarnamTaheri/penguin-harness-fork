@@ -1,5 +1,5 @@
 ---
-name: flights
+name: flights-search
 version: 1.2.0
 description: Search flights via Google Flights. Find nonstop/connecting flights, filter by time and cabin class, get booking links. Supports city names (NYC, London, Tokyo) with automatic multi-airport search. No API key required.
 description_en: "Search Google Flights for real-time prices, schedules and booking links"

@@ -1,5 +1,5 @@
 ---
-name: agentmail
+name: agent-mail
 description: Email inbox for AI agents. Check messages, send emails, and communicate via your own @agentmail.to address.
 ---
 

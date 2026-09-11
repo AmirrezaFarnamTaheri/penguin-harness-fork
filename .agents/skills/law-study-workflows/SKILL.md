@@ -1,6 +1,6 @@
 ---
 name: law-study-workflows
-description: Consolidated workflow layer copied and merged from law-student. Use this skill as the exposed entry point while preserving detailed source workflows under references/source-workflows.
+description: "Law school study workflows, IRAC legal reasoning analysis, case brief preparation, and bar exam outlines."
 ---
 
 # Law Student Workflows

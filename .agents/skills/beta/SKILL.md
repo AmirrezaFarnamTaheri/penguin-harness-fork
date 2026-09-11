@@ -1,5 +1,5 @@
 ---
-name: Beta Skill
+name: beta
 description: Instruction-only fixture skill.
 od:
   mode: design-system

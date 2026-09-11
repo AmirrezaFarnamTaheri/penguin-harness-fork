@@ -1,6 +1,6 @@
 ---
 name: boltz
-description: >
+description: "Boltz-1 biomolecular structure prediction for protein, nucleic-acid, and small-molecule complexes."
   Structure prediction for protein, nucleic-acid, and small-molecule complexes
   with Boltz-2 (Passaro & Wohlwend et al. 2025, github.com/jwohlwend/boltz).
   Reach for this skill to validate designed binders against a target, to

@@ -1,3 +1,8 @@
+---
+name: client-report
+description: "Client Report"
+---
+
 # Client Report
 
 description: Generate professional client-facing performance reports with portfolio returns, allocation breakdowns, and market commentary. Suitable for quarterly or annual distribution. Triggers on "client report", "performance report", "quarterly report for [client]", "generate reports", or "client statement".

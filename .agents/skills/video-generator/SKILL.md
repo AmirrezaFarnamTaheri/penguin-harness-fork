@@ -1,5 +1,5 @@
 ---
-name: Video Generator
+name: video-generator
 description: Orchestrates complete Remotion video generation workflow from user request to MP4 output. Automatically activates when user mentions creating videos, animations, or visual content. Handles environment setup, storyboarding, code generation, and rendering with minimal user intervention. Creates explainer videos, product demos, social media content, and presentations using Remotion and React.
 ---
 

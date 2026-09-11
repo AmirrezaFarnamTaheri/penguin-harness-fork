@@ -1,5 +1,5 @@
 ---
-name: Environment Setup
+name: environment-setup
 description: Automatically detects and configures the Remotion video generation environment. Use when user requests video creation and dependencies (Node.js, FFmpeg, Remotion packages) need verification or installation. Checks system requirements, installs missing tools, initializes Remotion project structure, and validates the setup is ready for video generation.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: "bpm-runtime-skill"
+name: bpm-runtime
 description: "Used to query or process existing business flow instances and business flow tasks. Use when the user mentions business flow to-dos, completion, submit after filling, editing task data, creating related data, executing a specified operation, changing or recalculating handlers, reminding, triggering, canceling, retrying, task details, buttons, lanes, instance forms or logs. First select a unique reference by intent; changes must confirm the target and parameters, and queries must not auto-escalate to changes."
 apiName: "bpm_runtime_skill_mcp"
 ---

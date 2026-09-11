@@ -1,5 +1,5 @@
 ---
-name: Deck One
+name: deck-one
 description: A small deck template fixture.
 od:
   mode: deck

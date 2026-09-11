@@ -887,7 +887,56 @@ graph TD
 - **Consolidation Execution**: 120 superseded, fragmented, and duplicate skills were removed and consolidated into 14 canonical master skills (`code-mate-universal`, `stitch-design-architect`, `stitch-component-builder`, `stitch-iteration-loop`, `gsap-animation-master`, `figma-design-bridge`, `fal-ai-studio`, `gh-pr-lifecycle`, `gh-issue-lifecycle`, `wireframe-architect`, `web-prototype-designer`, `angular-modern-expert`, `qa-tdd-architect`, `qa-e2e-architect`, `qa-regression-tester`).
 - **Duplicate Eradication**: 26 duplicate underscore-named automation suites (`zoho_*`, `google_*`, `wave_*`, etc.) were purged in favor of standardized hyphenated versions.
 - **Proper Canonical Renaming**: 47 skills with non-standard identifiers, random hash suffixes, or irregular prefix/suffixes were renamed into proper lowercase kebab-case directories with corresponding `name:` frontmatter synchronization.
-- **Active Production Registry**: **2,312 verified skills** (100% English unified, 0 Chinese characters, 0 temporary or cache files).
+
+---
+
+### 9.4 Deep Grounded Naming & Overlap Audit
+
+A secondary, rigorous multi-pass automated AST and semantic audit was conducted across all remaining skills in `.agents/skills/`, targeting subtle collisions, verbatim content duplicates, cryptic directory names, and frontmatter divergence.
+
+#### 1. Collision & Verbatim Duplicate Eradication
+- **Exact Body & Name Collisions Purged**:
+  - `video-downloader` vs `youtube-downloader`: Byte-for-byte duplicate content and conflicting `name: youtube-downloader`. Purged `video-downloader`.
+  - `skill` vs `github`: The `skill` directory contained a 52-byte stub claiming `name: github`. Purged `skill` in favor of the full `github` CLI skill.
+  - `ts` vs `cloudbase-agent-ts`: `ts` was an uninformative 2-letter directory duplicating `cloudbase-agent-ts`. Purged `ts`.
+  - `soft-bento-design` vs `principal-ui-ux-architect`: Verbatim 10KB duplicate of the Principal UI/UX Architect guide. Purged `soft-bento-design`.
+  - `three-statement-analysis` vs `three-statement-model`: Partial duplicate. Retained complete 20KB `three-statement-model` with full SEC filing references.
+  - `wx-miniprogram-nosql` vs `wx-cloudbase-database`: Duplicate CloudBase WeChat MiniProgram NoSQL SDK guides. Purged `wx-miniprogram-nosql`.
+  - `init-new` vs `init`: Consolidated `init-new`'s comprehensive 22KB setup workflow into `init`, eliminating `init-new`.
+- **Notion Suite Consolidation**:
+  - Reconciled 4 split Notion skills (`knowledge-capture`, `meeting-intelligence`, `research-documentation`, `spec-to-implementation`) with their `notion-*` prefixed siblings. Consolidated richer implementation bodies into canonical `notion-knowledge-capture`, `notion-meeting-intelligence`, `notion-research-documentation`, and `notion-spec-to-implementation`.
+- **CloudBase Auth & Database Sibling Consolidation**:
+  - Purged legacy unversioned variants (`auth-tool`, `auth-web`, `relational-database-tool`, `relational-database-web`) in favor of official v2.26.0 sibling skills (`auth-tool-cloudbase`, `auth-web-cloudbase`, `relational-database-mcp-cloudbase`, `relational-database-web-cloudbase`).
+- **Legacy Stitch Sub-Skill Purge**:
+  - Purged 8 legacy sub-skill directories (`code-to-design`, `extract-design-md`, `extract-static-html`, `generate-design`, `manage-design-system`, `react-components`, `react-native`, `upload-to-stitch`) whose capabilities were fully incorporated into `stitch-design-architect`, `stitch-component-builder`, and `stitch-iteration-loop`.
+
+#### 2. Canonical Directory Renaming for Cryptic & Unscoped Skills
+Standardized 21 directories that previously used cryptic acronyms, misleading generic terms, or unaligned version suffixes:
+- `py` &rarr; `cloudbase-agent-python`
+- `doc` &rarr; `docx-document-editor`
+- `hig` &rarr; `human-interface-guidelines`
+- `omc` &rarr; `omo-orchestrator`
+- `apm`, `deployments`, `diagnostics`, `infrastructure`, `nrql` &rarr; scoped to `newrelic-cli-*`
+- `sag` &rarr; `elevenlabs-tts-sag`
+- `qmd` &rarr; `quick-markdown-search`
+- `esm` &rarr; `esm-protein-toolkit`
+- `gog` &rarr; `google-workspace-cli`
+- `taste-eval-v1` &rarr; `design-taste-frontend-v1`
+- `visual-taste-evaluation` &rarr; `design-taste-frontend`
+- `strip-profile` &rarr; `fsi-strip-profile`
+- `comps-analysis` &rarr; `fsi-comps-analysis`
+- `earnings-preview-beta` &rarr; `fsi-earnings-preview`
+- `no-sql-web-sdk` &rarr; `cloudbase-document-database-web-sdk`
+- `storybook` / `non-storybook` &rarr; `storybook-design-sync` / `non-storybook-design-sync`
+
+#### 3. 100% Frontmatter Synchronization & Disambiguation
+- **1:1 Alignment**: Synchronized `name:` YAML frontmatter across all skills to match the exact directory name in lowercase kebab-case.
+- **Audit Metrics**:
+  - Name collisions across directories: **0**
+  - Directory name vs frontmatter name mismatches: **0**
+  - Residual Chinese characters in skills: **0**
+  - Active production skills: **2,287**
+- **Disambiguated Tool Descriptions**: Updated overlapping description metadata for browser automation tools (`agent-browser`, `browser-use`, `playwright-cli`) and biomolecular structure prediction tools (`boltz`, `chai1`) to specify exact CLI binaries, languages, and use cases.
 
 ---
 

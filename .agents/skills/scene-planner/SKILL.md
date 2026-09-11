@@ -1,5 +1,5 @@
 ---
-name: Scene Planner
+name: scene-planner
 description: Creates detailed video storyboards and scene breakdowns for Remotion video generation. Analyzes user requirements, determines video type, selects appropriate template, and outputs structured scene plans with visual specifications, timing, animation details, and asset requirements. Use when planning video structure before code generation.
 ---
 

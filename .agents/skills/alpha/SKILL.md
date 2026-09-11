@@ -1,5 +1,5 @@
 ---
-name: Alpha Skill
+name: alpha
 description: First fixture skill with a runnable demo.
 triggers:
   - alpha demo

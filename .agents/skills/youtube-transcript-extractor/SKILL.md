@@ -1,5 +1,5 @@
 ---
-name: YouTube Transcript Extractor
+name: youtube-transcript-extractor
 description: Extracts timestamped transcripts from YouTube videos for translation, summarization, and content creation.
 ---
 

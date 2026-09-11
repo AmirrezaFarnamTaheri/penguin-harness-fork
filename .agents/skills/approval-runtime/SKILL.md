@@ -1,5 +1,5 @@
 ---
-name: "approval-runtime-skill"
+name: approval-runtime
 description: "Used to query or process existing approval instances and approval tasks. Use when users mention approval to-dos, agree, pass, complete, reject, return, withdraw, cancel, edit approval forms, submit after filling, change handler, add sign-off node, remind, carbon copy, reply, task details, progress, or approval instances. First select a unique reference by intent; changes must confirm target and parameters; queries must not auto-escalate to changes."
 apiName: "approval_runtime_skill_mcp"
 ---

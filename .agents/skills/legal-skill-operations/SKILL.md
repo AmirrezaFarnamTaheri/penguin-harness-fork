@@ -1,6 +1,6 @@
 ---
 name: legal-skill-operations
-description: Consolidated workflow layer copied and merged from legal-builder-hub. Use this skill as the exposed entry point while preserving detailed source workflows under references/source-workflows.
+description: "Legal builder operations, contract clause template authoring, and legal practice operations management."
 ---
 
 # Legal Skill Operations Workflows

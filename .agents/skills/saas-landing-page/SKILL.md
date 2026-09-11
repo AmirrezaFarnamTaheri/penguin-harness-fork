@@ -1,5 +1,5 @@
 ---
-name: saas-landing
+name: saas-landing-page
 description: |
   Single-page SaaS landing with hero, features, social proof, pricing, and CTA.
   Respects the active DESIGN.md color/typography/layout tokens.

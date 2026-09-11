@@ -1,4 +1,5 @@
 ---
+name: shopify-admin-api
 slug: shopify-admin-api
 display_name: Shopify Admin API
 version: 1.0.0

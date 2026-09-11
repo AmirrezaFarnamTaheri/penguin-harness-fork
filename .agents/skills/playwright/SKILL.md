@@ -1,4 +1,5 @@
 ---
+name: playwright
 description: Browser automation with Playwright MCP. Use for web scraping, testing, screenshots, and browser interactions.
 mcp:
   playwright:

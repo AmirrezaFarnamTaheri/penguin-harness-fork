@@ -1,6 +1,6 @@
 ---
 name: clinic-supervision-workflows
-description: Consolidated workflow layer copied and merged from legal-clinic. Use this skill as the exposed entry point while preserving detailed source workflows under references/source-workflows.
+description: "Legal clinic client supervision, pro-bono intake review, and supervisory attorney authorization workflows."
 ---
 
 # Legal Clinic Supervision Workflows
