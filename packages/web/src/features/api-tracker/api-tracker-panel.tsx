@@ -260,7 +260,8 @@ export function ApiTrackerPanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={S.apiTracker.filterPlaceholder}
-              className="h-7 text-xs"
+              size="sm"
+              className="h-7"
             />
           </div>
         </div>

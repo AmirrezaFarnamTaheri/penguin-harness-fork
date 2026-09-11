@@ -23,6 +23,7 @@ import type {
   ApprovalMode,
   ModelRefDto,
   ModelsResponse,
+  SessionInfo,
   SessionPatchRequest,
   SessionProcessInfo,
   SessionStatus,
@@ -41,7 +42,7 @@ import {
   humanizeDurationLive,
   humanizeTokens,
 } from "../../lib/format";
-import { latestConversation } from "../../lib/session-grouping";
+import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import { sessionActivity, sessionBackgroundTasks } from "../../lib/session-activity";
 import { noteSessionSeen } from "../../lib/session-seen";
 import {
@@ -82,6 +83,7 @@ import type { ForkTarget } from "./task-stats-line";
 import { latestTaskHasSubagent, modelTaskStartCount, taskStartCount } from "./agent-topology";
 import { ChatInput } from "./chat-input";
 import type { ComposerControl } from "./chat-input";
+import type { InsertLayout } from "../../lib/workspace-tree";
 import {
   compactionTally,
   heldThinkingSwitch,
@@ -94,7 +96,7 @@ import { ChatDropRegion } from "./drop-zone";
 import { ConversationOutline, OutlineMenuButton, useOutlineRailFit } from "./conversation-outline";
 import { DraftView } from "./draft-view";
 import { parkActiveDraft } from "./draft-sessions";
-import { sessionForProject, sessionProbeKey } from "./session-project";
+import { resolveRoutedSession, sessionForProject, sessionProbeKey } from "./session-project";
 import { CHAT_DEFAULTS_CHANGED_EVENT, chatDefaultsChangedDetail } from "./chat-defaults-event";
 import { advanceCostStat, applyUsageFetch, createCostStatHold } from "./header-stats";
 import type { CostStatDisplay } from "./header-stats";
@@ -400,7 +402,14 @@ export function ChatPage() {
   // below treats the two alike.
   const parkedDraftId = parkedDraftIdOf(routeSessionId);
   const draft = routeSessionId === DRAFT_SESSION_ID || parkedDraftId !== null;
-  const selected = draft ? null : (sessions.find((s) => s.sessionId === routeSessionId) ?? null);
+  /**
+   * The row the direct lookup below produced, kept beside the list: the list is replaced by
+   * every reload, and a row that only a lookup knows about (an organization's desk, a
+   * deep-linked conversation past the fetched pages) would otherwise disappear from under
+   * the open conversation. See resolveRoutedSession.
+   */
+  const [fetchedSession, setFetchedSession] = useState<SessionInfo | null>(null);
+  const selected = draft ? null : resolveRoutedSession(routeSessionId, sessions, fetchedSession);
   // New shells start in this conversation's Workspace — its files are what a terminal
   // opened here is for. While drafting, the Workspace is the one picked in the draft and
   // DraftView publishes it instead (a child effect runs before this one, so this must
@@ -546,10 +555,15 @@ export function ChatPage() {
   // menu advises compacting first, since the change invalidates the model's cached
   // context). It is still never written through to the Agent config (that stays draft-only).
   const turnThinkingLevel = selected?.thinkingLevel ?? "";
+  // The Agent list may not carry this Session's Agent yet (an Agent an organization created
+  // moments ago): the probe below reloads the list, and this effect re-runs once it lands.
+  const selectedAgentKnown =
+    selectedAgentId !== null && agents.some((a) => a.agentId === selectedAgentId);
   useEffect(() => {
-    if (selectedSessionId && selectedAgentId) setCurrentAgentId(selectedAgentId);
+    if (selectedSessionId && selectedAgentId && selectedAgentKnown)
+      setCurrentAgentId(selectedAgentId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSessionId, selectedAgentId, setCurrentAgentId]);
+  }, [selectedSessionId, selectedAgentId, selectedAgentKnown, setCurrentAgentId]);
 
   // Agents tab AUTO-OPEN (the one automatic tab action): the pure tracker
   // (advancePanelTaskScope, unit-tested) brings the agents tab to the front on the CURRENT
@@ -697,8 +711,13 @@ export function ChatPage() {
       (res) => {
         if (cancelled) return;
         const session = sessionForProject(res.session, projectId);
-        if (session) addSession(session);
-        else setProbeFailedKey(probeKey);
+        if (session) {
+          setFetchedSession(session);
+          addSession(session);
+          // A Session of an Agent the list has not loaded (company mode creates Agents
+          // server-side): fetch the list, or the page has no Agent to render under.
+          if (!agents.some((a) => a.agentId === session.agentId)) void reloadAgents();
+        } else setProbeFailedKey(probeKey);
       },
       () => {
         if (!cancelled) setProbeFailedKey(probeKey);
@@ -732,7 +751,10 @@ export function ChatPage() {
     if (selected !== null) return;
     // A routed id missing from the paged list isn't gone until the direct lookup fails.
     if (routeSessionPending) return;
-    const last = latestConversation(sessions);
+    // An organization's desk or ticket Session is never auto-opened: landing in one by default
+    // would put the user inside a conversation the scheduler drives, and company mode's own
+    // groups are where it is reached.
+    const last = latestConversation(withoutOrgSessions(sessions));
     navigate(last ? `/chat/${last.sessionId}` : `/chat/${DRAFT_SESSION_ID}`, { replace: true });
   }, [sessionsLoading, draft, selected, routeSessionPending, sessions, navigate]);
 
@@ -1271,6 +1293,15 @@ export function ChatPage() {
     // An empty pin list: a schedule prompt names no Skills, so the composer's own selection stands.
     composerRef.current?.fillPrompt(text, []);
   }, []);
+  /**
+   * The Files panel's exit into the conversation: a `@path` reference, or a fenced block
+   * around what was selected in a preview, spliced into the draft at the caret. Nothing is
+   * sent and nothing already typed is disturbed — the panel contributes a line to a message
+   * the user is writing.
+   */
+  const insertIntoComposer = useCallback((snippet: string, layout: InsertLayout) => {
+    composerRef.current?.insertAtCaret(snippet, layout);
+  }, []);
 
   // Pins a picked level on the Session so it outlives this tab: PATCH, then swap the
   // returned row into the session store (the picker reads it back from there); it applies
@@ -1648,6 +1679,7 @@ export function ChatPage() {
             openRequest={fileOpenRequest}
             active={active}
             reloadSignal={settledTurnSignal}
+            onInsertReference={insertIntoComposer}
           />
         );
       case "memory":

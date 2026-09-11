@@ -38,7 +38,7 @@ describe("loadLibraryPlugins", () => {
   it("loads every plugin directory sorted by name, each with a date-sequence version and a category", () => {
     const plugins = loadLibraryPlugins();
     expect(plugins.map((p) => p.name)).toEqual([...plugins.map((p) => p.name)].sort());
-    expect(plugins.length).toBe(12);
+    expect(plugins.length).toBe(14);
     for (const plugin of plugins) {
       expect(plugin.version, plugin.name).toMatch(PLUGIN_VERSION_PATTERN);
       expect(
@@ -132,7 +132,13 @@ describe("loadPreinstalledPlugins", () => {
     const preinstalled = loadPreinstalledPlugins().map((p) => p.name);
     expect(preinstalled).toContain("goal");
     expect(preinstalled).toContain("software-development");
-    for (const manual of ["continual-learning", "humanizer", "use-claude-code"]) {
+    for (const manual of [
+      "agent-company",
+      "continual-learning",
+      "humanizer",
+      "use-claude-code",
+      "use-spexcode",
+    ]) {
       expect(all).toContain(manual);
       expect(preinstalled).not.toContain(manual);
     }
@@ -174,7 +180,7 @@ describe("groupPlugins / loadPluginGroups", () => {
     expect(groups[2]).toMatchObject({ title: "Other", titleZh: "其他" });
   });
 
-  it("the library itself fills the three categories and leaves no Other group; hook packages sit with their audience", () => {
+  it("the library itself fills every category and leaves no Other group; hook packages sit with their audience", () => {
     const groups = loadPluginGroups();
     expect(groups.map((g) => g.id)).toEqual(PLUGIN_CATEGORIES.map((c) => c.id));
     const names = (id: string) => groups.find((g) => g.id === id)?.plugins.map((p) => p.name);
@@ -186,12 +192,18 @@ describe("groupPlugins / loadPluginGroups", () => {
       "use-bento-slides",
       "use-firecrawl",
     ]);
+    expect(names("software-development")).toEqual([
+      "software-development",
+      "use-claude-code",
+      "use-spexcode",
+    ]);
     expect(names("ai-app-development")).toEqual([
       "agent-development",
       "agent-tuning",
       "model-development",
       "skill-porting",
     ]);
+    expect(names("agent-company")).toEqual(["agent-company"]);
   });
 });
 

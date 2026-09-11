@@ -1,12 +1,13 @@
 /**
  * Files panel logic (lib/workspace-tree.ts): the tree's rows from lazily loaded listings,
- * the search box's filter over them, where a drop lands, the narrow-layout
+ * the rows a whole-Workspace search draws, where a drop lands, the narrow-layout
  * decision and the tree pane's width bounds, how much of a path the
  * toolbar can show, which files count as text (by name, or by their bytes when the name says
- * nothing), the preferences' tolerant parses, and when leaving the editor has to ask.
+ * nothing), the preferences' tolerant parses, when leaving the editor has to ask, and what
+ * the panel's "add to conversation" puts in the composer.
  */
 import { describe, expect, it } from "vitest";
-import type { WorkspaceFileEntry } from "@prismshadow/penguin-server/api";
+import type { WorkspaceFileEntry, WorkspaceSearchHit } from "@prismshadow/penguin-server/api";
 import {
   PREVIEW_MIN_WIDTH,
   TREE_LAYOUT_MIN_WIDTH,
@@ -17,27 +18,30 @@ import {
   defaultTreeWidth,
   dropTargetDir,
   expandTo,
-  filterTreeRows,
+  searchRows,
   flattenTree,
+  insertAtCaret,
   isDirty,
   isNarrowLayout,
   looksLikeText,
   maxTreeWidth,
   needsDiscardConfirm,
   parentDir,
-  parseEditorWrap,
+  parseWrapLines,
   parseTreeVisible,
   parseTreeWidth,
+  pathReference,
   previewKindFor,
-  readEditorWrap,
+  readWrapLines,
   readTreeVisible,
   readTreeWidth,
+  selectionBlock,
   sortEntries,
   upsertEntry,
   utf8Complete,
   visibleCrumbSegments,
   withExpanded,
-  writeEditorWrap,
+  writeWrapLines,
   writeTreeVisible,
   writeTreeWidth,
 } from "../src/lib/workspace-tree";
@@ -176,22 +180,34 @@ describe("layout", () => {
   });
 });
 
-describe("filterTreeRows", () => {
-  /** Every listed directory walked open, which is what the panel filters over. */
-  const all = flattenTree(LISTINGS, new Set(LISTINGS.keys()));
+describe("searchRows", () => {
+  const hits: WorkspaceSearchHit[] = [
+    { path: "notes.md", kind: "file", sizeBytes: 12, mtime: "2026-09-11T00:00:00.000Z" },
+    { path: "a/deep", kind: "dir", sizeBytes: 0, mtime: "2026-09-11T00:00:01.000Z" },
+    { path: "a/deep/notes.md", kind: "file", sizeBytes: 34, mtime: "2026-09-11T00:00:02.000Z" },
+  ];
 
-  it("keeps a match with the ancestors it hangs under, and nothing else", () => {
-    expect(filterTreeRows(all, "y").map((r) => r.path)).toEqual(["a", "a/y.md"]);
+  it("names each hit by its whole path, because where it is is the part the query did not say", () => {
+    // The base name is what the reader just typed; two hits called notes.md are told apart
+    // only by the directory in front of them.
+    expect(searchRows(hits).map((r) => r.name)).toEqual(["notes.md", "a/deep", "a/deep/notes.md"]);
+    expect(searchRows(hits).map((r) => r.path)).toEqual(["notes.md", "a/deep", "a/deep/notes.md"]);
   });
 
-  it("shows a matching directory with its loaded children", () => {
-    expect(filterTreeRows(all, "a").map((r) => r.path)).toEqual(["a", "a/b", "a/y.md"]);
+  it("draws a flat list, not a tree: every row is depth 0 and closed", () => {
+    // A hit can live in a directory the lazy tree never listed, so there is nothing to nest it
+    // under; an open directory row here would promise children the panel cannot draw.
+    const rows = searchRows(hits);
+    expect(rows.every((r) => r.depth === 0)).toBe(true);
+    expect(rows.every((r) => !r.expanded)).toBe(true);
+    expect(rows.map((r) => r.posInSet)).toEqual([1, 2, 3]);
+    expect(rows.every((r) => r.setSize === 3)).toBe(true);
   });
 
-  it("matches the name case-insensitively, keeps everything for an empty query, and drops everything for a miss", () => {
-    expect(filterTreeRows(all, "X.TXT").map((r) => r.path)).toEqual(["x.txt"]);
-    expect(filterTreeRows(all, "  ").map((r) => r.path)).toEqual(all.map((r) => r.path));
-    expect(filterTreeRows(all, "nothing-like-this")).toEqual([]);
+  it("carries the size and time the row renderer shows, so a hit reads like a tree entry", () => {
+    expect(searchRows(hits).map((r) => r.sizeBytes)).toEqual([12, 0, 34]);
+    expect(searchRows(hits)[2]?.mtime).toBe("2026-09-11T00:00:02.000Z");
+    expect(searchRows([])).toEqual([]);
   });
 });
 
@@ -328,24 +344,24 @@ describe("tree width preference", () => {
   });
 });
 
-describe("editor wrap preference", () => {
-  it("wraps only on an explicit on value", () => {
-    expect(parseEditorWrap(null)).toBe(false);
-    expect(parseEditorWrap("0")).toBe(false);
-    expect(parseEditorWrap("garbage")).toBe(false);
-    expect(parseEditorWrap("1")).toBe(true);
-    expect(parseEditorWrap(" TRUE ")).toBe(true);
+describe("soft wrap preference", () => {
+  it("wraps unless an explicit off value is stored, so a stored answer survives the new default", () => {
+    expect(parseWrapLines(null)).toBe(true);
+    expect(parseWrapLines("garbage")).toBe(true);
+    expect(parseWrapLines("1")).toBe(true);
+    expect(parseWrapLines("0")).toBe(false);
+    expect(parseWrapLines(" FALSE ")).toBe(false);
   });
 
-  it("round-trips through storage and reads as off when storage throws", () => {
+  it("round-trips through storage and reads as on when storage throws", () => {
     const storage = memPreferences();
-    expect(readEditorWrap(storage)).toBe(false);
-    writeEditorWrap(true, storage);
-    expect(readEditorWrap(storage)).toBe(true);
-    writeEditorWrap(false, storage);
-    expect(readEditorWrap(storage)).toBe(false);
-    expect(readEditorWrap(brokenPreferences)).toBe(false);
-    expect(() => writeEditorWrap(true, brokenPreferences)).not.toThrow();
+    expect(readWrapLines(storage)).toBe(true);
+    writeWrapLines(false, storage);
+    expect(readWrapLines(storage)).toBe(false);
+    writeWrapLines(true, storage);
+    expect(readWrapLines(storage)).toBe(true);
+    expect(readWrapLines(brokenPreferences)).toBe(true);
+    expect(() => writeWrapLines(false, brokenPreferences)).not.toThrow();
   });
 });
 
@@ -367,5 +383,82 @@ describe("tree visibility preference", () => {
     expect(readTreeVisible(storage)).toBe(true);
     expect(readTreeVisible(brokenPreferences)).toBe(true);
     expect(() => writeTreeVisible(false, brokenPreferences)).not.toThrow();
+  });
+});
+
+describe("composer references", () => {
+  it("marks a directory with a trailing slash and leaves a file bare", () => {
+    expect(pathReference("src/lib/tree.ts", "file")).toBe("@src/lib/tree.ts");
+    expect(pathReference("src/lib", "dir")).toBe("@src/lib/");
+  });
+
+  it("keeps an inline reference off the word in front of it, and always leaves one behind", () => {
+    expect(insertAtCaret("", 0, "@a.txt", "inline")).toEqual({ text: "@a.txt ", caret: 7 });
+    expect(insertAtCaret("look at", 7, "@a.txt", "inline").text).toBe("look at @a.txt ");
+    expect(insertAtCaret("look at ", 8, "@a.txt", "inline").text).toBe("look at @a.txt ");
+    expect(insertAtCaret("line\n", 5, "@a.txt", "inline").text).toBe("line\n@a.txt ");
+  });
+
+  it("inserts inline at the caret without disturbing either side, and lands after the space", () => {
+    const out = insertAtCaret("read  then reply", 5, "@a.txt", "inline");
+    expect(out.text).toBe("read @a.txt  then reply");
+    expect(out.text.slice(out.caret)).toBe(" then reply");
+  });
+
+  it("opens a block on a line of its own, adding only the blank line it still needs", () => {
+    expect(insertAtCaret("", 0, "BLOCK", "block").text).toBe("BLOCK\n");
+    expect(insertAtCaret("why", 3, "BLOCK", "block").text).toBe("why\n\nBLOCK\n");
+    expect(insertAtCaret("why\n", 4, "BLOCK", "block").text).toBe("why\n\nBLOCK\n");
+    expect(insertAtCaret("why\n\n", 5, "BLOCK", "block").text).toBe("why\n\nBLOCK\n");
+  });
+
+  it("clamps a caret that is past the end of the draft", () => {
+    expect(insertAtCaret("hi", 99, "@a.txt", "inline").text).toBe("hi @a.txt ");
+  });
+
+  it("heads a selection block with the path and the lines it covers", () => {
+    expect(
+      selectionBlock({
+        path: "src/a.ts",
+        language: "typescript",
+        selection: "const a = 1;",
+        fromLine: 3,
+        toLine: 5,
+      }),
+    ).toBe("@src/a.ts (L3-L5)\n```typescript\nconst a = 1;\n```");
+  });
+
+  it("names a single line once, and drops the range when the lines are unknown", () => {
+    expect(
+      selectionBlock({ path: "a.ts", language: "ts", selection: "x", fromLine: 7, toLine: 7 }),
+    ).toContain("@a.ts (L7)\n");
+    expect(selectionBlock({ path: "a.md", language: "markdown", selection: "x" })).toContain(
+      "@a.md\n",
+    );
+  });
+
+  it("keeps the selection verbatim and closes it on its own line", () => {
+    const out = selectionBlock({
+      path: "a.txt",
+      language: "text",
+      selection: "  indented\n\n  still\n",
+    });
+    expect(out).toBe("@a.txt\n```text\n  indented\n\n  still\n```");
+  });
+
+  it("opens a longer fence when the selection carries one of its own", () => {
+    const out = selectionBlock({
+      path: "readme.md",
+      language: "markdown",
+      selection: "```js\ncode\n```",
+    });
+    expect(out).toBe("@readme.md\n````markdown\n```js\ncode\n```\n````");
+    const longer = selectionBlock({
+      path: "readme.md",
+      language: "markdown",
+      selection: "````\nnested\n````",
+    });
+    expect(longer.startsWith("@readme.md\n`````markdown\n")).toBe(true);
+    expect(longer.endsWith("\n`````")).toBe(true);
   });
 });

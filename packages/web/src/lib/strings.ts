@@ -34,6 +34,15 @@ export const zh = {
     expandGroup: "展开",
     pinGroup: "置顶分组",
     unpinGroup: "取消置顶",
+    /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */
+    org: {
+      overview: "概览",
+      chart: "组织图",
+      calendar: "日历",
+      tickets: "工单",
+      finance: "财务",
+      handbook: "手册",
+    },
   },
 
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
@@ -226,6 +235,14 @@ export const zh = {
       "对话里的工具卡片用短名称呼内置工具，read_file 显示为「读取」。其余工具（含 MCP 工具）与轨迹观测始终是工具原本的名字；悬停短名也能看到它。",
     currencyInfo: "价格显示币种；存储始终为美元。",
     changePasswordInfo: "更改当前账号的登录密码。",
+    /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    companyModeTitle: "公司模式",
+    companyModePersonal: "公司模式",
+    companyModePersonalInfo:
+      "关闭只隐藏本人的模式切换，组织照常运转；管理员的总开关在「服务器」分组。",
+    companyModeServer: "启用公司模式",
+    companyModeServerInfo:
+      "服务器总开关：关闭即停用组织调度器与全部组织路由，并隐藏所有人的模式切换；磁盘上的组织不受影响，重新打开后不会补发错过的触发。",
     accentNames: {
       neutral: "灰白",
       blue: "蓝",
@@ -548,6 +565,8 @@ export const zh = {
     /** Appended to an action's own toast (skill install / uninstall) — same timing statement. */
     takesEffectSuffix: "；新对话立即生效，进行中的对话在下一次压缩后生效",
     listTitle: "Agents",
+    searchPlaceholder: "搜索 Agent：id / 名称 / 描述",
+    searchEmpty: "没有匹配的 Agent",
     create: "创建 Agent",
     createTitle: "创建 Agent",
     id: "Agent id",
@@ -576,6 +595,63 @@ export const zh = {
       "选择导出的 Agent State 快照包（.tar.gz），新 Agent 以包内状态创建；名称与描述留空则沿用包内值",
     createSnapshotSkillsOff: "快照包自带技能与钩子，与插件选择互斥",
     createSnapshotClear: "移除已选快照包",
+    /**
+     * The create dialog's AI path: the lead line, the prompt box's placeholder, the clickable
+     * examples and the fixed instruction tail joined after the draft (composeAiPrompt). The
+     * tail follows the agent-initialization skill's contract — a new agent under the current
+     * Project, only the skills it needs, no other agent touched, the id reported at the end.
+     */
+    aiCreateIntro:
+      "描述这个智能体要做什么、面向谁、产出什么；执行的智能体会用 agent-initialization 技能在当前 Project 里创建它。",
+    aiCreatePlaceholder: "例如：创建一个帮我把会议录音整理成待办清单的智能体…",
+    aiExamples: [
+      {
+        key: "jotting",
+        label: "随记智能体",
+        description: "零碎想法整理成一套 Markdown 文件体系",
+        prompt:
+          "创建一个随记智能体：我会不断向它发送零碎的想法和只言片语，它要在工作区里把这些内容整理成一套 Markdown 文件体系（按主题建文件、维护一个索引文件、合并重复内容、保留时间线），每次收到内容后回复归档到了哪个文件。",
+      },
+      {
+        key: "finance",
+        label: "金融 Copilot",
+        description: "财报、行情与新闻的基本面与估值分析",
+        prompt:
+          "创建一个金融 Copilot 智能体：能读取我提供的财报、行情数据与新闻链接，做基本面与估值分析，用表格与要点输出结论，标注不确定性与数据来源，不给出直接的买卖建议。",
+      },
+      {
+        key: "rag",
+        label: "文档 RAG 智能体",
+        description: "先给 docs/ 建索引，回答时引用出处",
+        prompt:
+          "创建一个文档问答智能体：我会把资料放进工作区的 docs/ 目录，它要先建立索引（按文件与章节写摘要），回答问题时引用具体文件与段落，没有依据时明确说不知道。",
+      },
+      {
+        key: "research",
+        label: "深度研究报告智能体",
+        description: "提纲、多轮检索与交叉验证，产出带引用的报告",
+        prompt:
+          "创建一个深度研究报告智能体：给定一个课题，它要先制定研究提纲，多轮检索与阅读资料并交叉验证事实，最后在工作区生成一份带目录、引用与附录的 Markdown 报告。",
+      },
+      {
+        key: "report-writer",
+        label: "报告写作智能体",
+        description: "零散材料整理成结构化报告；id 为 report-writer",
+        prompt:
+          "创建一个报告写作智能体，agent id 用 report-writer：擅长把零散材料整理成结构化的商业或技术报告（摘要、背景、分析、结论与建议），产出 Markdown 文件，并附一份写作检查清单。",
+      },
+    ],
+    aiCreateTail: [
+      "请使用 agent-initialization 技能，在当前 Project 中按上面的描述新建一个智能体：",
+      "- 上面给了 agent id 就用它，否则取一个简短的语义 id（小写字母开头，可含数字、下划线或连字符）；目标目录已存在时停下来告诉我，不要覆盖。",
+      "- 以 default_agent 的 system_config.yaml 为底，设置它的 name、description 与 version，把角色与行为规则写进它的 agent_state/AGENTS.md。",
+      "- 只从插件库（default_agent 已安装的技能目录）复制它真正需要的技能，不要多装。",
+      "- 不要改动其他智能体；完成后按技能要求做校验。",
+      "最后告诉我：新智能体的 id、安装了哪些技能，以及怎样开始和它对话（Agents 页该智能体卡片上的「新建对话」）。",
+    ].join("\n"),
+    /** The list's call to action while the Project has no agent beyond the built-in default. */
+    firstAgentTitle: "还没有自己的智能体",
+    firstAgentDesc: "描述你想要的智能体，让 AI 帮你创建；也可以手动配置。",
     sessionCount: (n: number): string => `${n} 个 Session`,
     toolCount: (n: number): string => `${n} 个工具`,
     vaultKeyCount: (n: number): string => `${n} 个密钥`,
@@ -668,6 +744,15 @@ export const zh = {
     mcpServers: "MCP Server",
     mcpDesc:
       "连接外部 MCP Server：其工具以 mcp__<name>__<tool> 并入本 Agent 的工具列表。此区块的改动即时保存。",
+    toolExposure: "模型工具暴露方式",
+    toolExposureDirect: "直接暴露",
+    toolExposureAuto: "自动",
+    toolExposureLazy: "全部按需调用",
+    toolExposureDirectHint: "直接暴露内置工具和首次发现的全部 MCP 工具 Schema。",
+    toolExposureAutoHint: "内置工具保持直连；MCP Schema 较大时在会话开始时切换到固定网关。",
+    toolExposureLazyHint: "模型只看到固定搜索和调用网关，内置及 MCP 工具均保留在私有目录。",
+    toolExposureThreshold: "自动切换阈值（token）",
+    toolExposureThresholdHint: "MCP Schema 估算达到该值时使用网关；0 表示始终使用网关。",
     mcpEmpty: "尚未配置 MCP Server",
     mcpAdd: "添加 MCP Server",
     mcpEditTitle: "编辑 MCP Server",
@@ -819,6 +904,57 @@ export const zh = {
       "用内置目录更新预置模型：新增缺失条目、以目录字段为准刷新差异；本地新增模型与 API key 保持不变",
     syncDone: (added: number, updated: number) => `预置模型已同步：新增 ${added}、更新 ${updated}`,
     syncUpToDate: "预置模型已是最新",
+    /**
+     * The header's "Create with AI" entry: the dialog's title and lead, the prompt box's
+     * placeholder, the examples and the fixed instruction tail. The tail
+     * follows the penguin-config skill — one `penguin config model add` per model with
+     * `--provider` mandatory, the config file never touched by hand, `penguin config model list`
+     * at the end — and carries the Project id and the data root, which the CLI would otherwise
+     * take from its own defaults (the harness strips `PENGUIN_HOME` from a command's
+     * environment, so the CLI's default root is not the one the server runs on).
+     */
+    aiAddTitle: "让 AI 添加模型分组",
+    aiAddIntro:
+      "把模型列表页的链接或服务信息交给智能体，它会用 penguin config 命令把这些模型加为一个分组。能直接列出模型的 OpenAI 兼容端点，用「新增分组 → 导入模型」更快。",
+    aiAddPlaceholder: "粘贴模型列表页的 URL，或描述要接入的服务（网关地址、鉴权方式、模型 id）…",
+    aiAddExamples: [
+      {
+        key: "openrouter",
+        label: "OpenRouter 热门模型",
+        description: "读取模型列表页，加为一个分组",
+        prompt:
+          "把 https://openrouter.ai/models 上的热门模型加为一个 OpenRouter 分组（先问我要 API key）。",
+      },
+      {
+        key: "vllm",
+        label: "自建 vLLM 服务",
+        description: "OpenAI 兼容端点加指定的模型 id",
+        prompt:
+          "接入我自建的 vLLM 服务 http://10.0.0.5:8000/v1，模型 id 为 qwen3-32b，加为一个 vllm 分组。",
+      },
+      {
+        key: "ollama",
+        label: "本机 Ollama",
+        description: "把本机已有的模型加为一组",
+        prompt: "把本机 Ollama（http://localhost:11434）上已有的模型加为一个 ollama 分组。",
+      },
+      {
+        key: "deepseek",
+        label: "DeepSeek 官方模型",
+        description: "加进 deepseek 分组并设为默认",
+        prompt: "把 DeepSeek 官方的 deepseek-v4-pro 加进 deepseek 分组并设为默认模型。",
+      },
+    ],
+    aiAddTail: (projectId: string): string =>
+      [
+        "请使用 penguin-config 技能完成上面的配置：",
+        "- 下面每条命令都要带 `--root <数据根目录>`，即环境信息中 App Data Dir 的上级目录。命令的环境里没有这个值，不带 `--root` 会配置到另一个数据根目录，本 Project 什么也拿不到。",
+        `- 每个模型执行一次 \`penguin config model add --provider <分组名> --model-id <上游模型 id> --project-id ${projectId} --root <数据根目录> [--base-url <端点>] [--client-type openai] [--api-key <key>] [--context-window <n>] [--price-cache-read <n> --price-cache-write <n> --price-output <n>]\`：\`--provider\` 必填，\`--model-id\` 用网关自己的模型 id；OpenAI 兼容端点加 \`--client-type openai --base-url <端点>\`。`,
+        "- 来源是网页时先抓取页面：优先加我点名的模型，没有点名就选最常用的，最多 10 个左右。",
+        "- 需要 API key 而我没给时只问我一次；我不提供就把 key 留空，并告诉我到模型库页补填。",
+        "- 不要读取或改动 .project_config.toml，配置只经 penguin 命令。",
+        `- 最后运行 \`penguin config model list --project-id ${projectId} --root <数据根目录>\` 把结果列给我。`,
+      ].join("\n"),
     homepage: "模型主页",
     speedTest: "测速",
     speedTestTitle: "分组测速",
@@ -1138,6 +1274,50 @@ export const zh = {
     keyHint: "字母、数字与下划线，不能以数字开头",
     keyInvalid: "键名不合法：仅字母、数字与下划线，且不能以数字开头",
     valueRequired: "值不能为空",
+    /**
+     * The tab's "add with AI" entry: the dialog's title and lead (an honest warning — a value
+     * typed into the prompt reaches the provider, the Trace and the agent's own command line),
+     * the prompt box's placeholder, the examples and the fixed instruction tail. The examples obey
+     * that lead: the key-names-only ask comes first and none of them puts a secret in the prompt,
+     * both pinned by create-with-ai-surfaces.test.ts. The tail is fed the target agent and Project
+     * because the prompt goes to the Project's default agent, which is not necessarily the agent
+     * whose vault this is; it names the data root for the same reason the models tail does.
+     */
+    aiAddTitle: "让 AI 添加密钥",
+    aiAddIntro:
+      "写进提示词的密钥值会发给模型服务商、写入对话记录（Trace），还会出现在智能体执行的命令里。更稳妥的做法是让 AI 只创建键名并告诉你用途，值在保险柜里手动填写。",
+    aiAddPlaceholder: "让它检查这个智能体需要哪些 API key，或说明要建哪些键名…",
+    aiAddExamples: [
+      {
+        key: "audit",
+        label: "盘点这个智能体需要的 key",
+        description: "先建键名，值稍后手动填",
+        prompt:
+          "检查这个智能体已安装的技能需要哪些 API key，先把键名建好，并逐个告诉我用途和申请地址——值我自己在保险柜里填。",
+      },
+      {
+        key: "rotate",
+        label: "重置一个过期 token",
+        description: "把值清成占位符，新值手动填",
+        prompt:
+          "GH_TOKEN 已经过期，把它重置为占位值，并告诉我去哪里申请新的——新 token 我自己在保险柜里填。",
+      },
+      {
+        key: "endpoint",
+        label: "接入一个内部服务",
+        description: "地址直接写入，token 留给你填",
+        prompt:
+          "这个智能体要访问我们内部的 Gitea（https://git.example.com）。把 GITEA_BASE_URL 设为该地址，GITEA_TOKEN 先用占位值创建，并告诉我去哪里签发 token。",
+      },
+    ],
+    aiAddTail: (agentId: string, projectId: string): string =>
+      [
+        `请使用 penguin-config 技能，把上面的密钥写进智能体 ${agentId} 的保险柜（Project ${projectId}）：`,
+        "- 下面每条命令都要带 `--root <数据根目录>`，即环境信息中 App Data Dir 的上级目录。命令的环境里没有这个值，不带 `--root` 会写到另一个数据根目录，这个智能体的保险柜仍然是空的。",
+        `- 每个密钥执行一次 \`penguin config vault set --key <键名> --value <值> --agent-id ${agentId} --project-id ${projectId} --root <数据根目录>\`；只需创建键名时，值先填占位符 TODO，并告诉我该键的用途与申请地址。`,
+        "- 不要在回复里复述任何值，不要读取 .vault.toml。",
+        `- 最后运行 \`penguin config vault list --agent-id ${agentId} --project-id ${projectId} --root <数据根目录>\` 列出键名。`,
+      ].join("\n"),
     /** Prompt-injection controls (toggle card / template alert / prompt editor), mirroring the memory tab's set. */
     injection: {
       enable: "启用密钥保险柜",
@@ -1930,7 +2110,7 @@ Benchmark：
     resumeSubagent: "恢复运行",
     subagentResumed: "子智能体已恢复运行",
     apiTrackerTitle: "API 追踪器",
-    workspacePanel: "工作区",
+    workspacePanel: "文件浏览",
     /** File summary card at the end of a message (Codex-style): title, inline preview action, and collapsed row. */
     filesInMessage: (n: number) => `${n} 个文件`,
     imagesInMessage: (n: number) => `${n} 张图片`,
@@ -2028,6 +2208,16 @@ Benchmark：
     /** Toast when the session-state (locked) model display is clicked: points at the `/model` command. */
     modelLockedHint: "输入 /model 切换模型",
     scheduledFrom: (name: string) => `由定时任务「${name}」触发`,
+    /** `[org_trigger]` banner: what the organization scheduler sent this desk or ticket session, folded into one line. */
+    orgTriggerFrom: (org: string): string => `由组织「${org}」触发`,
+    orgTriggerKinds: {
+      init: "初始化",
+      event: "日程",
+      mention: "频道 @",
+      ticket_notice: "工单通知",
+      ticket_work: "工单任务",
+    } as Record<string, string>,
+    orgTriggerBudget: (budget: string): string => `预算 ${budget}`,
     /** One-line notice of a `[background_task_done]` harness message (run_in_background completion): the collapsed row's whole label. */
     backgroundDone: (
       kind: "command" | "subagent",
@@ -2482,6 +2672,11 @@ Benchmark：
     title: "文件",
     upload: "上传",
     download: "下载",
+    /** Row / preview context menu: the two entries both kinds carry, then the kind-specific one. */
+    copyPath: "复制相对路径",
+    addToChat: "添加到对话",
+    addSelectionToChat: "将选中内容添加到对话",
+    uploadHere: "上传到此文件夹",
     openInNewTab: "新页面打开",
     previewNotIsolatedHint:
       "当前访问地址无法提供独立预览源，页面将以沙箱模式打开：localStorage、Cookie 与第三方 embed 不可用。经 127.0.0.1 或 localhost 访问，或配置 PENGUIN_PREVIEW_ORIGIN 即可解除。",
@@ -2503,7 +2698,7 @@ Benchmark：
     overwriteConfirm: (n: number): string => `目标目录已存在以下 ${n} 个同名文件，上传将覆盖：`,
     loadFailed: "加载失败",
     previewTruncated: "内容过大，预览已截断，请下载查看完整文件",
-    htmlRendered: "渲染视图",
+    htmlRendered: "预览",
     htmlSource: "源码",
     backToList: "返回列表",
     /** The tree pane: its accessible name and the toolbar toggle's two states. */
@@ -2515,14 +2710,18 @@ Benchmark：
     /** The search box above the tree; it reaches only as far as the lazy tree has been loaded. */
     searchPlaceholder: "搜索文件",
     searchClear: "清除搜索",
-    searchNoMatch: "已加载的目录中没有匹配项",
+    searchNoMatch: "Workspace 中没有匹配项",
+    /** The walk is server-side and covers the whole Workspace, so it is not instant on a large one. */
+    searching: "搜索中…",
+    /** The server stopped at its cap: what is listed is the shallowest matches, not all of them. */
+    searchTruncated: (n: number): string => `匹配项过多，仅显示最靠前的 ${n} 条`,
     selectFile: "选择一个文件以预览",
     /** Drop overlay label; `dir` is the directory the files will land in (the root's display name for the root). */
     dropToUpload: (dir: string): string => `松开即上传到 ${dir}`,
     /** In-place text editing. */
     editorLabel: (name: string): string => `编辑 ${name}`,
-    /** Editor soft-wrap toggle: off means long lines scroll sideways. */
-    editorWrap: "自动换行",
+    /** Soft-wrap toggle, shared by the source view and the editor: off means long lines scroll sideways. */
+    wrapLines: "自动换行",
     unsaved: "有未保存的修改",
     saveTitle: "保存（Ctrl+S / ⌘S）",
     saveConfirmTitle: "保存文件",
@@ -2536,6 +2735,22 @@ Benchmark：
     /** The file was rewritten (by the Agent, most likely) while the editor was open on it. */
     changedOnDisk: "磁盘上已变更",
     changedOnDiskHint: "该文件在你打开之后已被重写，保存会用你的版本覆盖它。",
+    /** Rename and move are one action: both write the file to a new Workspace-relative path. */
+    renameTitle: "重命名 / 移动",
+    renameLabel: "新的路径",
+    renameHint: "相对 Workspace 根目录；路径中不存在的目录会自动创建",
+    renameConfirm: "移动",
+    renameTargetExists: (path: string): string => `${path} 已存在，未做改动。`,
+    renamed: (name: string): string => `已移动到 ${name}`,
+    deleteTitle: "删除文件",
+    deleteBody: (name: string): string => `删除 ${name}？该文件不会进入回收站。`,
+    deleted: (name: string): string => `已删除 ${name}`,
+    /** Both actions read the file's current version first; until it lands there is nothing to refuse an overwrite with. */
+    actionVersionReading: "正在读取该文件的当前版本…",
+    actionVersionFailed: "读不到该文件的当前版本，因此不执行此操作。",
+    /** The version precondition refused it: the Agent wrote the file while the question was on screen. */
+    changedBeforeAction: (name: string): string =>
+      `${name} 在你决定期间被改写（多半是 Agent 在本轮写入的），因此未做任何改动。刷新后可重试。`,
     conflictTitle: "文件在磁盘上已变更",
     conflictBody: (name: string): string =>
       `${name} 在你打开之后被重写（多半是 Agent 本轮写的），本次没有保存任何内容。可以用你的版本覆盖它，也可以继续编辑、先把需要的内容取出来——两种选择都会保留你的文本。`,
@@ -2648,9 +2863,44 @@ Benchmark：
 
   benchmark: {
     title: "评估中心",
-    selectBenchmark: "在左侧选择一个 Benchmark",
+    /** The novice guide under the title: the three-step loop and the Skill behind each step. */
+    guideTitle: "三步闭环：出题、看分、优化",
+    guideSteps: [
+      "让 AI 为某个智能体出一套 Benchmark 并取得基线分：出题由 benchmark-design 技能完成，每道题由 agent-evaluation 技能在隔离的 Workspace 里试测、校准难度后冻结。",
+      "在这里查看分数曲线与逐题明细，确认题目能把「真正做对」和「看起来做对」区分开。",
+      "让 AI 针对这套 Benchmark 优化智能体：agent-optimization 技能每轮只做一个可证伪的改动并重新评测，分数严格提升才保留新版本，否则回滚。",
+    ],
+    guideNote:
+      "三个技能都在 agent-tuning 插件里，默认智能体已自带；新建的智能体可以在插件库里安装。",
+    searchPlaceholder: "搜索标题、描述或智能体",
+    noMatches: "没有匹配的 Benchmark",
+    emptyTitle: "还没有 Benchmark",
+    emptyDescription:
+      "先让 AI 为一个智能体出题并取得基线分；之后这里会显示分数曲线与逐题明细，并可一键发起优化。",
     emptyAgent: "该 Agent 暂无 Benchmark",
+    createForAgent: "为此智能体出题",
     caseCount: (n: number): string => `${n} 题`,
+    runsPerCase: (n: number): string => `每题 ${n} 次运行`,
+    notEvaluated: "尚未评测",
+    lastEvaluated: (when: string): string => `最近评估 ${when}`,
+    /** Accessible name of the row sparkline. */
+    sparklineLabel: (n: number): string => `${n} 次评估的分数走势`,
+    latestScoreLabel: "最新分数",
+    /** The change column when there is nothing earlier to compare against. */
+    firstEvaluation: "首次评估",
+    optimize: "优化",
+    view: "查看",
+    moreActions: "更多操作",
+    copyPath: "复制目录路径",
+    pathCopied: "已复制 Benchmark 的目录路径",
+    deleteBenchmark: "删除 Benchmark",
+    deleteConfirm: (title: string): string =>
+      `确定删除「${title}」吗？它的全部题目与评估记录都会被删除，无法恢复。`,
+    deleted: "Benchmark 已删除",
+    backToList: "返回列表",
+    /** The Benchmark's own page when the pair in the address resolves to nothing. */
+    notFound: "找不到这个 Benchmark",
+    notFoundHint: "它可能已被删除，或者链接里的 id 不对。",
     /** Score-only chart title. */
     trendTitle: (metric: string): string => `${metric}随时间变化`,
     cases: "题目",
@@ -2661,6 +2911,7 @@ Benchmark：
     caseFileUnavailable: "案例文件暂时无法读取",
     evaluations: "评估明细",
     noEvaluations: "暂无评估记录",
+    noEvaluationsHint: "取得基线分后，这里会出现分数曲线与评估明细。",
     /** Evaluation notes (scoreboard's summary: score source and notes on this round's changes). */
     summaryLabel: "评估说明",
     /** Chart legend: older evaluation records with no model label (gray series). */
@@ -2673,9 +2924,865 @@ Benchmark：
     colCase: "题目",
     colRun: "运行",
     colSession: "Session",
+    // New Benchmark, AI mode: the target picker, the examples and the fixed tail.
+    aiCreateTitle: "让 AI 创建 Benchmark",
+    aiCreateDescription:
+      "描述要考察的能力与场景，AI 会为被测智能体出题、逐题试测以校准难度，并取得基线分。",
+    targetAgent: "被测智能体",
+    targetAgentHint: "题目为它而出、分数记在它名下；出题本身由下方所示的智能体在新对话里完成",
+    aiCreateExamples: {
+      reportWriter: {
+        label: "为报告写作智能体出一套高难度题",
+        description: "5 道题：材料矛盾、格式严格、跨语言、篇幅与引用",
+        prompt:
+          "为报告写作智能体设计一套高难度 Benchmark：5 道题，覆盖材料自相矛盾、格式要求严格、跨语言资料、篇幅限制与引用规范等场景，" +
+          "评分细则要能把「优秀」和「及格」拉开差距，然后取得基线分。",
+      },
+      customerService: {
+        label: "客服智能体的多轮对话题",
+        description: "8 道题：情绪化用户、政策边界、需查资料",
+        prompt:
+          "为客服智能体设计 8 道多轮对话题：含情绪化用户、政策边界、需要查资料才能回答的问题，评分看准确性、语气与是否越权承诺。",
+      },
+      codeReview: {
+        label: "代码审查智能体的缺陷题",
+        description: "6 道题：每题 2–3 个真实缺陷，评分看查全与误报",
+        prompt:
+          "为代码审查智能体出 6 道题：每题给一段含 2–3 个真实缺陷的代码（安全、并发、边界），评分看是否找全、是否误报。",
+      },
+      dataAnalysis: {
+        label: "数据分析智能体的 CSV 题",
+        description: "5 道题：附 CSV 与业务问题，评分看结论与口径",
+        prompt:
+          "为数据分析智能体出 5 道题：每题附一份 CSV 与业务问题，评分看结论正确性、图表与口径说明。",
+      },
+    },
+    /** The fixed tail after the draft: the `benchmark-design` inputs and the layout it writes. */
+    aiCreateTail: (targetAgentId: string): string =>
+      "请使用 `benchmark-design` Skill，作为 Builder 为下面的被测智能体设计并校准一套 Benchmark，不要修改被测智能体本身。\n\n" +
+      `- test_agent_id：\`${targetAgentId}\`\n` +
+      "- benchmark_id：上文已指定则沿用，否则按场景取一个简短的语义化 id（仅字母、数字、`_` 和 `-`）\n" +
+      "- desired_baseline_score：`<70`（上文另有要求时以上文为准）\n" +
+      "- pilot_iteration_limit：`3`\n\n" +
+      "在被测智能体目录的 `benchmarks/<benchmark_id>/` 下创建 `benchmark_config.toml`（title、description、runs = 1）、" +
+      "每题一个 `CASE-NNN-<slug>/`（`statement/README.md` 为题干，`rubric/README.md` 为评分细则，每题满分 100 分，细则不得泄露到题干）" +
+      "以及 `scoreboard.yaml`（初始为 `evaluations: []`）。通过 `run_subagent` 委派 `agent-evaluation` 逐题试测以校准难度，" +
+      "定稿后冻结并把 Formal Baseline 追加进 scoreboard.yaml，最后报告 Benchmark id、基线分数与各题得分。",
+    // New Benchmark, manual mode: the form.
+    manualCreateTitle: "手动创建 Benchmark",
+    manualCreateIntro:
+      "填好标题、题干与评分细则后，目录结构会按技能约定写入被测智能体的 benchmarks/ 下，之后可以直接评测或优化。",
+    agentField: "所属智能体",
+    idField: "Benchmark id",
+    idHint: "目录名即标识：仅字母、数字、_ 和 -，例如 report-writing-v1",
+    idExists: "已有同名 Benchmark，请换一个 id",
+    titleField: "标题",
+    descriptionField: "描述",
+    descriptionHint: "一句话说明考察什么能力、题目难在哪里",
+    runsField: "每题运行次数",
+    runsHint: "1–1000 的整数；优化时每道题跑这么多次取平均",
+    runsInfo:
+      "多次运行能把稳定的能力差距和偶然波动分开，但评测成本按次数倍增。AI 出题校准时固定每题 1 次；这里的值给之后的优化用。",
+    casesTitle: "题目",
+    casesInfo:
+      "每道题分两部分：题干交给被测智能体；评分细则只有评测方能看到，永远不进被测智能体的 Workspace。",
+    rubricInfo:
+      "有区分度的评分细则：条目可观察、合计 100 分，把分数主要放在「真正做对」和「看起来做对」会产生不同结果的决定或产物上，不要给格式合规太高的保底分。",
+    caseHeading: (n: number): string => `第 ${n} 题`,
+    caseSlugField: "目录名后缀",
+    caseSlugHint: (id: string): string => `目录名 ${id}：仅字母、数字、_ 和 -`,
+    caseTitleField: "题目标题",
+    caseStatementField: "题干",
+    caseStatementHint: "Markdown；写明目标、给定材料、要求的产物与格式，不要暗示解法或评分点",
+    caseRubricField: "评分细则",
+    caseRubricHint: "Markdown；逐条给分并合计 100 分，如「- 40 分：……」",
+    addCase: "添加题目",
+    removeCase: "删除此题",
+    createSubmit: "创建 Benchmark",
+    created: "Benchmark 已创建",
+    invalidId: "仅允许字母、数字、_ 和 -",
+    invalidRuns: "必须是 1–1000 的整数",
+    invalidScore: "必须是 1–100 的整数",
+    // Optimize: the dialog's two modes over one parameter tail.
+    optimizeTitle: (title: string): string => `优化：${title}`,
+    optimizeDescription: "AI 会按可证伪的假设修改被测智能体并重新评测，分数严格提升才保留新版本。",
+    optimizeWithAi: "用 AI 优化",
+    optimizeManual: "手动优化",
+    optimizerAgent: "执行优化的智能体",
+    optimizerAgentHint: "读分数与 Trace、修改被测智能体的一方；需要装有 agent-optimization 技能",
+    optimizerMissingSkill:
+      "该智能体没有安装 agent-optimization 技能，多半无法完成优化——建议换用默认智能体，或先为它安装 agent-tuning 插件。",
+    targetAgentFixed: (name: string): string => `被测智能体：${name}`,
+    sessionModel: "优化会话使用的模型",
+    sessionModelHint: "做分析与改动的模型；评测被测智能体时沿用基线记录的模型，不在这里改",
+    projectDefaultModel: (name: string): string => `Project 默认（${name}）`,
+    projectDefaultModelUnset: "Project 默认",
+    optimizeRunsHint: "每个候选版本每道题跑几次取平均",
+    roundLimitField: "最多轮数",
+    roundLimitHint: "每轮一个改动；评测完整才算一轮",
+    targetScoreField: "目标分数",
+    targetScoreHint: "达到即提前结束；默认比当前基线高 10 分",
+    focusField: "优化重点",
+    focusPlaceholder: "例如：重点优化引用规范与格式合规，不要改动写作风格",
+    noBaseline:
+      "这套 Benchmark 还没有基线分。优化需要一条完整的基线评估作为比较起点——可以先让 AI 出题时取得基线，或在对话里让它先完成一次完整评测。",
+    baselineLine: (score: string, target: number): string => `当前基线 ${score} · 目标 ${target}`,
+    optimizeExamples: {
+      citations: {
+        label: "只改引用与格式",
+        description: "保留写作风格，专攻引用规范与格式合规",
+        prompt: "重点优化引用规范与格式合规，不要改动写作风格。",
+      },
+      promptOnly: {
+        label: "只改行为指引",
+        description: "只动 AGENTS.md 里的指引，不装新技能",
+        prompt: "只允许修改系统提示词（AGENTS.md 里的行为指引），不要安装新技能。",
+      },
+      traceFirst: {
+        label: "先看最低分的 Trace",
+        description: "从最差的两道题找共同原因再改",
+        prompt: "先分析最低分的两道题的 Trace，找出共同原因再改。",
+      },
+    },
+    /** The fixed tail: the `agent-optimization` inputs, the acceptance rule and the report. */
+    optimizeTail: (p: {
+      targetAgentId: string;
+      benchmarkId: string;
+      runs: number;
+      roundLimit: number;
+      targetScore: number;
+    }): string =>
+      "请使用 `agent-optimization` Skill，针对已冻结的 Benchmark 优化被测智能体。\n\n" +
+      `- test_agent_id：\`${p.targetAgentId}\`\n` +
+      `- benchmark_id：\`${p.benchmarkId}\`\n` +
+      `- runs：\`${p.runs}\`\n` +
+      `- desired_score：\`>=${p.targetScore}\`\n` +
+      `- candidate_round_limit：\`${p.roundLimit}\`\n\n` +
+      "每轮从当前 Reference 出发提出一个可证伪的假设、只做一个有界改动；通过 `run_subagent` 委派 `agent-evaluation` 评测完整的 Case × runs 矩阵，" +
+      "评测沿用基线记录的 provider / model_id / thinking_level；仅当总分严格高于 Reference 时保留该版本并把 evaluation 追加到 scoreboard.yaml，否则回滚。" +
+      "结束时报告优化前后的分数、保留的版本号，以及每轮的改动与取舍。",
   },
 
   // Server error code → localized copy (the server's message is hardcoded Chinese; this is only a fallback for unknown codes).
+  /** Company mode: the organization switcher and dialogs, and the six organization pages. */
+  company: {
+    /** The mode switch (top-left of the sidebar, above the Project switcher) and its two options. */
+    workMode: "工作模式",
+    modeDev: "开发",
+    modeCompany: "公司",
+    switchToCompany: "切换到公司模式",
+    switchToDev: "切换到开发模式",
+    /** The organization switcher that replaces the Project switcher in company mode. */
+    switcher: "组织",
+    noOrganizations: "还没有组织",
+    createOrg: "新建组织",
+    orgSettings: "组织设置",
+    orgInvalid: "配置无效",
+    orgPaused: "已暂停",
+    /** The switcher's check mark beside the open organization (sr text). */
+    switcherCurrent: "当前组织",
+    /** `<project> / <org>` in the switcher: the Project half of the label. */
+    inProject: (project: string, org: string): string => `${project} / ${org}`,
+    /** The empty landing of `/org` when the user has no organization anywhere. */
+    landingTitle: "公司模式",
+    landingBody:
+      "组织是一群员工 Agent 按汇报线协作：一位 CEO、它招募的员工、共享的看板与频道，以及驱动它们的日程。新建一个组织，先和 CEO 谈谈使命。",
+    /** The page a stale deep link lands on: the organization it names is gone. */
+    orgGoneTitle: "组织不存在",
+    orgGoneBody: "它可能已被删除，或者你不再能访问它所属的 Project。",
+    backToOrgs: "回到组织列表",
+    /** Create dialog. */
+    createTitle: "新建组织",
+    orgId: "组织 id",
+    orgIdHint: "2~64 位：小写字母开头，仅小写字母、数字与下划线；也是目录名，创建后不可修改",
+    /**
+     * The id field's generate button — its label says who proposes the id, its tooltip says
+     * what the proposal is derived from — and the clause the hint appends for it. The clause
+     * carries its own leading separator: what joins two clauses is punctuation, and
+     * punctuation belongs to the language.
+     */
+    generateIdLabel: "用 AI 生成",
+    generateId: "从名称生成 ID",
+    idGenerateHint: "；也可以从显示名生成",
+    /** What the field says about the id a proposal just filled in (see id-suggest-notice.ts). */
+    idSuggest: {
+      /** Under an id transliterated from the name: quiet, because nothing went wrong. */
+      fromName: "按名称转写生成",
+      /** Under a placeholder id: it names nothing, so it says why and asks for a real name. */
+      placeholder: (reason: string): string =>
+        `模型没有给出可用的 ID（${reason}），已填入占位 ID，请改成有含义的英文名`,
+      /** Why the proposal fell through, keyed by the server's reason code. */
+      reasons: {
+        no_default_model: "未配置默认模型",
+        model_failed: "模型调用失败",
+        unusable_answer: "模型回答不可用",
+        no_ascii: "名称里没有可转写的英文",
+      },
+      /** A reason a newer server named and this build does not know. */
+      reasonUnknown: "原因未知",
+    },
+    displayName: "显示名",
+    displayNameHint: "留空则使用组织 id",
+    mission: "使命",
+    missionHint: "一句话说明这个组织存在的目的；CEO 的初始化会话从它开始",
+    missionPlaceholder: "例如：为 PenguinHarness 维护文档站，并每周发布一期更新摘要",
+    /** The three examples under the mission field (org-examples.ts holds their order). */
+    missionExampleHint: "点一下填入使命",
+    missionExamples: {
+      research: {
+        name: "科研论文公司",
+        mission: "新建一个公司帮我做科研，不断写稿审稿，产出可以投稿顶级会议的学术论文",
+      },
+      agentTuning: {
+        name: "Agent 优化公司",
+        mission: "新建一个公司帮我优化产品 Agent，提高 Agent 在实际业务中的准确度和产品体验",
+      },
+      cloudReseller: {
+        name: "云服务转售站",
+        mission:
+          "新建一个公司帮我运营一个类似云服务的网站，收集市面上所有的低价服务，并且加价以后打包出售，目的是帮我赚钱，并且要提高站点的 SEO 和曝光程度",
+      },
+    },
+    createdOpeningCeo: "组织已创建，正在打开 CEO 的工位会话",
+    /** Create and settings dialogs: the model and the shared workspace, both optional. */
+    modelField: "模型",
+    modelInfo:
+      "工位会话与工单会话默认使用的模型；员工在组织图里另有指定时以员工的为准。改动从下一次工作轮起生效。",
+    modelHint: "留空则使用 Project 的默认模型",
+    modelProjectDefault: "Project 默认",
+    modelProjectDefaultNamed: (name: string): string => `Project 默认（${name}）`,
+    modelsLoadFailed: "模型列表读取失败；仍可按 Project 默认模型创建",
+    workspaceField: "公司工作区",
+    workspaceInfo:
+      "员工共同工作的目录：每位员工的工作区是它的一个子目录（或整个目录），工位会话与工单会话都在其中运行。",
+    workspaceHint: "留空则使用组织自己的 workspace/ 目录；指定时必须是服务器上已存在的目录",
+    workspaceEmpty: "组织自己的 workspace/ 目录",
+    workspaceMenuHint: "选一个已存在的目录作为公司工作区",
+    workspaceClear: "改回组织自己的目录",
+    /** CEO budget field (create dialog): the CEO's ceiling is the company's, since everyone reports to it. */
+    ceoBudget: "CEO 预算",
+    ceoBudgetHint: "每月上限；CEO 的预算就是整家公司的预算",
+    /** The create dialog's draft (org-draft.ts): restored on reopen, dropped on create or on demand. */
+    draftRestored: "已恢复上次未提交的草稿",
+    clearDraft: "清空草稿",
+    creating: "创建中…",
+    /** Settings dialog (the switcher's entry). */
+    settingsTitle: "组织设置",
+    timezone: "时区",
+    timezoneHint: "IANA 时区名，如 Asia/Shanghai；预算周期（自然月）与频道日志按它划分",
+    language: "工作语言",
+    languageInfo:
+      "组织的工作语言：手册、员工简报、CEO 初始化会话与各工位的输出都用这个语言；创建时按使命的语言自动判断。",
+    languages: {
+      zh: "中文",
+      en: "English",
+    },
+    approvalMode: "审批模式",
+    approvalModeInfo:
+      "工位会话与工单会话的工具审批口径。无人值守的运行不会停下来等人拍板，所以这里没有「总是询问」。",
+    approvalModes: {
+      "allow-all": "全部放行",
+      "read-only": "只读",
+      "deny-all": "全部拒绝",
+    } as Record<string, string>,
+    status: "状态",
+    statusActive: "运行中",
+    statusPaused: "已暂停",
+    pause: "暂停组织",
+    resume: "恢复组织",
+    pauseInfo:
+      "暂停后所有自动触发停止——日程不再到点、@ 不再送达员工；你仍可以打开任意工位会话直接对话。组织只会被暂停，不会被删除：它的对话、员工与工单始终可以回去看。",
+    settingsLoadFailed: "组织设置读取失败",
+    /** Employee state dot, and the CEO mark. */
+    employeeStates: {
+      running: "运行中",
+      idle: "在岗",
+      paused: "预算暂停",
+    } as Record<string, string>,
+    ceo: "CEO",
+    reportsTo: (name: string): string => `汇报给 ${name}`,
+    openDesk: "打开工位会话",
+    openingDesk: "正在打开工位会话…",
+    /** Principals as the chat and tickets name them. */
+    principalSystem: "系统",
+    principalAll: "所有人",
+    /** Spend against a budget, and the unbounded case. */
+    spendOfBudget: (spend: string, budget: string): string => `${spend} / ${budget}`,
+    noBudget: "不限",
+    /**
+     * A budget is a monthly cap the server keeps in USD. A budget box speaks the currency the
+     * reader picked, so the unit rides after the box, and a box in CNY says under itself what
+     * it will actually store.
+     */
+    budgetUnit: (symbol: string): string => `${symbol} / 月`,
+    budgetStoredAs: (amount: string): string => `存为 ${amount} / 月`,
+    /** The two groups under the company sidebar's channel list: one row per employee, and the sessions attached to tickets. */
+    sessionList: {
+      desks: (n: number): string => `工位（${n}）`,
+      ticketSessions: (n: number): string => `工单会话（${n}）`,
+      deskOf: (name: string): string => `${name} 的工位`,
+      running: "运行中",
+      noEmployees: "这个组织还没有员工",
+      noTicketSessions: "还没有工单会话",
+      untitledSession: "未命名会话",
+      loadFailed: "员工列表加载失败",
+    },
+    overview: {
+      title: "概览",
+      info: "组织的全局一页：员工、看板、今日日程与本周期预算，以及需要你拍板的事。每块都可点进对应页面。",
+      employees: "员工",
+      onDesk: "在岗",
+      running: "运行中",
+      paused: "预算暂停",
+      board: "看板",
+      blocked: "被阻塞",
+      today: "今日日程",
+      todayEmpty: "今天没有日程",
+      spend: "本周期支出",
+      reviewTickets: "审核中的工单",
+      alerts: "告警",
+      alertsEmpty: "本周期没有预算告警",
+      /** A fresh organization: point the user at the CEO. */
+      firstStep: "组织刚建立：先打开 CEO 的工位会话，确认使命、招募员工并安排日程。",
+      /** The hero: who made it, how big it is, which period the spend counts. */
+      createdBy: (user: string): string => `由 ${user} 创建`,
+      employeesCount: (n: number): string => `${n} 位员工`,
+      period: (period: string): string => `${period} 周期`,
+      openCeoDesk: "打开 CEO 工位",
+      refreshFailed: "刷新失败，显示的是上次读取的数据",
+      /** The hero's mission, clamped to one line until the toggle opens it. */
+      mission: "使命",
+      expand: "展开",
+      collapse: "收起",
+      /** The KPI strip. */
+      openTickets: "未完结工单",
+      boardTotal: (n: number): string => `共 ${n} 张`,
+      todayCount: (n: number): string => `${n} 项`,
+      upcoming: "待触发",
+      failed: "未按时",
+      budgetLeft: (amount: string): string => `剩余 ${amount}`,
+      overBudget: (amount: string): string => `超支 ${amount}`,
+      /** The corner button of a KPI cell and of the hero's spend block: where it jumps to. */
+      openChart: "打开组织图",
+      openBoard: "打开工单看板",
+      openCalendar: "打开日历",
+      openFinance: "打开财务",
+      /** The three first steps of a new organization (replaces the empty sections). */
+      firstStepsTitle: "三步上手",
+      firstStepsInfo:
+        "组织刚建立时的引导：和 CEO 谈使命、招募员工、安排日程。招到第一位员工或开出第一张工单后，这里换成日常仪表盘。",
+      stepCeoTitle: "和 CEO 谈使命",
+      stepCeoBody: "打开 CEO 的工位会话，确认使命，让它提出组织结构与首批工单。",
+      stepHireTitle: "招募员工",
+      stepHireBody: "在组织图里为 CEO 招募下属：选已有 Agent 或新建一个，给头衔与预算。",
+      stepScheduleTitle: "安排日程",
+      stepScheduleBody: "在日历里为员工安排巡检：到点即向它的工位会话发送提示词。",
+      stepDone: "已完成",
+      goToChart: "去组织图",
+      goToCalendar: "去日历",
+      /** The inbox: what names the reader, what is stuck and what has landed, newest first. */
+      inbox: "收件箱",
+      inboxInfo:
+        "按时间倒序列出组织要对你说的三件事：全员频道里 @我（或 @所有人）的消息、被阻塞的工单、本周期已完成的工单。其余的去频道与看板本身看。",
+      inboxEmpty: "收件箱是空的",
+      /** The filter chips over the rows, each with its own count. */
+      inboxFilters: { all: "全部", mention: "@我", blocked: "阻塞", done: "已完成" },
+      /** The chip that leads a row, naming what the row is. */
+      inboxCategories: { mention: "@我", blocked: "阻塞", done: "已完成" },
+      /** Today's timeline. */
+      timelineMore: (n: number): string => `还有 ${n} 项，打开日历查看`,
+    },
+    calendarOutcomes: {
+      fired: "已触发",
+      queued: "排队",
+      paused: "已暂停",
+      missed: "已错过",
+      error: "出错",
+    } as Record<string, string>,
+    chart: {
+      title: "组织图",
+      info: "员工树即汇报线：CEO 为根，每个节点是一位员工 Agent。节点右上角的菜单里是「打开工位会话」和人事操作，每一项人事操作都会改写组织图文件。",
+      empty: "组织图为空",
+      nodeMenu: "员工操作",
+      hire: "招募下属",
+      setBudget: "设预算",
+      changeReportsTo: "调整汇报线",
+      renewDesk: "换工位",
+      leave: "离任",
+      ceoCannotLeave: "CEO 不能离任",
+      invalidEntry: "该条目无效",
+      workspaceTail: "工作区",
+      /** Hire dialog. */
+      hireTitle: (manager: string): string => `为 ${manager} 招募下属`,
+      hireSource: "来源",
+      hireExisting: "选择已有 Agent",
+      hireNew: "新建 Agent",
+      agent: "Agent",
+      pickAgent: "选择 Agent…",
+      noAgentsLeft: "本 Project 没有可招募的 Agent",
+      agentId: "Agent id",
+      agentIdHint: "2~64 位：小写字母开头，仅小写字母、数字与下划线",
+      agentName: "名称",
+      agentNameHint: "留空则使用 Agent id",
+      agentDescription: "描述",
+      plugins: "插件",
+      pluginsHint: "缺省安装 agent-company（组织流程）与 agent-development（开发技能）",
+      pluginsPlaceholder: "未选择插件",
+      pluginsPicked: (n: number): string => `已选 ${n} 个插件`,
+      pluginsEmpty: "插件库暂无可安装的插件",
+      employeeTitle: "头衔",
+      employeeTitlePlaceholder: "例如：文档工程师",
+      duties: "职责",
+      dutiesHint: "写进组织图，员工每次工作轮都会读到",
+      workspace: "工作区",
+      workspaceHint: "公共工作区下的子目录（`.` 为整个公共工作区），或一个已存在的绝对路径",
+      budget: "月预算",
+      budgetHint: "每月上限，留空为不限；口径是本人加全部下属的累计支出",
+      hireConfirm: (name: string, manager: string): string =>
+        `将 ${name} 加入组织，汇报给 ${manager}？会改写组织图文件。`,
+      hired: (name: string): string => `已招募 ${name}`,
+      /** Budget / reporting line / desk renewal / leave dialogs. */
+      budgetTitle: (name: string): string => `设置 ${name} 的预算`,
+      budgetConfirm: (name: string, budget: string): string =>
+        `将 ${name} 的月预算改为 ${budget}？超过 80% 告警，达到 100% 暂停其自动触发。`,
+      reportsToTitle: (name: string): string => `调整 ${name} 的汇报线`,
+      reportsToConfirm: (name: string, manager: string): string =>
+        `让 ${name} 改为汇报给 ${manager}？其下属随之一起移动。`,
+      reportsToCycle: "不能汇报给自己或自己的下属",
+      renewDeskTitle: (name: string): string => `为 ${name} 换工位`,
+      renewDeskExplain: "换工位会开一个新的工位会话并重置上下文；改了工作区就写入员工树。",
+      workspaceInvalid: "工作区无效：需要是公共工作区下的子目录，或一个已存在的绝对路径。",
+      renewed: "已换到新的工位会话",
+      leaveConfirm: (name: string): string =>
+        `让 ${name} 离任？它会移出组织图，其下属改为汇报给它的上级；Agent 本身与所有会话保留。`,
+      left: (name: string): string => `${name} 已离任`,
+      saved: "组织图已更新",
+      /** The page: zoom control, legend, counts, a failed refresh, the detached row. */
+      zoom: "缩放",
+      zoomIn: "放大",
+      zoomOut: "缩小",
+      zoomFit: "适应宽度",
+      legend: "运行态图例",
+      employeeCount: (n: number): string => `${n} 位员工`,
+      spend: "本周期支出",
+      refreshFailed: (error: string): string => `刷新失败：${error}`,
+      detached: "上级不在组织图中",
+      detachedNotice: (n: number): string =>
+        `${n} 位员工的汇报线接不到 CEO：上级已离开组织，或汇报线成环。用「调整汇报线」把它们接回员工树。`,
+      /** Hire and edit dialogs: the two sections, the current value, and the field hints. */
+      hireAgentSection: "Agent",
+      hirePositionSection: "职位",
+      agentHint: "只列出本 Project 中尚未加入组织的 Agent",
+      budgetPlaceholder: "例如 30",
+      clearBudget: "设为不限",
+      currentValue: (value: string): string => `当前：${value}`,
+      manager: "上级",
+      reportsToHint: "只列出不在其下属范围内的员工",
+    },
+    calendar: {
+      title: "日历",
+      info: "全员日程项的月 / 周 / 日视图。每条日程属于一位员工，到点即向它的工位会话发送提示词；颜色按员工区分，已过去的实例标出触发结果。日程驱动员工的工位会话按时巡检看板、推进工单，点右上角「新建日程」为某位员工安排一条。",
+      month: "月",
+      week: "周",
+      day: "日",
+      today: "今天",
+      prev: "上一段",
+      next: "下一段",
+      allEmployees: "全部员工",
+      filterEmployee: "按员工筛选",
+      create: "新建日程",
+      createTitle: "新建日程",
+      editTitle: (name: string): string => `编辑日程「${name}」`,
+      employee: "员工",
+      name: "名称",
+      nameHint: "即文件名（不含 .toml），创建后不可改",
+      prompt: "提示词",
+      enabled: "启用",
+      startAt: "开始时间",
+      endAt: "结束时间",
+      period: "周期",
+      periodHint: "30m / 12h / 7d，留空为一次性；最短 5m",
+      delete: "删除日程",
+      deleteConfirm: (name: string): string => `确认删除日程「${name}」？`,
+      saveConfirm: (name: string): string => `保存日程「${name}」？会改写它的日程文件。`,
+      outcome: "结果",
+      lastFired: "最近触发",
+      nextFire: "下次触发",
+      past: "已过去",
+      pausedNote: "已暂停：到点跳过，不触发",
+      disabledNote: "已停用",
+      invalidFiles: "解析失败的日程文件",
+      empty: "还没有日程",
+      emptyHint:
+        "日程驱动员工的工位会话按时巡检看板、推进工单，点右上角「新建日程」为某位员工安排一条。",
+      moreEvents: (n: number): string => `还有 ${n} 项`,
+      /** The month cell's "+N more" is a button: its accessible name, and the day panel it opens. */
+      moreEventsExpand: (n: number): string => `还有 ${n} 项，展开`,
+      openDay: "查看当天",
+      weekdays: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"] as readonly string[],
+      allDay: "全天",
+      promptHint: "写下你希望员工在这一刻做的巡检，例如：检查看板、推进自己的工单、在频道汇报",
+      monthTitle: (year: number, month: number): string => `${year} 年 ${month} 月`,
+      /** How an event recurs, for the legend: the period read as a cadence with the time of day. */
+      cadence: {
+        once: "一次性",
+        minutes: (n: number): string => `每 ${n} 分钟`,
+        hours: (n: number): string => `每 ${n} 小时`,
+        daily: (time: string): string => `每天 ${time}`,
+        days: (n: number, time: string): string => `每 ${n} 天 ${time}`,
+        weekly: (time: string): string => `每周 ${time}`,
+        weeks: (n: number, time: string): string => `每 ${n} 周 ${time}`,
+        invalid: "周期无效",
+      },
+      legendEmpty: "还没有日程",
+      legendFilter: (name: string): string => `只看 ${name} 的日程`,
+      createAt: (label: string): string => `在 ${label} 新建日程`,
+      loadFailed: (error: string): string => `日历加载失败：${error}`,
+      /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
+      dismissHint: "知道了",
+      /** Under the start time: why two employees should not share one minute. */
+      staggerHint:
+        "错峰安排：给每位员工各自的时刻，不要让多位员工在同一分钟触发，避免争抢预算与工单。",
+      /** Heads the advisory lines a calendar write answers with (the lines themselves come from the server, in English). */
+      warningsPrefix: "排班提醒",
+    },
+    tickets: {
+      title: "工单",
+      info: "五列看板即工单的生命周期：提议 → 进行中 → 审核中 → 已完成 / 已拒绝。拖拽卡片移列，点卡片看详情；被阻塞的工单留在原列并带角标。工单是组织的工作单位：点右上角「新建工单」建一张并指定负责人，它的工位会话会为这张工单发起工单会话。",
+      columns: {
+        proposed: "提议",
+        in_progress: "进行中",
+        review: "审核中",
+        done: "已完成",
+        rejected: "已拒绝",
+      } as Record<string, string>,
+      blockedOnly: "只看被阻塞",
+      create: "新建工单",
+      createTitle: "新建工单",
+      empty: "还没有工单",
+      emptyHint:
+        "工单是组织的工作单位：点右上角「新建工单」建一张并指定负责人，它的工位会话会为这张工单发起工单会话。",
+      /** The "×" that puts the empty-board note away for good (the same sentence stays in the page's "?"). */
+      dismissHint: "知道了",
+      columnEmpty: "空",
+      ticketTitle: "标题",
+      goal: "目标",
+      goalHint: "要达成什么，一段话即可",
+      acceptance: "验收标准",
+      acceptanceHint: "怎样算完成；审核时逐条核对",
+      result: "结果",
+      owner: "负责人",
+      noOwner: "未指定",
+      parent: "父工单",
+      noParent: "无",
+      notify: "通知人",
+      notifyHint: "逗号分隔的主体，如 agent:ceo, user:alice；状态变化时通知",
+      priority: "优先级",
+      due: "截止",
+      noDue: "无",
+      initiator: "发起人",
+      blocked: "被阻塞",
+      blockedReason: "阻塞原因",
+      blockedBy: "等谁",
+      blockedTooltip: (reason: string, by: string): string => `被阻塞：${reason}（等 ${by}）`,
+      unblock: "解除阻塞",
+      unblockConfirm: (title: string): string => `解除「${title}」的阻塞？`,
+      block: "标记阻塞",
+      blockTitle: "标记阻塞",
+      blockReasonHint: "一句话说明卡在哪里",
+      blockByHint: "等哪张工单或哪位主体",
+      sessions: "贡献会话",
+      sessionsCount: (n: number): string => `${n} 个会话`,
+      running: "运行中",
+      startSession: "再发起一个工单会话",
+      startSessionConfirm: (title: string): string =>
+        `为「${title}」再发起一个工单会话？由负责人执行。`,
+      started: "工单会话已发起",
+      attachSession: "挂接既有会话",
+      attachPick: "选择会话…",
+      attachNoMatch: "无匹配的会话",
+      attached: "已挂接",
+      openSession: "打开会话",
+      progress: "进度",
+      progressEmpty: "还没有进度记录",
+      addProgress: "追加进度",
+      progressPlaceholder: "一句话记下进展…",
+      children: "子工单",
+      childrenEmpty: "没有子工单",
+      cost: "成本",
+      rolledUpCost: "上卷成本",
+      moveTitle: "移动工单",
+      moveConfirm: (title: string, column: string): string => `将「${title}」移到「${column}」？`,
+      rejectReason: "拒绝理由",
+      rejectReasonHint: "一句话说明为什么拒绝，记入工单的结果",
+      moved: "工单已移动",
+      invalid: "该工单无效：状态与所在列不符，或 id 重复",
+      invalidFiles: "无法解析的工单文件",
+      edit: "编辑字段",
+      saveConfirm: (title: string): string => `保存对「${title}」的修改？会改写工单文件。`,
+      saved: "工单已保存",
+      created: "工单已创建",
+      detail: "工单详情",
+      dragHint: "拖到另一列即可移动",
+      searchPlaceholder: "搜索标题或 id",
+      searchNoMatch: "没有匹配的工单",
+      dropHere: "拖到这里",
+      overdue: "已逾期",
+      summary: "概要",
+      noGoal: "还没有写目标",
+      noAcceptance: "还没有写验收标准",
+      noResult: "还没有结果",
+      moveTo: "移到…",
+      move: "移动",
+      copyId: "复制工单 id",
+      invalidTickets: "无效的工单",
+      loadFailed: (error: string): string => `看板加载失败：${error}`,
+    },
+    finance: {
+      title: "财务",
+      info: "预算按员工设置，口径是本人加全部下属的累计支出；周期为自然月（组织时区）。达到 80% 告警，达到 100% 暂停该员工的自动触发。",
+      period: "周期",
+      thisPeriod: "本周期",
+      prevPeriod: "上周期",
+      total: "合计",
+      unpriced: "* 部分用量使用了未配置价格的模型，成本为下限",
+      budget: "预算",
+      editBudget: "编辑预算",
+      budgetPlaceholder: "不限",
+      clearBudget: "清空",
+      budgetSaved: "预算已更新",
+      own: "本人支出",
+      cumulative: "累计支出",
+      /** The spend tree reads cumulative against budget in one column; own spend rides in the row tooltip. */
+      cumulativeBudget: "累计成本 / 预算",
+      ratio: "占比",
+      warned: "已告警",
+      paused: "已暂停",
+      spendTree: "支出树",
+      spendTreeInfo: "沿汇报线展开：累计支出包含全部下属，预算与占比按同一口径。",
+      ticketsTable: "工单支出",
+      ticketsInfo: "每张工单的贡献会话成本；上卷成本沿父工单累加。挂到多张工单的会话按份数分摊。",
+      ticketsEmpty: "本周期没有工单支出",
+      rolledUp: "上卷成本",
+      trend: "趋势",
+      alerts: "告警与暂停",
+      alertsEmpty: "本周期没有告警",
+      alertWarned: (name: string, at: string): string => `${name} 于 ${at} 达到预算 80%`,
+      alertPaused: (name: string, at: string): string =>
+        `${name} 于 ${at} 达到预算上限，已暂停自动触发`,
+      alertsHint: "解除方式：调高该员工的预算，或清空预算；下一次巡检自动恢复。",
+      /** The KPI row under the title. */
+      kpiTotal: "合计支出",
+      orgBudget: "组织预算（CEO）",
+      kpiEmployees: "员工",
+      budgetsSet: (n: number): string => `${n} 人设了预算`,
+      thresholds: "达到 80% 告警，达到 100% 暂停",
+      kpiAlerts: "告警",
+      alertsSummary: (warned: number, paused: number): string => `${warned} 告警 · ${paused} 暂停`,
+      /** Column header explanations, and the tree's root mark. */
+      cumulativeInfo: "本人加全部下属的支出之和；预算与占比按这个口径。",
+      rolledUpInfo: "本工单加全部子工单的成本之和。",
+      root: "根",
+      /** The inline budget editor. */
+      budgetEmptyHint: "留空为不限",
+      saveBudget: "保存预算",
+      cancelEdit: "取消",
+      editBudgetOf: (name: string): string => `编辑 ${name} 的预算`,
+      /** The ticket table's owner column and row action. */
+      openTicket: "打开工单",
+      /** The trend section. */
+      trendInfo: "组织全部会话每天的成本合计，按组织时区分日；只画有支出的日子。",
+      trendEmpty: "本周期还没有支出记录",
+      /** The alert list. */
+      alertsInfo:
+        "每次巡检核对累计支出与预算：达到 80% 记一次告警，达到 100% 暂停该员工及其下属的自动触发；解除后自动恢复。",
+      pausedGroup: "已暂停自动触发",
+      warnedGroup: "已告警",
+      warnedAt: (at: string): string => `${at} 达到 80%`,
+      pausedAt: (at: string): string => `${at} 达到 100%`,
+      /** A refetch failed while the last good data is still on screen. */
+      refreshFailed: "刷新失败，显示的是上次加载的数据",
+    },
+    /**
+     * Channels — company mode's home surface. The sidebar lists them where development mode
+     * lists conversations; the channel view holds the header, the message stream and the
+     * composer. The all-hands channel's stored name is never shown: `allHands` is its label
+     * everywhere.
+     */
+    channels: {
+      /** The sidebar's list, its groups and the dialog above it. */
+      listTitle: "频道",
+      /** The phone drawer's hamburger, which opens the channel list (development mode names it S.chat.sessionList). */
+      drawerLabel: "频道列表",
+      allHands: "全员频道",
+      mine: "我的频道",
+      others: "其他频道",
+      archivedGroup: "已归档",
+      newChannel: "新建频道",
+      noChannels: "还没有频道",
+      loadFailed: "频道列表加载失败",
+      join: "加入",
+      joining: "加入中…",
+      joined: "已加入频道",
+      /** A row's badges, and the sentence they lend to its accessible name. */
+      mentionChip: "@我",
+      badgeUnread: (n: number): string => `${n} 条未读`,
+      badgeMentions: (n: number): string => `${n} 条 @我`,
+      /** The channel header and what its controls do. */
+      streamLabel: (name: string): string => `「${name}」的消息`,
+      purpose: "主题",
+      purposeEmpty: "还没有写主题",
+      memberCount: (n: number): string => `${n} 人`,
+      memberList: "频道成员",
+      invite: "邀请",
+      inviteTitle: "邀请到频道",
+      inviteSearch: "搜索员工或成员",
+      inviteEmpty: "没有可邀请的人了",
+      invited: (name: string): string => `已邀请 ${name}`,
+      leave: "离开",
+      leaveTitle: "离开频道",
+      leaveConfirm: (name: string): string =>
+        `确认离开「${name}」？你仍然可以阅读，但不会再收到 @，也不能发言，直到重新加入。`,
+      left: "已离开频道",
+      channelMenu: "频道操作",
+      rename: "重命名",
+      renameTitle: "重命名频道",
+      editPurpose: "改主题",
+      purposeTitle: "修改频道主题",
+      archive: "归档",
+      unarchive: "取消归档",
+      archiveTitle: "归档频道",
+      archiveConfirm: (name: string): string =>
+        `确认归档「${name}」？归档后频道只读，并折叠进「已归档」，随时可以取消归档。`,
+      archived: "频道已归档",
+      unarchived: "已取消归档",
+      archivedNotice: "这个频道已归档，只读。取消归档后才能继续发言。",
+      notMemberNotice: "你还不是这个频道的成员。加入后才能发言。",
+      channelLoadFailed: "频道加载失败",
+      /** The "?" beside the channel name, in its two kinds. */
+      allHandsInfo:
+        "全员频道随组织一起创建：组织里的每个人都在这里——每位员工、每位 Project 成员，你也在这里看——谁也不能退出，也不能归档；预算告警等系统通知都发在这里。",
+      channelInfo:
+        "受邀频道：员工只能由成员邀请进来，@ 也只在频道成员之间送达；人可以自行加入，并且可以阅读任何频道。",
+      /** The new-channel dialog. */
+      createTitle: "新建频道",
+      creating: "创建中…",
+      created: "频道已创建",
+      idField: "频道 id",
+      idHint: "2–64 个字符：小写字母开头，仅小写字母、数字和下划线",
+      idReserved: "default_channel 留给全员频道",
+      idTaken: "这个 id 已经被占用",
+      nameField: "显示名",
+      nameHint: "留空则用 id",
+      purposeHint: "一句话说明这个频道是做什么的",
+      /** The message stream. */
+      empty: "还没有消息",
+      emptyHint:
+        "只有 @ 才会打扰员工：@某位员工 送进它的工位会话，@all 送给频道里所有成员；不带 @ 的消息只是留言。",
+      placeholder: "输入消息，Enter 发送，Shift+Enter 换行，@ 提及成员",
+      send: "发送",
+      you: "你",
+      mentionAll: "所有人",
+      mentionAllDesc: "频道全部成员",
+      employees: "员工",
+      members: "成员",
+      earlierDays: "更早的记录",
+      ticketRef: (id: string): string => `工单 ${id}`,
+      sessionRef: "查看会话",
+      replyTo: "回复",
+      hop: (n: number): string => `自动接力 · 第 ${n} 跳`,
+      /** The chip's tooltip, and the one line about hops the channel header's "?" carries. */
+      hopInfo:
+        "这条消息由员工的工作轮自动发出，是一条 @ 连锁的第 N 跳：人或日程发起的消息是第 0 跳，员工被 @ 后在工作轮里的回复是第 1 跳（不标），再被 @ 的员工回复是第 2 跳……到达组织设置的连锁上限（缺省 3）后 @ 只记录、不再触发任何人，避免两个员工互相 @ 到天亮。",
+      hopSummary:
+        "被 @ 的员工在回复里再 @ 别人，就是一条 @ 连锁：从第 2 跳起消息会标出「自动接力 · 第 N 跳」，到达组织的连锁上限（缺省 3）后 @ 只记录、不再触发任何人。",
+      /** Day separators, paging and the read cursor in the stream. */
+      today: "今天",
+      yesterday: "昨天",
+      noEarlier: "没有更早的记录",
+      unreadDivider: "以下为未读",
+      newMessages: (n: number): string => `${n} 条新消息`,
+      /** The composer's @ autocomplete. */
+      mentionPanel: "提及",
+      mentionsYou: "提到了你",
+      /** Accessible name of a system banner and of a message's per-line time. */
+      systemMessage: "系统消息",
+      sentAt: (time: string): string => `发送于 ${time}`,
+      /**
+       * The system lines, one sentence per kind the server records (features/company/channel-notices.ts).
+       * Principals arrive already resolved to display names; a period is `yyyy-mm` and the money
+       * figures are the server's own, in USD.
+       */
+      notices: {
+        employee_joined: (agent: string, title: string, manager: string): string =>
+          `${agent} 以「${title}」身份加入，汇报给 ${manager}。`,
+        employee_left: (agent: string, manager: string): string =>
+          `${agent} 已离开组织，其下属改为汇报给 ${manager}。`,
+        channel_created: (by: string): string => `${by} 创建了这个频道。`,
+        channel_archived: (by: string): string => `${by} 归档了这个频道。`,
+        channel_unarchived: (by: string): string => `${by} 取消了这个频道的归档。`,
+        channel_joined: (principal: string): string => `${principal} 加入了频道。`,
+        channel_invited: (by: string, principal: string): string =>
+          `${by} 邀请 ${principal} 加入了频道。`,
+        channel_left: (principal: string): string => `${principal} 离开了频道。`,
+        channel_removed: (by: string, principal: string): string =>
+          `${by} 把 ${principal} 移出了频道。`,
+        budget_warned: (
+          agent: string,
+          percent: string,
+          period: string,
+          cost: string,
+          budget: string,
+        ): string =>
+          `预算提醒：${agent} 已用掉 ${period} 预算的 ${percent}%（${cost} / ${budget} USD）。`,
+        budget_paused: (
+          agent: string,
+          percent: string,
+          period: string,
+          cost: string,
+          budget: string,
+        ): string =>
+          `预算暂停：${agent} 已达到 ${period} 预算的 ${percent}%（${cost} / ${budget} USD）。它与下属的日历已暂停，直到下个月或调高预算；@ 提及和直接对话仍然可用。`,
+        ticket_blocked: (ticket: string, title: string): string =>
+          `工单 ${ticket}（${title}）被阻塞了。`,
+        ticket_done: (ticket: string, title: string): string =>
+          `工单 ${ticket}（${title}）已完成。`,
+        ticket_rejected: (ticket: string, title: string): string =>
+          `工单 ${ticket}（${title}）已被拒绝。`,
+      },
+    },
+    /** The handbook page: the knowledge base directory, its index and its documents. */
+    handbook: {
+      info: "组织的知识库：handbook/ 目录下的 Markdown 文档。索引（README.md）是每次触发都会让员工 Agent 先读的那一页，其余文档由索引列出、按需再读。",
+      /** The pinned first row: the index, and why it is pinned. */
+      indexLabel: "索引 · 每轮先读",
+      documents: "文档",
+      /** The tree's own controls: closing every folder, and what a folder row's count means. */
+      collapseAll: "全部折叠",
+      documentsInFolder: (n: number): string => `${n} 篇文档`,
+      noOtherDocuments: "还没有其他文档。新建一篇，并在索引里列出它。",
+      emptyDocument: "这篇文档还是空的。",
+      newDocument: "新建文档",
+      creating: "创建中…",
+      pathField: "路径",
+      pathPlaceholder: "decisions/2026-09-02-hire-plan.md",
+      pathHint:
+        "相对于 handbook/ 的路径，用 / 分层；每段以字母或数字开头，仅字母、数字、. _ -；省略扩展名时补 .md。",
+      pathInvalid: "路径无效：每段以字母或数字开头，仅字母、数字、. _ -，用 / 分层，最多八层。",
+      pathExists: "该文档已存在。",
+      documentCreated: "文档已创建",
+      deleteDocument: "删除文档",
+      deleteConfirm: (path: string): string =>
+        `删除 ${path}？文档会从 handbook/ 目录移除；索引里指向它的条目不会自动更新。`,
+      documentDeleted: "文档已删除",
+      loadFailed: "手册加载失败",
+      documentLoadFailed: "文档加载失败",
+      /** A row's tooltip: when the file was last written, and its size. */
+      updatedAt: (time: string, size: string): string => `更新于 ${time} · ${size}`,
+      /** Beside the editor's buttons: what the text is, and the shortcut. */
+      editorHint: "Markdown · Ctrl/⌘+S 保存",
+    },
+  },
   errors: {
     networkError: "网络错误，请检查连接",
     modelCredentialMissing: (modelId: string) =>
@@ -2764,6 +3871,21 @@ Benchmark：
       account_enabled_elsewhere: "该机器人的连接已在另一个会话中启用：先在那边停用，再在此启用。",
       messaging_disable_before_clear: "先停用该渠道的连接，才能清除其凭证。",
       messaging_disable_before_scan: "先停用该渠道的连接，才能重新扫码绑定。",
+      company_mode_off: "本服务器已关闭公司模式。",
+      org_not_found: "该组织已不存在。",
+      org_exists: "该组织 id 已被占用。",
+      org_invalid: "该组织的配置文件需要修复，修好前不接受改动。",
+      invalid_org_id: "组织 id 无效：2~64 位，小写字母开头，仅小写字母、数字与下划线。",
+      employee_not_found: "该 Agent 不是本组织的员工。",
+      employee_exists: "该 Agent 已是本组织的员工。",
+      calendar_event_exists: "已存在同名日程。",
+      calendar_event_not_found: "该日程已不存在。",
+      desk_unavailable: "无法打开工位会话。",
+      ticket_not_found: "该工单已不存在。",
+      ticket_invalid: "该工单文件需要修复，修好前不接受改动。",
+      ticket_session_failed: "无法发起工单会话。",
+      handbook_file_not_found: "该文档已不存在。",
+      handbook_index_required: "手册索引（README.md）不能删除。",
     },
   },
 

@@ -5,7 +5,8 @@
  */
 import type { ButtonHTMLAttributes } from "react";
 import { S } from "../../lib/strings";
-import { AGENT_GROUP_ICON } from "./group-list";
+import { AGENT_GROUP_ICON, CALENDAR_ICON } from "./group-list";
+
 
 /** Downward caret on Select / OptionMenu / composer dropdown triggers. Color follows currentColor (callers add text-gray-400). */
 export function ChevronDown({ size = 12, className = "" }: { size?: number; className?: string }) {
@@ -164,6 +165,10 @@ export function CloseButton({
 /** Info circle: the app's 9-radius status circle with a bar and a dot inside it. */
 export const INFO_ICON = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5m0-8h.01";
 
+/** A pane with an arrow leaving it: this opens somewhere outside the app, in a tab of its own. */
+export const EXTERNAL_LINK_ICON =
+  "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3";
+
 /**
  * Window with a bottom pane / a right pane: the two dock edges. Drawn by the chat toolbar's
  * pull-open buttons and the dock header's move-dock buttons, so one mark stands for one edge
@@ -186,6 +191,29 @@ export const FILE_WRITE_ICON = "M6 3h8l4 4v14H6zM12 11v6M9 14h6";
 export const FILE_EDIT_ICON = "M12 20h9M16.5 3.5a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z";
 
 /**
+ * Moving a file in or out of the Workspace: a tray with an arrow leaving it (upload) or
+ * landing in it (download). The same tray both ways, so the pair reads as one axis; the
+ * arrow's direction is the only difference, and each is labelled where it is drawn.
+ */
+export const UPLOAD_ICON = "M12 15V4m0 0L8 8m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3";
+export const DOWNLOAD_ICON = "M12 4v11m0 0 4-4m-4 4-4-4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3";
+
+/**
+ * Two arcs chasing each other round a circle: re-read what is on disk. The arc idiom is the
+ * app's existing one (see HISTORY_ICON in app-layout.tsx), so the mark sits in the same family
+ * as the other round-trip glyphs rather than introducing a second way to draw a turn.
+ */
+export const REFRESH_ICON =
+  "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5";
+
+/**
+ * Soft wrap: three lines of text where the middle one runs past the edge, turns back and
+ * returns with an arrow. The turn is the whole mark — a plain stack of lines would be any of
+ * a dozen list glyphs — so it keeps the full bulge rather than being tucked in to save room.
+ */
+export const WRAP_TEXT_ICON = "M4 6h16M4 12h12a3 3 0 1 1 0 6h-3m2-2-2 2 2 2M4 18h5";
+
+/**
  * Activity trace (a flat line with one tall beat in it): work still going on behind the
  * conversation — the background-task mark on a session row, the matching count in the chat
  * header, and the marker on a tool row whose call was made with `run_in_background`.
@@ -201,6 +229,15 @@ export const BACKGROUND_TASKS_ICON = "M2 12h4l3 9 6-18 3 9h4";
 
 /** Chat bubble: the messaging binding's channel-neutral mark (dock panel tab). */
 export const MESSAGING_ICON = "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z";
+
+/**
+ * The same bubble with a plus in it: putting something into the conversation rather than
+ * sending it — the Files panel's "add to conversation" drops a reference in the composer
+ * and stops there. Bubble-plus-plus follows the file pair's own convention (FILE_ICON vs
+ * FILE_WRITE_ICON): the plus is what the action adds, drawn on the thing it adds to.
+ */
+export const ADD_TO_CHAT_ICON =
+  "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM12 7v6M9 10h6";
 
 /**
  * Paper plane: remote control — the session-row mark for a Session that is relaying through
@@ -276,4 +313,23 @@ export const NAV_ICONS = {
     "M7 4h10v5a5 5 0 0 1-10 0V4zM7 5H4v1a3 3 0 0 0 3 3m10-4h3v1a3 3 0 0 1-3 3M12 14v4m-4 0h8",
   /** Terminal (a `>_` prompt in a window frame). */
   terminal: "M3 5h18v14H3zM7 9l3 3-3 3M13 15h4",
+  /** Company mode's overview (lucide layout-dashboard: four tiles of two heights). */
+  orgOverview:
+    "M4 3h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 3h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z",
+  /** The org chart (lucide network: one box over two, joined by a bus). */
+  orgChart: "M9 3h6v5H9zM2 16h6v5H2zM16 16h6v5h-6zM5 16v-3h14v3M12 13V8",
+  /** The organization calendar: the same calendar the sidebar's time grouping wears. */
+  orgCalendar: CALENDAR_ICON,
+  /** The ticket board (lucide square-kanban: three columns of unequal height in a frame). */
+  orgTickets:
+    "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 7v7M12 7v4M16 7v9",
+  /** Finance (lucide circle-dollar-sign). */
+  orgFinance:
+    "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8M12 18V6",
+  /** The handbook, the company's knowledge base (lucide book-open: two pages meeting at the spine). */
+  orgHandbook: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z",
 } as const;
+
+/** Company mode (lucide building-2: a tower with wings and windows), the settings rail, the sidebar's organization groups and the collapsed rail's toggle. */
+export const COMPANY_MODE_ICON =
+  "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4";

@@ -30,6 +30,15 @@ export const en: Strings = {
     expandGroup: "Expand",
     pinGroup: "Pin group",
     unpinGroup: "Unpin group",
+    /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */
+    org: {
+      overview: "Overview",
+      chart: "Org Chart",
+      calendar: "Calendar",
+      tickets: "Tickets",
+      finance: "Finance",
+      handbook: "Handbook",
+    },
   },
 
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
@@ -213,6 +222,14 @@ export const en: Strings = {
       'Tool cards in a conversation name the built-in tools by a short alias: read_file reads as "read". Every other tool (MCP tools included) and the Trace viewer keep the tool\'s own name, and hovering a short name shows it.',
     currencyInfo: "Display currency for prices; storage is always USD.",
     changePasswordInfo: "Change this account's sign-in password.",
+    /** Personal company-mode switch (general page) and the admin master switch (its own server page). */
+    companyModeTitle: "Company mode",
+    companyModePersonal: "Company mode",
+    companyModePersonalInfo:
+      "Off only hides your own mode switch; organizations keep running. The admin master switch sits under Server.",
+    companyModeServer: "Enable company mode",
+    companyModeServerInfo:
+      "The server-wide master switch: off stops the organization scheduler and every organization route and hides the mode switch for everyone. Organizations on disk are untouched, and turning it back on backfills no missed trigger.",
     accentNames: {
       neutral: "Neutral",
       blue: "Blue",
@@ -548,6 +565,8 @@ export const en: Strings = {
     takesEffectSuffix:
       " — new conversations pick it up right away, running ones after their next compaction",
     listTitle: "Agents",
+    searchPlaceholder: "Search agents: id / name / description",
+    searchEmpty: "No agent matches that.",
     create: "Create agent",
     createTitle: "Create agent",
     id: "Agent id",
@@ -579,6 +598,56 @@ export const en: Strings = {
     createSnapshotSkillsOff:
       "The snapshot package carries its own skills and hooks, so plugin seeding is unavailable.",
     createSnapshotClear: "Remove the selected package",
+    aiCreateIntro:
+      "Describe what the agent does, for whom, and what it produces; the agent doing the work uses the agent-initialization skill to create it in the current Project.",
+    aiCreatePlaceholder: "e.g. Create an agent that turns my meeting recordings into to-do lists…",
+    aiExamples: [
+      {
+        key: "jotting",
+        label: "Jotting agent",
+        description: "Fragments of thought filed into a Markdown file system",
+        prompt:
+          "Create a jotting agent: I will keep sending it fragments of thoughts and half-sentences, and it organizes them into a Markdown file system in the Workspace (one file per topic, an index file it maintains, duplicates merged, a timeline kept), replying after each message with where it filed the content.",
+      },
+      {
+        key: "finance",
+        label: "Financial Copilot",
+        description: "Fundamentals and valuation from filings, quotes and news",
+        prompt:
+          "Create a financial Copilot agent: it reads the filings, market data and news links I give it, does fundamental and valuation analysis, presents conclusions as tables and bullet points, flags uncertainty and cites data sources, and never gives direct buy or sell advice.",
+      },
+      {
+        key: "rag",
+        label: "Document RAG agent",
+        description: "Indexes docs/ first, then answers with citations",
+        prompt:
+          "Create a document Q&A agent: I will put material into the Workspace's docs/ directory; it first builds an index (a summary per file and section), cites the specific file and passage in every answer, and says plainly that it does not know when the material gives no basis for an answer.",
+      },
+      {
+        key: "research",
+        label: "Deep research report agent",
+        description: "Outline, multi-round search, cross-checked, a cited report",
+        prompt:
+          "Create a deep research report agent: given a topic, it first drafts a research outline, then searches and reads sources over several rounds and cross-checks the facts, and finally writes a Markdown report in the Workspace with a table of contents, citations and appendices.",
+      },
+      {
+        key: "report-writer",
+        label: "Report-writing agent",
+        description: "Structured reports from loose material; id report-writer",
+        prompt:
+          "Create a report-writing agent with the agent id report-writer: it turns loose material into structured business or technical reports (summary, background, analysis, conclusions and recommendations), produces Markdown files, and attaches a writing checklist.",
+      },
+    ],
+    aiCreateTail: [
+      "Use the agent-initialization skill to create a new agent in the current Project from the description above:",
+      "- Use the agent id given above if there is one; otherwise pick a short semantic id (starting with a lowercase letter; letters, digits, underscores or hyphens). If the target directory already exists, stop and tell me instead of overwriting it.",
+      "- Start from default_agent's system_config.yaml, set its name, description and version, and write the role and rules into its agent_state/AGENTS.md.",
+      "- Copy only the skills it really needs from the plugin library (the skill directories default_agent carries); do not over-equip it.",
+      "- Do not touch any other agent; run the skill's validation when done.",
+      "Finish by telling me the new agent's id, the skills you installed, and how to start a conversation with it (the New chat button on its card on the Agents page).",
+    ].join("\n"),
+    firstAgentTitle: "No agent of your own yet",
+    firstAgentDesc: "Describe the agent you want and let AI create it — or set one up manually.",
     sessionCount: (n: number): string => `${n} session${n === 1 ? "" : "s"}`,
     toolCount: (n: number): string => `${n} tool${n === 1 ? "" : "s"}`,
     vaultKeyCount: (n: number): string => `${n} vault key${n === 1 ? "" : "s"}`,
@@ -696,6 +765,18 @@ export const en: Strings = {
     mcpServers: "MCP Servers",
     mcpDesc:
       "Connect external MCP Servers: their tools join this agent's toolset as mcp__<name>__<tool>. Changes in this block save immediately.",
+    toolExposure: "Model tool exposure",
+    toolExposureDirect: "Direct",
+    toolExposureAuto: "Automatic",
+    toolExposureLazy: "All on demand",
+    toolExposureDirectHint: "Expose built-in tools and every discovered MCP schema directly.",
+    toolExposureAutoHint:
+      "Keep built-ins direct and move large MCP schema sets behind the fixed gateway once per session.",
+    toolExposureLazyHint:
+      "Expose only the fixed search and call gateway; built-in and MCP tools stay in its private catalog.",
+    toolExposureThreshold: "Automatic threshold (tokens)",
+    toolExposureThresholdHint:
+      "Use the gateway when the estimated MCP schema reaches this value; 0 always uses it.",
     mcpEmpty: "No MCP Servers configured yet",
     mcpAdd: "Add MCP Server",
     mcpEditTitle: "Edit MCP Server",
@@ -848,6 +929,51 @@ export const en: Strings = {
     syncDone: (added: number, updated: number) =>
       `Presets synced: ${added} added, ${updated} updated`,
     syncUpToDate: "Presets are already up to date",
+    aiAddTitle: "Add a model group with AI",
+    aiAddIntro:
+      "Hand the agent a model listing page or a description of the service, and it adds the models as one group with penguin config commands. For an OpenAI-compatible endpoint that lists its own models, Add group → Import models is faster.",
+    aiAddPlaceholder:
+      "Paste the URL of a model listing page, or describe the service to connect (gateway URL, authentication, model ids)…",
+    aiAddExamples: [
+      {
+        key: "openrouter",
+        label: "OpenRouter's popular models",
+        description: "Reads the listing page, adds one group",
+        prompt:
+          "Add the popular models on https://openrouter.ai/models as an OpenRouter group (ask me for the API key first).",
+      },
+      {
+        key: "vllm",
+        label: "A self-hosted vLLM server",
+        description: "OpenAI-compatible endpoint plus a model id",
+        prompt:
+          "Connect my self-hosted vLLM server at http://10.0.0.5:8000/v1, model id qwen3-32b, as a vllm group.",
+      },
+      {
+        key: "ollama",
+        label: "Local Ollama",
+        description: "Adds the models already pulled locally",
+        prompt:
+          "Add the models already available on my local Ollama (http://localhost:11434) as an ollama group.",
+      },
+      {
+        key: "deepseek",
+        label: "DeepSeek's official model",
+        description: "Into the deepseek group, set as the default",
+        prompt:
+          "Add DeepSeek's official deepseek-v4-pro to the deepseek group and make it the default model.",
+      },
+    ],
+    aiAddTail: (projectId: string): string =>
+      [
+        "Use the penguin-config skill for the configuration above:",
+        "- Every command below carries `--root <data root>`, the parent directory of the App Data Dir in your Environment section. Your command environment does not name that root, so a command without `--root` configures a different one and nothing reaches this Project.",
+        `- Run \`penguin config model add --provider <group> --model-id <upstream id> --project-id ${projectId} --root <data root> [--base-url <endpoint>] [--client-type openai] [--api-key <key>] [--context-window <n>] [--price-cache-read <n> --price-cache-write <n> --price-output <n>]\` once per model: \`--provider\` is mandatory, \`--model-id\` takes the gateway's own model id, and an OpenAI-compatible endpoint gets \`--client-type openai --base-url <endpoint>\`.`,
+        "- When the source is a web page, fetch it first: add the models I named, or the most popular ones when I named none, about 10 at most.",
+        "- When an API key is needed and I did not give one, ask me once; if I do not provide it, leave the key empty and tell me to fill it in on the Models page.",
+        "- Never read or edit .project_config.toml; configuration goes through penguin commands only.",
+        `- Finish with \`penguin config model list --project-id ${projectId} --root <data root>\` and show me the result.`,
+      ].join("\n"),
     homepage: "Model page",
     speedTest: "Speed test",
     speedTestTitle: "Speed test",
@@ -1152,6 +1278,41 @@ export const en: Strings = {
     keyHint: "Letters, digits and underscores; must not start with a digit",
     keyInvalid: "Invalid name: only letters, digits and underscores, not starting with a digit",
     valueRequired: "Value must not be empty",
+    aiAddTitle: "Add secrets with AI",
+    aiAddIntro:
+      "A secret value typed here is sent to the model provider, recorded in the conversation's Trace, and shown again in the command the agent runs. The safer way is to let AI create only the key names and tell you what each is for, then fill in the values in the vault by hand.",
+    aiAddPlaceholder: "Ask which API keys this agent needs, or name the keys to create…",
+    aiAddExamples: [
+      {
+        key: "audit",
+        label: "Find the keys this agent needs",
+        description: "Key names now, values filled in by hand",
+        prompt:
+          "Check which API keys this agent's installed skills need, create the key names now, and tell me what each one is for and where to apply for it — I will fill in the values in the vault myself.",
+      },
+      {
+        key: "rotate",
+        label: "Reset an expired token",
+        description: "Clears the value; you paste the new one",
+        prompt:
+          "GH_TOKEN has expired. Reset it to a placeholder value and tell me where to issue a new one — I will paste the new token in the vault myself.",
+      },
+      {
+        key: "endpoint",
+        label: "Connect an internal service",
+        description: "Address set now, token left for you",
+        prompt:
+          "This agent will call our internal Gitea at https://git.example.com. Set GITEA_BASE_URL to that address, create GITEA_TOKEN with a placeholder value, and tell me where to issue the token.",
+      },
+    ],
+    aiAddTail: (agentId: string, projectId: string): string =>
+      [
+        `Use the penguin-config skill to write the secrets above into the vault of agent ${agentId} (Project ${projectId}):`,
+        "- Every command below carries `--root <data root>`, the parent directory of the App Data Dir in your Environment section. Your command environment does not name that root, so a command without `--root` writes into a different one and this agent's vault stays empty.",
+        `- Run \`penguin config vault set --key <NAME> --value <value> --agent-id ${agentId} --project-id ${projectId} --root <data root>\` once per secret; when only the key name is wanted, store the placeholder value TODO and tell me what the key is for and where to apply for it.`,
+        "- Never repeat a value back in your reply, and never read .vault.toml.",
+        `- Finish with \`penguin config vault list --agent-id ${agentId} --project-id ${projectId} --root <data root>\` to list the key names.`,
+      ].join("\n"),
     /** Prompt-injection controls (toggle card / template alert / prompt editor), mirroring the memory tab's set. */
     injection: {
       enable: "Enable vault",
@@ -1962,7 +2123,7 @@ Scenarios:
     subagentResumed: "Subagent resumed",
     apiTrackerTitle: "API Tracker",
     /** Panel switcher (chat toolbar top-right): the "create" dropdown and its pin toggles. */
-    workspacePanel: "Workspace",
+    workspacePanel: "Files",
     filesInMessage: (n: number) => `${n} ${n === 1 ? "file" : "files"}`,
     imagesInMessage: (n: number) => `${n} ${n === 1 ? "image" : "images"}`,
     openPreview: "Click to preview",
@@ -2055,6 +2216,16 @@ Scenarios:
     /** Toast when the session-state (locked) model display is clicked: points at the `/model` command. */
     modelLockedHint: "Type /model to switch models",
     scheduledFrom: (name: string) => `Triggered by scheduled task "${name}"`,
+    /** `[org_trigger]` banner: what the organization scheduler sent this desk or ticket session, folded into one line. */
+    orgTriggerFrom: (org: string): string => `Triggered by organization "${org}"`,
+    orgTriggerKinds: {
+      init: "Initialization",
+      event: "Calendar event",
+      mention: "Channel mention",
+      ticket_notice: "Ticket notice",
+      ticket_work: "Ticket work",
+    } as Record<string, string>,
+    orgTriggerBudget: (budget: string): string => `budget ${budget}`,
     /** One-line notice of a `[background_task_done]` harness message (run_in_background completion): the collapsed row's whole label. */
     backgroundDone: (kind: "command" | "subagent", status: "completed" | "failed" | "stopped") => {
       const what = kind === "command" ? "Background command" : "Background task";
@@ -2525,6 +2696,11 @@ Scenarios:
     title: "Files",
     upload: "Upload",
     download: "Download",
+    /** Row / preview context menu: the two entries both kinds carry, then the kind-specific one. */
+    copyPath: "Copy relative path",
+    addToChat: "Add to conversation",
+    addSelectionToChat: "Add selection to conversation",
+    uploadHere: "Upload here",
     openInNewTab: "Open in new tab",
     previewNotIsolatedHint:
       "This address has no separate preview origin, so the page opens sandboxed: localStorage, cookies and third-party embeds will not work. Reach the app over 127.0.0.1 or localhost, or set PENGUIN_PREVIEW_ORIGIN.",
@@ -2547,7 +2723,7 @@ Scenarios:
       `The target directory already has ${n} file(s) with these names — uploading will overwrite:`,
     loadFailed: "Failed to load",
     previewTruncated: "File too large; preview truncated, download for the full file",
-    htmlRendered: "Rendered",
+    htmlRendered: "Preview",
     htmlSource: "Source",
     backToList: "Back to list",
     /** The tree pane: its accessible name and the toolbar toggle's two states. */
@@ -2559,14 +2735,18 @@ Scenarios:
     /** The search box above the tree; it reaches only as far as the lazy tree has been loaded. */
     searchPlaceholder: "Search files",
     searchClear: "Clear search",
-    searchNoMatch: "Nothing loaded matches",
+    searchNoMatch: "No matches in the Workspace",
+    /** The walk is server-side and covers the whole Workspace, so it is not instant on a large one. */
+    searching: "Searching…",
+    /** The server stopped at its cap: what is listed is the shallowest matches, not all of them. */
+    searchTruncated: (n: number): string => `Too many matches — showing the first ${n}`,
     selectFile: "Select a file to preview",
     /** Drop overlay label; `dir` is the directory the files will land in (the root's display name for the root). */
     dropToUpload: (dir: string): string => `Drop to upload into ${dir}`,
     /** In-place text editing. */
     editorLabel: (name: string): string => `Editing ${name}`,
-    /** Editor soft-wrap toggle: off means long lines scroll sideways. */
-    editorWrap: "Wrap",
+    /** Soft-wrap toggle, shared by the source view and the editor: off means long lines scroll sideways. */
+    wrapLines: "Wrap",
     unsaved: "Unsaved changes",
     saveTitle: "Save (Ctrl+S / ⌘S)",
     saveConfirmTitle: "Save file",
@@ -2584,6 +2764,24 @@ Scenarios:
     changedOnDisk: "Changed on disk",
     changedOnDiskHint:
       "This file has been rewritten since you opened it — saving replaces that version with yours.",
+    /** Rename and move are one action: both write the file to a new Workspace-relative path. */
+    renameTitle: "Rename or move",
+    renameLabel: "New path",
+    renameHint:
+      "Relative to the Workspace root; a directory in the path that does not exist is created",
+    renameConfirm: "Move",
+    renameTargetExists: (path: string): string => `${path} already exists, so nothing was changed.`,
+    renamed: (name: string): string => `Moved to ${name}`,
+    deleteTitle: "Delete file",
+    deleteBody: (name: string): string => `Delete ${name}? It does not go to a trash folder.`,
+    deleted: (name: string): string => `Deleted ${name}`,
+    /** Both actions read the file's current version first; until it lands there is nothing to refuse an overwrite with. */
+    actionVersionReading: "Reading this file's current version…",
+    actionVersionFailed:
+      "This file's current version could not be read, so the action is not offered.",
+    /** The version precondition refused it: the Agent wrote the file while the question was on screen. */
+    changedBeforeAction: (name: string): string =>
+      `${name} was rewritten while you were deciding, most likely by the Agent during its turn, so nothing was changed. Refresh and try again.`,
     conflictTitle: "File changed on disk",
     conflictBody: (name: string): string =>
       `${name} was rewritten after you opened it, most likely by the Agent during its turn, so nothing was saved. Overwrite it with your version, or keep editing and copy what you need out first — either way your text is kept.`,
@@ -2695,9 +2893,41 @@ Scenarios:
 
   benchmark: {
     title: "Evaluation Center",
-    selectBenchmark: "Select a Benchmark on the left",
+    guideTitle: "The loop in three steps: create, read, optimize",
+    guideSteps: [
+      "Let AI write a Benchmark for an agent and take its baseline score: the benchmark-design Skill writes the cases, and the agent-evaluation Skill trial-runs each one in an isolated Workspace to calibrate difficulty before the set is frozen.",
+      "Read the score curve and the per-case detail here, and check that the cases tell a real solution from one that merely looks right.",
+      "Let AI optimize the agent against that Benchmark: the agent-optimization Skill makes one falsifiable change per round and re-evaluates; a new version is kept only when the score strictly improves, otherwise rolled back.",
+    ],
+    guideNote:
+      "All three Skills ship in the agent-tuning plugin, which the default agent already carries; install it on a new agent from the plugin library.",
+    searchPlaceholder: "Search titles, descriptions or agents",
+    noMatches: "No Benchmark matches",
+    emptyTitle: "No Benchmarks yet",
+    emptyDescription:
+      "Start by letting AI write cases for an agent and take a baseline. Score curves and per-case detail appear here afterwards, with optimization one click away.",
     emptyAgent: "No Benchmarks for this agent",
+    createForAgent: "Create for this agent",
     caseCount: (n: number): string => `${n} case${n === 1 ? "" : "s"}`,
+    runsPerCase: (n: number): string => `${n} run${n === 1 ? "" : "s"} per case`,
+    notEvaluated: "Not evaluated yet",
+    lastEvaluated: (when: string): string => `last evaluated ${when}`,
+    sparklineLabel: (n: number): string => `Score trend over ${n} evaluation${n === 1 ? "" : "s"}`,
+    latestScoreLabel: "Latest score",
+    firstEvaluation: "first evaluation",
+    optimize: "Optimize",
+    view: "View",
+    moreActions: "More actions",
+    copyPath: "Copy directory path",
+    pathCopied: "Benchmark directory path copied",
+    deleteBenchmark: "Delete Benchmark",
+    deleteConfirm: (title: string): string =>
+      `Delete "${title}"? All of its cases and evaluation records will be removed; this cannot be undone.`,
+    deleted: "Benchmark deleted",
+    backToList: "Back to list",
+    /** The Benchmark's own page when the pair in the address resolves to nothing. */
+    notFound: "This Benchmark was not found",
+    notFoundHint: "It may have been deleted, or the link carries an id that no longer exists.",
     trendTitle: (metric: string): string => `${metric} over time`,
     cases: "Cases",
     viewCase: "View details",
@@ -2707,6 +2937,8 @@ Scenarios:
     caseFileUnavailable: "Case files are unavailable",
     evaluations: "Evaluations",
     noEvaluations: "No evaluations yet",
+    noEvaluationsHint:
+      "The score curve and evaluation detail appear here once a baseline is taken.",
     summaryLabel: "Summary",
     legendUnlabeled: "unlabeled model",
     colVersion: "Version",
@@ -2717,8 +2949,895 @@ Scenarios:
     colCase: "Case",
     colRun: "Run",
     colSession: "Session",
+    aiCreateTitle: "Create a Benchmark with AI",
+    aiCreateDescription:
+      "Describe the capability and the scenarios to test. AI writes the cases for the Test Agent, trial-runs each one to calibrate difficulty, and takes a baseline score.",
+    targetAgent: "Test Agent",
+    targetAgentHint:
+      "The agent the cases are written for and scored under; the writing itself is done by the agent named below, in a new conversation",
+    aiCreateExamples: {
+      reportWriter: {
+        label: "A hard set for a report-writing agent",
+        description:
+          "5 cases: contradicting sources, strict format, cross-language, length and citations",
+        prompt:
+          "Design a hard Benchmark for a report-writing agent: 5 cases covering self-contradicting sources, strict formatting requirements, cross-language material, length limits and citation rules. " +
+          "The rubrics must separate excellent from merely passing work. Then take the baseline score.",
+      },
+      customerService: {
+        label: "Multi-turn cases for a support agent",
+        description: "8 cases: upset users, policy edges, questions that need a lookup",
+        prompt:
+          "Design 8 multi-turn conversation cases for a customer-support agent: upset users, policy boundaries, and questions that cannot be answered without looking something up. Score accuracy, tone and whether the agent promises more than it may.",
+      },
+      codeReview: {
+        label: "Defect cases for a code-review agent",
+        description: "6 cases with 2–3 real defects each; score recall and false positives",
+        prompt:
+          "Write 6 cases for a code-review agent: each gives a code snippet with 2–3 real defects (security, concurrency, boundaries). Score whether every defect is found and whether anything is flagged falsely.",
+      },
+      dataAnalysis: {
+        label: "CSV cases for a data-analysis agent",
+        description:
+          "5 cases with a CSV and a business question; score conclusions and definitions",
+        prompt:
+          "Write 5 cases for a data-analysis agent: each comes with a CSV file and a business question. Score the correctness of the conclusion, the charts, and how clearly metrics are defined.",
+      },
+    },
+    aiCreateTail: (targetAgentId: string): string =>
+      "Use the `benchmark-design` Skill: as the Builder, design and calibrate a Benchmark for the Test Agent below without changing that agent itself.\n\n" +
+      `- test_agent_id: \`${targetAgentId}\`\n` +
+      "- benchmark_id: keep the one named above if any; otherwise derive a short semantic id (letters, digits, `_` and `-` only)\n" +
+      "- desired_baseline_score: `<70` (unless the text above says otherwise)\n" +
+      "- pilot_iteration_limit: `3`\n\n" +
+      "Create `benchmarks/<benchmark_id>/` under the Test Agent's directory: `benchmark_config.toml` (title, description, runs = 1), " +
+      "one `CASE-NNN-<slug>/` per case (`statement/README.md` is the statement, `rubric/README.md` the scoring rubric, 100 points per case, nothing from the rubric leaking into the statement) " +
+      "and `scoreboard.yaml` (initially `evaluations: []`). Delegate one `agent-evaluation` run per case through `run_subagent` to calibrate difficulty, " +
+      "freeze the final revision, append the Formal Baseline to scoreboard.yaml, and finish by reporting the Benchmark id, the baseline score and the per-case scores.",
+    manualCreateTitle: "Create a Benchmark manually",
+    manualCreateIntro:
+      "Fill in the title, the statements and the rubrics; the directory layout the Skills expect is written under the Test Agent's benchmarks/, ready to evaluate or optimize.",
+    agentField: "Agent",
+    idField: "Benchmark id",
+    idHint:
+      "The directory name is the identifier: letters, digits, _ and - only, e.g. report-writing-v1",
+    idExists: "A Benchmark with this id already exists; pick another",
+    titleField: "Title",
+    descriptionField: "Description",
+    descriptionHint: "One line on what capability is tested and what makes the cases hard",
+    runsField: "Runs per case",
+    runsHint:
+      "An integer from 1 to 1000; optimization runs every case this many times and averages",
+    runsInfo:
+      "Repeated runs separate a stable capability gap from chance, at a cost that scales with the count. AI calibration always uses one run per case; this value is for the optimization that follows.",
+    casesTitle: "Cases",
+    casesInfo:
+      "Every case has two halves: the statement goes to the Test Agent; the rubric is seen only by the evaluator and never enters the Test Agent's Workspace.",
+    rubricInfo:
+      "A discriminating rubric has observable items totalling 100 points, and puts most of the points on decisions or artifacts where doing it right and merely looking right diverge — never a high floor for format compliance.",
+    caseHeading: (n: number): string => `Case ${n}`,
+    caseSlugField: "Directory suffix",
+    caseSlugHint: (id: string): string => `Directory ${id}: letters, digits, _ and - only`,
+    caseTitleField: "Case title",
+    caseStatementField: "Statement",
+    caseStatementHint:
+      "Markdown; state the objective, the given materials, the required artifact and its format — never hint at the solution or the scoring",
+    caseRubricField: "Scoring rubric",
+    caseRubricHint:
+      'Markdown; one item per line with its points, totalling 100, e.g. "- 40 pts: …"',
+    addCase: "Add case",
+    removeCase: "Remove this case",
+    createSubmit: "Create Benchmark",
+    created: "Benchmark created",
+    invalidId: "Letters, digits, _ and - only",
+    invalidRuns: "Must be an integer from 1 to 1000",
+    invalidScore: "Must be an integer from 1 to 100",
+    optimizeTitle: (title: string): string => `Optimize: ${title}`,
+    optimizeDescription:
+      "AI changes the Test Agent under a falsifiable hypothesis and re-evaluates; a new version is kept only when the score strictly improves.",
+    optimizeWithAi: "Optimize with AI",
+    optimizeManual: "Optimize manually",
+    optimizerAgent: "Optimizer agent",
+    optimizerAgentHint:
+      "The one that reads the scores and Traces and edits the Test Agent; needs the agent-optimization Skill",
+    optimizerMissingSkill:
+      "This agent does not have the agent-optimization Skill installed and will most likely not complete the optimization — switch to the default agent, or install the agent-tuning plugin on it first.",
+    targetAgentFixed: (name: string): string => `Test Agent: ${name}`,
+    sessionModel: "Model of the optimizer's conversation",
+    sessionModelHint:
+      "The model that analyzes and edits; evaluations of the Test Agent keep the model the baseline recorded, which is not changed here",
+    projectDefaultModel: (name: string): string => `Project default (${name})`,
+    projectDefaultModelUnset: "Project default",
+    optimizeRunsHint: "How many times every case runs per candidate version, averaged",
+    roundLimitField: "Round limit",
+    roundLimitHint: "One change per round; a round counts once its evaluation is complete",
+    targetScoreField: "Target score",
+    targetScoreHint: "Reaching it ends the loop early; defaults to ten points above the baseline",
+    focusField: "Focus",
+    focusPlaceholder:
+      "e.g. Focus on citation rules and format compliance; leave the writing style alone",
+    noBaseline:
+      "This Benchmark has no baseline score yet. Optimization needs one complete baseline evaluation to compare against — take it while letting AI create the Benchmark, or ask for a full evaluation first in the conversation.",
+    baselineLine: (score: string, target: number): string =>
+      `Current baseline ${score} · target ${target}`,
+    optimizeExamples: {
+      citations: {
+        label: "Citations and format only",
+        description: "Keep the writing style; work on citation rules and format compliance",
+        prompt: "Focus on citation rules and format compliance; leave the writing style alone.",
+      },
+      promptOnly: {
+        label: "Behavioral guidance only",
+        description: "Edit only the guidance in AGENTS.md; install no new Skills",
+        prompt:
+          "Only change the system-level guidance (the behavioral rules in AGENTS.md); do not install any new Skills.",
+      },
+      traceFirst: {
+        label: "Read the lowest Traces first",
+        description: "Find what the two worst cases share before changing anything",
+        prompt:
+          "First analyze the Traces of the two lowest-scoring cases and find their common cause, then make the change.",
+      },
+    },
+    optimizeTail: (p: {
+      targetAgentId: string;
+      benchmarkId: string;
+      runs: number;
+      roundLimit: number;
+      targetScore: number;
+    }): string =>
+      "Use the `agent-optimization` Skill to improve the Test Agent against its frozen Benchmark.\n\n" +
+      `- test_agent_id: \`${p.targetAgentId}\`\n` +
+      `- benchmark_id: \`${p.benchmarkId}\`\n` +
+      `- runs: \`${p.runs}\`\n` +
+      `- desired_score: \`>=${p.targetScore}\`\n` +
+      `- candidate_round_limit: \`${p.roundLimit}\`\n\n` +
+      "Each round, state one falsifiable hypothesis from the current Reference and make one bounded change; evaluate the full Case × runs matrix through `run_subagent` with `agent-evaluation`, " +
+      "keeping the provider / model_id / thinking_level the baseline recorded; keep the version and append its evaluation to scoreboard.yaml only when the total score is strictly higher than the Reference, otherwise roll back. " +
+      "Finish by reporting the scores before and after, the retained version, and each round's change and decision.",
   },
 
+  /** Company mode: the organization switcher and dialogs, and the six organization pages. */
+  company: {
+    /** The mode switch (top-left of the sidebar, above the Project switcher) and its two options. */
+    workMode: "Work mode",
+    modeDev: "Development",
+    modeCompany: "Company",
+    switchToCompany: "Switch to company mode",
+    switchToDev: "Switch to development mode",
+    /** The organization switcher that replaces the Project switcher in company mode. */
+    switcher: "Organization",
+    noOrganizations: "No organizations yet",
+    createOrg: "New organization",
+    orgSettings: "Organization settings",
+    orgInvalid: "Invalid configuration",
+    orgPaused: "Paused",
+    /** The switcher's check mark beside the open organization (sr text). */
+    switcherCurrent: "Current organization",
+    /** `<project> / <org>` in the switcher: the Project half of the label. */
+    inProject: (project: string, org: string): string => `${project} / ${org}`,
+    /** The empty landing of `/org` when the user has no organization anywhere. */
+    landingTitle: "Company mode",
+    landingBody:
+      "An organization is a group of employee Agents working along a reporting line: a CEO, the employees it hires, a shared board and its channels, and the calendar that drives them. Create one and start by talking to the CEO about its mission.",
+    /** The page a stale deep link lands on: the organization it names is gone. */
+    orgGoneTitle: "Organization not found",
+    orgGoneBody:
+      "It may have been deleted, or you may no longer have access to the Project it belongs to.",
+    backToOrgs: "Back to organizations",
+    /** Create dialog. */
+    createTitle: "New organization",
+    orgId: "Organization id",
+    orgIdHint:
+      "2–64 characters: a lowercase letter, then lowercase letters, digits or underscores; also the directory name, fixed once created",
+    /**
+     * The id field's generate button — its label says who proposes the id, its tooltip says
+     * what the proposal is derived from — and the clause the hint appends for it. The clause
+     * carries its own leading separator: what joins two clauses is punctuation, and
+     * punctuation belongs to the language.
+     */
+    generateIdLabel: "Generate with AI",
+    generateId: "Generate an id from the name",
+    idGenerateHint: "; you can also generate one from the display name",
+    /** What the field says about the id a proposal just filled in (see id-suggest-notice.ts). */
+    idSuggest: {
+      /** Under an id transliterated from the name: quiet, because nothing went wrong. */
+      fromName: "Transliterated from the name",
+      /** Under a placeholder id: it names nothing, so it says why and asks for a real name. */
+      placeholder: (reason: string): string =>
+        `The model gave no usable id (${reason}); a placeholder was filled in — please change it to something meaningful`,
+      /** Why the proposal fell through, keyed by the server's reason code. */
+      reasons: {
+        no_default_model: "no default model configured",
+        model_failed: "the model request failed",
+        unusable_answer: "the model's answer was unusable",
+        no_ascii: "the name carries no ASCII to transliterate",
+      },
+      /** A reason a newer server named and this build does not know. */
+      reasonUnknown: "reason unknown",
+    },
+    displayName: "Display name",
+    displayNameHint: "Leave empty to use the organization id",
+    mission: "Mission",
+    missionHint:
+      "One sentence on why this organization exists; the CEO's first session starts from it",
+    missionPlaceholder:
+      "e.g. Maintain the PenguinHarness docs site and publish a weekly update digest",
+    /** The three examples under the mission field (org-examples.ts holds their order). */
+    missionExampleHint: "Click to fill the mission",
+    missionExamples: {
+      research: {
+        name: "Research Paper Lab",
+        mission:
+          "Set up a company that does research for me: keeps drafting and reviewing papers and produces work that can be submitted to top-tier conferences.",
+      },
+      agentTuning: {
+        name: "Agent Tuning Studio",
+        mission:
+          "Set up a company that optimizes my product Agent: raise its accuracy in real business use and improve the product experience.",
+      },
+      cloudReseller: {
+        name: "Cloud Service Reseller",
+        mission:
+          "Set up a company that runs a cloud-service-style website for me: collect every low-priced service on the market, bundle and resell them at a markup to make money, and grow the site's SEO and visibility.",
+      },
+    },
+    createdOpeningCeo: "Organization created — opening the CEO's desk session",
+    /** Create and settings dialogs: the model and the shared workspace, both optional. */
+    modelField: "Model",
+    modelInfo:
+      "The model desk and ticket sessions run on by default; an employee given its own model in the org chart uses that instead. Takes effect from the next work round.",
+    modelHint: "Leave empty to use the Project's default model",
+    modelProjectDefault: "Project default",
+    modelProjectDefaultNamed: (name: string): string => `Project default (${name})`,
+    modelsLoadFailed:
+      "The model list could not be read; you can still create with the Project default",
+    workspaceField: "Company workspace",
+    workspaceInfo:
+      "The directory the employees work in together: each employee's workspace is one of its sub-directories (or all of it), and desk and ticket sessions run inside it.",
+    workspaceHint:
+      "Leave empty for the organization's own workspace/ directory; a path must be an existing directory on the server",
+    workspaceEmpty: "The organization's own workspace/ directory",
+    workspaceMenuHint: "Pick an existing directory as the company workspace",
+    workspaceClear: "Back to the organization's own directory",
+    /** CEO budget field (create dialog): the CEO's ceiling is the company's, since everyone reports to it. */
+    ceoBudget: "CEO budget",
+    ceoBudgetHint: "A monthly cap; the CEO's budget is the whole company's",
+    /** The create dialog's draft (org-draft.ts): restored on reopen, dropped on create or on demand. */
+    draftRestored: "Restored the draft you had not submitted",
+    clearDraft: "Clear draft",
+    creating: "Creating…",
+    /** Settings dialog (the switcher's entry). */
+    settingsTitle: "Organization settings",
+    timezone: "Timezone",
+    timezoneHint:
+      "An IANA timezone such as Asia/Shanghai; budget periods (calendar months) and channel day files follow it",
+    language: "Working language",
+    languageInfo:
+      "The language the organization works in: its handbook, the employee briefs, the CEO's initialization session and every desk's output are written in it; it is detected from the mission when the organization is created.",
+    languages: {
+      zh: "中文",
+      en: "English",
+    },
+    approvalMode: "Approval mode",
+    approvalModeInfo:
+      "How tool calls in desk and ticket sessions are approved. Unattended runs never stop to ask a person, so there is no always-ask here.",
+    approvalModes: {
+      "allow-all": "Allow all",
+      "read-only": "Read only",
+      "deny-all": "Deny all",
+    } as Record<string, string>,
+    status: "Status",
+    statusActive: "Active",
+    statusPaused: "Paused",
+    pause: "Pause organization",
+    resume: "Resume organization",
+    pauseInfo:
+      "Paused stops every automatic trigger — calendar events no longer fire and @-mentions are not delivered to employees; you can still open any desk session and talk directly. An organization is paused, never deleted: its conversations, employees and tickets stay reachable.",
+    settingsLoadFailed: "The organization's settings could not be read",
+    /** Employee state dot, and the CEO mark. */
+    employeeStates: {
+      running: "Running",
+      idle: "On desk",
+      paused: "Budget paused",
+    } as Record<string, string>,
+    ceo: "CEO",
+    reportsTo: (name: string): string => `Reports to ${name}`,
+    openDesk: "Open desk session",
+    openingDesk: "Opening the desk session…",
+    /** Principals as the chat and tickets name them. */
+    principalSystem: "System",
+    principalAll: "Everyone",
+    /** Spend against a budget, and the unbounded case. */
+    spendOfBudget: (spend: string, budget: string): string => `${spend} / ${budget}`,
+    noBudget: "Unbounded",
+    budgetUnit: (symbol: string): string => `${symbol} / month`,
+    budgetStoredAs: (amount: string): string => `Stored as ${amount} / month`,
+    /** The two groups under the company sidebar's channel list: one row per employee, and the sessions attached to tickets. */
+    sessionList: {
+      desks: (n: number): string => `Desks (${n})`,
+      ticketSessions: (n: number): string => `Ticket sessions (${n})`,
+      deskOf: (name: string): string => `${name}'s desk`,
+      running: "Running",
+      noEmployees: "This organization has no employees yet",
+      noTicketSessions: "No ticket sessions yet",
+      untitledSession: "Untitled session",
+      loadFailed: "The employee list could not be loaded",
+    },
+    overview: {
+      title: "Overview",
+      info: "The organization on one page: employees, the board, today's calendar and this period's budget, plus what needs your decision. Every block opens its page.",
+      employees: "Employees",
+      onDesk: "On desk",
+      running: "Running",
+      paused: "Budget paused",
+      board: "Board",
+      blocked: "Blocked",
+      today: "Today's calendar",
+      todayEmpty: "Nothing scheduled today",
+      spend: "This period's spend",
+      reviewTickets: "Tickets in review",
+      alerts: "Alerts",
+      alertsEmpty: "No budget alerts this period",
+      /** A fresh organization: point the user at the CEO. */
+      firstStep:
+        "The organization is brand new: open the CEO's desk session to confirm the mission, hire employees and set up the calendar.",
+      /** The hero: who made it, how big it is, which period the spend counts. */
+      createdBy: (user: string): string => `Created by ${user}`,
+      employeesCount: (n: number): string => `${n} employee${n === 1 ? "" : "s"}`,
+      period: (period: string): string => `Period ${period}`,
+      openCeoDesk: "Open the CEO's desk",
+      refreshFailed: "The refresh failed; this is the last data read",
+      /** The hero's mission, clamped to one line until the toggle opens it. */
+      mission: "Mission",
+      expand: "Expand",
+      collapse: "Collapse",
+      /** The KPI strip. */
+      openTickets: "Open tickets",
+      boardTotal: (n: number): string => `${n} in total`,
+      todayCount: (n: number): string => `${n} event${n === 1 ? "" : "s"}`,
+      upcoming: "Upcoming",
+      failed: "Not on time",
+      budgetLeft: (amount: string): string => `${amount} left`,
+      overBudget: (amount: string): string => `${amount} over`,
+      /** The corner button of a KPI cell and of the hero's spend block: where it jumps to. */
+      openChart: "Open the org chart",
+      openBoard: "Open the ticket board",
+      openCalendar: "Open the calendar",
+      openFinance: "Open finance",
+      /** The three first steps of a new organization (replaces the empty sections). */
+      firstStepsTitle: "First steps",
+      firstStepsInfo:
+        "The guide for a brand-new organization: talk to the CEO about the mission, hire, schedule. Once the first employee is hired or the first ticket filed, the dashboard takes its place.",
+      stepCeoTitle: "Talk to the CEO",
+      stepCeoBody:
+        "Open the CEO's desk session, confirm the mission and let it propose the structure and the first tickets.",
+      stepHireTitle: "Hire employees",
+      stepHireBody:
+        "On the org chart, hire subordinates for the CEO: an existing Agent or a new one, with a title and a budget.",
+      stepScheduleTitle: "Schedule the work",
+      stepScheduleBody:
+        "On the calendar, give employees their rounds: when one is due, its prompt goes to the employee's desk session.",
+      stepDone: "Done",
+      goToChart: "Open the org chart",
+      goToCalendar: "Open the calendar",
+      /** The inbox: what names the reader, what is stuck and what has landed, newest first. */
+      inbox: "Inbox",
+      inboxInfo:
+        "The three things the organization has to tell you, newest first: messages naming you (or everyone) in the all-hands channel, blocked tickets, and the tickets closed as done this period. For anything else, read the channel and the board themselves.",
+      inboxEmpty: "Nothing in the inbox.",
+      /** The filter chips over the rows, each with its own count. */
+      inboxFilters: { all: "All", mention: "@me", blocked: "Blocked", done: "Done" },
+      /** The chip that leads a row, naming what the row is. */
+      inboxCategories: { mention: "@me", blocked: "Blocked", done: "Done" },
+      /** Today's timeline. */
+      timelineMore: (n: number): string => `${n} more — open the calendar`,
+    },
+    calendarOutcomes: {
+      fired: "Fired",
+      queued: "Queued",
+      paused: "Paused",
+      missed: "Missed",
+      error: "Error",
+    } as Record<string, string>,
+    chart: {
+      title: "Org Chart",
+      info: "The employee tree is the reporting line: the CEO at the root, every node an employee Agent. The menu in a node's top-right corner opens its desk session and holds the personnel actions, each of which rewrites the chart file.",
+      empty: "The chart is empty",
+      nodeMenu: "Employee actions",
+      hire: "Hire a subordinate",
+      setBudget: "Set budget",
+      changeReportsTo: "Change reporting line",
+      renewDesk: "New desk session",
+      leave: "Leave the organization",
+      ceoCannotLeave: "The CEO cannot leave",
+      invalidEntry: "This entry is invalid",
+      workspaceTail: "Workspace",
+      /** Hire dialog. */
+      hireTitle: (manager: string): string => `Hire a subordinate for ${manager}`,
+      hireSource: "Source",
+      hireExisting: "Pick an existing Agent",
+      hireNew: "Create a new Agent",
+      agent: "Agent",
+      pickAgent: "Pick an Agent…",
+      noAgentsLeft: "No Agent in this Project is left to hire",
+      agentId: "Agent id",
+      agentIdHint:
+        "2–64 characters: a lowercase letter, then lowercase letters, digits or underscores",
+      agentName: "Name",
+      agentNameHint: "Leave empty to use the Agent id",
+      agentDescription: "Description",
+      plugins: "Plugins",
+      pluginsHint:
+        "agent-company (the organization procedures) and agent-development (development skills) are installed by default",
+      pluginsPlaceholder: "No plugins picked",
+      pluginsPicked: (n: number): string => `${n} plugin${n === 1 ? "" : "s"} picked`,
+      pluginsEmpty: "The plugin library has nothing to install",
+      employeeTitle: "Title",
+      employeeTitlePlaceholder: "e.g. Docs engineer",
+      duties: "Duties",
+      dutiesHint: "Written into the chart; the employee reads it at every work run",
+      workspace: "Workspace",
+      workspaceHint:
+        "A sub-directory of the shared workspace (`.` for all of it), or an absolute path that already exists",
+      budget: "Monthly budget",
+      budgetHint:
+        "A monthly cap, leave empty for unbounded; counts the employee plus every subordinate",
+      hireConfirm: (name: string, manager: string): string =>
+        `Add ${name} to the organization, reporting to ${manager}? This rewrites the chart file.`,
+      hired: (name: string): string => `Hired ${name}`,
+      /** Budget / reporting line / desk renewal / leave dialogs. */
+      budgetTitle: (name: string): string => `Set the budget of ${name}`,
+      budgetConfirm: (name: string, budget: string): string =>
+        `Set the monthly budget of ${name} to ${budget}? Past 80% warns; at 100% its automatic triggers pause.`,
+      reportsToTitle: (name: string): string => `Change who ${name} reports to`,
+      reportsToConfirm: (name: string, manager: string): string =>
+        `Have ${name} report to ${manager}? Its subordinates move along with it.`,
+      reportsToCycle: "Cannot report to itself or to one of its own subordinates",
+      renewDeskTitle: (name: string): string => `A new desk session for ${name}`,
+      renewDeskExplain:
+        "A new desk session opens with a fresh context; a changed workspace is written to the org chart.",
+      workspaceInvalid:
+        "Invalid workspace: it must be a sub-directory of the shared workspace, or an absolute path that already exists.",
+      renewed: "Moved to a new desk session",
+      leaveConfirm: (name: string): string =>
+        `Have ${name} leave? It is removed from the chart and its subordinates report to its manager instead; the Agent and every session are kept.`,
+      left: (name: string): string => `${name} has left`,
+      saved: "Chart updated",
+      /** The page: zoom control, legend, counts, a failed refresh, the detached row. */
+      zoom: "Zoom",
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      zoomFit: "Fit to width",
+      legend: "State legend",
+      employeeCount: (n: number): string => `${n} employee${n === 1 ? "" : "s"}`,
+      spend: "This period's spend",
+      refreshFailed: (error: string): string => `Refresh failed: ${error}`,
+      detached: "Manager not in the chart",
+      detachedNotice: (n: number): string =>
+        `${n} employee${n === 1 ? "" : "s"} cannot reach the CEO along the reporting line: the manager left the organization, or the line loops. Use "Change reporting line" to reattach them.`,
+      /** Hire and edit dialogs: the two sections, the current value, and the field hints. */
+      hireAgentSection: "Agent",
+      hirePositionSection: "Position",
+      agentHint: "Only Agents of this Project not yet in the organization",
+      budgetPlaceholder: "e.g. 30",
+      clearBudget: "Set unbounded",
+      currentValue: (value: string): string => `Current: ${value}`,
+      manager: "Manager",
+      reportsToHint: "Only employees outside its own subtree are listed",
+    },
+    calendar: {
+      title: "Calendar",
+      info: "Every employee's calendar events in a month / week / day view. Each event belongs to one employee and sends its prompt to that employee's desk session when due; colours tell employees apart, and past instances show what the trigger did. Calendar events drive employees' desk sessions to check the board and push tickets on time; use New event, top right, to schedule one for an employee.",
+      month: "Month",
+      week: "Week",
+      day: "Day",
+      today: "Today",
+      prev: "Previous",
+      next: "Next",
+      allEmployees: "All employees",
+      filterEmployee: "Filter by employee",
+      create: "New event",
+      createTitle: "New calendar event",
+      editTitle: (name: string): string => `Edit event "${name}"`,
+      employee: "Employee",
+      name: "Name",
+      nameHint: "The file name (without .toml); fixed once created",
+      prompt: "Prompt",
+      enabled: "Enabled",
+      startAt: "Start",
+      endAt: "End",
+      period: "Period",
+      periodHint: "30m / 12h / 7d, empty for a one-off; 5m at the shortest",
+      delete: "Delete event",
+      deleteConfirm: (name: string): string => `Delete event "${name}"?`,
+      saveConfirm: (name: string): string =>
+        `Save event "${name}"? This rewrites its calendar file.`,
+      outcome: "Outcome",
+      lastFired: "Last fired",
+      nextFire: "Next fire",
+      past: "Past",
+      pausedNote: "Paused: due slots are skipped, not fired",
+      disabledNote: "Disabled",
+      invalidFiles: "Calendar files that failed to parse",
+      empty: "No events yet",
+      emptyHint:
+        "Calendar events drive employees' desk sessions to check the board and push tickets on time; use New event, top right, to schedule one for an employee.",
+      moreEvents: (n: number): string => `${n} more`,
+      /** The month cell's "+N more" is a button: its accessible name, and the day panel it opens. */
+      moreEventsExpand: (n: number): string => `${n} more, expand`,
+      openDay: "Open the day",
+      weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as readonly string[],
+      allDay: "All day",
+      promptHint:
+        "What the employee should sweep at this moment, e.g. check the board, push its tickets, report in a channel",
+      monthTitle: (year: number, month: number): string =>
+        `${
+          [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+          ][month - 1] ?? month
+        } ${year}`,
+      /** How an event recurs, for the legend: the period read as a cadence with the time of day. */
+      cadence: {
+        once: "One-off",
+        minutes: (n: number): string => `Every ${n} min`,
+        hours: (n: number): string => `Every ${n} h`,
+        daily: (time: string): string => `Daily ${time}`,
+        days: (n: number, time: string): string => `Every ${n} days ${time}`,
+        weekly: (time: string): string => `Weekly ${time}`,
+        weeks: (n: number, time: string): string => `Every ${n} weeks ${time}`,
+        invalid: "Invalid period",
+      },
+      legendEmpty: "No events yet",
+      legendFilter: (name: string): string => `Show only ${name}'s events`,
+      createAt: (label: string): string => `New event at ${label}`,
+      loadFailed: (error: string): string => `Could not load the calendar: ${error}`,
+      /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
+      dismissHint: "Got it",
+      /** Under the start time: why two employees should not share one minute. */
+      staggerHint:
+        "Stagger the rota: give every employee its own minute; desks that fire together compete for the same budget and tickets.",
+      /** Heads the advisory lines a calendar write answers with (the lines themselves come from the server, in English). */
+      warningsPrefix: "Rota notice",
+    },
+    tickets: {
+      title: "Tickets",
+      info: "Five columns are a ticket's life: proposed → in progress → review → done / rejected. Drag a card to move it between columns, click it for the detail; a blocked ticket stays in its column with a badge. A ticket is the organization's unit of work: use New ticket, top right, to create one and name an owner, and the owner's desk session starts a ticket session for it.",
+      columns: {
+        proposed: "Proposed",
+        in_progress: "In progress",
+        review: "Review",
+        done: "Done",
+        rejected: "Rejected",
+      } as Record<string, string>,
+      blockedOnly: "Blocked only",
+      create: "New ticket",
+      createTitle: "New ticket",
+      empty: "No tickets yet",
+      emptyHint:
+        "A ticket is the organization's unit of work: use New ticket, top right, to create one and name an owner, and the owner's desk session starts a ticket session for it.",
+      /** The "×" that puts the empty-board note away for good (the same sentence stays in the page's "?"). */
+      dismissHint: "Got it",
+      columnEmpty: "Empty",
+      ticketTitle: "Title",
+      goal: "Goal",
+      goalHint: "What to achieve, in a paragraph",
+      acceptance: "Acceptance criteria",
+      acceptanceHint: "What counts as done; checked one by one at review",
+      result: "Result",
+      owner: "Owner",
+      noOwner: "Unassigned",
+      parent: "Parent ticket",
+      noParent: "None",
+      notify: "Notify",
+      notifyHint:
+        "Comma-separated principals, e.g. agent:ceo, user:alice; notified on status changes",
+      priority: "Priority",
+      due: "Due",
+      noDue: "None",
+      initiator: "Initiator",
+      blocked: "Blocked",
+      blockedReason: "Blocked reason",
+      blockedBy: "Waiting on",
+      blockedTooltip: (reason: string, by: string): string =>
+        `Blocked: ${reason} (waiting on ${by})`,
+      unblock: "Unblock",
+      unblockConfirm: (title: string): string => `Unblock "${title}"?`,
+      block: "Mark blocked",
+      blockTitle: "Mark blocked",
+      blockReasonHint: "One line on what it is stuck on",
+      blockByHint: "The ticket or principal it waits on",
+      sessions: "Contributing sessions",
+      sessionsCount: (n: number): string => `${n} session${n === 1 ? "" : "s"}`,
+      running: "Running",
+      startSession: "Start another ticket session",
+      startSessionConfirm: (title: string): string =>
+        `Start another ticket session for "${title}"? The owner runs it.`,
+      started: "Ticket session started",
+      attachSession: "Attach an existing session",
+      attachPick: "Pick a session…",
+      attachNoMatch: "No matching session",
+      attached: "Attached",
+      openSession: "Open session",
+      progress: "Progress",
+      progressEmpty: "No progress recorded yet",
+      addProgress: "Add progress",
+      progressPlaceholder: "One line on what moved…",
+      children: "Child tickets",
+      childrenEmpty: "No child tickets",
+      cost: "Cost",
+      rolledUpCost: "Rolled-up cost",
+      moveTitle: "Move ticket",
+      moveConfirm: (title: string, column: string): string => `Move "${title}" to "${column}"?`,
+      rejectReason: "Rejection reason",
+      rejectReasonHint: "One line on why, recorded under the ticket's result",
+      moved: "Ticket moved",
+      invalid:
+        "This ticket is invalid: its status disagrees with its column, or its id is duplicated",
+      invalidFiles: "Ticket files that failed to parse",
+      edit: "Edit fields",
+      saveConfirm: (title: string): string =>
+        `Save the changes to "${title}"? This rewrites the ticket file.`,
+      saved: "Ticket saved",
+      created: "Ticket created",
+      detail: "Ticket detail",
+      dragHint: "Drag to another column to move it",
+      searchPlaceholder: "Search title or id",
+      searchNoMatch: "No matching tickets",
+      dropHere: "Drop here",
+      overdue: "Overdue",
+      summary: "Summary",
+      noGoal: "No goal yet",
+      noAcceptance: "No acceptance criteria yet",
+      noResult: "No result yet",
+      moveTo: "Move to…",
+      move: "Move",
+      copyId: "Copy ticket id",
+      invalidTickets: "Invalid tickets",
+      loadFailed: (error: string): string => `Could not load the board: ${error}`,
+    },
+    finance: {
+      title: "Finance",
+      info: "Budgets are set per employee and count the employee plus every subordinate; a period is a calendar month in the organization's timezone. Reaching 80% warns, reaching 100% pauses that employee's automatic triggers.",
+      period: "Period",
+      thisPeriod: "This period",
+      prevPeriod: "Previous period",
+      total: "Total",
+      unpriced: "* Some usage ran on a model without pricing; the cost is a lower bound",
+      budget: "Budget",
+      editBudget: "Edit budget",
+      budgetPlaceholder: "Unbounded",
+      clearBudget: "Clear",
+      budgetSaved: "Budget updated",
+      own: "Own spend",
+      cumulative: "Cumulative",
+      /** The spend tree reads cumulative against budget in one column; own spend rides in the row tooltip. */
+      cumulativeBudget: "Cumulative spend / budget",
+      ratio: "Ratio",
+      warned: "Warned",
+      paused: "Paused",
+      spendTree: "Spend tree",
+      spendTreeInfo:
+        "Expanded along the reporting line: cumulative spend includes every subordinate, and budget and ratio use the same measure.",
+      ticketsTable: "Ticket spend",
+      ticketsInfo:
+        "Each ticket's contributing-session cost; the rolled-up cost adds up along parent tickets. A session attached to several tickets is shared between them.",
+      ticketsEmpty: "No ticket spend this period",
+      rolledUp: "Rolled-up cost",
+      trend: "Trend",
+      alerts: "Alerts and pauses",
+      alertsEmpty: "No alerts this period",
+      alertWarned: (name: string, at: string): string =>
+        `${name} reached 80% of its budget at ${at}`,
+      alertPaused: (name: string, at: string): string =>
+        `${name} reached its budget at ${at}; automatic triggers paused`,
+      alertsHint:
+        "To lift a pause, raise the employee's budget or clear it; the next check resumes it automatically.",
+      /** The KPI row under the title. */
+      kpiTotal: "Total spend",
+      orgBudget: "Organization budget (CEO)",
+      kpiEmployees: "Employees",
+      budgetsSet: (n: number): string => `${n} with a budget`,
+      thresholds: "80% warns, 100% pauses",
+      kpiAlerts: "Alerts",
+      alertsSummary: (warned: number, paused: number): string =>
+        `${warned} warned · ${paused} paused`,
+      /** Column header explanations, and the tree's root mark. */
+      cumulativeInfo:
+        "The employee's own spend plus every subordinate's; budget and ratio use this measure.",
+      rolledUpInfo: "This ticket's cost plus every child ticket's.",
+      root: "Root",
+      /** The inline budget editor. */
+      budgetEmptyHint: "Leave empty for unbounded",
+      saveBudget: "Save budget",
+      cancelEdit: "Cancel",
+      editBudgetOf: (name: string): string => `Edit the budget of ${name}`,
+      /** The ticket table's owner column and row action. */
+      openTicket: "Open ticket",
+      /** The trend section. */
+      trendInfo:
+        "The daily cost of every session in the organization, by the organization's timezone; only days with spend are drawn.",
+      trendEmpty: "No spend recorded this period yet",
+      /** The alert list. */
+      alertsInfo:
+        "Every check compares cumulative spend with the budget: reaching 80% records a warning, reaching 100% pauses the employee's and its subordinates' automatic triggers; lifting the pause resumes them.",
+      pausedGroup: "Automatic triggers paused",
+      warnedGroup: "Warned",
+      warnedAt: (at: string): string => `reached 80% at ${at}`,
+      pausedAt: (at: string): string => `reached 100% at ${at}`,
+      /** A refetch failed while the last good data is still on screen. */
+      refreshFailed: "Refresh failed; showing the last loaded data",
+    },
+    channels: {
+      listTitle: "Channels",
+      drawerLabel: "Channel list",
+      allHands: "All hands",
+      mine: "My channels",
+      others: "Other channels",
+      archivedGroup: "Archived",
+      newChannel: "New channel",
+      noChannels: "No channels yet",
+      loadFailed: "Could not load the channels",
+      join: "Join",
+      joining: "Joining…",
+      joined: "Joined the channel",
+      mentionChip: "@me",
+      badgeUnread: (n: number): string => `${n} unread`,
+      badgeMentions: (n: number): string => `${n} mentioning me`,
+      streamLabel: (name: string): string => `Messages in ${name}`,
+      purpose: "Purpose",
+      purposeEmpty: "No purpose written yet",
+      memberCount: (n: number): string => `${n} member${n === 1 ? "" : "s"}`,
+      memberList: "Channel members",
+      invite: "Invite",
+      inviteTitle: "Invite to the channel",
+      inviteSearch: "Search employees and members",
+      inviteEmpty: "Nobody left to invite",
+      invited: (name: string): string => `Invited ${name}`,
+      leave: "Leave",
+      leaveTitle: "Leave the channel",
+      leaveConfirm: (name: string): string =>
+        `Leave "${name}"? You can still read it, but no @ will reach you and you cannot post until you join again.`,
+      left: "Left the channel",
+      channelMenu: "Channel actions",
+      rename: "Rename",
+      renameTitle: "Rename the channel",
+      editPurpose: "Edit purpose",
+      purposeTitle: "Edit the channel's purpose",
+      archive: "Archive",
+      unarchive: "Unarchive",
+      archiveTitle: "Archive the channel",
+      archiveConfirm: (name: string): string =>
+        `Archive "${name}"? It becomes read-only and folds away under Archived; you can unarchive it at any time.`,
+      archived: "Channel archived",
+      unarchived: "Channel unarchived",
+      archivedNotice: "This channel is archived and read-only. Unarchive it to post again.",
+      notMemberNotice: "You are not in this channel yet. Join it to post.",
+      channelLoadFailed: "Could not load the channel",
+      allHandsInfo:
+        "The all-hands channel is created with the organization: everyone in the organization is here — every employee, every Project member, and you, reading along — nobody can leave it and it cannot be archived. System notices — budget alerts and the like — are posted here.",
+      channelInfo:
+        "An invitation-only channel: an employee joins only when a member invites it, and an @ delivers within the channel's membership. People may join any channel themselves, and can read every channel.",
+      createTitle: "New channel",
+      creating: "Creating…",
+      created: "Channel created",
+      idField: "Channel id",
+      idHint: "2–64 characters: a lowercase letter, then lowercase letters, digits or underscores",
+      idReserved: "default_channel belongs to the all-hands channel",
+      idTaken: "That id is already taken",
+      nameField: "Display name",
+      nameHint: "Defaults to the id",
+      purposeHint: "One line on what this channel is for",
+      empty: "No messages yet",
+      emptyHint:
+        "Only an @ reaches an employee: @employee delivers to its desk session, @all to every member of the channel; a message without one is just a note.",
+      placeholder: "Type a message — Enter sends, Shift+Enter breaks the line, @ mentions a member",
+      send: "Send",
+      you: "You",
+      mentionAll: "Everyone",
+      mentionAllDesc: "Every member of the channel",
+      employees: "Employees",
+      members: "Members",
+      earlierDays: "Earlier days",
+      ticketRef: (id: string): string => `Ticket ${id}`,
+      sessionRef: "View session",
+      replyTo: "Reply to",
+      hop: (n: number): string => `Relay · hop ${n}`,
+      hopInfo:
+        "Sent automatically by an employee's work run, N relays down an @-chain: a message from a person or the calendar is hop 0, an employee's reply from the run it triggered is hop 1 (unmarked), the reply of the next employee it @-mentioned is hop 2 … At the organization's chain limit (3 by default) an @ is recorded but triggers nobody, so two employees cannot @ each other all night.",
+      hopSummary:
+        'A mentioned employee may @ somebody else in its reply, which is an @-chain: from hop 2 a message is marked "Relay · hop N", and at the organization\'s chain limit (3 by default) an @ is recorded but triggers nobody.',
+      today: "Today",
+      yesterday: "Yesterday",
+      noEarlier: "No earlier messages",
+      unreadDivider: "Unread",
+      newMessages: (n: number): string => `${n} new message${n === 1 ? "" : "s"}`,
+      mentionPanel: "Mention",
+      mentionsYou: "Mentions you",
+      systemMessage: "System message",
+      sentAt: (time: string): string => `Sent at ${time}`,
+      notices: {
+        employee_joined: (agent: string, title: string, manager: string): string =>
+          `${agent} joined as ${title}, reporting to ${manager}.`,
+        employee_left: (agent: string, manager: string): string =>
+          `${agent} left the organization; reports now go to ${manager}.`,
+        channel_created: (by: string): string => `${by} created the channel.`,
+        channel_archived: (by: string): string => `${by} archived the channel.`,
+        channel_unarchived: (by: string): string => `${by} unarchived the channel.`,
+        channel_joined: (principal: string): string => `${principal} joined the channel.`,
+        channel_invited: (by: string, principal: string): string =>
+          `${by} invited ${principal} to the channel.`,
+        channel_left: (principal: string): string => `${principal} left the channel.`,
+        channel_removed: (by: string, principal: string): string =>
+          `${by} removed ${principal} from the channel.`,
+        budget_warned: (
+          agent: string,
+          percent: string,
+          period: string,
+          cost: string,
+          budget: string,
+        ): string =>
+          `Budget warning: ${agent} has used ${percent}% of its ${period} budget (${cost} / ${budget} USD).`,
+        budget_paused: (
+          agent: string,
+          percent: string,
+          period: string,
+          cost: string,
+          budget: string,
+        ): string =>
+          `Budget pause: ${agent} reached ${percent}% of its ${period} budget (${cost} / ${budget} USD). Its calendar and its subordinates' are paused until the next month or a raised budget; mentions and direct conversations still work.`,
+        ticket_blocked: (ticket: string, title: string): string =>
+          `Ticket ${ticket} (${title}) is blocked.`,
+        ticket_done: (ticket: string, title: string): string =>
+          `Ticket ${ticket} (${title}) is done.`,
+        ticket_rejected: (ticket: string, title: string): string =>
+          `Ticket ${ticket} (${title}) was rejected.`,
+      },
+    },
+    /** The handbook page: the knowledge base directory, its index and its documents. */
+    handbook: {
+      info: "The company's knowledge base: the Markdown documents under handbook/. The index (README.md) is the page every trigger makes the employee Agent read first; the other documents are listed from it and read on demand.",
+      /** The pinned first row: the index, and why it is pinned. */
+      indexLabel: "Index · read first every run",
+      documents: "Documents",
+      /** The tree's own controls: closing every folder, and what a folder row's count means. */
+      collapseAll: "Collapse all",
+      documentsInFolder: (n: number): string => `${n} document${n === 1 ? "" : "s"}`,
+      noOtherDocuments: "No other documents yet. Create one and list it in the index.",
+      emptyDocument: "This document is still empty.",
+      newDocument: "New document",
+      creating: "Creating…",
+      pathField: "Path",
+      pathPlaceholder: "decisions/2026-09-02-hire-plan.md",
+      pathHint:
+        "Relative to handbook/, folders separated by /; each segment starts with a letter or digit and uses only letters, digits, . _ -; .md is added when the extension is left out.",
+      pathInvalid:
+        "Invalid path: each segment starts with a letter or digit and uses only letters, digits, . _ -, folders separated by /, at most eight levels.",
+      pathExists: "That document already exists.",
+      documentCreated: "Document created",
+      deleteDocument: "Delete document",
+      deleteConfirm: (path: string): string =>
+        `Delete ${path}? The document is removed from handbook/; the index entry pointing at it is not updated automatically.`,
+      documentDeleted: "Document deleted",
+      loadFailed: "Could not load the handbook",
+      documentLoadFailed: "Could not load the document",
+      /** A row's tooltip: when the file was last written, and its size. */
+      updatedAt: (time: string, size: string): string => `Updated ${time} · ${size}`,
+      /** Beside the editor's buttons: what the text is, and the shortcut. */
+      editorHint: "Markdown · Ctrl/⌘+S to save",
+    },
+  },
   errors: {
     networkError: "Network error, please check your connection",
     modelCredentialMissing: (modelId: string) =>
@@ -2818,6 +3937,23 @@ Scenarios:
         "Disable this channel's connection before clearing its credential.",
       messaging_disable_before_scan:
         "Disable this channel's connection before rebinding it by scan.",
+      company_mode_off: "Company mode is turned off on this server.",
+      org_not_found: "This organization no longer exists.",
+      org_exists: "That organization id is already taken.",
+      org_invalid:
+        "This organization's configuration needs repair; it accepts no changes until then.",
+      invalid_org_id:
+        "Invalid organization id: 2–64 characters, a lowercase letter first, then lowercase letters, digits or underscores.",
+      employee_not_found: "That Agent is not an employee of this organization.",
+      employee_exists: "That Agent is already an employee of this organization.",
+      calendar_event_exists: "A calendar event with that name already exists.",
+      calendar_event_not_found: "That calendar event no longer exists.",
+      desk_unavailable: "The desk session could not be opened.",
+      ticket_not_found: "That ticket no longer exists.",
+      ticket_invalid: "This ticket file needs repair; it accepts no changes until then.",
+      ticket_session_failed: "The ticket session could not be started.",
+      handbook_file_not_found: "That document no longer exists.",
+      handbook_index_required: "The handbook index (README.md) cannot be deleted.",
     },
   },
 

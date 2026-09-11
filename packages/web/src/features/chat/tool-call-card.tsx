@@ -287,7 +287,6 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
   const { toolAliases } = useTheme();
   // Matched by the current origin chain + toolCallId: prevents parent/child session tool_call_id collisions from lighting each other up.
   const pending = ctx.pendingApprovals.get(approvalKey(ctx.origin, item.toolCallId));
-
   const preview = previewArguments(item.name, item.argumentsText);
   // Display-only, and confined to the two render expressions below: every name-keyed
   // decision on this card (DESCRIBED_TOOLS, FILE_TOOLS, the argument previews, the subagent
@@ -297,6 +296,11 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
   // The tool's own name stays one hover away, for matching a Trace or writing a permission
   // rule; when nothing was aliased the tooltip would only repeat the visible text.
   const nameTitle = displayName === item.name ? undefined : item.name;
+  const approvalLabel = pending?.approvalTarget
+    ? `${displayName || item.name} → ${pending.approvalTarget.name}${
+        pending.approvalTarget.permission ? ` (${pending.approvalTarget.permission})` : ""
+      }`
+    : displayName || item.name || S.chat.unknownTool;
   // Escape sequences are stripped at render time only (the stored stream/trace data keeps its
   // raw bytes): hardened child envs should no longer produce any, but historical traces and
   // force-color programs still can (#102). Memoized — the aggregated output can be large and
@@ -492,7 +496,7 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
               title={nameTitle}
               className="shrink-0 rounded-md bg-white px-1.5 py-0.5 font-mono text-xs font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
             >
-              {displayName || S.chat.unknownTool}
+              {approvalLabel}
             </span>
             <span className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs text-gray-600 sm:truncate dark:text-gray-400">
               {preview}

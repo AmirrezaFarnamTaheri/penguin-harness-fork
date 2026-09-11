@@ -16,6 +16,7 @@
     "pack:win": "node scripts/preflight.mjs && electron-builder --win"
   },
   "dependencies": {
+    "@penguinharness/agent-company": "workspace:*",
     "@penguinharness/agent-development": "workspace:*",
     "@penguinharness/agent-tuning": "workspace:*",
     "@penguinharness/continual-learning": "workspace:*",
@@ -27,7 +28,8 @@
     "@penguinharness/software-development": "workspace:*",
     "@penguinharness/use-bento-slides": "workspace:*",
     "@penguinharness/use-firecrawl": "workspace:*",
-    "@penguinharness/use-claude-code": "workspace:*"
+    "@penguinharness/use-claude-code": "workspace:*",
+    "@penguinharness/use-spexcode": "workspace:*"
   },
   "devDependencies": {
     "@prismshadow/penguin-cli": "workspace:*",

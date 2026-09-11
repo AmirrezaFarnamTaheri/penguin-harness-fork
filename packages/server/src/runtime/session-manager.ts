@@ -55,6 +55,7 @@ import type {
   SubagentMessageOutcome,
   TextPayload,
   ThinkingLevelName,
+  ToolApprovalTarget,
   ToolDetachResult,
 } from "@prismshadow/penguin-core";
 import type {
@@ -151,7 +152,8 @@ export interface RuntimeSession {
     extras?: Record<string, string | number | boolean>,
   ): Promise<{ context?: string } | null>;
   /** A tool's permission level from the running context's toolset (core `Session.toolPermission`; strict-tier — rebuilt at rotation). */
-  toolPermission(name: string): "r" | "rw" | undefined;
+  toolPermission(name: string, rawArguments?: string): "r" | "rw" | undefined;
+  toolApprovalTarget?(name: string, rawArguments?: string): ToolApprovalTarget | undefined;
   /**
    * Out-of-band one-shot request for title generation (core `Session.generateTitle`,
    * writes no history/Trace). Material defaults to what the Session collects itself
@@ -827,13 +829,18 @@ export class SessionManager {
     return makeApprove({
       // Re-reads approval_mode from the DB on every decision (a PATCH takes effect immediately).
       getMode: () => this.deps.sessions.findById(entry.sessionId)?.approvalMode ?? "always-ask",
-      toolPermission: (name) => entry.session.toolPermission(name),
+      toolPermission: (name, rawArguments) => entry.session.toolPermission(name, rawArguments),
+      toolApprovalTarget: (name, rawArguments) =>
+        entry.session.toolApprovalTarget?.(name, rawArguments),
       registry: entry.approvals,
       publishRequest: (pending) =>
         this.publishEvent(entry, {
           type: "approval_request",
           toolCall: pending.toolCall,
           ...(pending.origin !== undefined ? { origin: pending.origin } : {}),
+          ...(pending.approvalTarget !== undefined
+            ? { approvalTarget: pending.approvalTarget }
+            : {}),
         }),
     });
   }

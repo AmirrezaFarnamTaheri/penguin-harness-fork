@@ -72,10 +72,11 @@ Each tool is described by one `ToolDefinitionConfig`:
 
 ## Built-in tools
 
-There are 7 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
+There are 8 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
 
 | Tool | Permission | Timeout (ms) | Purpose |
 | --- | --- | --- | --- |
+| `web_search` | r | 30000 | Searches the live web via the host's configured SearXNG service |
 | `exec_command` | rw | 120000 | Run a shell command in the Workspace via `bash -lc`, streaming stdout/stderr |
 | `input_command` | rw | 120000 | Drive a command session by `process_id`: write stdin, send Ctrl-C, poll output, or terminate it (`kill: true`) |
 | `read_file` | r | 60000 | Read a text file as a line-numbered (`cat -n`) window paged by offset/limit, or an image (path or URL) as image content — described in text by the `vision_model` for a text-only model |
@@ -88,7 +89,20 @@ Note that an existing agent's persisted `tools.builtin` list is frozen as writte
 
 ### Call descriptions
 
-The command/subagent tools (`exec_command`, `input_command`, `run_subagent`, `input_subagent`) take a `description` argument: one model-written sentence about what the call is doing, shown by the CLI and Web UI while the call runs. The argument is declared as a normal `description` property in each entry's `parameters` in `system_config.yaml` (tool schemas live entirely in the editable config), and it is **required** there — a tool that offers the argument always gets one, so the frontends can pick a call's display form from the schema instead of guessing while the arguments stream; the model is also asked to emit it first. The per-entry `call_description` field toggles the whole thing — missing = kept, `call_description: false` filters the property (and its `required` entry) out of the schema at assembly time (in-memory only, the YAML is never rewritten). The file tools don't take it — their `file_path` argument is self-describing.
+The search/command/subagent tools (`web_search`, `exec_command`, `input_command`, `run_subagent`, `input_subagent`) take a `description` argument: one model-written sentence about what the call is doing, shown by the CLI and Web UI while the call runs. The argument is declared as a normal `description` property in each entry's `parameters` in `system_config.yaml` (tool schemas live entirely in the editable config), and it is **required** there — a tool that offers the argument always gets one, so the frontends can pick a call's display form from the schema instead of guessing while the arguments stream; the model is also asked to emit it first. The per-entry `call_description` field toggles the whole thing — missing = kept, `call_description: false` filters the property (and its `required` entry) out of the schema at assembly time (in-memory only, the YAML is never rewritten). The file tools don't take it — their `file_path` argument is self-describing.
+
+### Web search
+
+`web_search` calls a SearXNG instance's JSON `/search` route and returns up to 10 normalized
+results. Parameters include required `query`, `limit` (1–10, defaults to 5), `language`,
+`safesearch` (0–2), and `time_range` (`day` / `month` / `year`). The response size is capped at
+2 MiB; only HTTP(S) result URLs are preserved and results are deduplicated by URL. Titles and
+snippets are clearly labeled as untrusted external content.
+
+The SearXNG endpoint is host configuration and never a tool argument. Resolution order is an SDK
+`EnvironmentServices.webSearch.endpoint` override, the Agent Vault's `SEARXNG_ENDPOINT`, the
+process environment's `SEARXNG_ENDPOINT`, then `http://127.0.0.1:8080`. The instance must include
+`json` in SearXNG's `search.formats`; an HTTP 403 response includes this diagnostic.
 
 ### Command sessions
 
@@ -275,6 +289,10 @@ The `transport` field may be omitted: an entry with `command` infers `stdio`, on
 
 ```yaml
 tools:
+  # direct (default): all native; auto: gateway a large MCP catalog; lazy: gateway all tools.
+  toolExposure: direct
+  # Auto only; 0 always selects the gateway. Default: 2048 estimated tokens.
+  toolExposureThresholdTokens: 2048
   mcpServers:
     - name: filesystem
       config:
@@ -290,7 +308,10 @@ tools:
 
 Behavior:
 
-- Connecting is **lazy**: Session creation returns instantly, and the first `run()` connects all Servers in parallel and discovers tools once — the wait streams as one `mcp_connect_begin` / `mcp_connect_end` pair (frontends show a connecting status; the end carries the overall status plus per-Server results), and the full tool definitions follow as a `tool_list_ready` event (see [OmniMessage](/omni-message)); in the Trace all three land after the run's input, inside the new turn. Aborting mid-connect **cancels** the attempt — the next `run()` reconnects. The result is a snapshot for the model context: `tools/list_changed` notifications are ignored, and when a compaction opens the next context the Servers reconnect from the then-current config, bracketed by the same event pair (see [Compaction](/agent-loop)). An unreachable Server or invalid entry only produces a stderr warning and is skipped — **the session is never blocked**.
+- Connecting is **lazy** in all three exposure modes: Session creation returns instantly, and the first `run()` connects all Servers in parallel and discovers their tools / catalog — the wait streams as one `mcp_connect_begin` / `mcp_connect_end` pair (frontends show a connecting status; the end carries the overall status plus per-Server results), and the full tool definitions follow as a `tool_list_ready` event (see [OmniMessage](/omni-message)); in the Trace all three land after the run's input, inside the new turn. Aborting mid-connect **cancels** the attempt — the next `run()` reconnects. Direct exposure keeps that initial catalog as a Session-lifetime snapshot. Auto listens for `tools/list_changed` only when it selected the gateway, while Lazy always refreshes only its private catalog. When a compaction opens the next context the Servers reconcile from the then-current config (see [Compaction](/agent-loop)). An unreachable Server or invalid entry only produces a stderr warning and is skipped — **the session is never blocked**.
+- `toolExposure: direct` (the default) puts every configured built-in and initially discovered MCP definition in `tool_list_ready` and each model Request. `auto` keeps built-ins native and, when the initial MCP definitions reach `toolExposureThresholdTokens` (default 2,048), replaces the MCP portion with fixed `search_tools` and `call_tool` gateways; `0` always selects the gateway. This decision is frozen for the Session. `lazy` keeps both built-in and MCP tools in the private catalog and exposes only the same two gateways. The model explicitly searches, selects a returned contract, and passes its reference and schema-valid arguments to the execution gateway. MCP additions, removals, and contract changes update only the private catalog in gateway modes. Unchanged contracts keep their references; Schema, permission, or description changes invalidate the old reference and return a replacement; removal returns `tool_removed`. The gateway resolves the effective permission and preserves the target's timeout and output policy. A manual approval shows the registry-resolved target (`call_tool → mcp__server__tool (rw)`) rather than trusting the model's display name. Gateway modes reduce schema context and avoid tool-list-driven prefix invalidation, while discovery of a cold tool can require an extra model round.
+- Exposure never switches when the catalog changes during a Session. Raw tool count is a poor cost proxy because schemas vary widely in size, so `auto` decides from the initial serialized-schema estimate and freezes the result before the first model Request. Prefer `direct` for a small, frequently used catalog, `auto` for most mixed workloads, and `lazy` only when built-in tools should also be loaded on demand.
+- Direct exposure skips MCP names that violate common model API function-name restrictions. Lazy mode can dispatch those names because they are carried as string data rather than registered as native functions.
 - Discovered tools join the flat tool namespace as `mcp__<server>__<tool>` and go through the same [execution contract](#execution-contract) (timeout, truncation, interruption) and [approval](#approval) flow as builtin tools.
 - Permission mapping: under the default `permission: auto`, a tool the Server annotates `readOnlyHint: true` is `r` (auto-approved by the read-only approval mode); everything else is `rw` — annotations are untrusted hints, so the default takes the restrictive direction. Setting the entry's `permission` to `r` or `rw` overrides the annotation for **every** tool of that Server, which is the way in for the many Servers that never set `readOnlyHint` and so land on `rw` wholesale.
 - What `permission` is: it fixes the level each of that Server's tools reports, and exactly one approval mode reads that level. Under `read-only` an `r` tool is auto-approved and an `rw` tool needs manual confirmation; `allow-all`, `deny-all` and `always-ask` never consult it, so marking an entry `rw` adds no prompt there. Beyond that the key does nothing: it does not sandbox the Server, does not restrict what its tools do when they run, is never sent to or verified against the Server, and the Server keeps whatever capabilities its transport gives it. Marking a Server `r` that can in fact write removes the confirmation `read-only` would have asked for.
