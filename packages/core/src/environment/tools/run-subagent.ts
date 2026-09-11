@@ -29,9 +29,10 @@
  */
 import { partialToolCallOutput, userText } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
-import { SUBAGENT_THINKING_LEVELS } from "../../interfaces/index.js";
+import { DETACHED_TOOL_NOTE_PREFIX, SUBAGENT_THINKING_LEVELS } from "../../interfaces/index.js";
 import type {
   EnvironmentServices,
+  SubagentKeyStrategy,
   ThinkingLevelName,
   ToolDefinitionConfig,
 } from "../../interfaces/index.js";
@@ -42,7 +43,7 @@ import {
   resultForSubagentExit,
 } from "./subagent/index.js";
 import { collectWindow } from "./subagent/collect.js";
-import { clampYield, reportLabel, tailForReport } from "./background/index.js";
+import { clampYield, collectUntil, reportLabel, tailForReport } from "./background/index.js";
 import { describeArgumentError } from "./tool-arguments.js";
 
 /** Tool name constant (used only within this tool module, never exposed to Environment). */
@@ -64,11 +65,12 @@ export function createSubagentTool(
   return {
     name: SUBAGENT_NAME,
     definition,
+    detachable: true,
     async *execute(
       args: Record<string, unknown>,
       ctx: ToolExecutionContext,
     ): AsyncGenerator<OmniMessage, ToolResult | void> {
-      const { toolCallId, signal, approve } = ctx;
+      const { toolCallId, signal, approve, detachSignal } = ctx;
       const fail = function* (msg: string): Generator<OmniMessage> {
         yield partialToolCallOutput({ eventType: "delta", output: msg, toolCallId });
       };
@@ -134,6 +136,13 @@ export function createSubagentTool(
         return { stopReason: "fatal" };
       }
 
+      const apiKey = typeof args.api_key === "string" ? args.api_key : undefined;
+      const apiKeys = Array.isArray(args.api_keys)
+        ? (args.api_keys as unknown[]).filter((k): k is string => typeof k === "string")
+        : undefined;
+      const rawStrategy = typeof args.key_strategy === "string" ? args.key_strategy : undefined;
+      const keyStrategy = rawStrategy as SubagentKeyStrategy | undefined;
+
       // Spawn the child Session (precheck errors such as exceeding the depth limit or a
       // nonexistent agent are expressed as a throw).
       let session: ManagedSubagentSession;
@@ -143,6 +152,9 @@ export function createSubagentTool(
           ...(modelId !== undefined ? { modelId } : {}),
           ...(provider !== undefined ? { provider } : {}),
           ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+          ...(apiKey !== undefined ? { apiKey } : {}),
+          ...(apiKeys !== undefined ? { apiKeys } : {}),
+          ...(keyStrategy !== undefined ? { keyStrategy } : {}),
         });
         session = new ManagedSubagentSession(handle, {
           // Spawn-time owner for the revival tombstone (undefined = a self-spawn of this Agent).
@@ -190,32 +202,73 @@ export function createSubagentTool(
         };
       }
 
-      // An interruption within the startup window kills the child session (consistent with
-      // exec_command); once switched to background, this listener is removed in `finally`.
-      const onAbort = (): void => session.kill();
+      // When interrupted, abort the run instead of killing the entire session so it remains resumable.
+      const onAbort = (): void => {
+        session.abortRun();
+      };
       let registered = false;
       signal?.addEventListener("abort", onAbort, { once: true });
+      const windowSignal = collectUntil(signal, detachSignal);
       try {
         session.startRun([userText(prompt, "parent_agent")]);
         yield* collectWindow(session, {
           yieldMs,
           toolCallId,
-          ...(signal ? { signal } : {}),
+          ...(windowSignal ? { signal: windowSignal } : {}),
           ...(approve ? { approve } : {}),
         });
 
-        if (signal?.aborted) return { stopReason: "aborted" };
-        if (session.running) {
-          // Still running once the window expires: register as a background session, returning
-          // subagent_id for input_subagent to continue accessing it.
+        if (signal?.aborted) {
           const id = manager.register(session);
           registered = true;
+          return {
+            stopReason: "aborted",
+            note: `[subagent interrupted with subagent_id ${id}; use input_subagent with resume: true to resume]`,
+          };
+        }
+        if (session.running) {
+          // Still running: register as a background session, returning subagent_id for
+          // input_subagent to continue accessing it.
+          const id = manager.register(session);
+          registered = true;
+          if (detachSignal?.aborted) {
+            // Detached by the user mid-window. The child now outlives this call, so it needs
+            // everything the collect window was giving it: a standing approval sink (without
+            // one its next read-write tool parks at the approval queue forever, since no
+            // window will ever attach another) and a live message tap, so it keeps streaming
+            // to the frontend past this turn's end. Its completion is reported like a
+            // run_in_background launch's — nobody is going to poll for it.
+            armSubagentDoneReport(session, id, prompt, services);
+            if (approve) session.setPersistentApprovalSink(approve);
+            const forward = services?.backgroundForward;
+            if (forward) session.setMessageTap(forward);
+            // No approval hint here, exactly as on a run_in_background launch: the standing
+            // sink just attached carries a queued request to the user itself, so "poll to
+            // review" would send the model after work it is not doing — the deadline
+            // promotion below keeps the hint because it has no such sink.
+            return {
+              stopReason: "completed",
+              note:
+                `${DETACHED_TOOL_NOTE_PREFIX} with subagent_id ${id}; its completion will arrive ` +
+                `as a user message — no need to poll. Use input_subagent to interact ` +
+                `(abort: true stops its current run)]`,
+            };
+          }
           return {
             stopReason: "completed",
             note:
               `[subagent running with subagent_id ${id}; use input_subagent to poll for progress ` +
               `or send a follow-up prompt]` +
               approvalHint(session),
+          };
+        }
+        if (session.exit?.status === "failed") {
+          // Failed within window: register so it can be inspected or resumed with input_subagent
+          const id = manager.register(session);
+          registered = true;
+          return {
+            stopReason: "fatal",
+            note: `[subagent failed with subagent_id ${id}; use input_subagent with resume: true to retry/resume] ${session.exit.note ?? ""}`,
           };
         }
         // Finished within the window: report the terminal state; releasing the child session is

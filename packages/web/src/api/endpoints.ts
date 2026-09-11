@@ -85,6 +85,9 @@ import type {
   ScheduleItem,
   SchedulesResponse,
   ScheduleUpsertRequest,
+  ProxyProbeProvider,
+  ProxyProbeResponse,
+  ProxyProbeTargetsResponse,
   ServerSettingsResponse,
   ServerSettingsUpdateRequest,
   SessionCategory,
@@ -194,6 +197,22 @@ export const adminGetSettings = () => apiFetch<ServerSettingsResponse>("/api/adm
 export const adminPutSettings = (body: ServerSettingsUpdateRequest) =>
   apiFetch<ServerSettingsResponse>("/api/admin/settings", { method: "PUT", body });
 
+/**
+ * What the reachability probe would request — name and exact URL per provider — without
+ * requesting it. Served rather than held as a frontend constant so the listed URLs cannot
+ * drift from the ones actually fetched.
+ */
+export const adminGetProxyProbeTargets = () =>
+  apiFetch<ProxyProbeTargetsResponse>("/api/admin/settings/proxy-probe");
+
+/**
+ * Measures the server's own outbound path to ONE of those targets, unauthenticated. One
+ * request per provider so each row can be filled the moment its own answer arrives; the
+ * provider id is the only thing sent, and the server matches it against the same fixed list.
+ */
+export const adminProbeProxy = (provider: ProxyProbeProvider) =>
+  apiFetch<ProxyProbeResponse>(`/api/admin/settings/proxy-probe/${provider}`, { method: "POST" });
+
 // Project & members --------------------------------------------------------------
 
 export const listProjects = () => apiFetch<ProjectsResponse>("/api/projects");
@@ -296,6 +315,29 @@ export const detectVision = (projectId: string, body: ModelVisionDetectRequest) 
     `/api/projects/${encodeURIComponent(projectId)}/models/detect-vision`,
     { method: "POST", body },
   );
+
+/** Fetches health telemetry for a model's configured API keys (or all models if omitted). */
+export const getModelKeyHealth = (projectId: string, provider?: string, modelId?: string) => {
+  const query =
+    provider && modelId
+      ? `?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`
+      : "";
+  return apiFetch<
+    import("../features/models/model-keys-health").ModelKeyHealthReportDto & {
+      reports?: import("../features/models/model-keys-health").ModelKeyHealthReportDto[];
+    }
+  >(`/api/projects/${encodeURIComponent(projectId)}/models/keys/health${query}`);
+};
+
+/** Resets rate limits and eviction status for a model's API keys. */
+export const resetModelKeys = (projectId: string, provider?: string, modelId?: string) =>
+  apiFetch<{
+    ok: boolean;
+    report?: import("../features/models/model-keys-health").ModelKeyHealthReportDto;
+  }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`, {
+    method: "POST",
+    body: provider && modelId ? { provider, modelId } : {},
+  });
 
 // Provider key minting (owner) ----------------------------------------------------------
 
@@ -728,6 +770,17 @@ export const postApproval = (
     { method: "POST", body },
   );
 
+/**
+ * Hands one EXECUTING tool call back as a background task, so the turn closes and the
+ * conversation carries on (404 tool_call_not_found when the call already finished — a benign
+ * race the caller just ignores; 409 tool_not_detachable when the tool has no background form).
+ */
+export const postToolCallBackground = (sessionId: string, toolCallId: string) =>
+  apiFetch<void>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/tool-calls/${encodeURIComponent(toolCallId)}/background`,
+    { method: "POST", body: {} },
+  );
+
 export const postAbort = (sessionId: string) =>
   apiFetch<void>(`/api/sessions/${encodeURIComponent(sessionId)}/abort`, {
     method: "POST",
@@ -778,6 +831,13 @@ export const abortSubagent = (sessionId: string, childSessionId: string) =>
   apiFetch<void>(
     `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childSessionId)}/abort`,
     { method: "POST", body: {} },
+  );
+
+/** Resume an interrupted or failed subagent child: resumes the session carrying over state. */
+export const resumeSubagent = (sessionId: string, childSessionId: string, text?: string) =>
+  apiFetch<SubagentMessageResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childSessionId)}/resume`,
+    { method: "POST", body: text ? { text } : {} },
   );
 
 /** Recall an undelivered steering message back to the composer (#287): returns its original content; 409 not_pending once it was delivered to the model. */
@@ -968,6 +1028,40 @@ export const getUsage = (
       provider: params.provider,
       modelId: params.modelId,
     },
+  });
+
+export interface KeyHealthItem {
+  maskedKey: string;
+  status: "healthy" | "cooldown" | "evicted";
+  isFailed: boolean;
+  cooldownRemainingMs: number;
+  successCount: number;
+  failureCount: number;
+  lastUsedAt?: number;
+  activeLeases?: number;
+}
+
+export interface ModelKeyHealthReport {
+  modelRef: string;
+  totalKeys: number;
+  healthyCount: number;
+  cooldownCount: number;
+  evictedCount: number;
+  keys: KeyHealthItem[];
+}
+
+export interface ModelKeyHealthListResponse {
+  reports: ModelKeyHealthReport[];
+}
+
+/** Resets cooldown and eviction status for a model's keys. */
+export const resetModelKeyHealth = (
+  projectId: string,
+  body?: { provider?: string; modelId?: string; modelRef?: string },
+) =>
+  apiFetch<{ ok: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`, {
+    method: "POST",
+    body: body ?? {},
   });
 
 // Agent deletion & Workspace files --------------------------------------------------

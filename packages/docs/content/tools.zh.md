@@ -168,9 +168,9 @@ POSIX 上 Ctrl-C 向会话进程组发送 `SIGINT`，中断前台命令。Window
 
 ### Subagent
 
-`run_subagent` 把一段能一次说清的子任务交给子 Agent 执行，同样是两段式：前台窗口(默认 300000ms)过后转入后台并返回 `subagent_id`，由 `input_subagent` 驱动；子 Agent 的待审批项会在轮询等待期间浮出。`input_subagent` 覆盖四种手势：`prompt` 为空仅轮询；子会话**运行中**发 `prompt` 即中途插话（与用户对主会话的运行中 steering 同一机制——在子会话下一步以 `[user_steering]` 消息送达，写入子 Trace、sender 记为 `parent_agent`）；空闲时发 `prompt` 即在同一会话上续跑一轮；`abort: true` 只停止子会话**当前这一轮**——会话保留、可继续插话或续跑，与 `prompt` 同给即打断并改道。`input_subagent` 每次访问的模型面输出是子会话**最近一条完整回复**——「它最后说了什么」的幂等快照，而非增量排空。传 `run_in_background: true` 则启动即返回 `subagent_id`，模型发起的每轮完成都以自动 user message 送达（面板发起的轮与被显式 abort 的轮不回报；见[后台完成回报](#后台完成回报)）。**Subagent 没有 kill**：与主 Agent 一样，子会话永不销毁——释放空闲会话只是腾出并发额度，已释放的 `subagent_id` 在再次收到消息时**自动复活**（模型访问与面板走同一条 resume 路径）。
+`run_subagent` 把一段能一次说清的子任务交给子 Agent 执行，同样是两段式：前台窗口(默认 300000ms)过后转入后台并返回 `subagent_id`，由 `input_subagent` 驱动；子 Agent 的待审批项会在轮询等待期间浮出。`input_subagent` 覆盖五种手势：`prompt` 为空仅轮询；子会话**运行中**发 `prompt` 即中途插话（与用户对主会话的运行中 steering 同一机制——在子会话下一步以 `[user_steering]` 消息送达，写入子 Trace、sender 记为 `parent_agent`）；空闲时发 `prompt` 即在同一会话上续跑一轮；`abort: true` 只停止子会话**当前这一轮**——会话保留、可继续插话、恢复或续跑；`resume: true` 则从中断或失败位置**断点续跑**子会话（可同时附带 `prompt` 进行重定向或补充说明）。`input_subagent` 每次访问的模型面输出是子会话**最近一条完整回复**——「它最后说了什么」的幂等快照，而非增量排空。传 `run_in_background: true` 则启动即返回 `subagent_id`，模型发起的每轮完成都以自动 user message 送达（面板发起的轮与被显式 abort 的轮不回报；见[后台完成回报](#后台完成回报)）。**Subagent 没有 kill**：与主 Agent 一样，子会话永不销毁——释放空闲会话只是腾出并发额度，已释放的 `subagent_id` 在再次收到消息时**自动复活**（模型访问与面板走同一条 resume 路径）。中断或失败的子代理会完整保留上下文与运行历史，随时可供恢复。
 
-Web App 的智能体面板用**与主对话相同的 composer**（子会话变体）驱动选中的子会话：正文、技能与 slash 技能命令、思考等级选择器（钉在子会话上，从其下一个模型上下文生效）、上下文圆环（子会话自身用量）、锁定模型徽标，以及审批模式选择——它读写的是父会话的模式，子会话审批本就按其判定。发消息就是对子会话的一次用户输入，无论其状态如何：运行中即插话，空闲即续跑一轮，会话已被释放则**复活**——服务端按 resume 口径恢复该子 Session（沿用其历史、模型与 Workspace）并重新纳管，对话直接继续。操作按钮的停止面只中止子会话当前这一轮。这一切与 `input_subagent` 收敛到 core 的同一通道；面板的运行标识以服务端实况为准，不再从对话文本推断。
+Web App 的智能体面板用**与主对话相同的 composer**（子会话变体）驱动选中的子会话：正文、技能与 slash 技能命令、思考等级选择器（钉在子会话上，从其下一个模型上下文生效）、上下文圆环（子会话自身用量）、锁定模型徽标，以及审批模式选择——它读写的是父会话的模式，子会话审批本就按其判定。发消息就是对子会话的一次用户输入，无论其状态如何：运行中即插话，空闲即续跑一轮，失败或中断时可点击**恢复**（Resume）按钮断点续跑，会话已被释放则**复活**——服务端按 resume 口径恢复该子 Session（沿用其历史、模型与 Workspace）并重新纳管，对话直接继续。操作按钮的停止面只中止子会话当前这一轮。这一切与 `input_subagent` 收敛到 core 的同一通道；面板的运行标识以服务端实况为准，不再从对话文本推断。
 
 ```ts
 // run_subagent
@@ -188,8 +188,9 @@ Web App 的智能体面板用**与主对话相同的 composer**（子会话变�
 // input_subagent
 {
   subagent_id: string;     // 必填:run_subagent 返回的后台 Subagent id
-  prompt?: string;         // 运行中即插话(steering);空闲时即续跑一轮;缺省仅轮询
+  prompt?: string;         // 运行中即插话(steering);空闲时即续跑一轮;断点恢复时提供追加指引;缺省仅轮询
   abort?: boolean;         // 停止子会话当前这一轮(会话保留,被中止的轮不发完成回报);与 prompt 同给即打断并改道
+  resume?: boolean;        // true = 从中断或失败位置断点恢复子会话运行
   yield_time_ms?: number;  // 等待时长;有追加默认 300000,空轮询默认 10000
   description: string;     // 开关开启时必填
 }
@@ -203,7 +204,7 @@ Web App 的智能体面板用**与主对话相同的 composer**（子会话变�
 
 ### 后台完成回报
 
-以 `run_in_background: true` 启动的任务在结束时，以**Harness 注入的 user message** 回报完成——模型无需轮询。消息以 `[background_task_done]` 标记块开头（kind、id、status、一行 detail），其后是任务内容与尚未送达输出的尾部（上限 4000 字符；Web App 将标记块折叠为一行提示）。其 `text` payload 带 `sender: "harness"`，在 Trace 中与真人输入相区分（见 [OmniMessage](/omni-message)）。
+以 `run_in_background: true` 启动的任务，以及用户在 Web App 的工具调用行上转入后台的调用，都在结束时以**Harness 注入的 user message** 回报完成——模型无需轮询。消息以 `[background_task_done]` 标记块开头（kind、id、status、一行 detail），其后是任务内容与尚未送达输出的尾部（上限 4000 字符；Web App 将标记块折叠为一行提示）。其 `text` payload 带 `sender: "harness"`，在 Trace 中与真人输入相区分（见 [OmniMessage](/omni-message)）。
 
 送达时机：Task 进行中时，回报搭乘下一个 turn 边界——即使最终回复已在流式输出，Task 也会为回应它再延续一个 turn。Session 空闲时，托管 Server 自动以该回报发起新 Task（SDK 嵌入方可订阅 `Session.onBackgroundNotice` / `takeBackgroundNotices`，否则回报并入下一次 run 的输入）。经 `input_command` 的 `kill` 终止的命令不发回报——该调用自身的结果已说明结局；被显式 `abort` 结束的子会话轮同样不发（打断者当场读到结局）。回报只覆盖**模型自己发起的轮**——`run_in_background` 的启动轮与 `input_subagent` 的续跑轮；用户从智能体面板发起的轮是用户与子会话自己的对话，不发回报（该轮答案文本留在模型面缓冲，下次轮询照常取得）。
 

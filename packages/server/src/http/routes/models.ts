@@ -94,7 +94,10 @@ function parseModelsUpdate(body: Record<string, unknown>): ModelsUpdateRequest {
       if (typeof m.displayName !== "string" || m.displayName.length > 100) {
         throw badRequest(`models[${i}].displayName must be a string of at most 100 characters.`);
       }
-      if (m.displayName) entry.displayName = m.displayName;
+      // The empty string is carried through rather than dropped: an absent field means
+      // "inherit the built-in catalog's name" and an empty one means "the user cleared it",
+      // and the service cannot tell those apart if the validator collapses them here.
+      entry.displayName = m.displayName;
     }
     // A key change (either the provider group or the upstream id) goes through renamedFrom's paired old reference; unknown fields are ignored.
     if (m.renamedFrom !== undefined) {
@@ -354,6 +357,88 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
       if (body.clientType) req.clientType = body.clientType;
     }
     return c.json(await deps.projectConfigService.detectVision(projectId, req));
+  });
+
+  /**
+   * Health report for API keys of a configured model (members may read).
+   */
+  app.get("/keys/health", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const provider = c.req.query("provider");
+    const modelId = c.req.query("modelId");
+    const modelRefQuery = c.req.query("modelRef");
+
+    let targetRef: string | undefined;
+    if (provider && modelId) {
+      targetRef = `${provider}/${modelId}`;
+    } else if (modelRefQuery) {
+      targetRef = modelRefQuery;
+    }
+
+    if (targetRef) {
+      const raw = await deps.projectConfigService.readRaw(projectId);
+      const models = Array.isArray(raw.models) ? raw.models : [];
+      const entry = models.find((m: unknown) => {
+        if (typeof m !== "object" || m === null) return false;
+        const rec = m as Record<string, unknown>;
+        if (provider && modelId) {
+          return rec.provider === provider && rec.model_id === modelId;
+        }
+        return `${rec.provider}/${rec.model_id}` === targetRef;
+      }) as Record<string, unknown> | undefined;
+      if (entry) {
+        const creds = entry.api_keys ?? entry.api_key;
+        if (creds) {
+          deps.keyHealthService.getRotator(projectId, targetRef, creds as string | string[]);
+        }
+      }
+      return c.json(deps.keyHealthService.getKeyHealth(projectId, targetRef));
+    }
+
+    const raw = await deps.projectConfigService.readRaw(projectId);
+    const models = Array.isArray(raw.models) ? raw.models : [];
+    const reports = [];
+    for (const item of models) {
+      if (typeof item === "object" && item !== null) {
+        const rec = item as Record<string, unknown>;
+        if (typeof rec.provider === "string" && typeof rec.model_id === "string") {
+          const ref = `${rec.provider}/${rec.model_id}`;
+          const creds = rec.api_keys ?? rec.api_key;
+          if (creds) {
+            deps.keyHealthService.getRotator(projectId, ref, creds as string | string[]);
+          }
+          reports.push(deps.keyHealthService.getKeyHealth(projectId, ref));
+        }
+      }
+    }
+    return c.json({ reports });
+  });
+
+  /**
+   * Resets cooldown and eviction status for a model's keys. Requires project ownership.
+   */
+  app.post("/keys/reset", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const body = (await readJson(c)) as Record<string, unknown>;
+    const provider = typeof body.provider === "string" ? body.provider : undefined;
+    const modelId = typeof body.modelId === "string" ? body.modelId : undefined;
+    const modelRef = typeof body.modelRef === "string" ? body.modelRef : undefined;
+
+    let targetRef: string | undefined;
+    if (provider && modelId) {
+      targetRef = `${provider}/${modelId}`;
+    } else if (modelRef) {
+      targetRef = modelRef;
+    }
+
+    if (targetRef) {
+      deps.keyHealthService.resetKeyHealth(projectId, targetRef);
+      return c.json({ ok: true, report: deps.keyHealthService.getKeyHealth(projectId, targetRef) });
+    }
+
+    return c.json({ ok: true });
   });
 
   return app;

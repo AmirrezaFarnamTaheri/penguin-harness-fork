@@ -68,7 +68,7 @@ curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
 | --- | --- | --- |
 | POST | /api/auth/login | 登录：`{userId, password}` → `{user}` |
 | POST | /api/auth/logout | 退出登录，返回 204 |
-| GET | /api/auth/claim?token=… | 兑换登录链接（首次登录链接，或桌面 shell 的一次性 token）：种下 Cookie 并跳转到 `/` |
+| GET | /api/auth/claim?token=… | 兑换登录链接（首次登录链接，或桌面 shell 的一次性 token）：种下 Cookie 并跳转到 `/`；链接无效或已被使用时改为跳转 `/login?claimFailed=…`，由 Web App 说明如何获取新链接 |
 | GET | /api/install | 公开：`{installId}`——标识当前所服务数据根的不透明 id（`<root>/install-id`），在该根首次被使用时铸造。Web App 将其与自己存下的值比较，不一致时清除浏览器侧那些引用服务端实体的 UI 状态，因此更换数据根后不会再留下旧的 Workspace、草稿与置顶。`null` 表示服务端无法确定该 id，此时客户端不应改动任何内容。 |
 | GET | /api/me | 当前用户信息 |
 | PUT | /api/me/password | 修改密码：`{oldPassword, newPassword}`；桌面会话与首次登录会话可省略 `oldPassword`——其当前密码是随机生成且从未展示过的 |
@@ -92,6 +92,8 @@ curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
 | --- | --- | --- |
 | GET | /api/admin/settings | 服务端全局设置：`{settings: {proxyForApp, proxyForAgent, proxyUrl, attachmentMaxMb, attachmentTotalMb}}` |
 | PUT | /api/admin/settings | 更新设置（字段可省略，省略即保持现值），返回更新后的完整设置 |
+| GET | /api/admin/settings/proxy-probe | 连通性测速的目标列表：`{targets: [{provider, url}]}`（不发起任何请求） |
+| POST | /api/admin/settings/proxy-probe/:provider | 沿服务端出站链路探测其中一个目标，不携带任何凭据：`{probe: {provider, url, outcome, ms, status?}}`；`outcome` 在收到任意 HTTP 响应时为 `reachable`，否则为 `timeout` / `dns` / `refused` / `tls` / `network`；列表之外的 id 返回 404 `probe_target_not_found` |
 
 代理设置为两个独立开关共享一个可选的显式地址；修改即时生效（对新发起的连接与新派生的子进程），无需重启：
 
@@ -174,8 +176,12 @@ curl -H "Authorization: Bearer $(cat ~/.penguin/data/api-token)" \
 | POST | /api/projects/:projectId/models/detect | 自定义 base URL 的协议自动检测：按 `openai-responses` → `ant-messages` → `openai-chat` 顺序探测并返回第一个被提供的协议：`{baseUrl, apiKey?, …}` → `{detected?, probes}` |
 | POST | /api/projects/:projectId/models/list | 新增分组导入所用的端点模型列表：按检测出的协议列出端点服务的全部模型 id：`{baseUrl, clientType, apiKey?}` → `{ok, models?, unsupported?, message?}` |
 | POST | /api/projects/:projectId/models/detect-vision | 视觉能力探测：用该模型的凭据发送一张 1x1 图片(一次真实计费的补全)：`{provider, modelId, apiKey?, baseUrl?, clientType?}` → `{outcome: supported\|unsupported\|failed, message?}` |
+| GET | /api/projects/:projectId/models/keys/health | 进程内脱敏 key 健康注册表。带 `?provider=…&modelId=…`（或 `?modelRef=provider/model`）时返回单个 `{modelRef,totalKeys,healthyCount,cooldownCount,evictedCount,keys}` 报表（包含各 key 的 `activeLeases`）；不带选择器时返回已配置模型的 `{reports}` |
+| POST | /api/projects/:projectId/models/keys/reset | 用 `{provider,modelId}` 或 `{modelRef}` 重置一个注册表条目，返回 `{ok:true,report}`；不带选择器时为空操作并返回 `{ok:true}` |
 
 所有涉及模型的接口都要求完整的 `(provider, modelId)` 二元组，不做任何推断：只带一半的请求一律 400，绝不会退化为一次查找。模型引用本身可省略的场景（创建 Session、定时任务）省略的是整对，两半都不给即选用 Project 默认模型。
+
+两条 key 健康路由均要求 Project 成员权限。它们只暴露脱敏后的 key（8 位及以下为 `****`，其余保留前三位和后四位），并汇报活跃并发租约数（`activeLeases`）。该注册表保存在内存中，服务重启后重新建立，且与活跃 Session 运行时自有的轮换器相互独立。重置操作清除注册表中的冷却/剔除状态、计数器、最后使用时间、活跃租约与轮换位置；它既不修改 Project 配置，也不会重建或重置活跃运行时。
 
 `PUT /models` 同时会使该 Project 已缓存的 Session 运行时失效（与 vault 更新同一套生效语义）：进行中的运行不做热替换，但该 Project 下任何 Session 的下一个 Task 都会重新装载并读到新的 `api_key` / `base_url`。它还会向该 Project 已打开的 Session 通道发布 `credentials_updated` 事件（见下文「流式推送」），且模型响应携带 `updatedAt`（配置文件 mtime）——Web App 用它与最近一次鉴权失败的时间比较，决定鉴权失败的输入框是否继续禁用。
 
@@ -278,7 +284,9 @@ Trace 下载对任意成员开放；导入仅限 owner（同 Agent 快照导入�
 | DELETE | /steer/:steerId | 撤回一条尚未送达的插话（id 随 `task_state` 的 `pendingSteering` 下发）：从队列中撤出 → 200，返回其原始内容 `{text, images, files}`（文件从 scratchpad 读回为 data URL，磁盘副本随之删除），供输入框恢复编辑；已送达模型则 409 `not_pending` |
 | DELETE | /follow-ups/:followUpId | 撤回一条排队中的跟进消息（id 随 `task_state` 的 `pendingFollowUps` 下发）：在自动发出前移除 → 200，返回其原始内容 `{text, images, files}`——排队中的跟进消息一律带有该内容，与其入队路径无关；已自动发出则 409 `follow_up_started` |
 | POST | /approvals/:toolCallId | 审批决定：`{decision}` 取 `allow` 或 `deny` → 204 |
+| POST | /tool-calls/:toolCallId/background | 把一个**正在执行**的工具调用交还为后台任务，使本轮可以结束、对话继续进行：204。调用带着 `process_id` / `subagent_id` 以 `completed` 结束，不杀任何进程，任务完成后仍以一贯的后台任务通知送回。该 id 没有正在执行的调用时（未知、已结束，或运行时已不存在）返回 404 `tool_call_not_found`；调用在运行但其工具没有后台形态时返回 409 `tool_not_detachable`（只有 `exec_command` 与 `run_subagent` 具备后台形态） |
 | POST | /abort | 中断当前 Task：已触发返回 202，无任务返回 204 |
+| POST | /subagents/:childSessionId/resume | 恢复中断或失败的子智能体运行：`{text?}`（可选恢复指引文本）→ `{outcome: "steered" \| "continued" \| "revived"}`；子会话不存在且无法复活时返回 404 `subagent_gone`，当前正在运行时返回 409 `subagent_busy` |
 | POST | /retry-now | 重连倒计时上的「立即重试」：跳过进行中的退避等待、立刻发起下一次重试（重试计数不变）→ 200 `{skipped}`——`skipped:false` 表示当前没有等待可跳过（良性空操作，非错误） |
 | POST | /compact | 触发上下文压缩：202；无可压缩内容返回 409，具体原因由 code 承载——`compaction_not_configured`（该 Agent 没有配置压缩）、`nothing_to_compact`（当前上下文尚未完成一轮对话）、`already_compacted`（上次压缩后还没有新的对话）。服务重启后恢复的 Session 依据 Trace 判断可压缩性，因此已有对话无需先跑一次 Task 即可压缩 |
 | GET | /processes | 对话启动的后台进程（超过 yield 窗口转入后台的 `exec_command`）。仅来自活跃运行时——被回收或从未装载的会话如实返回空列表。检测到进程所服务地址时行内附 `serviceUrl`（取输出打印的最后一个本机 URL，否则按进程组做监听端口探测，每次拉取时刷新） |
