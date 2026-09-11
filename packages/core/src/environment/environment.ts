@@ -191,8 +191,17 @@ export class Environment implements EnvironmentInterface {
       this.emitBackgroundState();
     });
     this.subagentRunner = config.services?.subagentRunner ?? null;
+    const configuredWebSearch = config.services?.webSearch;
+    const webSearchEndpoint =
+      configuredWebSearch?.endpoint ??
+      config.vault?.["SEARXNG_ENDPOINT"] ??
+      process.env["SEARXNG_ENDPOINT"];
     this.services = {
       ...config.services,
+      webSearch: {
+        ...(webSearchEndpoint !== undefined ? { endpoint: webSearchEndpoint } : {}),
+        ...(configuredWebSearch?.fetch !== undefined ? { fetch: configuredWebSearch.fetch } : {}),
+      },
       commandSessions: this.commandSessions,
       subagentSessions: this.subagentSessions,
       // Completion reports of run_in_background launches converge here; the Session attaches

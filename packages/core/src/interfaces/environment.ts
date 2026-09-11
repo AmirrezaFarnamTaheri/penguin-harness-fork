@@ -235,6 +235,20 @@ export interface VisionDescriberService {
   createLLM?: () => LLMInterface;
 }
 
+/** Native web search HTTP fetch signature. */
+export type WebSearchFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+/** Native web search configuration/service. */
+export interface WebSearchService {
+  /** SearXNG base URL; defaults to DEFAULT_SEARXNG_ENDPOINT. */
+  endpoint?: string;
+  /** Optional fetch override; normal runtimes use globalThis.fetch. */
+  fetch?: WebSearchFetch;
+}
+
 /**
  * Runtime services Environment injects into individual tools (e.g. `run_subagent` needs `SubagentRunner`); most tools don't use these.
  * Docs: /docs/interfaces § "ToolExecutionRequest and EnvironmentConfig".
@@ -243,6 +257,8 @@ export interface EnvironmentServices {
   subagentRunner?: SubagentRunner;
   /** Injected when (and only when) the session model doesn't support images: read_file then describes an image through it instead of returning image content. */
   visionDescriber?: VisionDescriberService;
+  /** Native web-search provider override; Environment fills its endpoint from the Agent vault/process when omitted. */
+  webSearch?: WebSearchService;
   /** Registry of long-running command sessions (shared by `exec_command` / `input_command`); constructed and injected internally by Environment. */
   commandSessions?: CommandSessionManager;
   /** Registry of background subagent sessions (shared by `run_subagent` / `input_subagent`); constructed and injected internally by Environment. */

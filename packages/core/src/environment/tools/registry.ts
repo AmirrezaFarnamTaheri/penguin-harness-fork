@@ -23,6 +23,7 @@ import { EXEC_COMMAND_NAME, createExecCommandTool } from "./exec-command.js";
 import { INPUT_COMMAND_NAME, createInputCommandTool } from "./input-command.js";
 import { SUBAGENT_NAME, createSubagentTool } from "./run-subagent.js";
 import { INPUT_SUBAGENT_NAME, createInputSubagentTool } from "./input-subagent.js";
+import { WEB_SEARCH_NAME, createWebSearchTool } from "./web-search.js";
 
 /**
  * A factory that constructs a BuiltinTool instance from a tool config entry; optionally
@@ -40,6 +41,7 @@ export const BUILTIN_TOOL_FACTORIES: Record<string, BuiltinToolFactory> = {
   [READ_FILE_NAME]: createReadFileTool,
   [EDIT_FILE_NAME]: createEditFileTool,
   [WRITE_FILE_NAME]: createWriteFileTool,
+  [WEB_SEARCH_NAME]: (definition, services) => createWebSearchTool(definition, services?.webSearch),
   [EXEC_COMMAND_NAME]: createExecCommandTool,
   [INPUT_COMMAND_NAME]: createInputCommandTool,
   [SUBAGENT_NAME]: createSubagentTool,

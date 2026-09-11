@@ -214,7 +214,7 @@ export function isKernelOutdated(kernelVersion: string | null | undefined): bool
 export const KERNEL_DEFAULT_TAB_HASHES: Readonly<Record<KernelTab, string>> = {
   prompt: "9b2b54a241c7b8ac92faf7177d6f42c9c87b54f2e6d89411b37c53e5061ca515",
   runtime: "5dfea06a5e801950c24f44f5527e62435ae4facc311a6587e53aa69983ab0346",
-  tools: "2fcf93dd0aaf945340f51cd6f3c01d3187495945327cc98e449cf14c6a095cae",
+  tools: "eca18eefae98e18efb4423b80c7b08e466139e190888c8c278cd7ce7877b6374",
   skills: "7e343aa692e5eaeadfc8add6bb375fb50ac33ef81ebe460490fc219b0f3d707f",
   memory: "53d190390829cc0132bb12e468a6891f2e0576ec0c4022a9b4a5d9233666900d",
   vault: "19bd36a6d4ab442b66583c423450602b817990a9a79bafa21c9b6137fb6b47d8",
@@ -251,6 +251,7 @@ export const KERNEL_SUPERSEDED_TAB_HASHES: KernelSupersededTabHashes = {
     "8bbd336ff1f3fc283c4e11e54d43dd2bfe4ba2458577bf9eb3b6e3d7be4f3cde", // before the kill tools folded into the input tools
     "c24bcf47b1377e9da4dcfb69a1f7240dcdbfff2d420df5db0a5eaec2b7d4087d", // before the image tools folded into read_file
     "a5e067fe58899be651c3c0541f587b2d5999030dc3008a39737a8fe21f5f7a23", // before key rotation and health telemetry tool enhancements
+    "2fcf93dd0aaf945340f51cd6f3c01d3187495945327cc98e449cf14c6a095cae", // before native web_search joined builtin tools
   ],
   // The memory prompt's wording before #397 named when a fact is worth saving.
   memory: ["c28acdda755552967cd0c99ba4ced407eddfa843b3dce228a965da4674676dc7"],

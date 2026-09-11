@@ -72,10 +72,11 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 
 ## 内置工具
 
-共 7 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
+共 8 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
 
 | 工具 | 权限 | 超时(ms) | 用途 |
 | --- | --- | --- | --- |
+| `web_search` | r | 30000 | 通过宿主配置的 SearXNG 实例搜索实时 Web |
 | `exec_command` | rw | 120000 | 在 Workspace 内以 `bash -lc` 运行命令，流式返回 stdout/stderr |
 | `input_command` | rw | 120000 | 按 `process_id` 驱动命令会话：写 stdin、发 Ctrl-C、轮询输出，或终止（`kill: true`） |
 | `read_file` | r | 60000 | 按 `cat -n` 风格带行号读取文本文件（以 offset/limit 分页），或读取图片（路径或 URL）作为图像内容返回——text-only 模型则由 `vision_model` 代读为文字 |
@@ -88,7 +89,19 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 
 ### 调用描述
 
-命令 / Subagent 类工具（`exec_command`、`input_command`、`run_subagent`、`input_subagent`）带 `description` 参数：由模型写一句"本次调用在做什么"，CLI 与 Web 在调用运行期间展示给用户。该参数作为普通的 `description` 属性直接写在各条目的 `parameters` 中（工具 schema 完全存于可编辑配置），并且是**必填**的——提供该参数的工具每次调用都会带上它，前端据 schema 即可确定这次调用的展示形态，无需在参数流式过程中猜测；同时要求模型最先输出它。整个参数由条目级 `call_description` 字段控制——缺省保留，写 `call_description: false` 时装配阶段将该属性连同其 `required` 项一起从 schema 中滤除（仅内存内，不改写 YAML）。文件工具不带此参数——其 `file_path` 参数本身已说明用途。
+搜索 / 命令 / Subagent 类工具（`web_search`、`exec_command`、`input_command`、`run_subagent`、`input_subagent`）带 `description` 参数：由模型写一句"本次调用在做什么"，CLI 与 Web 在调用运行期间展示给用户。该参数作为普通的 `description` 属性直接写在各条目的 `parameters` 中（工具 schema 完全存于可编辑配置），并且是**必填**的——提供该参数的工具每次调用都会带上它，前端据 schema 即可确定这次调用的展示形态，无需在参数流式过程中猜测；同时要求模型最先输出它。整个参数由条目级 `call_description` 字段控制——缺省保留，写 `call_description: false` 时装配阶段将该属性连同其 `required` 项一起从 schema 中滤除（仅内存内，不改写 YAML）。文件工具不带此参数——其 `file_path` 参数本身已说明用途。
+
+### Web 搜索
+
+`web_search` 调用 SearXNG 的 JSON `/search` 端点，最多返回 10 条规范化结果。参数包括
+必填的 `query`、`limit`（1–10，默认 5）、`language`、`safesearch`（0–2）以及
+`time_range`（`day` / `month` / `year`）。响应上限为 2 MiB，只保留 HTTP(S) 结果
+URL 并按 URL 去重；标题与摘要明确标为不可信外部内容。
+
+SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK 的
+`EnvironmentServices.webSearch.endpoint` 覆盖、Agent Vault 中的 `SEARXNG_ENDPOINT`、
+进程环境中的 `SEARXNG_ENDPOINT`，最后是 `http://127.0.0.1:8080`。SearXNG 实例须在
+`search.formats` 中启用 `json`；HTTP 403 错误会给出这一诊断。
 
 ### 命令会话
 

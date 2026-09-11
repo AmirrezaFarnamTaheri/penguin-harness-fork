@@ -714,6 +714,49 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
       maxOutputLength: 16000,
     },
     {
+      name: "web_search",
+      description:
+        "Search the live web through the configured SearXNG service. Returns compact titles, " +
+        "URLs, snippets, and publication dates when available. Use it to discover current " +
+        "sources; fetch a selected result separately when full page content is needed.",
+      parameters: {
+        type: "object",
+        properties: {
+          description: {
+            type: "string",
+            description:
+              "Required, and emit it first, before the other arguments: it is shown to the user while the call runs. One short sentence describing what this search is for, written in the user's language.",
+          },
+          query: {
+            type: "string",
+            description: "Search query, up to 1000 characters.",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of results to return, from 1 to 10; defaults to 5.",
+          },
+          language: {
+            type: "string",
+            description: "Optional SearXNG language code such as en, zh, or all.",
+          },
+          safesearch: {
+            type: "number",
+            description: "SearXNG safe-search level: 0 off, 1 moderate (default), 2 strict.",
+          },
+          time_range: {
+            type: "string",
+            enum: ["day", "month", "year"],
+            description: "Optional freshness window.",
+          },
+        },
+        required: ["description", "query"],
+      },
+      permission: "r",
+      call_description: true,
+      timeoutMs: 30000,
+      maxOutputLength: 16000,
+    },
+    {
       name: "exec_command",
       description:
         "Run a shell command in the workspace to run programs, search, install dependencies, and " +

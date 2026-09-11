@@ -72,10 +72,11 @@ Each tool is described by one `ToolDefinitionConfig`:
 
 ## Built-in tools
 
-There are 7 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
+There are 8 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
 
 | Tool | Permission | Timeout (ms) | Purpose |
 | --- | --- | --- | --- |
+| `web_search` | r | 30000 | Searches the live web via the host's configured SearXNG service |
 | `exec_command` | rw | 120000 | Run a shell command in the Workspace via `bash -lc`, streaming stdout/stderr |
 | `input_command` | rw | 120000 | Drive a command session by `process_id`: write stdin, send Ctrl-C, poll output, or terminate it (`kill: true`) |
 | `read_file` | r | 60000 | Read a text file as a line-numbered (`cat -n`) window paged by offset/limit, or an image (path or URL) as image content — described in text by the `vision_model` for a text-only model |
@@ -88,7 +89,20 @@ Note that an existing agent's persisted `tools.builtin` list is frozen as writte
 
 ### Call descriptions
 
-The command/subagent tools (`exec_command`, `input_command`, `run_subagent`, `input_subagent`) take a `description` argument: one model-written sentence about what the call is doing, shown by the CLI and Web UI while the call runs. The argument is declared as a normal `description` property in each entry's `parameters` in `system_config.yaml` (tool schemas live entirely in the editable config), and it is **required** there — a tool that offers the argument always gets one, so the frontends can pick a call's display form from the schema instead of guessing while the arguments stream; the model is also asked to emit it first. The per-entry `call_description` field toggles the whole thing — missing = kept, `call_description: false` filters the property (and its `required` entry) out of the schema at assembly time (in-memory only, the YAML is never rewritten). The file tools don't take it — their `file_path` argument is self-describing.
+The search/command/subagent tools (`web_search`, `exec_command`, `input_command`, `run_subagent`, `input_subagent`) take a `description` argument: one model-written sentence about what the call is doing, shown by the CLI and Web UI while the call runs. The argument is declared as a normal `description` property in each entry's `parameters` in `system_config.yaml` (tool schemas live entirely in the editable config), and it is **required** there — a tool that offers the argument always gets one, so the frontends can pick a call's display form from the schema instead of guessing while the arguments stream; the model is also asked to emit it first. The per-entry `call_description` field toggles the whole thing — missing = kept, `call_description: false` filters the property (and its `required` entry) out of the schema at assembly time (in-memory only, the YAML is never rewritten). The file tools don't take it — their `file_path` argument is self-describing.
+
+### Web search
+
+`web_search` calls a SearXNG instance's JSON `/search` route and returns up to 10 normalized
+results. Parameters include required `query`, `limit` (1–10, defaults to 5), `language`,
+`safesearch` (0–2), and `time_range` (`day` / `month` / `year`). The response size is capped at
+2 MiB; only HTTP(S) result URLs are preserved and results are deduplicated by URL. Titles and
+snippets are clearly labeled as untrusted external content.
+
+The SearXNG endpoint is host configuration and never a tool argument. Resolution order is an SDK
+`EnvironmentServices.webSearch.endpoint` override, the Agent Vault's `SEARXNG_ENDPOINT`, the
+process environment's `SEARXNG_ENDPOINT`, then `http://127.0.0.1:8080`. The instance must include
+`json` in SearXNG's `search.formats`; an HTTP 403 response includes this diagnostic.
 
 ### Command sessions
 
