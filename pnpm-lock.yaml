@@ -181,6 +181,9 @@ importers:
       '@prismshadow/agenthub':
         specifier: ^0.4.12
         version: 0.4.12(supports-color@10.2.2)(ws@8.21.0)(zod@4.4.3)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       arktype:
         specifier: ^2.2.3
         version: 2.2.3
@@ -5521,6 +5524,7 @@ snapshots:
       '@penguinharness/use-firecrawl': file:plugins/use-firecrawl
       '@penguinharness/use-spexcode': file:plugins/use-spexcode
       '@prismshadow/agenthub': 0.4.12(supports-color@10.2.2)(ws@8.21.0)
+      ajv: 8.20.0
       arktype: 2.2.3
       smol-toml: 1.6.1
       yaml: 2.9.0
@@ -5550,6 +5554,7 @@ snapshots:
       '@penguinharness/use-firecrawl': file:plugins/use-firecrawl
       '@penguinharness/use-spexcode': file:plugins/use-spexcode
       '@prismshadow/agenthub': 0.4.12(supports-color@10.2.2)(ws@8.21.0)(zod@4.4.3)
+      ajv: 8.20.0
       arktype: 2.2.3
       smol-toml: 1.6.1
       yaml: 2.9.0

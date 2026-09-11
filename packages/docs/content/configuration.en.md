@@ -177,6 +177,8 @@ The four `compaction.*` fields are the one part of this file a running conversat
 | `hooks.enabled` | `true` | Whether a new Session runs the installed hook packages at the loop's hook points (with it off the packages stay installed and nothing consults them). The one section with no prompt half: hook packages are scripts, not context text |
 | `tools.builtin` | full default toolset when omitted | Tool entries: `name` / `description` / `parameters` / `permission` (`r` or `rw`) / `forModel` / `timeoutMs` / `maxOutputLength` / `call_description` (per-tool toggle for the `description` call argument, required while on; missing = kept); once written it replaces the default list wholesale |
 | `tools.mcpServers` | `[]` | MCP Server configuration (`name` + `config`): transport is `stdio` / `http` / `sse`, and discovered tools join the toolset as `mcp__<server>__<tool>`; `config.permission` (`auto` / `r` / `rw`, default `auto`) fixes the approval level of every tool of that Server instead of trusting its `readOnlyHint`; see the MCP Servers section of [Tools & Approval](/tools) |
+| `tools.toolExposure` | `direct` | `direct` exposes all configured tools; `auto` keeps built-ins native and gateways large MCP schema sets; `lazy` keeps all tools behind fixed `search_tools` / `call_tool` gateways |
+| `tools.toolExposureThresholdTokens` | `2048` | Initial MCP Schema estimate at which `auto` selects the fixed gateway; `0` always selects it |
 
 Tool permissions and approval semantics are covered in [Tools & Approval](/tools).
 

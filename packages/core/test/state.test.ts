@@ -352,6 +352,8 @@ describe("buildToolConfig", () => {
         tools: {
           builtin: [],
           mcpServers: [{ name: "fs", config: { command: "mcp-fs" } }],
+          toolExposure: "lazy" as const,
+          toolExposureThresholdTokens: 4096,
         },
       },
       agentsMd: "y",
@@ -360,6 +362,8 @@ describe("buildToolConfig", () => {
     const cfg = buildToolConfig(state);
     expect(cfg.customTools).toEqual([]);
     expect(cfg.mcpServers).toEqual([{ name: "fs", config: { command: "mcp-fs" } }]);
+    expect(cfg.toolExposure).toBe("lazy");
+    expect(cfg.toolExposureThresholdTokens).toBe(4096);
   });
 
   it("falls back to default builtin tools when config omits them", () => {

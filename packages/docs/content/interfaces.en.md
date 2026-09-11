@@ -126,7 +126,9 @@ The complete tool-execution contract:
 interface EnvironmentInterface {
   listTools(): Promise<ToolDefinition[]>;
   executeTool(request: ToolExecutionRequest): AsyncGenerator<OmniMessage>;
-  toolPermission(name: string): "r" | "rw" | undefined;   // for frontend approval-mode decisions
+  toolPermission(name: string, rawArguments?: string): "r" | "rw" | undefined;
+  toolApprovalTarget?(name: string, rawArguments?: string):
+    { name: string; permission?: "r" | "rw" } | undefined;
   dispose?(): void;                                        // release runtime resources; idempotent
 }
 ```
@@ -136,7 +138,7 @@ This interface carries two planes, and only the first one belongs to the agent l
 - the **message plane** — `executeTool`, the one method `context_engine` ever calls here: an OmniMessage tool call in, a stream of OmniMessage out;
 - the **management plane** — `listTools` and `toolPermission`, plus the optional background-command and subagent members (the listings, `killBackgroundCommand`, `sendToBackgroundSubagent`, `abortBackgroundSubagentRun`, the listener attachments and `dispose`). None of these pass through the engine: they serve Session assembly and a host's own UI — the Web App's process and subagents panels, an approval mode's permission lookup — and are ordinary method calls returning ordinary data. That is why they are not message-shaped, and why widening them would not make the engine's boundary any purer.
 
-`executeTool` yields `partial_tool_call_output` fragments and ends with exactly one complete `tool_call_output`; `origin`-tagged nested messages (e.g. forwarded by `run_subagent`) pass through unchanged. The built-in Environment can keep truncated text in the Session scratchpad without exposing storage lifecycle hooks through this public interface. Its model-visible recovery path is a plain absolute path; on Windows it is written with forward slashes, which Node's fs APIs and the package's (Git) Bash tool shell both accept, so the same spelling works as a `read_file` argument and inside shell commands. Rendering is explicitly not this interface's concern — streaming rendering belongs to the CLI / Web front ends.
+`executeTool` yields `partial_tool_call_output` fragments and ends with exactly one complete `tool_call_output`; `origin`-tagged nested messages (e.g. forwarded by `run_subagent`) pass through unchanged. `toolApprovalTarget` is optional for custom embedders; the built-in Environment uses it to resolve a fixed gateway's private reference into a trusted approval label without accepting the model's display name. The built-in Environment can keep truncated text in the Session scratchpad without exposing storage lifecycle hooks through this public interface. Its model-visible recovery path is a plain absolute path; on Windows it is written with forward slashes, which Node's fs APIs and the package's (Git) Bash tool shell both accept, so the same spelling works as a `read_file` argument and inside shell commands. Rendering is explicitly not this interface's concern — streaming rendering belongs to the CLI / Web front ends.
 
 ### ToolExecutionRequest and EnvironmentConfig
 

@@ -43,6 +43,7 @@ import type {
   EnvironmentInterface,
   LLMInterface,
   ThinkingLevelName,
+  ToolApprovalTarget,
   ToolDetachResult,
   ToolPermission,
 } from "./interfaces/index.js";
@@ -865,8 +866,13 @@ export class Session {
    * undefined for unknown tools. Strict-tier: answers from the running context's toolset —
    * rebuilt at every rotation — so a permission edit applies when the next context opens.
    */
-  toolPermission(name: string): ToolPermission | undefined {
-    return this.environment.toolPermission(name);
+  toolPermission(name: string, rawArguments?: string): ToolPermission | undefined {
+    return this.environment.toolPermission(name, rawArguments);
+  }
+
+  /** Trusted target for approval UIs; fixed gateways resolve the private ToolRef binding. */
+  toolApprovalTarget(name: string, rawArguments?: string): ToolApprovalTarget | undefined {
+    return this.environment.toolApprovalTarget?.(name, rawArguments);
   }
 
   /** The running context's session_meta message — the first context's until a compaction opens another (used e.g. by host tools to forward nested-session metadata to a parent session). */
