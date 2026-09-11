@@ -65,7 +65,7 @@ const INLINE_SPECIALS = /[\\`*_~[\]]/g;
  * doc), and the test is on the whole run rather than its edges because the client's rule is
  * about word boundaries, which such a run has nowhere.
  */
-const CJK = /[⺀-〿぀-ヿ㐀-䶿一-鿿가-힯豈-﫿＀-￯]/;
+const CJK = /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/;
 
 function esc(text: string): string {
   return text.replace(INLINE_SPECIALS, (ch) => `\\${ch}`);

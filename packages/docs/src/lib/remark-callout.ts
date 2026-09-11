@@ -4,7 +4,7 @@
  * open; with neither, the box is a plain non-collapsible aside. The rest of that line is
  * the title.
  *
- *     > [!INFO]- 首次启动被系统拦下
+ *     > [!INFO]- First start blocked by system
  *     >
  *     > …ordinary Markdown, fenced code included…
  *

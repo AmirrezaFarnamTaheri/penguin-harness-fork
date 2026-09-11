@@ -145,7 +145,7 @@ export const MESSAGING_LINE_DELAY_MS = 1000;
 // like the rest of the product's user-facing copy (the server has no locale for an
 // external chat, so both languages ride each notice).
 export const MESSAGING_UNSUPPORTED_NOTICE =
-  "Only text, image and file messages are supported for now. 目前仅支持文本、图片和文件消息。";
+  "Only text, image and file messages are supported for now.";
 /**
  * The two ways an inbound image does not arrive, deliberately worded as two notices.
  *
@@ -156,7 +156,7 @@ export const MESSAGING_UNSUPPORTED_NOTICE =
  */
 export function messagingImageTooLargeNotice(): string {
   const mb = Math.floor(INLINE_IMAGE_MAX_BYTES / (1024 * 1024));
-  return `That image is larger than the ${mb}MB limit, so it was not sent to the Agent. Try a smaller one. 该图片超过 ${mb}MB 上限，未发送给智能体，请改用更小的图片。`;
+  return `That image is larger than the ${mb}MB limit, so it was not sent to the Agent. Try a smaller one.`;
 }
 
 /** How much of a channel's own failure reason rides into the chat before it is cut. */
@@ -192,7 +192,7 @@ export function messagingImagePermissionNotice(
   scopes: readonly string[],
   grantUrl: string | null,
 ): string {
-  return `That image could not be downloaded: this bot's app is missing a permission. Grant it, then send the picture again. 无法下载该图片：机器人应用缺少所需权限，开通后重新发送即可。\n${permissionDetail(scopes, grantUrl)}`;
+  return `That image could not be downloaded: this bot's app is missing a permission. Grant it, then send the picture again.\n${permissionDetail(scopes, grantUrl)}`;
 }
 
 /**
@@ -205,7 +205,7 @@ export function messagingImagePermissionNotice(
  * credential (see telegram-api's fetchErrorText — its file endpoint embeds the bot token).
  */
 export function messagingImageFailedNotice(reason: string): string {
-  return `That image could not be downloaded from the chat, so nothing was sent to the Agent. 无法从会话中下载该图片，未发送给智能体。(${noticeReason(reason)})`;
+  return `That image could not be downloaded from the chat, so nothing was sent to the Agent. (${noticeReason(reason)})`;
 }
 
 /**
@@ -215,7 +215,7 @@ export function messagingImageFailedNotice(reason: string): string {
  * rather than to send a smaller one.
  */
 export function messagingImageBudgetNotice(): string {
-  return "Too many images from this chat just now, so this one was not sent to the Agent. Try again in a few minutes. 该会话短时间内发来的图片过多，本张未发送给智能体，请过几分钟再试。";
+  return "Too many images from this chat just now, so this one was not sent to the Agent. Try again in a few minutes.";
 }
 
 /**
@@ -231,7 +231,7 @@ export function messagingImageBudgetNotice(): string {
  */
 export function messagingInboundFileTooLargeNotice(fileName: string, maxBytes: number): string {
   const mb = Math.floor(maxBytes / (1024 * 1024));
-  return `"${fileName}" is larger than the ${mb}MB limit, so it was not sent to the Agent. 文件“${fileName}”超过 ${mb}MB 上限，未发送给智能体。`;
+  return `"${fileName}" is larger than the ${mb}MB limit, so it was not sent to the Agent.`;
 }
 
 /**
@@ -241,7 +241,7 @@ export function messagingInboundFileTooLargeNotice(fileName: string, maxBytes: n
  */
 export function messagingInboundFilesTooLargeNotice(totalBytes: number): string {
   const mb = Math.floor(totalBytes / (1024 * 1024));
-  return `The files in that message add up to more than the ${mb}MB one message may carry, so none of them was sent to the Agent. 该消息中的文件总大小超过单条消息 ${mb}MB 的上限，均未发送给智能体。`;
+  return `The files in that message add up to more than the ${mb}MB one message may carry, so none of them was sent to the Agent.`;
 }
 
 /**
@@ -254,18 +254,18 @@ export function messagingInboundFilePermissionNotice(
   scopes: readonly string[],
   grantUrl: string | null,
 ): string {
-  return `"${fileName}" could not be downloaded: this bot's app is missing a permission. Grant it, then send the file again. 无法下载文件“${fileName}”：机器人应用缺少所需权限，开通后重新发送即可。\n${permissionDetail(scopes, grantUrl)}`;
+  return `"${fileName}" could not be downloaded: this bot's app is missing a permission. Grant it, then send the file again.\n${permissionDetail(scopes, grantUrl)}`;
 }
 
 /** A file the channel would not hand over, carrying the channel's OWN reason (see the image version). */
 export function messagingInboundFileFailedNotice(fileName: string, reason: string): string {
-  return `"${fileName}" could not be downloaded from the chat, so nothing was sent to the Agent. 无法从会话中下载文件“${fileName}”，未发送给智能体。(${noticeReason(reason)})`;
+  return `"${fileName}" could not be downloaded from the chat, so nothing was sent to the Agent. (${noticeReason(reason)})`;
 }
 
 export const MESSAGING_APPROVAL_NOTICE =
-  "A tool call is waiting for your approval in the PenguinHarness web UI. 有工具调用正在等待你在网页端审批。";
+  "A tool call is waiting for your approval in the PenguinHarness web UI.";
 export const MESSAGING_TEST_MESSAGE =
-  "PenguinHarness test message: this Session's messaging binding works. 测试消息：该会话的消息绑定工作正常。";
+  "PenguinHarness test message: this Session's messaging binding works.";
 
 /**
  * Per-file ceilings for a mirrored file, and how many of them one run may send.
@@ -299,7 +299,7 @@ const MESSAGING_OUTBOUND_MTIME_GRACE_MS = 2_000;
 /** One file a ceiling refused, named so the user knows which one to go and fetch. */
 export function messagingFileTooLargeNotice(fileName: string, maxBytes: number): string {
   const mb = Math.floor(maxBytes / (1024 * 1024));
-  return `"${fileName}" is over this channel's ${mb}MB limit and was not sent. 文件“${fileName}”超过该渠道 ${mb}MB 的上限，未发送。`;
+  return `"${fileName}" is over this channel's ${mb}MB limit and was not sent.`;
 }
 
 /**
@@ -310,7 +310,7 @@ export function messagingFileTooLargeNotice(fileName: string, maxBytes: number):
  * which the person in the chat cannot open, so the feature simply looked broken.
  */
 export function messagingFileFailedNotice(fileName: string, reason: string): string {
-  return `"${fileName}" could not be sent to the chat. 文件“${fileName}”未能发送到会话。(${noticeReason(reason)})`;
+  return `"${fileName}" could not be sent to the chat. (${noticeReason(reason)})`;
 }
 
 /** One file this bot's app is not permitted to upload — the fixable half of the above. */
@@ -319,7 +319,7 @@ export function messagingFilePermissionNotice(
   scopes: readonly string[],
   grantUrl: string | null,
 ): string {
-  return `"${fileName}" could not be sent: this bot's app is missing a permission. 文件“${fileName}”未能发送：机器人应用缺少所需权限。\n${permissionDetail(scopes, grantUrl)}`;
+  return `"${fileName}" could not be sent: this bot's app is missing a permission.\n${permissionDetail(scopes, grantUrl)}`;
 }
 
 /** How many names one drop notice lists before it stops: a signal, not an inventory. */
@@ -351,7 +351,7 @@ export function messagingFilesMissingLog(names: readonly string[]): string {
 
 /** The tail of a batch the count cap cut off. */
 export function messagingFilesSkippedNotice(skipped: number): string {
-  return `${skipped} more mentioned file(s) were not sent — at most ${MESSAGING_OUTBOUND_FILE_MAX_COUNT} ride along with one reply. 另有 ${skipped} 个提及的文件未发送——每条回复最多附带 ${MESSAGING_OUTBOUND_FILE_MAX_COUNT} 个。`;
+  return `${skipped} more mentioned file(s) were not sent — at most ${MESSAGING_OUTBOUND_FILE_MAX_COUNT} ride along with one reply.`;
 }
 
 /**

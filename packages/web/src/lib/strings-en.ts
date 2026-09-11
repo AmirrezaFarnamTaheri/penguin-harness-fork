@@ -205,7 +205,7 @@ export const en: Strings = {
     terminalTheme: "Terminal theme",
     terminalThemeInfo: "Colors of the terminal panel; follows the app theme by default.",
     followAppTheme: "App",
-    langZh: "中文",
+    langZh: "Chinese",
     langEn: "English",
     fontSize: "Font size",
     fontSizeInfo: "Overall interface font size.",
@@ -3216,7 +3216,7 @@ Scenarios:
     languageInfo:
       "The language the organization works in: its handbook, the employee briefs, the CEO's initialization session and every desk's output are written in it; it is detected from the mission when the organization is created.",
     languages: {
-      zh: "中文",
+      zh: "Chinese",
       en: "English",
     },
     approvalMode: "Approval mode",

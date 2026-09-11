@@ -450,10 +450,10 @@ export function librarySkill(
  * Docs: /docs/skills § "Built-in library".
  */
 export const PLUGIN_CATEGORIES: PluginCategory[] = [
-  { id: "office-productivity", title: "Office Productivity", titleZh: "办公效率" },
-  { id: "software-development", title: "Software Development", titleZh: "软件开发" },
-  { id: "ai-app-development", title: "AI App Development", titleZh: "AI 应用开发" },
-  { id: "agent-company", title: "Agent Company", titleZh: "Agent 公司" },
+  { id: "office-productivity", title: "Office Productivity", titleZh: "\u529e\u516c\u6548\u7387" },
+  { id: "software-development", title: "Software Development", titleZh: "\u8f6f\u4ef6\u5f00\u53d1" },
+  { id: "ai-app-development", title: "AI App Development", titleZh: "AI \u5e94\u7528\u5f00\u53d1" },
+  { id: "agent-company", title: "Agent Company", titleZh: "Agent \u516c\u53f8" },
 ];
 
 /**
@@ -474,7 +474,7 @@ export function groupPlugins(all: LibraryPlugin[]): ResolvedPluginGroup[] {
     .filter((p) => p.category === undefined || !known.has(p.category))
     .sort((a, b) => a.name.localeCompare(b.name));
   if (others.length > 0) {
-    groups.push({ id: "other", title: "Other", titleZh: "其他", plugins: others });
+    groups.push({ id: "other", title: "Other", titleZh: "\u5176\u4ed6", plugins: others });
   }
   return groups;
 }

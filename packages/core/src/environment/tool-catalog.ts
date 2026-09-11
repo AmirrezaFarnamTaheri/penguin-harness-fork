@@ -27,10 +27,10 @@ const GENERIC_QUERY_TERMS = new Set([
   "mcp",
   "tool",
   "tools",
-  "外部",
-  "工具",
-  "能力",
-  "集成",
+  "\u5916\u90e8",
+  "\u5de5\u5177",
+  "\u80fd\u529b",
+  "\u96c6\u6210",
 ]);
 
 const HAN_CHARACTER = /^\p{Script=Han}$/u;

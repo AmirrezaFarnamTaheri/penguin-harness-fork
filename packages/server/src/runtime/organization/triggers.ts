@@ -15,8 +15,8 @@ import type { LoadedOrg } from "./model.js";
 import { employeeLine, sharedWorkspace } from "./model.js";
 
 /** The desk session's title, in the organization's working language. */
-function deskTitle(org: LoadedOrg, name: string): string {
-  return orgLanguage(org.config) === "zh" ? `${name} 的工位` : `${name}'s desk`;
+function deskTitle(_org: LoadedOrg, name: string): string {
+  return `${name}'s desk`;
 }
 
 export interface DeskHandle {

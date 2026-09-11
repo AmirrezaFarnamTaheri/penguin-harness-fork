@@ -555,9 +555,7 @@ export class OrganizationService {
             title: "CEO",
             reportsTo: null,
             duties:
-              language === "zh"
-                ? "把使命拆成工单、招募、划分公共工作区、审核工单、向董事会汇报"
-                : "Turn the mission into tickets, hire, partition the shared workspace, review tickets, report to the board",
+              "Turn the mission into tickets, hire, partition the shared workspace, review tickets, report to the board",
             workspace: ".",
             // Compared on the cumulative line, so this one number is the whole company's cap.
             budget: req.ceoBudget ?? DEFAULT_CEO_BUDGET,
@@ -2342,8 +2340,8 @@ function semanticIdPrompt(req: SemanticIdSuggestRequest): string {
     "You produce identifiers. Given a display name, answer with ONE snake_case ASCII identifier:",
     "lowercase letters, digits and underscores, starting with a letter, 2–40 characters, made of",
     "English words that carry the name's meaning (translate a non-English name), no explanation,",
-    "nothing else. Examples: Plugin Marketplace → plugin_marketplace; 科研论文公司 →",
-    "research_paper_lab; 市场推广 → marketing; Site → site.",
+    "nothing else. Examples: Plugin Marketplace → plugin_marketplace; Research Paper Lab →",
+    "research_paper_lab; Marketing → marketing; Site → site.",
     "Do not add any prefix of your own; one is added to your answer.",
     ...(taken !== "" ? [`Those answers are taken, prefix included: ${taken}.`] : []),
     `Name: ${req.name}`,
@@ -2361,18 +2359,6 @@ export function employeeBrief(input: {
   language: OrgLanguage;
   duties?: string;
 }): string {
-  if (input.language === "zh") {
-    return `# 员工简介
-
-你是 \`${input.agentId}\`，组织 **${input.name}**（\`${input.orgId}\`）的${input.title}，向${input.reportsTo === null ? "董事会" : `\`${input.reportsTo}\``}汇报。
-
-使命：${input.mission}
-${input.duties !== undefined ? `\n职责：${input.duties}\n` : ""}
-本组织的工作语言是中文：频道消息、工单、手册文档与汇报都用中文书写，命令、文件名、id 与字段名保持 ASCII。
-
-你的组织目录是 \`<app_data_dir>/organizations/${input.orgId}/\`。每轮工作开始时先读 \`handbook/README.md\`（组织手册的索引；这个目录是公司的知识库），然后按 \`company-employee\` Skill 行事；头衔属于哪个角色，就再用 \`company-ceo\`、\`company-hr\` 或 \`company-finance\`。在你的会话里，\`penguin org\` 命令已经从环境中知道你的组织、Project、Agent 与当前会话。
-`;
-  }
   return `# Employee brief
 
 You are \`${input.agentId}\`, ${input.title} of the organization **${input.name}** (\`${input.orgId}\`), reporting to ${input.reportsTo === null ? "the board" : `\`${input.reportsTo}\``}.
@@ -2389,20 +2375,6 @@ Your organization directory is \`<app_data_dir>/organizations/${input.orgId}/\`.
 function initBody(org: LoadedOrg): string {
   const board = userPrincipal(org.config.createdBy);
   const ceo = ceoAgentId(org.orgId);
-  if (orgLanguage(org.config) === "zh") {
-    return [
-      `使命：${org.config.mission}`,
-      "",
-      "你是一家全新组织的 CEO，这是它的初始化运行。重要的事由董事会拍板，你负责提案。按顺序完成下面几件事：",
-      `1. 读手册。然后在全员频道里给董事会（${board}）写一份提案——\`penguin org channel send -m "@${board} …"\`——写清你对使命的理解、打算开的工作线与首批工单、打算招募的角色（先人事与财务）及其预算与 Model，以及公共工作区怎么划分。以明确的问题结尾，然后结束本轮：董事会答复之前不招人、不排日程、不开工单。`,
-      `2. 答复会以提及或本会话消息的形式到来。董事会确认后，先招人事与财务——\`penguin org hire --new-agent ${org.orgId}_hr --title HR --reports-to ${ceo} --duties "…"\`，\`${org.orgId}_finance\` 同理——再招确认过的其他角色。`,
-      "3. 按确认的方案划分公共工作区：把子目录分配下去（`penguin org employee set <agent_id> --workspace <子目录>`）；相对子目录会在分配时自动建好。",
-      "4. 把你自己、人事与财务排进日历（`penguin org calendar add …`），做成轮值表而不是广播：你每天 09:00，人事每三天 10:00，财务每周 16:00（组织时区，写成带偏移量的 ISO 时刻，绝不用 `--start-at now`），此后每招一人就给它一个各自不同的时点。",
-      "5. 把确认过的工单开进 `proposed`（`penguin org ticket create …`）：一个项目级目标一张父工单，每条工作线一张子工单。接受一张工单进入 `in_progress` 时就指派负责人（`penguin org ticket assign <id> --owner agent:<员工>`）：那名员工的工位会在下一次巡检时接手并发起工单会话。只有工单的负责人可以为它发起会话，所以你只为自己名下的工单执行 `penguin org ticket start <id>`；工位只负责调度与跟踪，绝不在工位上做工单本身的活。",
-      "6. 每条工作线开一个频道（`penguin org channel create ch_<工作线> --name …`）并邀请它的负责人（`penguin org channel invite ch_<工作线> agent:<agent_id>`），免得一条线索淹没全员频道。",
-      `7. 在全员频道里向董事会汇报并 @${board}，如果还需要拍板，就点明下一个决定。`,
-    ].join("\n");
-  }
   return [
     `Mission: ${org.config.mission}`,
     "",
@@ -2413,7 +2385,7 @@ function initBody(org: LoadedOrg): string {
     "4. Put yourself, HR and finance on the calendar (`penguin org calendar add …`) as a rota, not a broadcast: you daily at 09:00, HR every three days at 10:00, finance weekly at 16:00 (organization timezone, ISO instants with the offset — never `--start-at now`), and give every later hire its own distinct hour.",
     "5. File the confirmed tickets in `proposed` (`penguin org ticket create …`): one parent ticket for the project-level goal and children per stream. Assign an owner as you accept one into `in_progress` (`penguin org ticket assign <id> --owner agent:<employee>`): that employee's desk picks it up in its next sweep and starts the ticket session itself. Only a ticket's owner may start its sessions, so run `penguin org ticket start <id>` for the tickets you own yourself — the desk schedules and tracks, and never does the ticket work itself.",
     "6. Open one channel per stream (`penguin org channel create ch_<stream> --name …`) and invite its owner (`penguin org channel invite ch_<stream> agent:<agent_id>`), so a stream's thread does not drown the all-hands channel.",
-    `7. Report to the board in the all-hands channel, mentioning @${board}, and name the next decision you need, if any.`,
+    `7. Report back to the board in the all-hands channel mentioning @${board} and state the next decision needed, if any.`,
   ].join("\n");
 }
 

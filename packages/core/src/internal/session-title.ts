@@ -255,7 +255,7 @@ export async function generateTitleWithLLM(
 function dropRestatedLabel(raw: string): string {
   return stripConversationMarkers(raw)
     .replace(LEADING_DECORATION_RE, "")
-    .replace(/^(?:title|标题)\s*[:：]\s*/i, "");
+    .replace(/^(?:title|\u6807\u9898)\s*[:\uFF1A]\s*/i, "");
 }
 
 function isAssistantText(msg: OmniMessage): msg is OmniMessage<TextPayload> {
