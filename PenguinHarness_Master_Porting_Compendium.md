@@ -940,6 +940,67 @@ Standardized 21 directories that previously used cryptic acronyms, misleading ge
 
 ---
 
+### 9.5 Second Exhaustive Grounded Review & Disambiguation Pass
+
+An additional exhaustive multi-dimensional review was executed, focusing on base-name collisions, test fixture stubs, overly generic skill names, and ecosystem indexers.
+
+#### 1. Test Fixtures, Stubs & Catalog Advertisements Purged
+- **9 Upstream Test Fixtures Removed**: Purged test fixtures mistakenly copied from upstream testing suites:
+  - `alpha` ("First fixture skill with a runnable demo")
+  - `beta` ("Instruction-only fixture skill")
+  - `deck-one` ("A small deck template fixture")
+  - `model-only-evaluation` ("Prove user-disabled skills remain available to the model")
+  - `user-only-evaluation` ("Prove model-disabled skills stay outside the model catalog")
+  - `snapshot-testing` ("Exercise project skill discovery and loading in snapshot tests")
+  - `template-scaffolding` ("# Insert instructions below" placeholder)
+  - `presentations` (trivial alias stub for `pptx`)
+  - `preview-tour` ("Inspect the bundled Preview workspace")
+- **3 Redundant Catalog Stubs Removed**:
+  - `replicate`: 1KB catalog advertisement stub purged in favor of complete `replicate-automation` (5.3KB).
+  - `artifacts-builder`: Duplicate stub purged in favor of `web-artifacts-builder`.
+  - `docx-document-editor`: 1KB stub purged in favor of comprehensive `docx-word-documents` (6.3KB).
+- **3 Base Overlap Duplicates Consolidated**:
+  - `dbt`: Consolidated into `dbt-analytics-engineering`.
+  - `dagster`: Consolidated into `dagster-expert`.
+  - `mysql`: Consolidated into `mysql-patterns`.
+
+#### 2. Base Name Disambiguation & Explicit Domain Scoping
+Resolved 11 base-name collision pairs where identical roots caused discoverability ambiguity:
+- `canvas` &rarr; `system-architecture-diagrams` (Mermaid/ASCII/Draw.io diagrams, eliminating collision with `canvas-automation` LMS).
+- `radar` &rarr; `test-coverage-radar` (Automated edge-case and flaky test coverage, eliminating collision with `radar-automation` geofencing).
+- `ramp` &rarr; `student-clinic-onboarding` (Legal clinic student onboarding, eliminating collision with `ramp-automation` corporate card platform).
+- `playwright` &rarr; `playwright-mcp` (Explicit MCP server wrapper, distinct from `playwright-cli`).
+- `openai-whisper` &rarr; `whisper-local-cli` (Local Whisper CLI, distinct from cloud `openai-whisper-cloud-api`).
+- `gemini-api` &rarr; `gemini-cloud-sdk` (Enterprise Vertex AI/Agent Platform SDK, distinct from `gemini-automation`).
+- `document` &rarr; `codebase-documentation-writer` (README/API docs, distinct from `docx-word-documents`).
+- `documents` &rarr; `docx-word-documents` (Comprehensive Microsoft Word DOCX skill).
+- `tavily` &rarr; `tavily-search-api` (Direct search API, distinct from `tavily-automation` Rube MCP).
+- `cloudflare` &rarr; `cloudflare-platform-expert` (Workers/Pages/D1/R2 guide, distinct from `cloudflare-automation`).
+- `design` &rarr; `brand-and-visual-design` (Branding and visual identity, distinct from `design-system` token specs).
+
+#### 3. Scoping of Generic Application & Tool Identifiers
+- **Twenty CRM App Skills**: Renamed `create-app`, `develop-app`, `manage-app`, and `publish-app` to `twenty-create-app`, `twenty-develop-app`, `twenty-manage-app`, and `twenty-publish-app` to prevent prompt hijacking on generic app creation requests.
+- **Short Identifiers Expanded**:
+  - `qa` &rarr; `qa-smoke-test-verifier`
+  - `tdd` &rarr; `tdd-behavior-testing`
+  - `run` &rarr; `run-project-app`
+  - `cue` &rarr; `video-storyboard-cue`
+  - `ink` &rarr; `svg-icon-designer-ink`
+  - `pdm` &rarr; `project-delivery-navigator`
+  - `zen` &rarr; `code-refactoring-zen`
+  - `pdf` &rarr; `pdf-toolkit-manager`
+  - `seo` &rarr; `seo-audit-expert`
+  - `ocx` &rarr; `opencodex-proxy-controller`
+
+#### 4. Final Registry Metrics
+- **Active Production Skills**: **2,272**
+- **Short / Cryptic Skill Names (< 3 chars)**: **0**
+- **Plural vs Singular Discrepancies**: **0**
+- **Frontmatter Name Collisions**: **0**
+- **Directory vs Frontmatter Name Mismatches**: **0**
+
+---
+
 ## 10. Appendix & Cross-Reference Index
 
 ### Appendix A: Protocol-to-Implementation Cross-Reference
