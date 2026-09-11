@@ -193,7 +193,7 @@ export function createInputSubagentTool(
       const result = resultForSubagentExit(session.exit);
       const isFailedOrInterrupted = session.exit?.status === "failed" || session.isInterrupted;
       const idleHint = isFailedOrInterrupted
-        ? `[subagent failed/interrupted with subagent_id ${subagentId}; send input_subagent with resume=true to retry/resume]`
+        ? `[subagent idle with subagent_id ${subagentId}; interrupted/failed - send input_subagent with resume=true to retry/resume]`
         : `[subagent idle with subagent_id ${subagentId}; send a follow-up prompt to continue]`;
       return {
         ...result,
