@@ -749,6 +749,7 @@ export function CalendarPage() {
           <>
             {form?.editing != null && (
               <Button
+                size="sm"
                 variant="danger"
                 className="mr-auto"
                 disabled={busy}
@@ -757,10 +758,11 @@ export function CalendarPage() {
                 {S.company.calendar.delete}
               </Button>
             )}
-            <Button onClick={() => setForm(null)} disabled={busy}>
+            <Button size="sm" onClick={() => setForm(null)} disabled={busy}>
               {S.common.cancel}
             </Button>
             <Button
+              size="sm"
               variant="primary"
               disabled={busy}
               onClick={() => {

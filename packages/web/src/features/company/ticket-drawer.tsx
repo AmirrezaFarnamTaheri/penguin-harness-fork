@@ -786,10 +786,11 @@ export function TicketDrawer({
         onClose={() => setBlockOpen(false)}
         footer={
           <>
-            <Button onClick={() => setBlockOpen(false)} disabled={busy}>
+            <Button size="sm" onClick={() => setBlockOpen(false)} disabled={busy}>
               {S.common.cancel}
             </Button>
             <Button
+              size="sm"
               variant="primary"
               disabled={busy || !blockReason.trim()}
               onClick={() => {

@@ -412,14 +412,14 @@ export function CreateOrganizationDialog({
           {/* Dropping the draft is a form action, not a dialog verdict: it sits away from
               Cancel / Create so a click on it can never be mistaken for either. */}
           {draftContent && (
-            <Button onClick={dropDraft} disabled={busy} className="mr-auto">
+            <Button size="sm" onClick={dropDraft} disabled={busy} className="mr-auto">
               {S.company.clearDraft}
             </Button>
           )}
-          <Button onClick={onClose} disabled={busy}>
+          <Button size="sm" onClick={onClose} disabled={busy}>
             {S.common.cancel}
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void submit()}>
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void submit()}>
             {busy ? S.company.creating : S.common.create}
           </Button>
         </>
@@ -633,10 +633,10 @@ export function OrganizationSettingsDialog({
       widthClass="sm:max-w-lg"
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button size="sm" onClick={onClose} disabled={busy}>
             {S.common.cancel}
           </Button>
-          <Button variant="primary" disabled={!hydrated || busy} onClick={save}>
+          <Button size="sm" variant="primary" disabled={!hydrated || busy} onClick={save}>
             {S.common.save}
           </Button>
         </>

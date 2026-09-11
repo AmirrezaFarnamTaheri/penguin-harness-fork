@@ -498,10 +498,10 @@ function NewDocumentDialog({
       onClose={busy ? () => undefined : onClose}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button size="sm" onClick={onClose} disabled={busy}>
             {S.common.cancel}
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void submit()}>
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void submit()}>
             {busy ? S.company.handbook.creating : S.common.create}
           </Button>
         </>

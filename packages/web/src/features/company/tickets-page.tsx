@@ -655,10 +655,10 @@ function CreateTicketDialog({
       widthClass="sm:max-w-lg"
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button size="sm" onClick={onClose} disabled={busy}>
             {S.common.cancel}
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void submit()}>
+          <Button size="sm" variant="primary" disabled={busy} onClick={() => void submit()}>
             {S.common.create}
           </Button>
         </>
