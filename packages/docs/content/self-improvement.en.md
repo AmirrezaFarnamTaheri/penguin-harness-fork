@@ -38,6 +38,10 @@ Invalid evaluations and correction reruns do not count toward the round limit. O
 
 Every accepted Candidate is appended to and verified in the Scoreboard immediately. A strictly higher Evaluation score decides acceptance; the first comparison directly compares the Candidate's multi-Run average with the Formal Baseline's one-Run score without backfilling the Baseline. Whether the predicted Case behavior changed is reported separately so unrelated single-run variation is not presented as causal evidence. Agent optimization requires a complete Formal Baseline in the Scoreboard — without one there is no improvement to compare against.
 
+## From the Evaluation Center
+
+The Web App's Evaluation Center starts the same two Sessions without a hand-written prompt. **Create with AI** takes the Test Agent and a description and prefills the `benchmark-design` request — agent id, a desired baseline score, a pilot-iteration limit — into a new conversation with the Project's default agent; **Create manually** writes a Benchmark from a form in the layout below, ready for evaluation. **Optimize with AI** and **Optimize manually** are the same pair of buttons, and prefill the `agent-optimization` request — Test Agent, Benchmark id, runs per case, round limit, target score — into a new conversation with the optimizer agent of your choice. Both only prefill: sending is the user's decision in that conversation. The evaluation runtime is never chosen there: the Optimizer reuses the pair and thinking level the baseline recorded.
+
 ## Benchmark storage
 
 Benchmarks are stored per Agent under `benchmarks/<id>/`:
@@ -52,6 +56,8 @@ benchmarks/<id>/
 ```
 
 The separation of `rubric/` from `statement/` is deliberate: the Target Agent sees only the task statement and never touches the scoring rubric.
+
+`benchmark_config.toml` is what makes a directory a Benchmark: a directory under `benchmarks/` without one is not listed. Deleting a Benchmark while an evaluation is still running leaves such a directory behind, because the running evaluation keeps writing to the paths it was deleted from. A Benchmark that has simply never been evaluated still has its config and is listed as usual; a leftover directory is safe to delete by hand.
 
 Each evaluation record in `scoreboard.yaml` is timestamped and carries:
 
