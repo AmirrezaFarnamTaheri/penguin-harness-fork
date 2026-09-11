@@ -1,0 +1,12 @@
+diff -rN -U0 --ignore-trailing-space a/meeting-insights-analyzer/SKILL.md b/meeting-insights-analyzer/SKILL.md
+--- a/meeting-insights-analyzer/SKILL.md	2000-01-01 00:00:00.000000000 +0000
++++ b/meeting-insights-analyzer/SKILL.md	2000-01-01 00:00:00.000000000 +0000
+@@ -59 +59 @@
+-2. Navigate to that folder in Claude Code
++2. Navigate to that folder in Kilo
+@@ -294 +294 @@
+-- Point Claude Code to that folder
++- Point Kilo to that folder
+@@ -304 +304 @@
+-- Download as .txt files or give Claude Code access
++- Download as .txt files or give Kilo access

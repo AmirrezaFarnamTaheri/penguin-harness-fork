@@ -254,7 +254,7 @@ function dataUrlByteLength(dataUrl: string): number {
  * nothing either way).
  *
  * A character whitelist is deliberately NOT the guard: an attachment keeps the name the user
- * gave it, `报告.pdf` included, so the check is structural instead — no separators, no control
+ * gave it, `report.pdf` included, so the check is structural instead — no separators, no control
  * characters, not a relative marker — and then *confirmed* by resolving the path and requiring
  * its parent to be this session's directory exactly. That last step is what actually contains
  * the read: it also rejects the shapes a character class misses, such as a Windows

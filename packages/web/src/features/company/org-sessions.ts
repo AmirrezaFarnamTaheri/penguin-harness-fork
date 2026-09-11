@@ -2,10 +2,10 @@
  * The company sidebar's two session groups, as pure shaping (unit tested) over the
  * organization's chart, its sessions route and the session list's live statuses:
  *
- * - 工位 — one row per EMPLOYEE, in chart order, whether or not a desk session exists yet.
+ * - Workstations — one row per EMPLOYEE, in chart order, whether or not a desk session exists yet.
  *   The roster is the chart's (the sessions route only knows employees whose desk has been
  *   opened); the state is the live one where the session list holds the row.
- * - 工单会话 — every session attached to a ticket, newest first, each carrying the ticket it
+ * - Ticket Sessions — every session attached to a ticket, newest first, each carrying the ticket it
  *   contributes to as its subtitle. A session attached to several tickets appears once per
  *   ticket: it is doing two jobs, and hiding one of them would hide where it is being read.
  *
@@ -15,7 +15,7 @@
  * Both take their run state from the LIVE statuses first, because the two snapshots behind
  * them only move on an organization event: the sessions route is re-read when a run is
  * dispatched (`org_run`) or a ticket moves, and the chart when a summary does — and a run
- * ENDING publishes none of those. A desk would sit on 「运行中」 until some unrelated event
+ * ENDING publishes none of those. A desk would sit on "running" until some unrelated event
  * happened to arrive. The session list's own statuses come from the user event channel, which
  * reports every flip of every Session, so they are the state that is actually current; the
  * snapshots stand in for the rows that list has not loaded.

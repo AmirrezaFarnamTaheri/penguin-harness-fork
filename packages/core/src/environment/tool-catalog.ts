@@ -62,7 +62,7 @@ function terms(value: string): string[] {
   // boundaries so a natural-language "describe table" query gets exact name-token signals
   // instead of only a weak substring hit on "describe_table". Han text has no mandatory word
   // separators, so retain each complete segment and add overlapping bigrams. Splitting script
-  // boundaries also lets an unspaced query such as "查询Postgres表结构" retain "postgres".
+  // boundaries also lets an unspaced query such as "queryPostgresTable" retain "postgres".
   const runs =
     normalized(value)
       .replace(/[_-]+/g, " ")

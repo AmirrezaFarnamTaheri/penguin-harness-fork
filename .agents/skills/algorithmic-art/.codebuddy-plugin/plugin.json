@@ -1,0 +1,12 @@
+{
+  "name": "algorithmic-art",
+  "description": "Create algorithmic art using p5.js with seeded randomness and interactive parameter exploration. Suitable for generative art, flow fields, and particle systems.",
+  "description_en": "Creating algorithmic art using p5.js with seeded randomness and interactive parameter exploration. Use this when users request creating art using code, generative art, algorithmic art, flow fields, or particle systems.",
+  "author": {
+    "name": "",
+    "email": ""
+  },
+  "repository": "https://github.com/anthropics/skills",
+  "homepage": "https://github.com/anthropics/skills",
+  "license": "Apache-2.0"
+}

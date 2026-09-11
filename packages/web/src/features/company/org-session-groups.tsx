@@ -2,10 +2,10 @@
  * The two session groups under the company sidebar's channel list, and the collapsed rail's
  * desk twins.
  *
- * 工位 is one row per employee, in chart order, expanded by default: the organization's
+ * Workstations is one row per employee, in chart order, expanded by default: the organization's
  * people are its primary objects, and a desk is where a person is talked to. A row whose
  * employee has never had a desk opened still stands there and opens one on click, exactly as
- * the org chart's card does. 工单会话 holds the sessions attached to tickets, newest first
+ * the org chart's card does. Ticket Sessions holds the sessions attached to tickets, newest first
  * under the ticket that names them, collapsed by default: they are work in progress, read
  * from the board far more often than from here.
  *

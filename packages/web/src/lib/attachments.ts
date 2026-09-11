@@ -35,7 +35,7 @@ export interface ParsedAttachments {
 
 /**
  * Local scratchpad path → session file endpoint (Windows separators supported). The file name
- * is anything but a separator: an attachment keeps the name the user gave it (`报告.pdf`), and
+ * is anything but a separator: an attachment keeps the name the user gave it (`report.pdf`), and
  * both segments are percent-encoded into the URL below, so restricting the character set here
  * would only make non-ASCII uploads unreachable.
  */

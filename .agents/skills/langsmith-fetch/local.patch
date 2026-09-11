@@ -1,0 +1,6 @@
+diff -rN -U0 --ignore-trailing-space a/langsmith-fetch/SKILL.md b/langsmith-fetch/SKILL.md
+--- a/langsmith-fetch/SKILL.md	2000-01-01 00:00:00.000000000 +0000
++++ b/langsmith-fetch/SKILL.md	2000-01-01 00:00:00.000000000 +0000
+@@ -482 +482 @@
+-## Notes for Claude
++## Notes for Kilo

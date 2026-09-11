@@ -188,7 +188,7 @@ function CollapsedRail({ onExpand }: { onExpand: () => void }) {
           <GlyphIcon d="M9 6l6 6-6 6M20 4v16" size={18} />
         </button>
       </Tooltip>
-      {/* The work-mode toggle, the rail's compact form of the sidebar's 开发 | 公司 switch:
+      {/* The work-mode toggle, the rail's compact form of the sidebar's Dev | Company switch:
           one building glyph, pressed while in company mode, the tooltip naming the move a
           click makes. Same availability rule as the switch. */}
       {company.available && (

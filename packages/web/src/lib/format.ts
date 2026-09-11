@@ -191,9 +191,9 @@ const EN_MONTHS = [
 
 /**
  * `yyyy-mm-dd` (or a full ISO timestamp — only the date part is read) → localized
- * month + day, no year: en `Jul 26`, zh `7 月 26 日` (the version footer's "last
- * updated" date, product-specified wording — the zh form keeps the CJK/numeral
- * spacing the owner asked for, which `Intl` would drop). The fields are read
+ * month + day, no year: en `Jul 26`, zh `7/26` (the version footer's "last
+ * updated" date, product-specified wording — the zh form keeps the formatting
+ * the owner asked for, which `Intl` would drop). The fields are read
  * straight from the string rather than via `new Date()` + local-zone formatting:
  * the input is a UTC calendar date (core's stamped BUILD_DATE, a release's
  * publish timestamp), and round-tripping it through the viewer's timezone would
@@ -211,7 +211,7 @@ export function formatMonthDay(iso: string, locale: "zh" | "en"): string {
 
 /**
  * Millisecond timestamp → human-readable message time: en `Jul 2, 2:58 PM` /
- * zh `7月2日 14:58`; returns an empty string for an invalid value.
+ * zh format; returns an empty string for an invalid value.
  *
  * Follows the UI language instead of hardcoding English: date formatting is
  * a localization concern, and `Jul 2` would look jarring in a Chinese UI.
@@ -236,8 +236,8 @@ function startOfDayMs(d: Date): number {
 
 /**
  * ISO timestamp → relative days (used by the Agents card's "last modified"):
- * same day → "今天/today", one day back → "昨天/yesterday", earlier → local
- * calendar-day difference as "n 天前 / n days ago"; a future time (clock
+ * same day → "today", one day back → "yesterday", earlier → local
+ * calendar-day difference as "n days ago"; a future time (clock
  * skew) falls back to the absolute time, and parse failures return the
  * input unchanged.
  */
@@ -252,8 +252,8 @@ export function formatRelativeDays(iso: string, locale: "zh" | "en"): string {
 }
 
 /**
- * ISO timestamp → semantic update time (skill card metadata): zh "今天更新/
- * 昨天更新/n 天前更新", en "updated today/yesterday/n days ago"; a future
+ * ISO timestamp → semantic update time (skill card metadata):
+ * en "updated today/yesterday/n days ago"; a future
  * time (clock skew) falls back to the date itself, and parse failures
  * return the input unchanged (without the "updated" wording).
  */
@@ -269,8 +269,8 @@ export function formatRelativeDate(iso: string, locale: "zh" | "en"): string {
 
 /**
  * ISO timestamp → compact "how long ago from now" for narrow rows (the sidebar's
- * per-conversation time): under a minute zh 「刚刚」 / en "now", then minute / hour /
- * day steps — zh keeps the dictionary wording (`5 分钟前`), en stays ultra-short
+ * per-conversation time): under a minute en "now", then minute / hour /
+ * day steps — en stays ultra-short
  * (`5m`, `3h`, `2d`) per the CLI-style abbreviation register. A week or older — or a
  * future time (clock skew) — falls back to the absolute month-day (formatMonthDay);
  * an unparsable value yields "" so callers hide the slot rather than show garbage.

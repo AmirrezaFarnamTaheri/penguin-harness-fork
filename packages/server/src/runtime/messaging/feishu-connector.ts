@@ -84,7 +84,7 @@ function mentionKeyRegex(mentions: readonly FeishuMention[]): RegExp {
  *
  * Feishu never puts a mention in the text: it writes a placeholder (`@_user_1`) and carries
  * who it refers to in a parallel `mentions` array. Handed to the model raw, that is a token
- * nothing in the conversation can resolve — a group message reads as `@_user_1 你好` and the
+ * nothing in the conversation can resolve — a group message reads as `@_user_1 hello` and the
  * model spends its turn asking who `_user_1` is. Every placeholder therefore becomes the
  * mentioned party's name.
  *

@@ -483,3 +483,116 @@ export function groupPlugins(all: LibraryPlugin[]): ResolvedPluginGroup[] {
 export function loadPluginGroups(): ResolvedPluginGroup[] {
   return groupPlugins(loadLibraryPlugins());
 }
+
+/**
+ * External Cross-Runtime Manifest Converters & Message Pipeline Filters.
+ * Absorbed and unified from agents-main, antigravity-plugin-cc, and AstrBot.
+ */
+
+export interface ExternalPluginManifest {
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  format: "claude-code" | "gemini-cli" | "cursor" | "native";
+  commands: Array<{ name: string; description: string; handler?: string }>;
+  skills: string[];
+  hooks: Record<string, string[]>;
+}
+
+export function parseClaudePluginManifest(rawJson: string): ExternalPluginManifest {
+  const parsed = JSON.parse(rawJson);
+  return {
+    name: parsed.name ?? "unnamed-claude-plugin",
+    version: parsed.version ?? "1.0.0",
+    description: parsed.description ?? "",
+    author: parsed.author,
+    format: "claude-code",
+    commands: Array.isArray(parsed.commands)
+      ? parsed.commands.map((cmd: any) => ({
+          name: cmd.name ?? "",
+          description: cmd.description ?? "",
+          handler: cmd.handler,
+        }))
+      : [],
+    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    hooks: parsed.hooks ?? {},
+  };
+}
+
+export function parseGeminiExtensionManifest(rawJson: string): ExternalPluginManifest {
+  const parsed = JSON.parse(rawJson);
+  return {
+    name: parsed.name ?? parsed.id ?? "unnamed-gemini-extension",
+    version: parsed.version ?? "1.0.0",
+    description: parsed.description ?? "",
+    author: parsed.publisher,
+    format: "gemini-cli",
+    commands: Array.isArray(parsed.contributions?.commands)
+      ? parsed.contributions.commands.map((cmd: any) => ({
+          name: cmd.command ?? cmd.id ?? "",
+          description: cmd.title ?? cmd.description ?? "",
+        }))
+      : [],
+    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    hooks: {},
+  };
+}
+
+export function parseCursorPluginManifest(rawJson: string): ExternalPluginManifest {
+  const parsed = JSON.parse(rawJson);
+  return {
+    name: parsed.name ?? "unnamed-cursor-plugin",
+    version: parsed.version ?? "1.0.0",
+    description: parsed.description ?? "",
+    format: "cursor",
+    commands: Array.isArray(parsed.rules)
+      ? parsed.rules.map((rule: any) => ({
+          name: rule.name ?? "",
+          description: rule.description ?? "",
+        }))
+      : [],
+    skills: [],
+    hooks: {},
+  };
+}
+
+export type PipelineStage = "pre-filter" | "command-match" | "llm-fallback" | "post-filter";
+
+export interface PipelineFilter {
+  name: string;
+  stage: PipelineStage;
+  priority: number;
+  execute: (message: string, context?: Record<string, unknown>) => Promise<{
+    handled: boolean;
+    output?: string;
+    stopPipeline?: boolean;
+  }>;
+}
+
+/**
+ * Runs an ordered message processing pipeline (pre-filter -> command match -> LLM fallback -> post-filter)
+ * derived from AstrBot message architecture.
+ */
+export async function runMessagePipeline(
+  message: string,
+  filters: PipelineFilter[],
+  context?: Record<string, unknown>,
+): Promise<{ handled: boolean; finalOutput: string; executedFilters: string[] }> {
+  const sorted = [...filters].sort((a, b) => a.priority - b.priority);
+  let currentText = message;
+  const executed: string[] = [];
+
+  for (const filter of sorted) {
+    executed.push(filter.name);
+    const result = await filter.execute(currentText, context);
+    if (result.output) {
+      currentText = result.output;
+    }
+    if (result.stopPipeline || result.handled) {
+      return { handled: true, finalOutput: currentText, executedFilters: executed };
+    }
+  }
+
+  return { handled: false, finalOutput: currentText, executedFilters: executed };
+}

@@ -229,10 +229,67 @@ export function createWebSearchTool(
         yield delta(renderResults(query, normalizeResults(parsed, limit)));
       } catch (error) {
         if (ctx.signal?.aborted) return { stopReason: "aborted" };
+        // Fallback to DuckDuckGo if SearXNG is unavailable
+        try {
+          const fetcher = service.fetch ?? globalThis.fetch;
+          const fallbackResults = await fallbackDuckDuckGoSearch(query, limit, fetcher, ctx.signal);
+          if (fallbackResults.length > 0) {
+            yield delta(renderResults(query, fallbackResults));
+            return;
+          }
+        } catch {
+          // fallback failed, continue to report error
+        }
         const message = error instanceof Error ? error.message : String(error);
         yield delta(`Web search failed: ${message}`);
         return { stopReason: "fatal" };
       }
     },
   };
+}
+
+async function fallbackDuckDuckGoSearch(
+  query: string,
+  limit: number,
+  fetcher: typeof fetch,
+  signal?: AbortSignal,
+): Promise<SearchResult[]> {
+  try {
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetcher(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html",
+      },
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const results: SearchResult[] = [];
+    const titleRe = /<a[^>]+class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippetRe = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    const linkMatches = [...html.matchAll(titleRe)];
+    const snippetMatches = [...html.matchAll(snippetRe)];
+
+    for (let i = 0; i < Math.min(linkMatches.length, limit); i++) {
+      let rawUrl = linkMatches[i]?.[1] ?? "";
+      if (rawUrl.includes("uddg=")) {
+        const match = /uddg=([^&]+)/.exec(rawUrl);
+        if (match?.[1]) rawUrl = decodeURIComponent(match[1]);
+      }
+      const rawTitle = linkMatches[i]?.[2]?.replace(/<[^>]+>/g, "").trim() ?? "Result";
+      const snippet = snippetMatches[i]?.[1]?.replace(/<[^>]+>/g, "").trim();
+      if (rawUrl.startsWith("http")) {
+        results.push({
+          title: cleanText(rawTitle, MAX_TITLE_LENGTH) ?? "Result",
+          url: rawUrl,
+          ...(snippet ? { snippet: cleanText(snippet, MAX_SNIPPET_LENGTH) } : {}),
+        });
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
 }

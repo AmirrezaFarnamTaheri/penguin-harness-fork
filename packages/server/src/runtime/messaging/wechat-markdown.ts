@@ -21,7 +21,7 @@
  *     five literal `#`. The text becomes an ordinary paragraph, which is what a heading too
  *     deep to show was already going to look like.
  *   - **Emphasis around CJK.** `*text*` needs the marker to sit against a word boundary, and
- *     CJK text has none, so `*中文*` renders as asterisks around Chinese. Latin emphasis is
+ *     CJK text has none, so `*text*` renders as asterisks around Chinese. Latin emphasis is
  *     kept because it does render; a CJK run loses the markers and keeps the words. This is
  *     why emphasis is decided per node rather than once.
  *   - **Images.** The client has no inline image in a text message, and `![alt](url)` shows

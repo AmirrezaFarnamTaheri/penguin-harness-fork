@@ -109,7 +109,7 @@ const CHANNEL_LINKS = {
     credentialSource: "https://t.me/BotFather",
   },
   qq: {
-    // The wiki ROOT is the onboarding guide itself — "介绍与接入指南": registering a
+    // The wiki ROOT is the onboarding guide itself — "Introduction and Onboarding Guide": registering a
     // developer account, creating the bot, and the page its AppID and AppSecret are shown
     // on. That is what a reader of the setup fold is after; the API reference one level
     // down at /develop/api-v2/ answers a question they are not asking yet.

@@ -127,7 +127,7 @@ export interface QQSendArgs {
   msgId: string;
   /**
    * Sequence among the replies to `msgId`, 1-based (the platform's own default is 1).
-   * A repeated `msg_id` + `msg_seq` pair is REJECTED (40054005 消息被去重), not ignored, so
+   * A repeated `msg_id` + `msg_seq` pair is REJECTED (40054005 deduplicated message), not ignored, so
    * this must genuinely increment per reply.
    */
   msgSeq: number;
@@ -493,7 +493,7 @@ function createProductionClient(creds: QQCredentials): ProductionClient {
           : `/v2/users/${encodeURIComponent(args.openid)}/messages`;
       const markdown = args.markdown;
       return post(path, {
-        // "传了 markdown 后此字段必须为空" — the platform rejects a payload carrying both.
+        // "content must be empty when markdown is passed" — the platform rejects a payload carrying both.
         content: markdown === undefined ? args.content : "",
         // 0 = plain text, 2 = markdown. Rich media (7) needs a publicly reachable URL for the
         // bytes, which is why this channel refuses outbound files (see qq-connector).

@@ -24,7 +24,7 @@
  * In company mode the shape holds but the objects change: the organization switcher stands
  * where the Project switcher stands, "New channel" where "New chat" is, the organization's
  * six pages in the nav group, and the channel list where the conversation list is, followed
- * by the organization's own two groups — 工位 (one row per employee) and 工单会话
+ * by the organization's own two groups — Workstations (one row per employee) and Ticket Sessions
  * (features/company/channel-sidebar.tsx, features/company/org-session-groups.tsx). The
  * development list is the user's OWN conversations only: an organization's desk and ticket
  * Sessions are filtered out of every group, bucket and folder here.
@@ -276,7 +276,7 @@ const headerControlClass = (active: boolean) =>
       : "text-gray-400 hover:bg-gray-200/50 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800/70 dark:hover:text-gray-300"
   }`;
 
-/** Muted section label inside the list-settings menu (分组方式 / 排序方式), at the overflow menus' density. */
+/** Muted section label inside the list-settings menu (Grouping / Sorting), at the overflow menus' density. */
 const menuSectionClass =
   "px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500";
 
@@ -387,7 +387,7 @@ export function Sidebar({
    * The rows this list renders: the user's OWN conversations. An organization's desk and
    * ticket Sessions (marked by `orgId`, or by the durable `client === "org"` stamp once the
    * organization is gone) are driven by its scheduler and are listed as themselves in company
-   * mode's 工位 / 工单会话 groups, so they are filtered out here — once, at the source, or a
+   * mode's Workstations / Ticket Sessions groups, so they are filtered out here — once, at the source, or a
    * dropped row would still conjure the Workspace group, Agent group or time bucket it belongs
    * to. They are filtered whatever the company-mode switches say (see withoutOrgSessions):
    * this list is the user's conversations, and a switch about the shell does not turn a
@@ -443,7 +443,7 @@ export function Sidebar({
   const scheduledSessions = pendingScheduled ?? lastScheduledRef.current;
   const collapseStoreKey = currentProjectId === null ? null : collapsedGroupsKey(currentProjectId);
   const pinStoreKey = currentProjectId === null ? null : pinnedGroupsKey(currentProjectId);
-  /** Collapsed page-nav group (the 智能体 → 评估中心 entries; expanded by default, the choice persists across sessions). */
+  /** Collapsed page-nav group (the Agents → Benchmark entries; expanded by default, the choice persists across sessions). */
   const [navCollapsed, setNavCollapsed] = useState(initialNavGroupCollapsed);
   /** Grouping mode of the Session list (Workspace by default; the choice persists across sessions). */
   const [groupMode, setGroupModeState] = useState<GroupMode>(initialGroupMode);
@@ -475,7 +475,7 @@ export function Sidebar({
   const [groupOrder, setGroupOrder] = useState<readonly string[]>(() =>
     loadGroupOrder(currentProjectId, initialGroupMode()),
   );
-  /** Manually-added Workspaces (header 新建工作区; render as empty groups until Sessions exist, with optional display aliases); persisted per Project. */
+  /** Manually-added Workspaces (header "New Workspace"; render as empty groups until Sessions exist, with optional display aliases); persisted per Project. */
   const [registeredWorkspaces, setRegisteredWorkspaces] = useState<readonly WorkspaceEntry[]>(() =>
     loadWorkspaceRegistry(currentProjectId),
   );
@@ -495,7 +495,7 @@ export function Sidebar({
   /**
    * Whether a pointer that can drag is present (the outline rail's HOVER_QUERY idiom).
    * HTML5 drag-and-drop never fires from touch, and the sort mode is one GLOBAL
-   * preference: offering 手动排序 in the mobile drawer would freeze that list in an
+   * preference: offering "manual sort" in the mobile drawer would freeze that list in an
    * order the phone has no gesture to change — and flip the desktop too. The option is
    * hidden there; an already-stored "manual" degrades to recency on such a device.
    */
@@ -1166,8 +1166,8 @@ export function Sidebar({
     saveWorkspaceRegistry(currentProjectId, next);
   };
 
-  /**
-   * 新建工作区: register the browsed pick so it surfaces as a group immediately, Sessions
+   /**
+   * New Workspace: register the browsed pick so it surfaces as a group immediately, Sessions
    * or not. An empty registered group is appended and nothing pins or orders it yet, so it
    * lands last — turn to the page that now holds it, or to the page of the group that was
    * already there. Otherwise, past ten groups, the freshly added Workspace would sit on a
@@ -1204,7 +1204,7 @@ export function Sidebar({
   };
 
   /**
-   * 删除工作区 (confirmed via the shared ConfirmModal, like every destructive-looking
+   * Delete workspace (confirmed via the shared ConfirmModal, like every destructive-looking
    * action): drops the sidebar registry entry only — disk and Sessions are never
    * touched, the confirm copy says exactly that, and re-adding restores it. A group
    * that still has Sessions simply persists as session-derived.
@@ -1575,8 +1575,8 @@ export function Sidebar({
           ),
         );
 
-  /**
-   * Page entries of the collapsible nav group. Development mode: 智能体 → 评估中心, driven by
+   /**
+   * Page entries of the collapsible nav group. Development mode: Agents → Benchmark, driven by
    * the NAV_GROUP_KEYS manifest minus the entries this user's role cannot reach. Company
    * mode: the organization's six pages (COMPANY_NAV_KEYS) — channels are not among them,
    * they are the list below. Always mounted — the collapse animates their height to zero and
@@ -1610,7 +1610,7 @@ export function Sidebar({
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* The work-mode switch, above the Project switcher: 开发 | 公司. Rendered only while
+      {/* The work-mode switch, above the Project switcher: Dev | Company. Rendered only while
           company mode is available (the admin master switch and the user's own switch both
           on); the choice persists per user. */}
       {company.available && (
@@ -1833,7 +1833,7 @@ export function Sidebar({
               </div>
             </div>
           </div>
-          {/* Collapse toggle of the page-nav group (智能体 → 评估中心): a slim (h-4)
+          {/* Collapse toggle of the page-nav group (Agents → Benchmark): a slim (h-4)
               nav-row-wide button directly under the group's last entry — a centered chevron
               pointing UP while expanded (click to collapse) and DOWN while collapsed (the
               button stays as the only way back, right under the new-chat boundary once the
@@ -2019,7 +2019,7 @@ export function Sidebar({
                     }}
                   />
                 </Dropdown>
-                {/* Mode-dependent create — 具体新建的对象按分组方式决定, the icon following
+                {/* Mode-dependent create — specific entity created depends on grouping mode, the icon following
                 suit (folder+ / robot+, a bottom-right plus badge on the entity's glyph):
                 agent grouping opens the Agents page's existing create dialog (route
                 state); workspace grouping opens the SAME directory-browse menu the
@@ -2887,8 +2887,8 @@ function SessionRow({
         </button>
         {/* Trailing swap slot: resting last-active time / hover-focus archive + delete.
             The buttons form a CONSTANT-width group anchored at the slot's right edge —
-            NOT a whole-slot overlay: the slot's width rides the time string (2 分钟前 vs
-            31 分钟前), and slot-centered glyphs landed at a different x per row, so the
+            NOT a whole-slot overlay: the slot's width rides the time string (2m ago vs
+            31m ago), and slot-centered glyphs landed at a different x per row, so the
             icons never formed a vertical column (the user saw them shift with the time's
             character count). Right-anchored, every row's icons share one x. min-w-12
             reserves the pair's own width, so on a row with no time they still don't
@@ -2943,7 +2943,7 @@ function SessionRow({
 
 /**
  * Registry-backed workspace group's overflow (… to the right of the header's "+"):
- * 重命名工作区 / 删除工作区 in the session-row menu's compact style. Sits among the
+ * Rename workspace / Delete workspace in the session-row menu's compact style. Sits among the
  * header's action buttons — outside the header's collapse toggle, so opening it never
  * expands/collapses the group. Body-portaled like every menu inside the scroller.
  */
@@ -2998,8 +2998,8 @@ function GroupOverflowMenu({ onRename, onDelete }: { onRename: () => void; onDel
 /**
  * List-settings menu option: leading glyph + label, with a checkmark marking the active
  * choice (reference-style radio row; aria-pressed carries the state). Same type scale and
- * leading-glyph column as the session/workspace overflow menus (用户口径: 字体和 Session
- * 更多一样), so the two menus read as one family.
+ * leading-glyph column as the session/workspace overflow menus (font matches Session
+ * more options), so the two menus read as one family.
  *
  * The glyph is decorative — it names the option's subject (a folder for Workspace
  * grouping, a clock for recency) beside a label that is never dropped, so the row's

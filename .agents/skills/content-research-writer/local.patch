@@ -1,0 +1,9 @@
+diff -rN -U0 --ignore-trailing-space a/content-research-writer/SKILL.md b/content-research-writer/SKILL.md
+--- a/content-research-writer/SKILL.md	2000-01-01 00:00:00.000000000 +0000
++++ b/content-research-writer/SKILL.md	2000-01-01 00:00:00.000000000 +0000
+@@ -57 +57 @@
+-Open Claude Code from this directory and start writing.
++Open Kilo from this directory and start writing.
+@@ -495 +495 @@
+-1. **Work in VS Code**: Better than web Claude for long-form writing
++1. **Work in VS Code**: Better than web chat for long-form writing

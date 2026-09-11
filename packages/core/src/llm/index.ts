@@ -23,8 +23,8 @@ export {
   toolDefinitionsToSchemas,
   buildUniConfig,
 } from "./generative-model.js";
-export { ApiKeyRotator, parseApiKeys, KeyRotatorRegistry } from "./key-rotator.js";
-export type { KeyStatus, KeyHealth, ApiKeyRotatorOptions } from "./key-rotator.js";
+export { ApiKeyRotator, parseApiKeys, KeyRotatorRegistry, WeightedKeyRotator } from "./key-rotator.js";
+export type { KeyStatus, KeyHealth, ApiKeyRotatorOptions, WeightedKeyStatus, WeightedKeyRotatorOptions } from "./key-rotator.js";
 export { listEndpointModels } from "./list-models.js";
 export type { ListEndpointModelsOptions } from "./list-models.js";
 export { ToolCallIdAllocator, stripToolCallIdSuffix } from "./tool-call-ids.js";
@@ -40,3 +40,48 @@ export {
   effectiveMaxOutputTokens,
   effectiveMaxContextLength,
 } from "./context-limits.js";
+export {
+  detectQuotaExhaustion,
+  parseDurationToMs,
+  formatDurationMs,
+} from "./quota-parser.js";
+export type { QuotaDetectionResult } from "./quota-parser.js";
+export { ModelComboRegistry } from "./model-combos.js";
+export type {
+  ModelCombo,
+  ModelComboTarget,
+  FallbackTrigger,
+  ComboResolutionContext,
+} from "./model-combos.js";
+export {
+  PricingCatalog,
+  DEFAULT_PRICING_CATALOG,
+} from "./pricing-catalog.js";
+export type {
+  ModelPricingEntry,
+  DetailedUsageCounts,
+  CostBreakdown,
+} from "./pricing-catalog.js";
+export {
+  InferenceProxyPool,
+  parseProxyUrl,
+} from "./proxy-pool.js";
+export type {
+  ProxyProtocol,
+  ProxyStatus,
+  RotationStrategy,
+  ProxyAuth,
+  ProxyEntry,
+  ProxyInput,
+  ProxyPoolOptions,
+  ProxySelectionCriteria,
+  ProxyPoolStats,
+} from "./proxy-pool.js";
+export {
+  isTruncatedJSON,
+  repairTruncatedJSON,
+  scavengeToolCalls,
+  truncateKeepEnds,
+} from "./tool-call-repair.js";
+export type { ScavengedToolCall } from "./tool-call-repair.js";
+

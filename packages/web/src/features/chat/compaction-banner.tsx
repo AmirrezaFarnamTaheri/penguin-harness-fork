@@ -4,8 +4,8 @@
  * and settles once finished, failures stay on a single line.
  *
  * **The title names the mode and doubles as the status**, the work-group header's idiom
- * (运行中 → 运行完毕): a `summarize` row reads 压缩中 / "Compacting" while it runs and
- * 压缩完毕 / "Compacted" once it settles; a `discard` row 清空中 → 清空完毕 ("Clearing" →
+ * (Running → Completed): a `summarize` row reads "Compacting" while it runs and
+ * "Compacted" once it settles; a `discard` row ("Clearing" →
  * "Cleared") — it drops the old context rather than compacting it, and calling that
  * "compaction" was the confusing part (per maintainer request). With mode and state both in
  * the title neither outcome needs a detail line: a running row is icon + title + ticking wall
@@ -14,9 +14,9 @@
  * the bare mode word.
  *
  * The body follows the work group: **two stacked disclosure rows, each with its own status
- * icon and wall time exactly like a thinking block** — 「思考」/ "Thinking", what the
+ * icon and wall time exactly like a thinking block** — "Thinking", what the
  * compaction request thought ahead of its summary (present only once any arrived; a model
- * that does not think leaves no empty row), and 「压缩结果」/ "Result", the summary itself.
+ * that does not think leaves no empty row), and "Result", the summary itself.
  * Both carry the thinking block's own body (`md-body` + the streaming `Md`) and stream while
  * the request writes them.
  *
@@ -134,7 +134,7 @@ export function CompactionBanner({ item }: { item: CompactionItem }) {
     </>
   ) : null;
 
-  // The title says both what runs and that it is running (压缩中 / "Compacting"), as the
+  // The title says both what runs and that it is running ("Compacting"), as the
   // work-group header's does; no detail line — the body streams behind the chevron, and the
   // raw `summarize`/`discard` wire value never shows.
   if (item.running) {
@@ -152,7 +152,7 @@ export function CompactionBanner({ item }: { item: CompactionItem }) {
   return (
     <StepBanner
       state={ok ? "done" : "failed"}
-      // Success says everything through the title (压缩完毕 / "Compacted"), the icon and the
+      // Success says everything through the title ("Compacted"), the icon and the
       // wall time; a failure keeps the bare mode word and needs a line, because its reason is
       // the part a title cannot carry.
       title={ok ? S.chat.compactionDone(item.mode) : S.chat.compactionTitle(item.mode)}

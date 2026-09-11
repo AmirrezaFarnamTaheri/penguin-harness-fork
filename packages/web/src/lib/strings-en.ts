@@ -1405,7 +1405,7 @@ export const en: Strings = {
     /** The human schedule line under a task's name (schedule-describe.ts). */
     human: {
       everyDay: (time: string): string => `Every day at ${time}`,
-      /** `weekday` is the locale's short weekday name (周一 / Monday). */
+      /** `weekday` is the locale's short weekday name (e.g. Monday). */
       everyWeek: (weekday: string, time: string): string => `Every ${weekday} at ${time}`,
       everyDays: (n: number, time: string): string => `Every ${n} days at ${time}`,
       everyHours: (n: number): string => (n === 1 ? "Every hour" : `Every ${n} hours`),
@@ -1415,7 +1415,7 @@ export const en: Strings = {
       next: (when: string): string => `Next: ${when}`,
       today: (time: string): string => `today ${time}`,
       tomorrow: (time: string): string => `tomorrow ${time}`,
-      /** `monthDay` is formatMonthDay's output (9 月 3 日 / Sep 3). */
+      /** `monthDay` is formatMonthDay's output (e.g. Sep 3). */
       onDate: (monthDay: string, time: string): string => `${monthDay}, ${time}`,
       onDateWithYear: (year: number, monthDay: string, time: string): string =>
         `${monthDay}, ${year}, ${time}`,

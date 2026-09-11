@@ -136,7 +136,7 @@ export function OrgChartPage() {
   const openDesk = async (employee: OrgEmployeeItem) => {
     try {
       const desk = await api.getOrgDesk(projectId, orgId, employee.agentId);
-      // The call may have CREATED the desk: the sidebar's 工位 group has to learn its
+      // The call may have CREATED the desk: the sidebar's Workstation group has to learn its
       // Session id, or it cannot mark the row the shell is about to be on.
       if (desk.created) {
         void company.reloadOrgChart();

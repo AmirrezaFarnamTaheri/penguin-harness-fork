@@ -1813,7 +1813,7 @@ function handleEvent(model: StreamModel, p: EventPayload, tsMs?: number, nowMs?:
           item.gaveUp = true;
         }
         // One line per LADDER, not per attempt: a later attempt replaces the one before it, so
-        // a request that retries four times reads 已发起第 4 次重试 / "retry #4 sent" on a single
+        // a request that retries four times reads "retry #4 sent" on a single
         // line instead of stacking four. The count is already in the line, so nothing is lost
         // from the transcript — and the Trace is untouched, keeping every attempt as its own
         // event for the Trace panel, which builds from the raw events rather than from this model.

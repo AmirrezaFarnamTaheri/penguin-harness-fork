@@ -399,7 +399,7 @@ function ThinkingLevelSelect({
         >
           {/* The one surface that annotates: a menu row is where the tier is CHOSEN, so it
               names the wire value the pick will send. The trigger above stays the plain
-              name — in zh that is 低/中/高/极高/最高, in en the annotation is a no-op. */}
+              name — in zh that is low/medium/high/very high/max, in en the annotation is a no-op. */}
           <span className="min-w-0 flex-1 truncate">
             {S.chat.thinkingLevelMenuName(S.chat.thinkingLevelNames[level] ?? level, level)}
           </span>
@@ -2789,7 +2789,7 @@ export function ChatInput({
                 type="button"
                 title={modelRef?.modelId ?? ""}
                 // Short accessible name (the toast carries the full hint): the long copy
-                // contains the literal "发送"/"Send", which would collide with the send
+                // contains the literal "Send", which would collide with the send
                 // button's accessible name for assistive tech and name-based test queries.
                 aria-label={`${S.chat.model} ${modelRef?.modelId ?? ""}`}
                 onClick={() => toastInfo(S.chat.modelLockedHint)}

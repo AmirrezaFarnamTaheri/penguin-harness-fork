@@ -142,7 +142,7 @@ export const QQ_TAIL_FLUSH_MS = 1500;
 export const QQ_TAIL_MAX_CHARS = 20_000;
 
 /** Marker left in place of buffered text dropped by the tail ceiling (bilingual, like the other chat notices). */
-const QQ_TAIL_ELIDED = "…(earlier part omitted 前略)…";
+const QQ_TAIL_ELIDED = "…(earlier part omitted)…";
 
 /**
  * The bridge's outbound-file shape, mirrored structurally rather than imported: it is a
