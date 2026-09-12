@@ -1,5 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { atomicWriteFile, projectDir } from "@prismshadow/penguin-core";
 
 export interface JsonMutation<T, R> {
@@ -11,8 +13,16 @@ export type JsonDecoder<T> = (raw: string) => T;
 export type JsonEncoder<T> = (value: T) => string;
 
 const LOCK_STALE_MS = 60_000;
+const LOCK_HEARTBEAT_MS = 10_000;
 const LOCK_TIMEOUT_MS = 10_000;
 const LOCK_POLL_MS = 25;
+
+interface LockOwner {
+  token: string;
+  pid: number;
+  hostname: string;
+  createdAt: number;
+}
 
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
@@ -22,29 +32,112 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function removeLockIfStale(lockPath: string): Promise<boolean> {
+function parseLockOwner(raw: string): LockOwner {
+  const parsed = JSON.parse(raw) as Partial<LockOwner>;
+  if (
+    typeof parsed.token !== "string" ||
+    typeof parsed.pid !== "number" ||
+    !Number.isInteger(parsed.pid) ||
+    parsed.pid <= 0 ||
+    typeof parsed.hostname !== "string" ||
+    typeof parsed.createdAt !== "number"
+  ) {
+    throw new Error("Invalid lock-owner metadata");
+  }
+  return parsed as LockOwner;
+}
+
+async function readLockOwner(lockPath: string): Promise<LockOwner | null> {
   try {
-    const stat = await fs.stat(lockPath);
-    if (Date.now() - stat.mtimeMs <= LOCK_STALE_MS) return false;
-    await fs.unlink(lockPath);
+    return parseLockOwner(await fs.readFile(lockPath, "utf-8"));
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return null;
+    throw error;
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
     return true;
+  } catch (error) {
+    if (isErrno(error, "ESRCH")) return false;
+    // EPERM means the process exists but cannot be signalled; unknown errors are treated
+    // conservatively as live so we never steal an active writer's lock.
+    return true;
+  }
+}
+
+/**
+ * Recover an abandoned local-process lock. Age alone is never enough to steal a lock: an
+ * active owner may be paused for arbitrarily long. A stale lock is recoverable only when its
+ * recorded owner is on this host and its PID is no longer alive.
+ */
+async function removeLockIfAbandoned(lockPath: string): Promise<boolean> {
+  let stat: Awaited<ReturnType<typeof fs.stat>>;
+  try {
+    stat = await fs.stat(lockPath);
   } catch (error) {
     if (isErrno(error, "ENOENT")) return true;
     throw error;
   }
+
+  if (Date.now() - stat.mtimeMs <= LOCK_STALE_MS) return false;
+
+  const owner = await readLockOwner(lockPath);
+  if (!owner) return true;
+  if (owner.hostname !== os.hostname()) return false;
+  if (processIsAlive(owner.pid)) return false;
+
+  // Move the abandoned lock out of the acquisition pathname atomically. Re-read the moved
+  // metadata before deleting it so cleanup cannot silently discard a different owner's file.
+  const quarantine = `${lockPath}.abandoned-${owner.token}-${randomUUID()}`;
+  try {
+    await fs.rename(lockPath, quarantine);
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return true;
+    throw error;
+  }
+
+  const movedOwner = await readLockOwner(quarantine);
+  if (!movedOwner || movedOwner.token !== owner.token) {
+    // Extremely defensive replacement-race recovery: put the moved lock back if the acquisition
+    // pathname is still free. Never delete metadata that does not belong to the owner we proved dead.
+    try {
+      await fs.rename(quarantine, lockPath);
+    } catch {
+      // If another owner acquired meanwhile, preserve the quarantined file for operator inspection.
+    }
+    throw new Error(`Refusing to remove project-state lock '${lockPath}' because ownership changed during stale recovery.`);
+  }
+
+  await fs.unlink(quarantine);
+  return true;
 }
 
 async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Promise<R> {
   const lockPath = `${targetPath}.lock`;
   const startedAt = Date.now();
+  const owner: LockOwner = {
+    token: randomUUID(),
+    pid: process.pid,
+    hostname: os.hostname(),
+    createdAt: Date.now(),
+  };
   let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
 
   while (!handle) {
     try {
       handle = await fs.open(lockPath, "wx");
+      await handle.writeFile(JSON.stringify(owner), "utf-8");
+      await handle.sync();
     } catch (error) {
+      if (handle) {
+        await handle.close().catch(() => undefined);
+        handle = null;
+      }
       if (!isErrno(error, "EEXIST")) throw error;
-      if (await removeLockIfStale(lockPath)) continue;
+      if (await removeLockIfAbandoned(lockPath)) continue;
       if (Date.now() - startedAt >= LOCK_TIMEOUT_MS) {
         throw new Error(`Timed out waiting for project state lock '${lockPath}'.`);
       }
@@ -52,13 +145,33 @@ async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Prom
     }
   }
 
+  const ownedHandle = handle;
+  const heartbeat = setInterval(() => {
+    const now = new Date();
+    void ownedHandle.utimes(now, now).catch(() => undefined);
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
+
   try {
     return await work();
   } finally {
-    await handle.close().catch(() => undefined);
-    await fs.unlink(lockPath).catch((error) => {
-      if (!isErrno(error, "ENOENT")) throw error;
-    });
+    clearInterval(heartbeat);
+    await ownedHandle.close().catch(() => undefined);
+
+    const currentOwner = await readLockOwner(lockPath).catch(() => null);
+    if (currentOwner?.token === owner.token) {
+      const releasePath = `${lockPath}.released-${owner.token}`;
+      try {
+        await fs.rename(lockPath, releasePath);
+        const releasedOwner = await readLockOwner(releasePath);
+        if (releasedOwner?.token !== owner.token) {
+          throw new Error(`Refusing to release project-state lock '${lockPath}' because ownership changed.`);
+        }
+        await fs.unlink(releasePath);
+      } catch (error) {
+        if (!isErrno(error, "ENOENT")) throw error;
+      }
+    }
   }
 }
 
@@ -66,7 +179,7 @@ async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Prom
  * Small durable JSON repository for per-project route state.
  *
  * - Reads distinguish an absent file from corruption/permission failures.
- * - Mutations are serialized in-process and by an on-disk lock across processes.
+ * - Mutations are serialized in-process and by an ownership-tracked on-disk lock across processes.
  * - Every mutation reloads durable state while holding the lock, then atomically replaces it.
  * - No mutable in-memory snapshot is published before hydration or retained after a write failure.
  */
@@ -94,8 +207,6 @@ export class ProjectJsonStore<T> {
       throw error;
     }
 
-    // Deliberately let decoder/JSON errors propagate. A corrupt source is evidence to preserve,
-    // not an empty store that a subsequent request may overwrite.
     return this.decode(raw);
   }
 
