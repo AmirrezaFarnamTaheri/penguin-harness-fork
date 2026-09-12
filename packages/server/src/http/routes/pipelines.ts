@@ -11,6 +11,7 @@ import {
   WorkflowPipeline,
   PersonaRegistry,
   BUILTIN_PERSONA_MASKS,
+  isValidId,
 } from "@prismshadow/penguin-core";
 import type {
   WorkflowNode,
@@ -54,6 +55,63 @@ function decodeArray<T>(label: string, raw: string): T[] {
   return parsed as T[];
 }
 
+function requireApiId(
+  obj: Record<string, unknown>,
+  key: string,
+  label: string,
+): string {
+  const value = requireString(obj, key, { minLen: 1, maxLen: 64, label });
+  if (!isValidId(value)) {
+    throw badRequest(`${label} must contain only letters, numbers, underscores, and hyphens.`);
+  }
+  return value;
+}
+
+function assertPersistedId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !isValidId(value)) {
+    throw new Error(
+      `${label} contains a legacy identifier that is not addressable by the pipeline API. ` +
+      "Migrate it by recreating the pipeline with an identifier containing only letters, numbers, underscores, and hyphens.",
+    );
+  }
+}
+
+function validatePersistedDefinition(
+  definition: PipelineDefinitionRecord,
+  label: string,
+): PipelineDefinitionRecord {
+  assertPersistedId(definition?.id, `${label}.id`);
+  if (!Array.isArray(definition.nodes) || !Array.isArray(definition.edges)) {
+    throw new Error(`${label} must contain node and edge arrays.`);
+  }
+  for (let i = 0; i < definition.nodes.length; i++) {
+    assertPersistedId(definition.nodes[i]?.id, `${label}.nodes[${i}].id`);
+  }
+  for (let i = 0; i < definition.edges.length; i++) {
+    assertPersistedId(definition.edges[i]?.from, `${label}.edges[${i}].from`);
+    assertPersistedId(definition.edges[i]?.to, `${label}.edges[${i}].to`);
+  }
+  return definition;
+}
+
+function decodePipelineDefinitions(raw: string): PipelineDefinitionRecord[] {
+  const definitions = decodeArray<PipelineDefinitionRecord>("Pipeline", raw);
+  definitions.forEach((definition, index) => validatePersistedDefinition(definition, `pipelines[${index}]`));
+  return definitions;
+}
+
+function decodeRunRecords(raw: string): ScopedRunRecord[] {
+  const records = decodeArray<ScopedRunRecord>("Pipeline run", raw);
+  records.forEach((record, index) => {
+    assertPersistedId(record?.projectId, `pipelineRuns[${index}].projectId`);
+    assertPersistedId(record?.pipelineId, `pipelineRuns[${index}].pipelineId`);
+    if (record.definition) {
+      validatePersistedDefinition(record.definition, `pipelineRuns[${index}].definition`);
+    }
+  });
+  return records;
+}
+
 function cloneDefinition(definition: PipelineDefinitionRecord): PipelineDefinitionRecord {
   return {
     id: definition.id,
@@ -83,16 +141,15 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     deps.config.root,
     ".pipelines.json",
     () => [],
-    (raw) => decodeArray<PipelineDefinitionRecord>("Pipeline", raw),
+    decodePipelineDefinitions,
   );
   const runs = new ProjectJsonStore<ScopedRunRecord[]>(
     deps.config.root,
     ".pipeline_runs.json",
     () => [],
-    (raw) => decodeArray<ScopedRunRecord>("Pipeline run", raw),
+    decodeRunRecords,
   );
 
-  // GET / (list pipelines)
   app.get("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
@@ -109,13 +166,12 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     });
   });
 
-  // POST / (create an immutable pipeline definition)
   app.post("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
 
-    const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
+    const id = requireApiId(body, "id", "id");
     const name = requireString(body, "name", { minLen: 1, maxLen: 200, label: "name" });
     const description = typeof body.description === "string" ? body.description : undefined;
 
@@ -131,11 +187,7 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
         throw badRequest(`nodes[${i}] must be an object`);
       }
       const raw = item as Record<string, unknown>;
-      const nodeId = requireString(raw, "id", {
-        minLen: 1,
-        maxLen: 64,
-        label: `nodes[${i}].id`,
-      });
+      const nodeId = requireApiId(raw, "id", `nodes[${i}].id`);
       if (seenIds.has(nodeId)) {
         throw badRequest(`Duplicate node ID '${nodeId}' at nodes[${i}]`);
       }
@@ -185,16 +237,8 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
           throw badRequest(`edges[${i}] must be an object`);
         }
         const raw = item as Record<string, unknown>;
-        const from = requireString(raw, "from", {
-          minLen: 1,
-          maxLen: 64,
-          label: `edges[${i}].from`,
-        });
-        const to = requireString(raw, "to", {
-          minLen: 1,
-          maxLen: 64,
-          label: `edges[${i}].to`,
-        });
+        const from = requireApiId(raw, "from", `edges[${i}].from`);
+        const to = requireApiId(raw, "to", `edges[${i}].to`);
         const conditionValue =
           typeof raw.conditionValue === "string" ||
           typeof raw.conditionValue === "boolean" ||
@@ -229,7 +273,6 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json(definition, 201);
   });
 
-  // POST /:pipelineId/runs
   app.post("/:pipelineId/runs", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
@@ -266,7 +309,6 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json({ run }, 201);
   });
 
-  // GET /:pipelineId/runs/:runId
   app.get("/:pipelineId/runs/:runId", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
@@ -285,7 +327,6 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json({ run: record.run });
   });
 
-  // POST /:pipelineId/runs/:runId/nodes/:nodeId/complete
   app.post("/:pipelineId/runs/:runId/nodes/:nodeId/complete", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
