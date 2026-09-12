@@ -9,21 +9,44 @@
  * GET    /api/projects/:projectId/wiki/path - shortest path between nodes
  * GET    /api/projects/:projectId/wiki/lint - dead link & orphan lint
  */
+import path from "node:path";
+import fs from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
-import { WikiEngine } from "@prismshadow/penguin-core";
+import { WikiEngine, projectDir, atomicWriteFile } from "@prismshadow/penguin-core";
 
 const projectWikis = new Map<string, WikiEngine>();
 
-function getOrCreateWiki(projectId: string): WikiEngine {
+async function getOrCreateWiki(root: string, projectId: string): Promise<WikiEngine> {
   let wiki = projectWikis.get(projectId);
   if (!wiki) {
     wiki = new WikiEngine();
     projectWikis.set(projectId, wiki);
+    try {
+      const pDir = projectDir(root, projectId);
+      const filePath = path.join(pDir, ".wiki_graph.json");
+      const content = await fs.readFile(filePath, "utf-8");
+      wiki.importGraphJson(content);
+    } catch {
+      // Start empty if not yet saved or on parse error
+    }
   }
   return wiki;
+}
+
+async function saveWiki(root: string, projectId: string): Promise<void> {
+  const wiki = projectWikis.get(projectId);
+  if (!wiki) return;
+  try {
+    const pDir = projectDir(root, projectId);
+    await fs.mkdir(pDir, { recursive: true });
+    const filePath = path.join(pDir, ".wiki_graph.json");
+    await atomicWriteFile(filePath, wiki.exportGraphJson());
+  } catch {
+    // Disk write error recovery
+  }
 }
 
 export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
@@ -33,7 +56,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/nodes", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
 
     const query = c.req.query("q");
     if (query) {
@@ -48,7 +71,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/graph", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
     return c.json(wiki.buildGraph());
   });
 
@@ -56,7 +79,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/nodes", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
     const body = await readJson(c);
 
     const id = requireString(body, "id", { minLen: 1, maxLen: 300, label: "id" });
@@ -64,6 +87,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
     const filePath = typeof body.filePath === "string" ? body.filePath : undefined;
 
     const node = wiki.addPage(id, content, filePath);
+    await saveWiki(deps.config.root, projectId);
     return c.json({ node }, 201);
   });
 
@@ -71,8 +95,8 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/nodes/:nodeId", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
-    const nodeId = c.req.param("nodeId");
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
+    const nodeId = decodeURIComponent(c.req.param("nodeId"));
 
     const node = wiki.getPage(nodeId);
     if (!node) {
@@ -86,10 +110,11 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.delete("/nodes/:nodeId", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
-    const nodeId = c.req.param("nodeId");
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
+    const nodeId = decodeURIComponent(c.req.param("nodeId"));
 
     const deleted = wiki.removePage(nodeId);
+    await saveWiki(deps.config.root, projectId);
     return c.json({ deleted });
   });
 
@@ -97,8 +122,8 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/nodes/:nodeId/neighbors", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
-    const nodeId = c.req.param("nodeId");
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
+    const nodeId = decodeURIComponent(c.req.param("nodeId"));
     const maxHops = c.req.query("maxHops") ? parseInt(c.req.query("maxHops")!, 10) : 1;
 
     const neighbors = wiki.getNeighbors(nodeId, { maxHops });
@@ -109,7 +134,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/path", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
 
     const start = c.req.query("start");
     const end = c.req.query("end");
@@ -125,7 +150,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/lint", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const wiki = getOrCreateWiki(projectId);
+    const wiki = await getOrCreateWiki(deps.config.root, projectId);
     return c.json(wiki.lint());
   });
 

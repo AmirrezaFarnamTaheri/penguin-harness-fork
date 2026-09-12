@@ -341,7 +341,7 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
                   placeholder="Enter directive or subagent instruction..."
-                  className="flex-1 text-xs"
+                  className="flex-1"
                 />
                 <Button size="sm" onClick={handleSendMessage} disabled={!messageText.trim()}>
                   Send

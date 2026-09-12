@@ -62,4 +62,14 @@ describe("AcpConnection", () => {
       "ACP Error -32601: Method 'nonexistent/method' not found"
     );
   });
+
+  it("immediately rejects request if transport throws or rejects", async () => {
+    const brokenConn = new AcpConnection(async () => {
+      throw new Error("Socket connection closed abruptly");
+    });
+
+    await expect(brokenConn.sendRequest("ping")).rejects.toThrow(
+      "Socket connection closed abruptly"
+    );
+  });
 });

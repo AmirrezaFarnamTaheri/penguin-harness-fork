@@ -35,6 +35,20 @@ describe("TaskWatchdog", () => {
     expect(aborted.abortReason).toBe("User cancelled execution");
     expect(watchdog.isHealthy()).toBe(false);
   });
+
+  it("detects step timeout when a single step duration exceeds stepTimeoutMs", async () => {
+    const watchdog = new TaskWatchdog({ stepTimeoutMs: 20 });
+    watchdog.start();
+    watchdog.heartbeat({ stepNumber: 1, action: "long_running_tool" });
+
+    // Wait 30ms to exceed 20ms step timeout
+    await new Promise((r) => setTimeout(r, 30));
+
+    const status = watchdog.checkHealth();
+    expect(status.state).toBe("timed_out");
+    expect(status.abortReason).toContain("step timeout");
+    expect(watchdog.isHealthy()).toBe(false);
+  });
 });
 
 describe("CompletionTracker", () => {

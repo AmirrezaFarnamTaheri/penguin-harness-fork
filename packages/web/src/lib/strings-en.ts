@@ -2276,6 +2276,7 @@ Scenarios:
       read_file: "read",
       write_file: "write",
       edit_file: "edit",
+      web_search: "search",
       exec_command: "exec",
       input_command: "follow",
       run_subagent: "subagent",

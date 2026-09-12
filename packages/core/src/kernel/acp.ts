@@ -90,7 +90,20 @@ export class AcpConnection {
         timer,
       });
 
-      void this.sendRawLine(JSON.stringify(req) + "\n");
+      try {
+        const sendResult = this.sendRawLine(JSON.stringify(req) + "\n");
+        if (sendResult && typeof (sendResult as Promise<void>).catch === "function") {
+          (sendResult as Promise<void>).catch((err) => {
+            clearTimeout(timer);
+            this.pending.delete(id);
+            reject(err instanceof Error ? err : new Error(String(err)));
+          });
+        }
+      } catch (err) {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 

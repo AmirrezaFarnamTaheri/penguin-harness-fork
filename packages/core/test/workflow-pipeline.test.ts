@@ -68,4 +68,84 @@ describe("WorkflowPipeline", () => {
     const run1_done = pipeline.completeNode(run1_step3, "deploy", {});
     expect(run1_done.status).toBe("completed");
   });
+
+  it("enforces diamond join prerequisites so join nodes wait for all upstream branches", () => {
+    const pipeline = new WorkflowPipeline({
+      id: "diamond_pipeline",
+      name: "Diamond Pipeline",
+    });
+
+    pipeline.addNode({ id: "A", name: "Start", kind: "trigger" });
+    pipeline.addNode({ id: "B", name: "Branch B", kind: "agent" });
+    pipeline.addNode({ id: "C", name: "Branch C", kind: "agent" });
+    pipeline.addNode({ id: "D", name: "Join D", kind: "output" });
+
+    pipeline.addEdge("A", "B");
+    pipeline.addEdge("A", "C");
+    pipeline.addEdge("B", "D");
+    pipeline.addEdge("C", "D");
+
+    const run = pipeline.createRun();
+    expect(run.currentNodeIds).toEqual(["A"]);
+
+    // Complete A -> B and C should now both be running
+    const stepA = pipeline.completeNode(run, "A", {});
+    expect(stepA.currentNodeIds.sort()).toEqual(["B", "C"].sort());
+
+    // Complete B -> D should NOT start yet because C is still running!
+    const stepB = pipeline.completeNode(stepA, "B", {});
+    expect(stepB.currentNodeIds).toEqual(["C"]);
+    expect(stepB.nodeStates["D"]?.status).toBe("pending");
+
+    // Complete C -> now all predecessors (B & C) are succeeded, D must start running!
+    const stepC = pipeline.completeNode(stepB, "C", {});
+    expect(stepC.currentNodeIds).toEqual(["D"]);
+    expect(stepC.nodeStates["D"]?.status).toBe("running");
+
+    // Complete D -> pipeline run completes
+    const done = pipeline.completeNode(stepC, "D", {});
+    expect(done.status).toBe("completed");
+    expect(done.currentNodeIds).toEqual([]);
+  });
+
+  it("enforces monotonic terminal states and prevents completing non-running nodes", () => {
+    const pipeline = new WorkflowPipeline({
+      id: "terminal_test",
+      name: "Terminal Test",
+    });
+
+    pipeline.addNode({ id: "A", name: "Node A", kind: "trigger" });
+    pipeline.addNode({ id: "B", name: "Node B", kind: "output" });
+    pipeline.addEdge("A", "B");
+
+    const run = pipeline.createRun();
+
+    // Cannot complete B while it is pending
+    expect(() => pipeline.completeNode(run, "B", {})).toThrow(/not running/);
+
+    // Fail node A -> run enters failed state
+    const failedRun = pipeline.completeNode(run, "A", { error: "Execution failed" });
+    expect(failedRun.status).toBe("failed");
+
+    // Subsequent completions cannot mutate terminal run state
+    expect(() => pipeline.completeNode(failedRun, "A", {})).toThrow(/already in terminal state/);
+    expect(() => pipeline.completeNode(failedRun, "B", {})).toThrow(/already in terminal state/);
+  });
+
+  it("validates empty pipelines, missing trigger entry points, and duplicate node IDs", () => {
+    const emptyPipeline = new WorkflowPipeline({ id: "empty", name: "Empty" });
+    const emptyCheck = emptyPipeline.validateDAG();
+    expect(emptyCheck.isValid).toBe(false);
+    expect(emptyCheck.errors.some((e) => /contain at least one node/i.test(e))).toBe(true);
+
+    const noTriggerPipeline = new WorkflowPipeline({ id: "no_trig", name: "No Trigger" });
+    noTriggerPipeline.addNode({ id: "task1", name: "Task 1", kind: "agent" });
+    const noTrigCheck = noTriggerPipeline.validateDAG();
+    expect(noTrigCheck.isValid).toBe(false);
+    expect(noTrigCheck.errors.some((e) => /trigger node/i.test(e))).toBe(true);
+
+    const dupPipeline = new WorkflowPipeline({ id: "dup", name: "Dup" });
+    dupPipeline.addNode({ id: "same", name: "Same", kind: "trigger" });
+    expect(() => dupPipeline.addNode({ id: "same", name: "Same Again", kind: "agent" })).toThrow(/Duplicate node ID/);
+  });
 });

@@ -35,8 +35,11 @@ export interface GatewayAccount {
 
 export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) {
   const [tab, setTab] = useState<"quota" | "combos" | "pricing" | "accounts">("quota");
-  const [sessionPct] = useState<number>(12);
-  const [weeklyPct] = useState<number>(8);
+  const [quotaStatus, setQuotaStatus] = useState<{
+    coolingModels: Array<{ provider: string; modelId: string; cooldownRemainingMs: number }>;
+    activeQuota: number | null;
+  } | null>(null);
+
   const [combos, setCombos] = useState<ModelComboView[]>([
     {
       id: "coding-cascade",
@@ -51,24 +54,65 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
   ]);
 
   const [accounts, setAccounts] = useState<GatewayAccount[]>([
-    { id: "acc-1", name: "Anthropic Team Primary", provider: "anthropic", tier: "Enterprise", isActive: true, latencyMs: 142, status: "healthy" },
-    { id: "acc-2", name: "DeepSeek Reasoner Pool", provider: "deepseek", tier: "Pro", isActive: true, latencyMs: 380, status: "healthy" },
-    { id: "acc-3", name: "OpenAI Fallback PayG", provider: "openai", tier: "Pay-As-You-Go", isActive: false, latencyMs: 185, status: "healthy" },
-    { id: "acc-4", name: "Google Vertex Exp", provider: "google", tier: "Pro", isActive: true, latencyMs: 210, status: "healthy" },
+    { id: "acc-1", name: "Anthropic Team Primary", provider: "anthropic", tier: "Enterprise", isActive: true, status: "healthy" },
+    { id: "acc-2", name: "DeepSeek Reasoner Pool", provider: "deepseek", tier: "Pro", isActive: true, status: "healthy" },
+    { id: "acc-3", name: "OpenAI Fallback PayG", provider: "openai", tier: "Pay-As-You-Go", isActive: false, status: "healthy" },
+    { id: "acc-4", name: "Google Vertex Exp", provider: "google", tier: "Pro", isActive: true, status: "healthy" },
   ]);
   const [pinging, setPinging] = useState(false);
 
-  const handlePingEndpoints = () => {
+  useEffect(() => {
+    if (!open || !projectId) return;
+    fetch(`/api/projects/${projectId}/gateway/status`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setQuotaStatus(data);
+      })
+      .catch(() => {});
+
+    fetch(`/api/projects/${projectId}/gateway/combos`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.combos?.length) {
+          setCombos(data.combos);
+        }
+      })
+      .catch(() => {});
+  }, [open, projectId]);
+
+  const handlePingEndpoints = async () => {
     setPinging(true);
-    setTimeout(() => {
+    try {
+      if (projectId) {
+        const start = performance.now();
+        const res = await fetch(`/api/projects/${projectId}/gateway/status`);
+        const elapsed = Math.round(performance.now() - start);
+        setAccounts((prev) =>
+          prev.map((acc) => ({
+            ...acc,
+            latencyMs: res.ok ? elapsed : undefined,
+            status: res.ok ? "healthy" : "degraded",
+          }))
+        );
+      } else {
+        setAccounts((prev) =>
+          prev.map((acc) => ({
+            ...acc,
+            latencyMs: undefined,
+          }))
+        );
+      }
+    } catch {
       setAccounts((prev) =>
         prev.map((acc) => ({
           ...acc,
-          latencyMs: Math.floor(100 + Math.random() * 250),
+          latencyMs: undefined,
+          status: "degraded",
         }))
       );
+    } finally {
       setPinging(false);
-    }, 600);
+    }
   };
 
   const toggleAccount = (id: string) => {
@@ -136,28 +180,49 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700/60">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Active Session Quota</div>
-                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">{sessionPct}%</div>
+                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
+                  {quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "Unmetered"}
+                </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full mt-2 overflow-hidden">
                   <div
                     className="bg-cyan-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: `${sessionPct}%` }}
+                    style={{ width: quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "0%" }}
                   />
                 </div>
-                <div className="text-[11px] text-gray-400 mt-1">Normal capacity • Resets in 2h 15m</div>
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {quotaStatus?.activeQuota != null ? "Usage tracked" : "No hard usage cap • Direct provider billing"}
+                </div>
               </div>
 
               <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700/60">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weekly Rolling Quota</div>
-                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">{weeklyPct}%</div>
+                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
+                  {quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "Unmetered"}
+                </div>
                 <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full mt-2 overflow-hidden">
                   <div
                     className="bg-blue-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: `${weeklyPct}%` }}
+                    style={{ width: quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "0%" }}
                   />
                 </div>
-                <div className="text-[11px] text-gray-400 mt-1">Rolling window reset Sunday 00:00 UTC</div>
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {quotaStatus?.activeQuota != null ? "Rolling window active" : "Unmetered enterprise / BYOK connection"}
+                </div>
               </div>
             </div>
+
+            {quotaStatus?.coolingModels && quotaStatus.coolingModels.length > 0 && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Active Cooldowns</div>
+                <div className="flex flex-col gap-1 text-[11px] text-amber-600 dark:text-amber-300">
+                  {quotaStatus.coolingModels.map((m, idx) => (
+                    <div key={idx}>
+                      {m.provider} / {m.modelId}: resets in {Math.round(m.cooldownRemainingMs / 1000)}s
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Automatic cooldown detection parses 429 and RESOURCE_EXHAUSTED reset timestamps to dynamically
@@ -280,14 +345,16 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
                     </div>
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-3 mt-1">
                       <span>Status: <strong className="text-emerald-600 dark:text-emerald-400">{acc.status}</strong></span>
-                      {acc.latencyMs !== undefined && (
-                        <span>
-                          Latency:{" "}
+                      <span>
+                        Latency:{" "}
+                        {acc.latencyMs !== undefined ? (
                           <span className={`font-mono font-semibold ${acc.latencyMs < 200 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                             {acc.latencyMs}ms
                           </span>
-                        </span>
-                      )}
+                        ) : (
+                          <span className="font-mono text-gray-400 dark:text-gray-500">—</span>
+                        )}
+                      </span>
                     </div>
                   </div>
 

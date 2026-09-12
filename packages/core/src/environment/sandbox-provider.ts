@@ -7,6 +7,9 @@
  * Synthesized from vibekit and docker-sandbox architectures.
  */
 
+import child_process from "node:child_process";
+import fs from "node:fs";
+
 export type SandboxProviderType = "local_process" | "docker" | "e2b" | "modal" | "daytona";
 export type SandboxStatus = "starting" | "running" | "paused" | "terminated" | "error";
 
@@ -88,7 +91,35 @@ export class SandboxManager {
     }
 
     const start = Date.now();
-    // Deterministic simulation handler for sandboxed execution
+    if (sbx.provider === "local_process") {
+      try {
+        const cwd = fs.existsSync(sbx.workingDirectory) ? sbx.workingDirectory : process.cwd();
+        const timeout = typeof sbx.metadata?.timeoutMs === "number" ? sbx.metadata.timeoutMs : this.defaultTimeoutMs;
+        const res = child_process.spawnSync(command, {
+          shell: true,
+          cwd,
+          env: { ...process.env, ...sbx.env },
+          timeout,
+          encoding: "utf-8",
+        });
+        return {
+          exitCode: res.status ?? (res.error ? 1 : 0),
+          stdout: res.stdout || "",
+          stderr: res.stderr || (res.error ? res.error.message : ""),
+          durationMs: Date.now() - start,
+        };
+      } catch (err) {
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: (err as Error).message,
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+
+    // For containerized / cloud providers without connected runtime daemon:
+    // Return provider-labeled execution fallback
     return {
       exitCode: 0,
       stdout: `[${sbx.provider}] Executed: ${command}\n`,

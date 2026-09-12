@@ -992,12 +992,48 @@ Resolved 11 base-name collision pairs where identical roots caused discoverabili
   - `seo` &rarr; `seo-audit-expert`
   - `ocx` &rarr; `opencodex-proxy-controller`
 
-#### 4. Final Registry Metrics
+#### 4. Pass 2 Registry Metrics
 - **Active Production Skills**: **2,272**
 - **Short / Cryptic Skill Names (< 3 chars)**: **0**
 - **Plural vs Singular Discrepancies**: **0**
 - **Frontmatter Name Collisions**: **0**
 - **Directory vs Frontmatter Name Mismatches**: **0**
+
+### 9.6 Pass 3: Deep Grounded Namespace Standardization & Suite Disambiguation
+
+#### 1. Consolidation of Redundant / Duplicate Skills
+- **`design-taste-frontend-v1`**: Purged legacy v1 duplicate preserved upstream; consolidated into production `design-taste-frontend`.
+- **`sendbird-ai-chabot-automation`**: Purged upstream typo'd near-duplicate ("chabot"); consolidated into `sendbird-automation`.
+- **Composio Automation Duplicates**:
+  - `reply-automation` consolidated into `reply-io-automation` (supporting both `reply` and `reply_io` toolkit slugs).
+  - `fixer-automation` consolidated into `fixer-io-automation` (supporting both `fixer` and `fixer_io` toolkit slugs).
+  - `polygon-automation` consolidated into `polygon-io-automation` (supporting both `polygon` and `polygon_io` toolkit slugs).
+  - `postgrid-verify-automation` consolidated into `postgrid-automation` (supporting both `postgrid` and `postgrid_verify` toolkits).
+
+#### 2. Standardization of 78 `agent-skills-*` Archetypes
+To eliminate namespace pollution and severe ambiguity with core platform/language concepts (e.g. `native`, `schema`, `stream`, `vector`, `pulse`, `trace`, `stage`, `voice`, `void`), all 78 skills matching the standard `agent-skills` framework were prefixed with `agent-skills-`:
+- `architect`, `artisan`, `atelier`, `attest`, `beacon`, `breach`, `builder`, `cast`, `chain`, `chisel`, `compass`, `crypt`, `echo`, `experiment`, `field`, `flow`, `forge`, `frame`, `funnel`, `gauge`, `gear`, `grove`, `growth`, `guardian`, `hone`, `judge`, `ledger`, `lens`, `magi`, `matrix`, `mend`, `muse`, `native`, `nexus`, `omen`, `oracle`, `palette`, `port`, `probe`, `prose`, `prune`, `pulse`, `quill`, `rally`, `rank`, `ripple`, `saga`, `scaffold`, `schema`, `scout`, `scribe`, `seek`, `sentinel`, `sherpa`, `shift`, `siege`, `sigil`, `spark`, `stage`, `stream`, `sweep`, `trace`, `trail`, `triage`, `tuner`, `vector`, `vigil`, `vision`, `vitrine`, `voice`, `void`, `voyager` &rarr; `agent-skills-<name>`
+- Standardized aliases: `code-refactoring-zen` &rarr; `agent-skills-zen`, `project-delivery-navigator` &rarr; `agent-skills-pdm`, `svg-icon-designer-ink` &rarr; `agent-skills-ink`, `system-architecture-diagrams` &rarr; `agent-skills-canvas`, `test-coverage-radar` &rarr; `agent-skills-radar`, `video-storyboard-cue` &rarr; `agent-skills-cue`.
+
+#### 3. Suite Disambiguation & Descriptive Renaming
+- **Spotify Portal Suite**: Renamed generic single words `actions`, `doctor`, `feedback`, `search`, `service`, and `setup` to `spotify-portal-actions`, `spotify-portal-doctor`, `spotify-portal-feedback`, `spotify-portal-search`, `spotify-portal-service`, `spotify-portal-setup`.
+- **ChatCut Suite**: Renamed `export`, `transcription`, `verification`, and `music` to `chatcut-export`, `chatcut-transcription`, `chatcut-verification`, `chatcut-music`.
+- **Legal Clinic & Bar Exam Suite**: Renamed `status` &rarr; `legal-case-status-summary`, `session` &rarr; `bar-exam-study-session`, `memo` &rarr; `legal-case-analysis-memo`, `oc-status` &rarr; `outside-counsel-status-email`, `sa-legal-references` &rarr; `south-africa-legal-references`.
+- **Generative AI Single Words**: Renamed `imagegen` &rarr; `openai-imagegen`, `imagen` &rarr; `google-imagen`, `speech` &rarr; `openai-speech`, `sora` &rarr; `openai-sora`.
+- **Design & Web Utilities**: Renamed `options` &rarr; `design-turn-options`, `taste-design` &rarr; `stitch-design-taste`, `site-md` &rarr; `stitch-site-spec-generator`, `save-as-pdf` &rarr; `design-export-pdf`, `save-as-standalone-html` &rarr; `design-export-standalone-html`, `three-d-object` &rarr; `threejs-3d-object-viewer`, `wpds` &rarr; `wordpress-design-system`, `tweaks` &rarr; `html-live-tweak-controls`, `songsee` &rarr; `audio-spectrogram-visualizer`, `tuistory` &rarr; `tui-terminal-testing`, `xurl` &rarr; `twitter-content-intelligence`, `pm-spec` &rarr; `product-spec-prd`, `yt-competitive-analysis` &rarr; `youtube-competitive-analysis`, `od-contribute` &rarr; `opendesign-contribute`, `teaser` &rarr; `ma-company-teaser`, `reconciliation` &rarr; `financial-account-reconciliation`, `recording` &rarr; `screen-recording-automation`, `wacli` &rarr; `whatsapp-cli-manager`, `shippage` &rarr; `shippage-publish`.
+
+#### 4. Plugin Skills Language Clean-Up
+- Eradicated all Chinese characters from `plugins/*/skills/` (`company-ceo`, `company-employee`, `company-hr`, `company-setup`, `penguin-sdk`, `web-design`, `remote-claude-code`, `atlas`).
+- Replaced non-ASCII regex ranges with Unicode escape sequences (`[\u4e00-\u9fff]`).
+
+#### 5. Final Verified Metrics (Pass 3)
+- **Active Production Skills**: **2,266**
+- **Short / Cryptic Skill Names (< 4 chars)**: **0**
+- **Plural vs Singular Discrepancies**: **0**
+- **Frontmatter Name Collisions**: **0**
+- **Directory vs Frontmatter Name Mismatches**: **0** (100% 1:1 match)
+- **Chinese Characters in `.agents/skills`**: **0**
+- **Chinese Characters in `plugins/*/skills/`**: **0**
 
 ---
 

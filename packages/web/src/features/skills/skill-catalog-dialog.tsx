@@ -8,6 +8,7 @@ import { useState, useMemo } from "react";
 import { Modal } from "../../components/ui/modal";
 import { Badge, type BadgeTone } from "../../components/ui/badge";
 import { CopyButton } from "../../components/ui/copy-button";
+import { RequiredMark } from "../../components/ui/field";
 
 export interface SkillEntry {
   name: string;
@@ -214,7 +215,7 @@ export function SkillCatalogDialog({
                           <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">
                             {p.name}{" "}
                             {p.required && (
-                              <span className="text-red-500">*</span>
+                              <RequiredMark />
                             )}
                           </label>
                           <input

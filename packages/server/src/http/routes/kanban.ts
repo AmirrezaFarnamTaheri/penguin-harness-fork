@@ -9,22 +9,65 @@
  * POST   /api/projects/:projectId/kanban/triage/draft - create triage draft
  * POST   /api/projects/:projectId/kanban/triage/drafts/:draftId/launch - launch draft
  */
+import path from "node:path";
+import fs from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
-import { KanbanBoard } from "@prismshadow/penguin-core";
+import { KanbanBoard, projectDir, atomicWriteFile } from "@prismshadow/penguin-core";
 import type { KanbanTaskPriority, KanbanTaskState } from "@prismshadow/penguin-core";
+
+const ALLOWED_STATES: readonly KanbanTaskState[] = [
+  "backlog",
+  "triage",
+  "in_progress",
+  "review",
+  "done",
+  "archived",
+  "failed",
+];
+
+const ALLOWED_PRIORITIES: readonly KanbanTaskPriority[] = [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+];
 
 const projectBoards = new Map<string, KanbanBoard>();
 
-function getOrCreateBoard(projectId: string): KanbanBoard {
+async function getOrCreateBoard(root: string, projectId: string): Promise<KanbanBoard> {
   let board = projectBoards.get(projectId);
   if (!board) {
     board = new KanbanBoard({ boardId: projectId });
     projectBoards.set(projectId, board);
+    try {
+      const pDir = projectDir(root, projectId);
+      const filePath = path.join(pDir, ".kanban.json");
+      const content = await fs.readFile(filePath, "utf-8");
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === "object") {
+        board.importState(parsed);
+      }
+    } catch {
+      // Start empty if not yet saved
+    }
   }
   return board;
+}
+
+async function saveBoard(root: string, projectId: string): Promise<void> {
+  const board = projectBoards.get(projectId);
+  if (!board) return;
+  try {
+    const pDir = projectDir(root, projectId);
+    await fs.mkdir(pDir, { recursive: true });
+    const filePath = path.join(pDir, ".kanban.json");
+    await atomicWriteFile(filePath, JSON.stringify(board.exportState(), null, 2));
+  } catch {
+    // Disk write error recovery
+  }
 }
 
 export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
@@ -34,10 +77,26 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/tasks", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
 
-    const state = c.req.query("state") as KanbanTaskState | undefined;
-    const priority = c.req.query("priority") as KanbanTaskPriority | undefined;
+    const rawState = c.req.query("state");
+    let state: KanbanTaskState | undefined;
+    if (rawState) {
+      if (!ALLOWED_STATES.includes(rawState as KanbanTaskState)) {
+        throw badRequest(`Invalid state filter '${rawState}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
+      }
+      state = rawState as KanbanTaskState;
+    }
+
+    const rawPriority = c.req.query("priority");
+    let priority: KanbanTaskPriority | undefined;
+    if (rawPriority) {
+      if (!ALLOWED_PRIORITIES.includes(rawPriority as KanbanTaskPriority)) {
+        throw badRequest(`Invalid priority filter '${rawPriority}'. Allowed: ${ALLOWED_PRIORITIES.join(", ")}`);
+      }
+      priority = rawPriority as KanbanTaskPriority;
+    }
+
     const assignee = c.req.query("assignee");
 
     const tasks = board.listTasks({
@@ -53,23 +112,43 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/tasks", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const body = await readJson(c);
 
     const title = requireString(body, "title", { minLen: 1, maxLen: 300, label: "title" });
     const description = typeof body.description === "string" ? body.description : undefined;
-    const priority = typeof body.priority === "string" ? (body.priority as KanbanTaskPriority) : "normal";
+
+    let priority: KanbanTaskPriority = "normal";
+    if (body.priority !== undefined) {
+      const p = requireString(body, "priority", { minLen: 1, maxLen: 30, label: "priority" }) as KanbanTaskPriority;
+      if (!ALLOWED_PRIORITIES.includes(p)) {
+        throw badRequest(`Invalid priority '${p}'. Allowed: ${ALLOWED_PRIORITIES.join(", ")}`);
+      }
+      priority = p;
+    }
+
+    let state: KanbanTaskState | undefined;
+    if (body.state !== undefined) {
+      const s = requireString(body, "state", { minLen: 1, maxLen: 30, label: "state" }) as KanbanTaskState;
+      if (!ALLOWED_STATES.includes(s)) {
+        throw badRequest(`Invalid state '${s}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
+      }
+      state = s;
+    }
+
     const parentTaskId = typeof body.parentTaskId === "string" ? body.parentTaskId : undefined;
     const dependencies = Array.isArray(body.dependencies) ? body.dependencies.map(String) : undefined;
 
     const task = board.createTask({
       title,
       description,
+      state,
       priority,
       parentTaskId,
       dependencies,
     });
 
+    await saveBoard(deps.config.root, projectId);
     return c.json({ task }, 201);
   });
 
@@ -77,15 +156,21 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.patch("/tasks/:taskId/state", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const taskId = c.req.param("taskId");
     const body = await readJson(c);
 
-    const nextState = requireString(body, "state", { minLen: 1, maxLen: 30, label: "state" }) as KanbanTaskState;
+    const nextStateRaw = requireString(body, "state", { minLen: 1, maxLen: 30, label: "state" }) as KanbanTaskState;
+    if (!ALLOWED_STATES.includes(nextStateRaw)) {
+      throw badRequest(`Invalid state '${nextStateRaw}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
+    }
     const force = body.force === true;
+    const workerId = typeof body.workerId === "string" ? body.workerId : undefined;
+    const generation = typeof body.generation === "number" ? body.generation : undefined;
 
     try {
-      const task = board.updateTaskState(taskId, nextState, { force });
+      const task = board.updateTaskState(taskId, nextStateRaw, { force, workerId, generation });
+      await saveBoard(deps.config.root, projectId);
       return c.json({ task });
     } catch (err) {
       throw badRequest((err as Error).message);
@@ -96,16 +181,19 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/tasks/:taskId/claim", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const taskId = c.req.param("taskId");
     const body = await readJson(c);
 
-    const assignee = requireString(body, "assignee", { minLen: 1, maxLen: 100, label: "assignee" });
+    const assignee = typeof body.workerId === "string" && body.workerId.length > 0
+      ? body.workerId
+      : requireString(body, "assignee", { minLen: 1, maxLen: 100, label: "assignee" });
     const leaseDurationMs = typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
     const workerPid = typeof body.workerPid === "number" ? body.workerPid : undefined;
 
     try {
       const task = board.claimTask(taskId, assignee, { leaseDurationMs, workerPid });
+      await saveBoard(deps.config.root, projectId);
       return c.json({ task });
     } catch (err) {
       throw badRequest((err as Error).message);
@@ -116,11 +204,17 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/tasks/:taskId/heartbeat", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const taskId = c.req.param("taskId");
+    const body = (await readJson(c).catch(() => ({}))) as Record<string, unknown>;
+
+    const workerId = typeof body.workerId === "string" ? body.workerId : undefined;
+    const generation = typeof body.generation === "number" ? body.generation : undefined;
+    const leaseDurationMs = typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
 
     try {
-      const task = board.heartbeat(taskId);
+      const task = board.heartbeat(taskId, { workerId, generation, leaseDurationMs });
+      await saveBoard(deps.config.root, projectId);
       return c.json({ task });
     } catch (err) {
       throw badRequest((err as Error).message);
@@ -131,11 +225,16 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/tasks/:taskId/release", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const taskId = c.req.param("taskId");
+    const body = (await readJson(c).catch(() => ({}))) as Record<string, unknown>;
+
+    const workerId = typeof body.workerId === "string" ? body.workerId : undefined;
+    const generation = typeof body.generation === "number" ? body.generation : undefined;
 
     try {
-      const task = board.releaseTask(taskId);
+      const task = board.releaseTask(taskId, { workerId, generation });
+      await saveBoard(deps.config.root, projectId);
       return c.json({ task });
     } catch (err) {
       throw badRequest((err as Error).message);
@@ -146,7 +245,7 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/triage/draft", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const body = await readJson(c);
 
     const title = requireString(body, "title", { minLen: 1, maxLen: 300, label: "title" });
@@ -159,6 +258,7 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
       suggestedTasks,
     });
 
+    await saveBoard(deps.config.root, projectId);
     return c.json({ draft }, 201);
   });
 
@@ -166,11 +266,12 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/triage/drafts/:draftId/launch", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const board = getOrCreateBoard(projectId);
+    const board = await getOrCreateBoard(deps.config.root, projectId);
     const draftId = c.req.param("draftId");
 
     try {
       const launched = board.launchTriage(draftId);
+      await saveBoard(deps.config.root, projectId);
       return c.json(launched);
     } catch (err) {
       throw notFound((err as Error).message);

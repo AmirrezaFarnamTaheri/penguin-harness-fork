@@ -73,7 +73,12 @@ export class WorkflowPipeline {
     this.description = definition.description;
 
     if (definition.nodes) {
+      const seen = new Set<string>();
       for (const node of definition.nodes) {
+        if (seen.has(node.id)) {
+          throw new Error(`Duplicate node ID '${node.id}' in pipeline '${definition.id}'`);
+        }
+        seen.add(node.id);
         this.addNode(node);
       }
     }
@@ -85,6 +90,9 @@ export class WorkflowPipeline {
   }
 
   public addNode(node: WorkflowNode): void {
+    if (this.nodes.has(node.id)) {
+      throw new Error(`Duplicate node ID '${node.id}' in pipeline '${this.id}'`);
+    }
     this.nodes.set(node.id, { ...node });
   }
 
@@ -113,6 +121,25 @@ export class WorkflowPipeline {
 
   public validateDAG(): { isValid: boolean; cycle?: string[]; errors: string[] } {
     const errors: string[] = [];
+
+    if (this.nodes.size === 0) {
+      errors.push("Pipeline must contain at least one node");
+    }
+
+    const triggers = Array.from(this.nodes.values()).filter((n) => n.kind === "trigger");
+    if (this.nodes.size > 0 && triggers.length === 0) {
+      errors.push("Pipeline must contain at least one trigger node as an entry point");
+    }
+
+    for (const edge of this.edges) {
+      if (!this.nodes.has(edge.from)) {
+        errors.push(`Source node '${edge.from}' does not exist`);
+      }
+      if (!this.nodes.has(edge.to)) {
+        errors.push(`Target node '${edge.to}' does not exist`);
+      }
+    }
+
     const adj = new Map<string, string[]>();
 
     for (const id of this.nodes.keys()) {
@@ -234,14 +261,40 @@ export class WorkflowPipeline {
     };
   }
 
+  private isReachableFrom(sourceIds: string[], targetId: string): boolean {
+    if (sourceIds.length === 0) return false;
+    const visited = new Set<string>();
+    const queue = [...sourceIds];
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      if (curr === targetId) return true;
+      if (visited.has(curr)) continue;
+      visited.add(curr);
+      for (const edge of this.edges) {
+        if (edge.from === curr && !visited.has(edge.to)) {
+          queue.push(edge.to);
+        }
+      }
+    }
+    return false;
+  }
+
   public completeNode(
     run: WorkflowRunState,
     nodeId: string,
     result: { output?: Record<string, unknown>; error?: string }
   ): WorkflowRunState {
+    if (run.status === "completed" || run.status === "failed") {
+      throw new Error(`Cannot complete node '${nodeId}': run '${run.runId}' is already in terminal state '${run.status}'`);
+    }
+
     const nodeState = run.nodeStates[nodeId];
     if (!nodeState) {
       throw new Error(`Node '${nodeId}' not found in run '${run.runId}'`);
+    }
+
+    if (nodeState.status !== "running") {
+      throw new Error(`Cannot complete node '${nodeId}': node is not running (current status: '${nodeState.status}')`);
     }
 
     const now = Date.now();
@@ -252,6 +305,7 @@ export class WorkflowPipeline {
       nodeState.error = result.error;
       run.status = "failed";
       run.completedAt = now;
+      run.currentNodeIds = run.currentNodeIds.filter((id) => id !== nodeId);
       return { ...run };
     }
 
@@ -261,22 +315,56 @@ export class WorkflowPipeline {
       Object.assign(run.context, result.output);
     }
 
-    // Determine next nodes
+    // Other nodes currently running (excluding the node that just completed)
+    const otherRunning = run.currentNodeIds.filter((id) => id !== nodeId);
+
+    // Determine candidate next nodes
     const nextNodes = this.getNextNodes(nodeId, run.context);
     const nextIds: string[] = [];
 
     for (const next of nextNodes) {
       const nextState = run.nodeStates[next.id];
-      if (nextState && nextState.status === "pending") {
+      if (!nextState || nextState.status !== "pending") {
+        continue;
+      }
+
+      // Check all incoming edges to next.id
+      const incomingEdges = this.edges.filter((e) => e.to === next.id);
+      let allPrerequisitesSatisfied = true;
+
+      for (const edge of incomingEdges) {
+        const fromNode = this.nodes.get(edge.from);
+        const fromState = run.nodeStates[edge.from];
+
+        // If source node was a condition/gate, check if this branch was selected
+        if (fromNode && (fromNode.kind === "condition" || fromNode.kind === "gate") && edge.conditionValue !== undefined) {
+          const resolvedVal = fromNode.conditionField ? run.context[fromNode.conditionField] : undefined;
+          const matched = edge.conditionValue === resolvedVal || String(edge.conditionValue) === String(resolvedVal);
+          if (fromState?.status === "succeeded" && !matched) {
+            // This conditional branch was evaluated and not taken; not a required dependency
+            continue;
+          }
+        }
+
+        if (fromState?.status === "succeeded") {
+          continue;
+        }
+
+        // If fromState is running, or if it is pending and reachable from other running nodes, candidate must wait
+        if (fromState?.status === "running" || (fromState?.status === "pending" && this.isReachableFrom(otherRunning, edge.from))) {
+          allPrerequisitesSatisfied = false;
+          break;
+        }
+      }
+
+      if (allPrerequisitesSatisfied) {
         nextState.status = "running";
         nextState.startedAt = now;
         nextIds.push(next.id);
       }
     }
 
-    run.currentNodeIds = run.currentNodeIds
-      .filter((id) => id !== nodeId)
-      .concat(nextIds);
+    run.currentNodeIds = otherRunning.concat(nextIds);
 
     if (run.currentNodeIds.length === 0) {
       run.status = "completed";

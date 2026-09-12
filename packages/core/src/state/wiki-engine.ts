@@ -64,7 +64,13 @@ export class WikiEngine {
   private edges = new Map<string, WikiEdge>();
 
   public normalizeId(input: string): string {
-    return input
+    let unescaped = input;
+    try {
+      unescaped = decodeURIComponent(input);
+    } catch {
+      // keep input if malformed percent encoding
+    }
+    return unescaped
       .trim()
       .replace(/\\/g, "/")
       .replace(/^\/+|\/+$/g, "")
@@ -210,9 +216,10 @@ export class WikiEngine {
     const deleted = this.nodes.delete(normalizedId);
     if (!deleted) return false;
 
-    // Remove connected edges
+    // Remove outbound edges originating from the deleted page.
+    // Inbound edges from remaining pages are preserved so lint() detects dangling references.
     for (const [edgeId, edge] of this.edges.entries()) {
-      if (edge.from === normalizedId || edge.to === normalizedId) {
+      if (edge.from === normalizedId) {
         this.edges.delete(edgeId);
       }
     }

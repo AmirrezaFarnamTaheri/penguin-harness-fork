@@ -119,4 +119,31 @@ No links in or out.`);
     expect(report.brokenLinks[0]?.target).toBe("non-existent-page");
     expect(report.orphanedNodes).toContain("isolated");
   });
+
+  it("preserves inbound edges when a target page is deleted so lint detects dangling links", () => {
+    const wiki = new WikiEngine();
+    wiki.addPage("source.md", `---
+type: concept
+title: Source Page
+---
+Referencing [[target]].`);
+
+    wiki.addPage("target.md", `---
+type: entity
+title: Target Page
+---
+I am the target.`);
+
+    // Before deletion, no broken links
+    expect(wiki.lint().brokenLinks.length).toBe(0);
+
+    // Delete target page
+    wiki.removePage("target");
+
+    // Lint must now detect the dangling link from source to target
+    const report = wiki.lint();
+    expect(report.brokenLinks.length).toBe(1);
+    expect(report.brokenLinks[0]?.fromNodeId).toBe("source");
+    expect(report.brokenLinks[0]?.target).toBe("target");
+  });
 });

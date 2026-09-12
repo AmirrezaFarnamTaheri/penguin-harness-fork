@@ -96,4 +96,55 @@ describe("KanbanBoard", () => {
     expect(child1.dependencies).toContain(child0.id);
     expect(child2.dependencies).toContain(child1.id);
   });
+
+  it("enforces dependency constraints on claimTask", () => {
+    const board = new KanbanBoard();
+    const dep = board.createTask({ title: "Base task" });
+    const blocked = board.createTask({ title: "Blocked task", dependencies: [dep.id] });
+
+    // Claiming blocked task must throw dependency error
+    expect(() => board.claimTask(blocked.id, "worker-1")).toThrow(/Dependency/);
+
+    // Complete dep
+    board.updateTaskState(dep.id, "in_progress", { force: true });
+    board.updateTaskState(dep.id, "done");
+
+    // Now claim succeeds
+    const claimed = board.claimTask(blocked.id, "worker-1");
+    expect(claimed.state).toBe("in_progress");
+    expect(claimed.assignee).toBe("worker-1");
+  });
+
+  it("enforces lease generation fencing and worker identity on heartbeat, update, and release", () => {
+    const board = new KanbanBoard();
+    const task = board.createTask({ title: "Fencing task" });
+
+    // Initial claim: generation 1
+    const c1 = board.claimTask(task.id, "worker-alpha");
+    expect(c1.leaseGeneration).toBe(1);
+
+    // Heartbeat with correct worker and generation succeeds
+    expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 1 })).not.toThrow();
+
+    // Heartbeat with wrong worker or stale generation fails
+    expect(() => board.heartbeat(task.id, { workerId: "imposter-worker", generation: 1 })).toThrow(/worker mismatch/);
+    expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 99 })).toThrow(/generation mismatch/);
+
+    // Update with wrong worker/generation fails
+    expect(() => board.updateTaskState(task.id, "review", { workerId: "wrong-worker" })).toThrow(/worker mismatch/);
+    expect(() => board.updateTaskState(task.id, "review", { generation: 0 })).toThrow(/generation mismatch/);
+
+    // Release with wrong worker/generation fails
+    expect(() => board.releaseTask(task.id, { workerId: "other" })).toThrow(/worker mismatch/);
+    expect(() => board.releaseTask(task.id, { generation: 999 })).toThrow(/generation mismatch/);
+
+    // Proper release succeeds
+    const released = board.releaseTask(task.id, { workerId: "worker-alpha", generation: 1 });
+    expect(released.assignee).toBeNull();
+    expect(released.state).toBe("triage");
+
+    // Re-claim increments generation to 2
+    const c2 = board.claimTask(task.id, "worker-beta");
+    expect(c2.leaseGeneration).toBe(2);
+  });
 });

@@ -45,6 +45,7 @@ export class TaskWatchdog {
   private startTime = 0;
   private lastHeartbeatTime = 0;
   private currentStep = 0;
+  private currentStepStartedAt = 0;
   private lastAction?: string;
   private abortReason?: string;
   private aborted = false;
@@ -59,6 +60,7 @@ export class TaskWatchdog {
     this.startTime = now;
     this.lastHeartbeatTime = now;
     this.currentStep = 0;
+    this.currentStepStartedAt = now;
     this.aborted = false;
     this.abortReason = undefined;
     this.warnings.length = 0;
@@ -71,10 +73,15 @@ export class TaskWatchdog {
     }
 
     this.lastHeartbeatTime = now;
+    const previousStep = this.currentStep;
     if (info?.stepNumber !== undefined) {
       this.currentStep = info.stepNumber;
     } else {
       this.currentStep++;
+    }
+
+    if (this.currentStep !== previousStep) {
+      this.currentStepStartedAt = now;
     }
 
     if (info?.action) {
@@ -104,6 +111,7 @@ export class TaskWatchdog {
 
     const elapsedMs = now - this.startTime;
     const heartbeatAge = now - this.lastHeartbeatTime;
+    const stepDuration = now - (this.currentStepStartedAt || this.startTime);
     const warnings: string[] = [...this.warnings];
 
     if (this.aborted) {
@@ -127,6 +135,18 @@ export class TaskWatchdog {
         lastAction: this.lastAction,
         warnings: [...warnings, `Total execution duration exceeded ${this.config.totalTimeoutMs}ms`],
         abortReason: "Execution exceeded total maximum timeout",
+      };
+    }
+
+    if (stepDuration > this.config.stepTimeoutMs) {
+      return {
+        state: "timed_out",
+        currentStep: this.currentStep,
+        elapsedMs,
+        lastHeartbeatAgeMs: heartbeatAge,
+        lastAction: this.lastAction,
+        warnings: [...warnings, `Current step duration ${stepDuration}ms exceeded step limit ${this.config.stepTimeoutMs}ms`],
+        abortReason: "Step execution exceeded step timeout threshold",
       };
     }
 

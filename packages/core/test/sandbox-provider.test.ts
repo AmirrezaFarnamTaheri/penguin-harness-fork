@@ -37,4 +37,13 @@ describe("SandboxManager", () => {
 
     expect(() => manager.exec(sbx.id, "echo fail")).toThrow(/is not running/);
   });
+
+  it("executes real commands using local_process provider", () => {
+    const manager = new SandboxManager();
+    const sbx = manager.createSandbox({ provider: "local_process" });
+
+    const execResult = manager.exec(sbx.id, "node -e \"console.log('penguin-local-sandbox')\"");
+    expect(execResult.exitCode).toBe(0);
+    expect(execResult.stdout).toContain("penguin-local-sandbox");
+  });
 });

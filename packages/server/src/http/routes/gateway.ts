@@ -6,15 +6,19 @@
  * GET /api/projects/:projectId/gateway/pricing — model token pricing & custom rate overrides
  * POST /api/projects/:projectId/gateway/cost — calculate granular cost breakdown
  */
+import path from "node:path";
+import fs from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
-import { badRequest, readJson, requireString, requireValidId } from "../validate.js";
+import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
 import {
   DEFAULT_PRICING_CATALOG,
   ModelComboRegistry,
   PricingCatalog,
   computeSpendFlow,
+  projectDir,
+  atomicWriteFile,
 } from "@prismshadow/penguin-core";
 import type {
   ModelCombo,
@@ -24,8 +28,43 @@ import type {
   SessionCostRecord,
 } from "@prismshadow/penguin-core";
 
-const comboRegistry = new ModelComboRegistry();
+const projectComboRegistries = new Map<string, ModelComboRegistry>();
 const pricingCatalog = new PricingCatalog();
+
+async function getProjectComboRegistry(root: string, projectId: string): Promise<ModelComboRegistry> {
+  let reg = projectComboRegistries.get(projectId);
+  if (!reg) {
+    reg = new ModelComboRegistry();
+    projectComboRegistries.set(projectId, reg);
+    try {
+      const pDir = projectDir(root, projectId);
+      const filePath = path.join(pDir, ".combos.json");
+      const content = await fs.readFile(filePath, "utf-8");
+      const list = JSON.parse(content);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          reg.set(item);
+        }
+      }
+    } catch {
+      // Start empty if not persisted yet
+    }
+  }
+  return reg;
+}
+
+async function saveProjectCombos(root: string, projectId: string): Promise<void> {
+  const reg = projectComboRegistries.get(projectId);
+  if (!reg) return;
+  try {
+    const pDir = projectDir(root, projectId);
+    await fs.mkdir(pDir, { recursive: true });
+    const filePath = path.join(pDir, ".combos.json");
+    await atomicWriteFile(filePath, JSON.stringify(reg.list(), null, 2));
+  } catch {
+    // Disk write error recovery
+  }
+}
 
 /**
  * Model Path & Segment Safety Validator (ported from agentgateway crates/llm/src/lib.rs)
@@ -53,13 +92,15 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/combos", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    return c.json({ combos: comboRegistry.list() });
+    const reg = await getProjectComboRegistry(deps.config.root, projectId);
+    return c.json({ combos: reg.list() });
   });
 
   // PUT /combos
   app.put("/combos", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const reg = await getProjectComboRegistry(deps.config.root, projectId);
     const body = await readJson(c);
 
     const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
@@ -96,7 +137,8 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       fallbackTriggers,
     };
 
-    comboRegistry.set(combo);
+    reg.set(combo);
+    await saveProjectCombos(deps.config.root, projectId);
     return c.json({ ok: true, combo });
   });
 
@@ -104,8 +146,10 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   app.delete("/combos/:id", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const reg = await getProjectComboRegistry(deps.config.root, projectId);
     const id = requireValidId(c, "id");
-    const deleted = comboRegistry.delete(id);
+    const deleted = reg.delete(id);
+    await saveProjectCombos(deps.config.root, projectId);
     return c.json({ ok: true, deleted });
   });
 
@@ -133,9 +177,10 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
 
     return c.json({
       activeQuota: {
-        sessionUsedPct: 0,
-        weeklyUsedPct: 0,
-        resetsIn: "Normal",
+        sessionUsedPct: null,
+        weeklyUsedPct: null,
+        resetsIn: null,
+        status: "unmetered",
       },
       models: quotaStatuses,
     });
@@ -213,30 +258,17 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       throw badRequest("messages must be a non-empty array of chat message objects.");
     }
 
-    const completionId = `chatcmpl-${Math.random().toString(36).slice(2, 11)}`;
-    const created = Math.floor(Date.now() / 1000);
-
-    return c.json({
-      id: completionId,
-      object: "chat.completion",
-      created,
-      model,
-      choices: [
-        {
-          index: 0,
-          message: {
-            role: "assistant",
-            content: `Penguin Gateway response for ${model}`,
-          },
-          finish_reason: "stop",
+    // Direct proxy completions are not supported; clients must use session execution
+    return c.json(
+      {
+        error: {
+          message: "Direct chat completion gateway endpoint is not supported in this runtime; use session execution.",
+          type: "not_implemented",
+          code: 501,
         },
-      ],
-      usage: {
-        prompt_tokens: 12,
-        completion_tokens: 8,
-        total_tokens: 20,
       },
-    });
+      501
+    );
   });
 
   // POST /webhooks/approval — IM human-in-the-loop approval callback (ported from cc-haha / feishu-notify)
@@ -254,6 +286,24 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
 
     const comment = typeof body.comment === "string" ? body.comment : undefined;
     const approver = typeof body.approver === "string" ? body.approver : c.var.user.userId;
+
+    let sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    let toolCallId = typeof body.toolCallId === "string" ? body.toolCallId : undefined;
+
+    if (!sessionId && approvalId.includes(":")) {
+      const parts = approvalId.split(":");
+      sessionId = parts[0];
+      toolCallId = parts.slice(1).join(":");
+    } else if (!sessionId) {
+      sessionId = approvalId;
+      toolCallId = approvalId;
+    }
+
+    const decision = action === "approve" ? "allow" : "deny";
+    const ok = deps.manager.decideApproval(sessionId, toolCallId ?? approvalId, decision);
+    if (!ok) {
+      throw notFound("Approval does not exist or has already been decided.");
+    }
 
     return c.json({
       ok: true,

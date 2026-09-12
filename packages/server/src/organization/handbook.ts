@@ -164,6 +164,6 @@ _None yet._
 See the \`company-employee\` skill for the full \`penguin org\` command surface. Inside a desk or
 ticket session \`--org-id\`, \`--project-id\`, \`--agent-id\` and the current session are already
 known from the environment.
-\`;
+`;
 }
 

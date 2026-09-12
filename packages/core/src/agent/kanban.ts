@@ -36,6 +36,7 @@ export interface KanbanTask {
   completedAt?: number | null;
   claimExpires?: number | null;
   lastHeartbeatAt?: number | null;
+  leaseGeneration?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -138,6 +139,7 @@ export class KanbanBoard {
       completedAt: input.state === "done" ? Date.now() : null,
       claimExpires: null,
       lastHeartbeatAt: null,
+      leaseGeneration: 0,
       metadata: input.metadata ? { ...input.metadata } : {},
     };
 
@@ -202,11 +204,19 @@ export class KanbanBoard {
   public updateTaskState(
     taskId: string,
     nextState: KanbanTaskState,
-    options?: { force?: boolean }
+    options?: { force?: boolean; workerId?: string; generation?: number }
   ): KanbanTask {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Task with id '${taskId}' not found`);
+    }
+
+    if (options?.workerId !== undefined && task.assignee && task.assignee !== options.workerId) {
+      throw new Error(`Cannot update task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${options.workerId}')`);
+    }
+
+    if (options?.generation !== undefined && task.leaseGeneration !== undefined && task.leaseGeneration !== options.generation) {
+      throw new Error(`Cannot update task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${options.generation})`);
     }
 
     if (nextState === "in_progress" && !options?.force) {
@@ -248,6 +258,14 @@ export class KanbanBoard {
       throw new Error(`Task with id '${taskId}' not found`);
     }
 
+    // Enforce dependency constraints before transitioning to in_progress
+    if (task.state === "backlog" || task.state === "triage") {
+      const check = this.canTransitionToInProgress(taskId);
+      if (!check.allowed) {
+        throw new Error(`Cannot claim task: ${check.reason}`);
+      }
+    }
+
     const now = Date.now();
     const isExpired = task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires < now;
     if (task.assignee && task.assignee !== assignee && !isExpired && task.state === "in_progress") {
@@ -259,6 +277,8 @@ export class KanbanBoard {
     task.workerPid = options?.workerPid ?? null;
     task.lastHeartbeatAt = now;
     task.claimExpires = now + leaseDuration;
+    task.leaseGeneration = (task.leaseGeneration ?? 0) + 1;
+
     if (task.state === "backlog" || task.state === "triage") {
       task.state = "in_progress";
       task.startedAt = now;
@@ -269,20 +289,37 @@ export class KanbanBoard {
       taskId,
       boardId: this.boardId,
       timestamp: now,
-      payload: { assignee, claimExpires: task.claimExpires, workerPid: task.workerPid },
+      payload: { assignee, claimExpires: task.claimExpires, workerPid: task.workerPid, leaseGeneration: task.leaseGeneration },
     });
 
     return { ...task };
   }
 
-  public heartbeat(taskId: string, leaseDurationMs?: number): KanbanTask {
+  public heartbeat(
+    taskId: string,
+    optionsOrDuration?: number | { leaseDurationMs?: number; workerId?: string; generation?: number }
+  ): KanbanTask {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Task with id '${taskId}' not found`);
     }
 
+    let duration = this.defaultLeaseDurationMs;
+    if (typeof optionsOrDuration === "number") {
+      duration = optionsOrDuration;
+    } else if (typeof optionsOrDuration === "object" && optionsOrDuration !== null) {
+      if (optionsOrDuration.leaseDurationMs !== undefined) {
+        duration = optionsOrDuration.leaseDurationMs;
+      }
+      if (optionsOrDuration.workerId !== undefined && task.assignee !== optionsOrDuration.workerId) {
+        throw new Error(`Cannot heartbeat task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${optionsOrDuration.workerId}')`);
+      }
+      if (optionsOrDuration.generation !== undefined && task.leaseGeneration !== optionsOrDuration.generation) {
+        throw new Error(`Cannot heartbeat task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${optionsOrDuration.generation})`);
+      }
+    }
+
     const now = Date.now();
-    const duration = leaseDurationMs ?? this.defaultLeaseDurationMs;
     task.lastHeartbeatAt = now;
     task.claimExpires = now + duration;
 
@@ -291,7 +328,7 @@ export class KanbanBoard {
       taskId,
       boardId: this.boardId,
       timestamp: now,
-      payload: { lastHeartbeatAt: now, claimExpires: task.claimExpires },
+      payload: { lastHeartbeatAt: now, claimExpires: task.claimExpires, leaseGeneration: task.leaseGeneration },
     });
 
     return { ...task };
@@ -304,10 +341,21 @@ export class KanbanBoard {
     }
   }
 
-  public releaseTask(taskId: string): KanbanTask {
+  public releaseTask(
+    taskId: string,
+    options?: { workerId?: string; generation?: number }
+  ): KanbanTask {
     const task = this.tasks.get(taskId);
     if (!task) {
       throw new Error(`Task with id '${taskId}' not found`);
+    }
+
+    if (options?.workerId !== undefined && task.assignee && task.assignee !== options.workerId) {
+      throw new Error(`Cannot release task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${options.workerId}')`);
+    }
+
+    if (options?.generation !== undefined && task.leaseGeneration !== undefined && task.leaseGeneration !== options.generation) {
+      throw new Error(`Cannot release task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${options.generation})`);
     }
 
     const previousAssignee = task.assignee;
@@ -324,7 +372,7 @@ export class KanbanBoard {
       taskId,
       boardId: this.boardId,
       timestamp: Date.now(),
-      payload: { previousAssignee },
+      payload: { previousAssignee, leaseGeneration: task.leaseGeneration },
     });
 
     return { ...task };
