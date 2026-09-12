@@ -1035,6 +1035,44 @@ To eliminate namespace pollution and severe ambiguity with core platform/languag
 - **Chinese Characters in `.agents/skills`**: **0**
 - **Chinese Characters in `plugins/*/skills/`**: **0**
 
+### 9.7 Pass 4: Deprecation Cleanup, Stub Eradication & Scope Precision Renaming
+
+Following the deep grounded architectural review in `deep_skill_naming_overlap_review.md`, a systematic cleanup pass was executed across `.agents/skills/`:
+
+#### 1. Deprecated Skills Eradicated (4 skills)
+- `data-model-creation` (officially deprecated in favor of PostgreSQL DDL and `postgresql-development-cloudbase`)
+- `plain-language-letters` (officially deprecated in favor of `/client-letter`)
+- `relational-database-mcp-cloudbase` (legacy MySQL MCP management deprecated in favor of `postgresql-development-cloudbase`)
+- `relational-database-web-cloudbase` (legacy web SDK MySQL queries deprecated in favor of `postgresql-development-cloudbase`)
+
+#### 2. Micro-Stubs & Stale Artifacts Eradicated (5 skills)
+- `pptx` (434 B stub shadowed by production `pptx-author` at 9.2 KB)
+- `xlsx` (448 B stub shadowed by production `xlsx-author` at 11.5 KB and `spreadsheets` at 6.2 KB)
+- `hello` (391 B test artifact)
+- `help` (1,420 B stale Codewhale router)
+- `rust-check` (396 B stub belonging to `rust-toolkit`)
+
+#### 3. Exact Duplicates Purged (2 skills)
+- `connect-apps` (verbatim clone of `connect` created for Claude)
+- `journal-entry-prep` (near-exact duplicate of `journal-entry`)
+
+#### 4. Misleading Scopes Disambiguated (4 skills)
+- `auth-patterns` &rarr; `nextjs-auth-patterns` (strictly Next.js/NextAuth middleware)
+- `workflow-patterns` &rarr; `conductor-workflow-patterns` (strictly Conductor TDD execution)
+- `workflow-orchestration-patterns` &rarr; `temporal-workflow-orchestration` (strictly Temporal distributed workflows)
+- `connect` &rarr; `composio-cli-connect` (explicit Composio CLI connectivity)
+
+#### 5. Cross-Skill Reference Updates
+- Updated `ops-inspector`, `spec-workflow`, and `ui-design` to reference active `postgresql-development-cloudbase` instead of purged deprecated MySQL skills.
+
+#### 6. Final Verified Metrics (Pass 4)
+- **Active Production Skills**: **2,255**
+- **Deprecated Skills in Tree**: **0**
+- **Micro-Stubs (< 500 bytes)**: **0**
+- **Verbatim Duplicates**: **0**
+- **Frontmatter Name Collisions**: **0**
+- **Directory vs Frontmatter Name Mismatches**: **0** (100% 1:1 match)
+
 ---
 
 ## 10. Appendix & Cross-Reference Index

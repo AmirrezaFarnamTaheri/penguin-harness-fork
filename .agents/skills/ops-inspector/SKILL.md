@@ -29,7 +29,7 @@ If a referenced sibling skill file is missing from this environment, ask the use
 
 - Cloud function issues -> `../cloud-functions/SKILL.md`
 - CloudRun issues -> `../cloudrun-development/SKILL.md`
-- Database issues -> `../postgresql-development-cloudbase/SKILL.md` for CloudBase PG / PostgreSQL, `../relational-database-mcp-cloudbase/SKILL.md` for MySQL, or `../cloudbase-document-database-web-sdk/SKILL.md` for NoSQL
+- Database issues -> `../postgresql-development-cloudbase/SKILL.md` for CloudBase PG / PostgreSQL, or `../cloudbase-document-database-web-sdk/SKILL.md` for NoSQL
 - Platform overview -> `../cloudbase-platform/SKILL.md`
 
 ### Do NOT use for
@@ -237,4 +237,3 @@ Always use ISO 8601 format for `startTime`/`endTime`, e.g., `"2025-01-15 00:00:0
 - `cloudrun-development` — CloudRun backend deployment and management
 - `cloudbase-platform` — General platform knowledge and console navigation
 - `postgresql-development-cloudbase` — CloudBase PostgreSQL / PG diagnostics and schema/RLS checks
-- `relational-database-mcp-cloudbase` — MySQL database management and diagnostics
