@@ -37,10 +37,6 @@ export interface SkillMatchResult {
   reason: string;
 }
 
-/**
- * Parses frontmatter YAML-like blocks from markdown skill files.
- * Structured `parameters` JSON is preserved before generic simple-array handling.
- */
 export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDefinition | null {
   const clean = rawContent.replace(/^\uFEFF/, "");
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n([\s\S]*))?$/.exec(clean);
@@ -70,8 +66,6 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
     const key = line.slice(0, colonIdx).trim();
     const rawVal = line.slice(colonIdx + 1).trim();
 
-    // Parameters may be an inline JSON array of objects. Keep the original JSON
-    // intact rather than treating it as a comma-separated scalar list.
     if (key === "parameters" && rawVal.startsWith("[") && rawVal.endsWith("]")) {
       currentListKey = null;
       fields[key] = rawVal;
@@ -144,9 +138,7 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
       const parsed: unknown = JSON.parse(rawParams);
       if (!Array.isArray(parsed)) throw new Error("parameters must be a JSON array");
       for (const item of parsed) {
-        if (typeof item !== "object" || item === null || typeof (item as { name?: unknown }).name !== "string") {
-          continue;
-        }
+        if (typeof item !== "object" || item === null || typeof (item as { name?: unknown }).name !== "string") continue;
         const parameter = item as Record<string, unknown>;
         parameters.push({
           name: parameter.name as string,
@@ -156,8 +148,7 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
         });
       }
     } catch {
-      // Unsupported structured parameter syntax remains empty rather than being
-      // misparsed as comma-separated fragments.
+      // Unsupported structured parameter syntax remains empty rather than being misparsed.
     }
   }
 
@@ -212,13 +203,31 @@ export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): Ski
   };
 }
 
-/** Literal, single-pass interpolation: replacement-language tokens in values are data. */
 export function interpolateVariables(template: string, vars: Record<string, string>): string {
   const token = /\{\{([A-Za-z0-9_.-]+)\}\}|\{([A-Za-z0-9_.-]+)\}|\$([A-Za-z_][A-Za-z0-9_.-]*)\b/g;
   return template.replace(token, (match, doubleKey: string | undefined, braceKey: string | undefined, dollarKey: string | undefined) => {
     const key = doubleKey ?? braceKey ?? dollarKey;
     return key !== undefined && Object.prototype.hasOwnProperty.call(vars, key) ? vars[key]! : match;
   });
+}
+
+export function bindSkillVariables(
+  skill: SkillDefinition,
+  variables: Record<string, string> = {},
+): Record<string, string> {
+  const bound = { ...variables };
+  for (const parameter of skill.parameters) {
+    const supplied = bound[parameter.name];
+    if (supplied !== undefined) continue;
+    if (parameter.default !== undefined) {
+      bound[parameter.name] = parameter.default;
+      continue;
+    }
+    if (parameter.required) {
+      throw new Error(`Skill "${skill.name}" requires parameter "${parameter.name}"`);
+    }
+  }
+  return bound;
 }
 
 export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
@@ -268,7 +277,6 @@ export function resolveSkillAlias(name: string, customAliases?: Record<string, s
   return DEFAULT_SKILL_ALIASES[lower] ?? name;
 }
 
-/** Exact registered names take precedence over aliases consistently. */
 export class SkillRegistry {
   private readonly skills = new Map<string, SkillDefinition>();
   private readonly aliases = new Map<string, string>();
@@ -367,12 +375,13 @@ export class SkillRegistry {
     const skill = this.get(skillName);
     if (!skill) throw new Error(`Skill "${skillName}" is not registered`);
 
-    const interpolatedBody = interpolateVariables(skill.content, variables);
+    const bound = bindSkillVariables(skill, variables);
+    const interpolatedBody = interpolateVariables(skill.content, bound);
     let output = `=== SKILL: ${skill.name} ===\n${interpolatedBody}\n`;
     if (includeReferences && Object.keys(skill.referenceFiles).length > 0) {
       output += "\n--- REFERENCES ---\n";
       for (const [relPath, refContent] of Object.entries(skill.referenceFiles)) {
-        output += `\n[Reference: ${relPath}]\n${refContent}\n`;
+        output += `\n[Reference: ${relPath}]\n${interpolateVariables(refContent, bound)}\n`;
       }
     }
     return `${output}=== END SKILL: ${skill.name} ===\n`;
