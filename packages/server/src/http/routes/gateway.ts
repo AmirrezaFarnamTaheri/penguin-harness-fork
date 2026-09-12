@@ -38,8 +38,26 @@ function decodeCombos(raw: string): ModelCombo[] {
 }
 
 function registryFrom(combos: ModelCombo[]): ModelComboRegistry {
-  // Hydration must preserve stored timestamps; only an actual set() mutation may advance updatedAt.
   return new ModelComboRegistry(combos);
+}
+
+async function getQuotaPayload(deps: AppDeps, projectId: string) {
+  const modelsCfg = await deps.projectConfigService.getModels(projectId);
+  const models: Array<{ provider: string; modelId: string; isCooling: boolean | null }> = [];
+  if (modelsCfg?.models) {
+    for (const model of modelsCfg.models) {
+      models.push({ provider: model.provider, modelId: model.modelId, isCooling: null });
+    }
+  }
+  return {
+    activeQuota: {
+      sessionUsedPct: null,
+      weeklyUsedPct: null,
+      resetsIn: null,
+      status: "unknown" as const,
+    },
+    models,
+  };
 }
 
 export function isSafeSegment(segment: string): boolean {
@@ -139,30 +157,17 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json({ ok: true, deleted });
   });
 
-  const quotaHandler = async (c: Parameters<ReturnType<Hono<AppEnv>>["get"]>[1] extends never ? never : any) => {
+  app.get("/quota", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const modelsCfg = await deps.projectConfigService.getModels(projectId);
-    const models: Array<{ provider: string; modelId: string; isCooling: boolean | null }> = [];
-    if (modelsCfg?.models) {
-      for (const model of modelsCfg.models) {
-        models.push({ provider: model.provider, modelId: model.modelId, isCooling: null });
-      }
-    }
-    return c.json({
-      activeQuota: {
-        sessionUsedPct: null,
-        weeklyUsedPct: null,
-        resetsIn: null,
-        status: "unknown",
-      },
-      models,
-    });
-  };
+    return c.json(await getQuotaPayload(deps, projectId));
+  });
 
-  app.get("/quota", quotaHandler);
-  // Compatibility for older UI builds; returns exactly the same honest unknown/null telemetry.
-  app.get("/status", quotaHandler);
+  app.get("/status", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    return c.json(await getQuotaPayload(deps, projectId));
+  });
 
   app.get("/pricing", async (c) => {
     const projectId = requireValidId(c, "projectId");
