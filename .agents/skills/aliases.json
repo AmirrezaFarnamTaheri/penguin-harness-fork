@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "description": "Canonical skill alias resolution table for Penguin Harness agent execution.",
+  "version": "1.0.1",
+  "description": "Canonical skill alias resolution table for Penguin Harness agent execution. Every target in this table must resolve to an installed skill.",
   "aliases": {
     "plan": "task-planning-runner",
     "review": "diff-correctness-review",
@@ -30,10 +30,8 @@
     "spreadsheets": "xlsx-author",
     "journal-entry-prep": "journal-entry",
     "data-model-creation": "database-design",
-    "plain-language-letters": "legal-plain-language",
     "relational-database-mcp-cloudbase": "postgresql-development-cloudbase",
     "relational-database-web-cloudbase": "postgresql-development-cloudbase",
-    "rust-check": "cargo-test",
     "secrets-management-best-practices": "aws-secrets-manager-best-practices",
     "seo-audit-expert": "seo-optimization-bilingual",
     "e2e-testing-expert": "e2e-testing-bilingual",
