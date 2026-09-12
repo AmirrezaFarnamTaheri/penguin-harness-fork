@@ -1,7 +1,5 @@
 /**
- * Agent Client Protocol (ACP) JSON-RPC 2.0 Protocol Engine
- * Derived from claurst (src-rust/crates/acp/src/connection.rs)
- * and cocode-host-supervisor (host-jsonrpc-plugin).
+ * Agent Client Protocol (ACP) JSON-RPC 2.0 Protocol Engine.
  */
 
 export interface JsonRpcRequest<T = unknown> {
@@ -21,11 +19,7 @@ export interface JsonRpcResponse<T = unknown> {
   jsonrpc: "2.0";
   id: string | number;
   result?: T;
-  error?: {
-    code: number;
-    message: string;
-    data?: unknown;
-  };
+  error?: { code: number; message: string; data?: unknown };
 }
 
 export type JsonRpcMessage = JsonRpcRequest | JsonRpcNotification | JsonRpcResponse;
@@ -44,16 +38,40 @@ export class AcpConnection {
     string,
     (params: unknown) => Promise<unknown> | unknown
   >();
-  private readonly notificationHandlers = new Map<
-    string,
-    (params: unknown) => void
-  >();
+  private readonly notificationHandlers = new Map<string, (params: unknown) => void>();
   private lineBuffer = "";
+  private disposed = false;
+  private transportError: Error | null = null;
 
   constructor(
     private readonly sendRawLine: (line: string) => void | Promise<void>,
     private readonly requestTimeoutMs = 30_000,
   ) {}
+
+  private normalizeError(error: unknown): Error {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+
+  private failTransport(error: unknown): Error {
+    const normalized = this.normalizeError(error);
+    if (!this.transportError) this.transportError = normalized;
+    for (const [, entry] of this.pending) {
+      clearTimeout(entry.timer);
+      entry.reject(normalized);
+    }
+    this.pending.clear();
+    return normalized;
+  }
+
+  private async writeLine(message: JsonRpcMessage): Promise<void> {
+    if (this.disposed) throw new Error("ACP connection disposed");
+    if (this.transportError) throw this.transportError;
+    try {
+      await this.sendRawLine(`${JSON.stringify(message)}\n`);
+    } catch (error) {
+      throw this.failTransport(error);
+    }
+  }
 
   public onRequest<P = unknown, R = unknown>(
     method: string,
@@ -62,26 +80,25 @@ export class AcpConnection {
     this.requestHandlers.set(method, handler as (params: unknown) => Promise<unknown>);
   }
 
-  public onNotification<P = unknown>(
-    method: string,
-    handler: (params: P) => void,
-  ): void {
+  public onNotification<P = unknown>(method: string, handler: (params: P) => void): void {
     this.notificationHandlers.set(method, handler as (params: unknown) => void);
   }
 
   public async sendRequest<T = unknown>(method: string, params?: unknown): Promise<T> {
+    if (this.disposed) throw new Error("ACP connection disposed");
+    if (this.transportError) throw this.transportError;
+
     const id = this.nextId++;
-    const req: JsonRpcRequest = {
-      jsonrpc: "2.0",
-      id,
-      method,
-      params,
-    };
+    const req: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
 
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`ACP request '${method}' with id ${id} timed out after ${this.requestTimeoutMs}ms`));
+        reject(
+          new Error(
+            `ACP request '${method}' with id ${id} timed out after ${this.requestTimeoutMs}ms`,
+          ),
+        );
       }, this.requestTimeoutMs);
 
       this.pending.set(id, {
@@ -90,30 +107,19 @@ export class AcpConnection {
         timer,
       });
 
-      try {
-        const sendResult = this.sendRawLine(JSON.stringify(req) + "\n");
-        if (sendResult && typeof (sendResult as Promise<void>).catch === "function") {
-          (sendResult as Promise<void>).catch((err) => {
-            clearTimeout(timer);
-            this.pending.delete(id);
-            reject(err instanceof Error ? err : new Error(String(err)));
-          });
-        }
-      } catch (err) {
+      void this.writeLine(req).catch((error) => {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+        reject(this.normalizeError(error));
+      });
     });
   }
 
   public sendNotification(method: string, params?: unknown): void {
-    const notif: JsonRpcNotification = {
-      jsonrpc: "2.0",
-      method,
-      params,
-    };
-    void this.sendRawLine(JSON.stringify(notif) + "\n");
+    const notif: JsonRpcNotification = { jsonrpc: "2.0", method, params };
+    void this.writeLine(notif).catch(() => {
+      // writeLine already records the transport failure and rejects pending requests.
+    });
   }
 
   public async handleChunk(chunk: string): Promise<void> {
@@ -127,79 +133,69 @@ export class AcpConnection {
       try {
         const msg = JSON.parse(trimmed) as JsonRpcMessage;
         await this.handleMessage(msg);
-      } catch {
-        // Drop malformed frame
+      } catch (error) {
+        // Syntax-invalid frames are ignored. Transport failures are retained and
+        // make subsequent writes/requests fail deterministically.
+        if (this.transportError) throw this.transportError;
+        if (!(error instanceof SyntaxError)) throw error;
       }
     }
   }
 
   public async handleMessage(msg: JsonRpcMessage): Promise<void> {
+    if (this.disposed) throw new Error("ACP connection disposed");
+
     if ("id" in msg && ("result" in msg || "error" in msg)) {
-      // Inbound Response
       const entry = this.pending.get(msg.id);
       if (entry) {
         clearTimeout(entry.timer);
         this.pending.delete(msg.id);
-        if (msg.error) {
-          entry.reject(new Error(`ACP Error ${msg.error.code}: ${msg.error.message}`));
-        } else {
-          entry.resolve(msg.result);
-        }
+        if (msg.error) entry.reject(new Error(`ACP Error ${msg.error.code}: ${msg.error.message}`));
+        else entry.resolve(msg.result);
       }
       return;
     }
 
     if ("id" in msg && "method" in msg) {
-      // Inbound Request
       const handler = this.requestHandlers.get(msg.method);
       if (!handler) {
-        const errorResp: JsonRpcResponse = {
+        await this.writeLine({
           jsonrpc: "2.0",
           id: msg.id,
-          error: {
-            code: -32601,
-            message: `Method '${msg.method}' not found`,
-          },
-        };
-        void this.sendRawLine(JSON.stringify(errorResp) + "\n");
+          error: { code: -32601, message: `Method '${msg.method}' not found` },
+        });
         return;
       }
 
+      let response: JsonRpcResponse;
       try {
         const result = await handler(msg.params);
-        const successResp: JsonRpcResponse = {
+        response = { jsonrpc: "2.0", id: msg.id, result };
+      } catch (error) {
+        const normalized = this.normalizeError(error);
+        response = {
           jsonrpc: "2.0",
           id: msg.id,
-          result,
+          error: { code: -32603, message: normalized.message || "Internal error" },
         };
-        void this.sendRawLine(JSON.stringify(successResp) + "\n");
-      } catch (err: any) {
-        const failureResp: JsonRpcResponse = {
-          jsonrpc: "2.0",
-          id: msg.id,
-          error: {
-            code: -32603,
-            message: err?.message ?? "Internal error",
-          },
-        };
-        void this.sendRawLine(JSON.stringify(failureResp) + "\n");
       }
+      await this.writeLine(response);
       return;
     }
 
     if ("method" in msg) {
-      // Inbound Notification
       const notifHandler = this.notificationHandlers.get(msg.method);
-      if (notifHandler) {
-        notifHandler(msg.params);
-      }
+      if (notifHandler) notifHandler(msg.params);
     }
   }
 
   public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const error = new Error("ACP connection disposed");
     for (const [, entry] of this.pending) {
       clearTimeout(entry.timer);
-      entry.reject(new Error("ACP connection disposed"));
+      entry.reject(error);
     }
     this.pending.clear();
     this.requestHandlers.clear();
