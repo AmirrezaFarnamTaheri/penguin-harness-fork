@@ -18,6 +18,8 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Verify normalized imported skill metadata
         run: pnpm skills:normalize:check
+      - name: Verify canonical naming policies
+        run: pnpm skills:names:check
       - name: Verify declarative and runtime aliases are synchronized
         run: pnpm skills:aliases:check
       - name: Validate skill identities, metadata, resources and aliases
