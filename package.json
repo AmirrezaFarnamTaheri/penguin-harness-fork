@@ -18,6 +18,8 @@
     "skills:normalize:check": "node scripts/skills/normalize-frontmatter.mjs",
     "skills:aliases:check": "node scripts/skills/sync-aliases.mjs",
     "skills:aliases:prune": "node scripts/skills/sync-aliases.mjs --write --prune-dangling",
+    "skills:names:check": "node scripts/skills/normalize-names.mjs --bilingual-experts --core-disambiguation",
+    "skills:names:normalize": "node scripts/skills/normalize-names.mjs --write --bilingual-experts --core-disambiguation",
     "gen:ifaces": "node scripts/gen-ifaces.mjs --project packages/server/tsconfig.json --out packages/server/src/ifaces.json",
     "ifaces:page": "pnpm gen:ifaces && node scripts/iface-page.mjs --in packages/server/src/ifaces.json --out dist-ifaces",
     "typecheck": "pnpm gen:ifaces && pnpm -r typecheck",
