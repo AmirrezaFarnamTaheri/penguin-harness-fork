@@ -88,6 +88,16 @@ export class SignalChainManager {
     this.maxRetries = options.maxRetries ?? 3;
   }
 
+  private hasNodeId(nodeId: string): boolean {
+    return this.sources.has(nodeId) || this.signals.has(nodeId) || this.actions.has(nodeId);
+  }
+
+  private assertNodeIdAvailable(nodeId: string): void {
+    if (this.hasNodeId(nodeId)) {
+      throw new Error(`Causal node id '${nodeId}' is already registered`);
+    }
+  }
+
   public registerSource(input: {
     sourceId?: string;
     sourceType: string;
@@ -95,6 +105,7 @@ export class SignalChainManager {
     scope?: SignalScope;
   }): SourceNode {
     const sourceId = input.sourceId ?? `src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.assertNodeIdAvailable(sourceId);
     const chainId = `chain_${sourceId}`;
 
     const chain: SignalChainRef = {
@@ -154,6 +165,7 @@ export class SignalChainManager {
     }
 
     const signalId = input.signalId ?? `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.assertNodeIdAvailable(signalId);
     const chain: SignalChainRef = {
       chainId: source.chain.chainId,
       rootSourceId: source.sourceId,
@@ -198,6 +210,7 @@ export class SignalChainManager {
     }
 
     const actionId = input.actionId ?? `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.assertNodeIdAvailable(actionId);
     const chain: SignalChainRef = {
       chainId: signal.chain.chainId,
       rootSourceId: signal.chain.rootSourceId,
@@ -311,12 +324,19 @@ export class SignalChainManager {
 
   public getTrace(nodeId: string): Array<SourceNode | SignalNode | ActionNode> {
     const trace: Array<SourceNode | SignalNode | ActionNode> = [];
+    const visited = new Set<string>();
     let currentId: string | undefined = nodeId;
     let expectedRoot: string | undefined;
     let expectedChain: string | undefined;
 
     while (currentId) {
-      const node = this.actions.get(currentId) ?? this.signals.get(currentId) ?? this.sources.get(currentId);
+      if (visited.has(currentId)) {
+        throw new Error(`Causal trace for '${nodeId}' contains a cycle at '${currentId}'`);
+      }
+      visited.add(currentId);
+
+      const node: SourceNode | SignalNode | ActionNode | undefined =
+        this.actions.get(currentId) ?? this.signals.get(currentId) ?? this.sources.get(currentId);
       if (!node) {
         throw new Error(`Causal trace references missing node '${currentId}'`);
       }
@@ -328,12 +348,12 @@ export class SignalChainManager {
       }
 
       if ("actionId" in node) {
-        trace.unshift({ ...node, attempts: node.attempts.map((attempt) => ({ ...attempt })) });
+        trace.unshift({ ...node, attempts: node.attempts.map((attempt: ExecutionAttempt) => ({ ...attempt })) });
       } else {
         trace.unshift({ ...node });
       }
 
-      if ("sourceId" in node && "sourceType" in node) break;
+      if ("sourceType" in node) break;
       currentId = node.chain.parentNodeId;
     }
 
