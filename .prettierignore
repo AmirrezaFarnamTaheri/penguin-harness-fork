@@ -11,6 +11,10 @@ packages/desktop/stage/
 packages/desktop/out/
 packages/desktop/skills/
 
+# Imported third-party skill corpus. Preserve upstream formatting and avoid
+# rewriting vendored templates, fixtures, schemas, examples, and generated assets.
+.agents/skills/
+
 # docs-only area (mostly Chinese; not machine-formatted)
 specs/
 *.md
