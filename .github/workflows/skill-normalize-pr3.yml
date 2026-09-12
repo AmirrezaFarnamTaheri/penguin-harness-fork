@@ -1,0 +1,33 @@
+name: Skill Metadata Normalization (PR3)
+
+on:
+  push:
+    branches: [feat/integrate-upstream-features]
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/integrate-upstream-features
+      - uses: ./.github/actions/setup
+      - name: Normalize imported skill metadata
+        run: node scripts/skills/normalize-frontmatter.mjs --write
+      - name: Commit deterministic normalization
+        shell: bash
+        run: |
+          if git diff --quiet -- .agents/skills; then
+            echo "No normalization changes required."
+            exit 0
+          fi
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .agents/skills
+          git commit -m "fix(skills): normalize imported skill frontmatter"
+          git push origin HEAD:feat/integrate-upstream-features
