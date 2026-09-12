@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Canonical skill alias resolution table for Penguin Harness agent execution. Every target in this table must resolve to an installed skill.",
   "aliases": {
     "plan": "task-planning-runner",
@@ -25,9 +25,6 @@
     "workflow-orchestration-patterns": "temporal-workflow-orchestration",
     "connect": "composio-cli-connect",
     "connect-apps": "composio-cli-connect",
-    "pptx": "pptx-author",
-    "xlsx": "xlsx-author",
-    "spreadsheets": "xlsx-author",
     "journal-entry-prep": "journal-entry",
     "data-model-creation": "database-design",
     "relational-database-mcp-cloudbase": "postgresql-development-cloudbase",
