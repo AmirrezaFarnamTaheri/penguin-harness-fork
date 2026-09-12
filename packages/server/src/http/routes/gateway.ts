@@ -10,6 +10,7 @@ import {
   ModelComboRegistry,
   PricingCatalog,
   computeSpendFlow,
+  isValidId,
 } from "@prismshadow/penguin-core";
 import type {
   ModelCombo,
@@ -21,6 +22,14 @@ import type {
 import { ProjectJsonStore } from "../../services/project-json-store.js";
 
 const pricingCatalog = new PricingCatalog();
+const ALLOWED_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
+  "rate_limit",
+  "quota_exhausted",
+  "auth_error",
+  "overloaded",
+  "timeout",
+  "context_length_exceeded",
+];
 
 function decodeCombos(raw: string): ModelCombo[] {
   const parsed: unknown = JSON.parse(raw);
@@ -29,9 +38,8 @@ function decodeCombos(raw: string): ModelCombo[] {
 }
 
 function registryFrom(combos: ModelCombo[]): ModelComboRegistry {
-  const registry = new ModelComboRegistry();
-  for (const combo of combos) registry.set(combo);
-  return registry;
+  // Hydration must preserve stored timestamps; only an actual set() mutation may advance updatedAt.
+  return new ModelComboRegistry(combos);
 }
 
 export function isSafeSegment(segment: string): boolean {
@@ -68,6 +76,9 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
     const body = await readJson(c);
     const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
+    if (!isValidId(id)) {
+      throw badRequest("id must contain only letters, numbers, underscores, and hyphens.");
+    }
     const name = requireString(body, "name", { minLen: 1, maxLen: 100, label: "name" });
     const description = typeof body.description === "string" ? body.description : undefined;
 
@@ -76,28 +87,44 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     }
 
     const targets: ModelComboTarget[] = body.targets.map((item, index) => {
-      if (typeof item !== "object" || item === null) throw badRequest(`targets[${index}] must be an object.`);
+      if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        throw badRequest(`targets[${index}] must be an object.`);
+      }
       const target = item as Record<string, unknown>;
+      const maxRetries = target.maxRetries === undefined ? 2 : target.maxRetries;
+      const timeoutMs = target.timeoutMs;
+      if (!Number.isInteger(maxRetries) || (maxRetries as number) < 0) {
+        throw badRequest(`targets[${index}].maxRetries must be a non-negative integer.`);
+      }
+      if (timeoutMs !== undefined && (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+        throw badRequest(`targets[${index}].timeoutMs must be a positive finite number.`);
+      }
       return {
         provider: requireString(target, "provider", { minLen: 1, maxLen: 64, label: `targets[${index}].provider` }),
         modelId: requireString(target, "modelId", { minLen: 1, maxLen: 200, label: `targets[${index}].modelId` }),
         label: typeof target.label === "string" ? target.label : undefined,
-        maxRetries: typeof target.maxRetries === "number" ? target.maxRetries : 2,
-        timeoutMs: typeof target.timeoutMs === "number" ? target.timeoutMs : undefined,
+        maxRetries: maxRetries as number,
+        timeoutMs: timeoutMs as number | undefined,
       };
     });
 
     const fallbackTriggers: FallbackTrigger[] = Array.isArray(body.fallbackTriggers)
-      ? (body.fallbackTriggers as FallbackTrigger[])
+      ? body.fallbackTriggers.map((value, index) => {
+          if (typeof value !== "string" || !ALLOWED_FALLBACK_TRIGGERS.includes(value as FallbackTrigger)) {
+            throw badRequest(`fallbackTriggers[${index}] is not a supported fallback reason.`);
+          }
+          return value as FallbackTrigger;
+        })
       : ["rate_limit", "quota_exhausted", "overloaded", "timeout"];
     const combo: ModelCombo = { id, name, description, targets, fallbackTriggers };
 
-    await combos.update(projectId, (current) => {
+    const saved = await combos.update(projectId, (current) => {
       const registry = registryFrom(current);
       registry.set(combo);
-      return { value: registry.list(), result: undefined };
+      const persisted = registry.get(id)!;
+      return { value: registry.list(), result: persisted };
     });
-    return c.json({ ok: true, combo });
+    return c.json({ ok: true, combo: saved });
   });
 
   app.delete("/combos/:id", async (c) => {
@@ -112,7 +139,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json({ ok: true, deleted });
   });
 
-  app.get("/quota", async (c) => {
+  const quotaHandler = async (c: Parameters<ReturnType<Hono<AppEnv>>["get"]>[1] extends never ? never : any) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const modelsCfg = await deps.projectConfigService.getModels(projectId);
@@ -131,7 +158,11 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       },
       models,
     });
-  });
+  };
+
+  app.get("/quota", quotaHandler);
+  // Compatibility for older UI builds; returns exactly the same honest unknown/null telemetry.
+  app.get("/status", quotaHandler);
 
   app.get("/pricing", async (c) => {
     const projectId = requireValidId(c, "projectId");
@@ -218,8 +249,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     let toolCallId: string;
     if (typeof body.sessionId === "string" && body.sessionId.length > 0) {
       sessionId = body.sessionId;
-      toolCallId =
-        typeof body.toolCallId === "string" && body.toolCallId.length > 0 ? body.toolCallId : approvalId;
+      toolCallId = typeof body.toolCallId === "string" && body.toolCallId.length > 0 ? body.toolCallId : approvalId;
     } else if (approvalId.includes(":")) {
       const separator = approvalId.indexOf(":");
       sessionId = approvalId.slice(0, separator);
@@ -233,7 +263,6 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
 
     const session = deps.sessionsRepo.findById(sessionId);
     if (!session || session.projectId !== projectId) {
-      // Deliberately hide whether an out-of-project session exists.
       throw notFound("Approval does not exist or is not accessible in this project.");
     }
     deps.projectService.requireProjectAccess(c.var.user.userId, session.projectId);
