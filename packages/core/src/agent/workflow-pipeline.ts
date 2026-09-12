@@ -39,6 +39,8 @@ export interface WorkflowNodeState {
   completedAt?: number;
   output?: Record<string, unknown>;
   error?: string;
+  /** Frozen branch targets selected when a condition/gate succeeds. */
+  selectedTargets?: string[];
 }
 
 export interface WorkflowRunState {
@@ -137,6 +139,9 @@ export class WorkflowPipeline {
     for (const edge of this.edges) {
       if (!this.nodes.has(edge.from)) errors.push(`Source node '${edge.from}' does not exist`);
       if (!this.nodes.has(edge.to)) errors.push(`Target node '${edge.to}' does not exist`);
+      if (this.nodes.get(edge.to)?.kind === "trigger") {
+        errors.push(`Trigger node '${edge.to}' cannot have incoming edges`);
+      }
     }
 
     const adjacency = new Map<string, string[]>();
@@ -174,6 +179,18 @@ export class WorkflowPipeline {
     return { isValid: errors.length === 0, cycle: detectedCycle, errors };
   }
 
+  private selectConditionalTargets(run: WorkflowRunState, source: WorkflowNode): string[] {
+    const outgoing = this.edges.filter((candidate) => candidate.from === source.id);
+    const resolvedValue = source.conditionField ? run.context[source.conditionField] : undefined;
+    const matching = outgoing.filter(
+      (candidate) =>
+        candidate.conditionValue !== undefined &&
+        (candidate.conditionValue === resolvedValue || String(candidate.conditionValue) === String(resolvedValue)),
+    );
+    const selected = matching.length > 0 ? matching : outgoing.filter((edge) => edge.conditionValue === undefined);
+    return Array.from(new Set(selected.map((edge) => edge.to)));
+  }
+
   private conditionalEdgeSettlement(
     run: WorkflowRunState,
     source: WorkflowNode,
@@ -186,18 +203,8 @@ export class WorkflowPipeline {
     }
     if (sourceState.status !== "succeeded") return "inactive";
 
-    const outgoing = this.edges.filter((candidate) => candidate.from === source.id);
-    const resolvedValue = source.conditionField ? run.context[source.conditionField] : undefined;
-    const matching = outgoing.filter(
-      (candidate) =>
-        candidate.conditionValue !== undefined &&
-        (candidate.conditionValue === resolvedValue || String(candidate.conditionValue) === String(resolvedValue)),
-    );
-
-    if (matching.length > 0) {
-      return matching.includes(edge) ? "active" : "inactive";
-    }
-    return edge.conditionValue === undefined ? "active" : "inactive";
+    const selectedTargets = sourceState.selectedTargets ?? this.selectConditionalTargets(run, source);
+    return selectedTargets.includes(edge.to) ? "active" : "inactive";
   }
 
   private edgeSettlement(run: WorkflowRunState, edge: WorkflowEdge): EdgeSettlement {
@@ -215,11 +222,6 @@ export class WorkflowPipeline {
     return sourceState.status === "succeeded" ? "active" : "inactive";
   }
 
-  /**
-   * Settle unreachable nodes and start every node whose selected predecessors have completed.
-   * Decisions are computed from one snapshot per iteration, then applied together. This makes
-   * readiness independent of edge ordering and revisits joins after conditional branches settle.
-   */
   private settleReadiness(run: WorkflowRunState, now: number): void {
     let changed = true;
     while (changed) {
@@ -288,15 +290,10 @@ export class WorkflowPipeline {
     const outgoing = this.edges.filter((edge) => edge.from === currentNodeId);
 
     if (currentNode.kind === "condition" || currentNode.kind === "gate") {
-      const resolvedValue = currentNode.conditionField ? context[currentNode.conditionField] : undefined;
-      const matching = outgoing.filter(
-        (edge) =>
-          edge.conditionValue !== undefined &&
-          (edge.conditionValue === resolvedValue || String(edge.conditionValue) === String(resolvedValue)),
-      );
-      const selected = matching.length > 0 ? matching : outgoing.filter((edge) => edge.conditionValue === undefined);
-      return selected
-        .map((edge) => this.nodes.get(edge.to))
+      const tempRun = { context } as WorkflowRunState;
+      const selectedTargets = this.selectConditionalTargets(tempRun, currentNode);
+      return selectedTargets
+        .map((target) => this.nodes.get(target))
         .filter((node): node is WorkflowNode => node !== undefined)
         .map((node) => ({ ...node, config: node.config ? { ...node.config } : undefined }));
     }
@@ -355,7 +352,8 @@ export class WorkflowPipeline {
     }
 
     const nodeState = run.nodeStates[nodeId];
-    if (!nodeState || !this.nodes.has(nodeId)) {
+    const node = this.nodes.get(nodeId);
+    if (!nodeState || !node) {
       throw new Error(`Node '${nodeId}' not found in run '${run.runId}' and its bound pipeline definition`);
     }
     if (nodeState.status !== "running" && nodeState.status !== "waiting_gate") {
@@ -378,6 +376,9 @@ export class WorkflowPipeline {
     nodeState.status = "succeeded";
     nodeState.output = result.output;
     if (result.output) Object.assign(run.context, result.output);
+    if (node.kind === "condition" || node.kind === "gate") {
+      nodeState.selectedTargets = this.selectConditionalTargets(run, node);
+    }
 
     this.settleReadiness(run, now);
     return { ...run };
