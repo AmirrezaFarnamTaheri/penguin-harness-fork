@@ -1,5 +1,6 @@
 ---
 name: seo-ops
+description: "SEO operations for content attack briefs, Search Console optimization, competitor gaps, and trend scouting."
 version: 1.0.1
 display_name: "seo-ops"
 display_name_en: "Seo Ops"

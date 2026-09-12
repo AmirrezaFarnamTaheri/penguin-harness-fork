@@ -1,5 +1,6 @@
 ---
 name: shopify-admin-api
+description: "Manage Shopify Admin API resources including orders, products, customers, inventory, fulfillments, refunds, returns, and transactions."
 slug: shopify-admin-api
 display_name: Shopify Admin API
 version: 1.0.0

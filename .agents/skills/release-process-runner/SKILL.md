@@ -1,6 +1,6 @@
 ---
 name: release-process-runner
-description: Prepare a named version: preflight, version consistency, build/package, smoke test, checksums/notes, and release readiness. Publishing/tagging/deploy need separate authorization. Explicit-only.
+description: "Prepare a named release version through preflight checks, version consistency, build and packaging, smoke verification, and release notes."
 invocation: explicit-only
 ---
 

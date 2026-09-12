@@ -1,11 +1,6 @@
 ---
 name: boltz
-description: "Boltz-1 biomolecular structure prediction for protein, nucleic-acid, and small-molecule complexes."
-  Structure prediction for protein, nucleic-acid, and small-molecule complexes
-  with Boltz-2 (Passaro & Wohlwend et al. 2025, github.com/jwohlwend/boltz).
-  Reach for this skill to validate designed binders against a target, to
-  co-fold a protein with a SMILES or CCD ligand, or to get an open-source
-  AlphaFold3 alternative with optional binding-affinity prediction.
+description: "Predict biomolecular structures with Boltz-1 for protein, nucleic-acid, and small-molecule complexes."
 license: Apache-2.0
 category: biomodels
 requirements: [gpu]

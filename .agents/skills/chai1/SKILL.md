@@ -1,12 +1,6 @@
 ---
 name: chai1
-description: "Chai-1 biomolecular structure prediction for protein, nucleic-acid, and small-molecule complexes."
-  Structure prediction for protein, nucleic-acid, and small-molecule complexes
-  with the Chai-1 foundation model (Chai Discovery 2024,
-  github.com/chaidiscovery/chai-lab). Reach for this skill to predict an
-  antibody-antigen or protein-ligand complex from a single FASTA, to re-fold
-  designed binders as an AlphaFold-multimer alternative, or to drive
-  co-folding from Python for batched campaigns on a GPU.
+description: "Predict biomolecular structures with Chai-1 for protein, nucleic-acid, and small-molecule complexes."
 license: Apache-2.0
 category: biomodels
 requirements: [gpu]

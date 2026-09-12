@@ -1,5 +1,6 @@
 ---
 name: sales-pipeline
+description: "Sales pipeline automation for visitor routing, deal resurrection, buying-signal prospecting, and ICP learning."
 version: 1.0.1
 display_name: "sales-pipeline"
 display_name_en: "Sales Pipeline"

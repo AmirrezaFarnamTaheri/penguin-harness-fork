@@ -1,6 +1,6 @@
 ---
 name: agent-skills-schema
-description: Designing database schemas, migrations, and multi-tenant architecture: RLS, tenant routing, provisioning, quotas, and isolation. Not for query-plan tuning (Tuner).
+description: "Design database schemas, migrations, and multi-tenant architecture including RLS, tenant routing, provisioning, quotas, and isolation. Not for query-plan tuning."
 ---
 
 <!--

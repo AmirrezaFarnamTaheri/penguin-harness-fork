@@ -1,5 +1,6 @@
 ---
 name: revenue-intelligence
+description: "Revenue attribution, sales call insights, and automated client report generation."
 version: 1.0.1
 display_name: "revenue-intelligence"
 display_name_en: "Revenue Intelligence"

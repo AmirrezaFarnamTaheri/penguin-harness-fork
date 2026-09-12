@@ -1,5 +1,6 @@
 ---
 name: growth-engine
+description: "Autonomous marketing experiment engine that runs, measures, and optimizes growth."
 version: 1.0.1
 display_name: "growth-engine"
 display_name_en: "Growth Engine"

@@ -1,6 +1,6 @@
 ---
 name: marketing-skills
-description: TL;DR: 23 marketing playbooks (CRO, SEO, copy, analytics, experiments, pricing, launches, ads, social). Use to get checklists + copy/paste deliverables fast.
+description: "Use a collection of marketing playbooks for CRO, SEO, copywriting, analytics, experimentation, growth, positioning, and related marketing work."
 ---
 
 # Marketing Skills

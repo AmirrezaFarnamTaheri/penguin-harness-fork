@@ -1,5 +1,6 @@
 ---
 name: policy-diff
+description: "Compare changed regulations against an indexed policy library and produce per-requirement gaps and policy update recommendations."
 argument-hint: "[reg name, or paste reg text/summary]"
 ---
 

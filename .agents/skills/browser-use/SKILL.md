@@ -1,7 +1,6 @@
 ---
 name: browser-use
-description: "Automates browser interactions using the browser-use Python CLI for persistent autonomous web navigation, testing, and scraping."
-  or extract information from web pages.
+description: "Automate browser interactions with the browser-use Python CLI for navigation, form interaction, screenshots, and web data extraction."
 description_en: Automates browser interactions for web testing, form filling, screenshots, and d...
 version: 2.0.0
 allowed-tools: Bash(browser-use:*)

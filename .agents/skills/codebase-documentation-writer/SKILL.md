@@ -1,6 +1,6 @@
 ---
 name: codebase-documentation-writer
-description: Write or update repository/product documentation: README, user guides, API docs, architecture, migration notes, and changelog material. This is not the Word-document artifact skill.
+description: "Write and update repository and product documentation, including READMEs, user guides, architecture docs, API docs, and runbooks."
 invocation: model+user
 ---
 

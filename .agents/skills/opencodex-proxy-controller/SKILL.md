@@ -1,6 +1,6 @@
 ---
 name: opencodex-proxy-controller
-description: Drive a running opencodex (`ocx`) proxy from the CLI — account pools, provider routing, model catalog, usage and cost attribution, request logs, access keys, storage cleanup, and the management API. Use when a task involves controlling or inspecting an opencodex proxy rather than editing the opencodex codebase. Triggers: ocx, opencodex, proxy control, account pool, pause account, pool strategy, provider routing, usage report, cost attribution, access key, request log, conversation trace, storage cleanup, management API.
+description: "Control a running opencodex (ocx) proxy from the CLI, including account pools, routing, health, limits, and provider state."
 ---
 
 # Operating `ocx`

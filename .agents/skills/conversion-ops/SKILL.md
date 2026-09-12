@@ -1,5 +1,6 @@
 ---
 name: conversion-ops
+description: "CRO audit, landing page optimization, and survey-to-lead-magnet conversion."
 version: 1.0.1
 display_name: "conversion-ops"
 display_name_en: "Conversion Ops"
