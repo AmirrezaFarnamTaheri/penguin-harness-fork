@@ -31,7 +31,7 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "auth_header",
-    pattern: /((?:authorization|x-api-key|x-auth-token|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?\S+/gi,
+    pattern: /((?:authorization|proxy-authorization|api-key|x-api-key|x-auth-token|x-access-token|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?\S+/gi,
     replace: (_match, header) => `${header}${REDACTED_MARKER}`,
   },
   {
@@ -101,11 +101,14 @@ function normalizeFieldName(name: string): string {
 
 const DEFAULT_SENSITIVE_FIELDS = new Set([
   "apikey",
+  "xapikey",
   "clientsecret",
   "password",
   "passwd",
   "pwd",
   "accesstoken",
+  "xaccesstoken",
+  "xauthtoken",
   "refreshtoken",
   "secrettoken",
   "sessiontoken",
@@ -133,11 +136,10 @@ function isSensitiveField(key: string, sensitive: Set<string>): boolean {
   const normalized = normalizeFieldName(key);
   if (sensitive.has(normalized)) return true;
 
-  // Cover common vendor/config prefixes without treating analytical fields such as tokenCount as secrets.
   return (
-    /^(?:openai|anthropic|google|github|gitlab|slack|aws)?apikey$/.test(normalized) ||
+    /^(?:x|openai|anthropic|google|github|gitlab|slack|aws)?apikey$/.test(normalized) ||
     /^(?:client|app|oauth)secret$/.test(normalized) ||
-    /^(?:access|refresh|secret|session|auth|oauth)token$/.test(normalized) ||
+    /^(?:x)?(?:access|refresh|secret|session|auth|oauth)token$/.test(normalized) ||
     /^(?:private|signing|encryption)key$/.test(normalized)
   );
 }
