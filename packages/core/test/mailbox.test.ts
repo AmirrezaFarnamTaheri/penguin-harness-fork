@@ -17,31 +17,25 @@ describe("MailboxKernel", () => {
     mb.send("worker-1", "orchestrator", "task", { job: 2 });
     mb.send("worker-1", "orchestrator", "urgent_interrupt", { job: 99 }, "high");
 
-    const first = mb.poll<{ job: number }>("worker-1");
-    expect(first?.payload.job).toBe(99); // High priority popped first
-
-    const second = mb.poll<{ job: number }>("worker-1");
-    expect(second?.payload.job).toBe(1);
-
-    const third = mb.poll<{ job: number }>("worker-1");
-    expect(third?.payload.job).toBe(2);
-
+    expect(mb.poll<{ job: number }>("worker-1")?.payload.job).toBe(99);
+    expect(mb.poll<{ job: number }>("worker-1")?.payload.job).toBe(1);
+    expect(mb.poll<{ job: number }>("worker-1")?.payload.job).toBe(2);
     expect(mb.poll("worker-1")).toBeNull();
   });
 
-  it("manages exclusive leases and rejects overlapping leases", () => {
+  it("manages exclusive fenced leases and rejects stale owners", () => {
     const mb = new MailboxKernel();
     const lease = mb.acquireLease("agent-a", "evt-100", 10000);
     expect(lease.leaseState).toBe("acquired");
     expect(lease.inboundEventId).toBe("evt-100");
-
-    // Second lease attempt should throw
     expect(() => mb.acquireLease("agent-a", "evt-101", 10000)).toThrow(/already held/);
 
-    // Release lease allows new acquisition
-    mb.releaseLease("agent-a");
+    mb.releaseLease("agent-a", lease.leaseToken);
     const lease2 = mb.acquireLease("agent-a", "evt-102", 5000);
     expect(lease2.inboundEventId).toBe("evt-102");
+    expect(() => mb.releaseLease("agent-a", lease.leaseToken)).toThrow(/token mismatch/);
+    expect(() => mb.renewLease("agent-a", lease.leaseToken)).toThrow(/token mismatch/);
+    expect(mb.renewLease("agent-a", lease2.leaseToken).leaseState).toBe("acquired");
   });
 
   it("handles dead-lettering for unprocessable messages", () => {
@@ -71,34 +65,66 @@ describe("EventBroker", () => {
   it("delivers events to subscribers non-blockingly", async () => {
     const broker = new EventBroker();
     const received: string[] = [];
-
-    const unsubscribe = broker.subscribe<string>("agent_status", (ev) => {
-      received.push(ev.payload);
+    const unsubscribe = broker.subscribe<string>("agent_status", (event) => {
+      received.push(event.payload);
     });
 
     broker.publish("agent_status", "hello");
     broker.publish("agent_status", "world");
-
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(received).toEqual(["hello", "world"]);
     expect(broker.metrics.publishedEvents).toBe(2);
 
     unsubscribe();
     broker.publish("agent_status", "after_unsub");
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(received).toEqual(["hello", "world"]);
   });
 
-  it("supports publishMustDeliver with bounded timeout", async () => {
+  it("bounds critical delivery from enqueue time without violating subscriber ordering", async () => {
     const broker = new EventBroker();
-    let delivered = false;
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    let active = 0;
+    let maxActive = 0;
 
-    broker.subscribe("turn_complete", () => {
-      delivered = true;
+    broker.subscribe("turn_complete", async () => {
+      calls++;
+      active++;
+      maxActive = Math.max(maxActive, active);
+      if (calls === 1) await firstBlocked;
+      active--;
     });
 
-    await broker.publishMustDeliver("turn_complete", { turnId: "123" }, 200);
-    expect(delivered).toBe(true);
-    expect(broker.metrics.mustDeliverPublished).toBe(1);
+    broker.publish("turn_complete", { turnId: "ordinary" });
+    await expect(broker.publishMustDeliver("turn_complete", { turnId: "critical" }, 15)).rejects.toThrow(/timed out/);
+    expect(calls).toBe(1);
+    releaseFirst();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toBe(2);
+    expect(maxActive).toBe(1);
+  });
+
+  it("does not reset a callback queue when the callback subscribes to another event type", async () => {
+    const broker = new EventBroker();
+    const received: string[] = [];
+    const callback = async (event: { payload: string }) => {
+      received.push(event.payload);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    };
+
+    const unsubscribeA = broker.subscribe<string>("a", callback);
+    broker.publish("a", "a1");
+    const unsubscribeB = broker.subscribe<string>("b", callback);
+    broker.publish("b", "b1");
+    unsubscribeA();
+    broker.publish("b", "b2");
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(received).toEqual(["a1", "b1", "b2"]);
+    unsubscribeB();
   });
 });
