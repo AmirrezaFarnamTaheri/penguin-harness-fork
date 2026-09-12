@@ -126,19 +126,29 @@ export class AcpConnection {
     this.lineBuffer += chunk;
     const lines = this.lineBuffer.split("\n");
     this.lineBuffer = lines.pop() ?? "";
+    const requestTasks: Promise<void>[] = [];
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
         const msg = JSON.parse(trimmed) as JsonRpcMessage;
-        await this.handleMessage(msg);
+        // Request handlers are allowed to issue their own outbound requests. Do not await them
+        // before dispatching later frames in the same transport chunk, or a response already in
+        // this chunk can be starved behind the handler that is waiting for it.
+        if ("id" in msg && "method" in msg) {
+          requestTasks.push(this.handleMessage(msg));
+        } else {
+          await this.handleMessage(msg);
+        }
       } catch (error) {
-        // Syntax-invalid frames are ignored. Transport failures are retained and
-        // make subsequent writes/requests fail deterministically.
         if (this.transportError) throw this.transportError;
         if (!(error instanceof SyntaxError)) throw error;
       }
+    }
+
+    if (requestTasks.length > 0) {
+      await Promise.all(requestTasks);
     }
   }
 
@@ -167,10 +177,12 @@ export class AcpConnection {
         return;
       }
 
-      let response: JsonRpcResponse;
+      let response: JsonRpcResponse<unknown>;
       try {
         const result = await handler(msg.params);
-        response = { jsonrpc: "2.0", id: msg.id, result };
+        // JSON.stringify omits undefined object properties. JSON-RPC success responses must carry
+        // a result member, so normalize a void handler to the protocol-safe null result.
+        response = { jsonrpc: "2.0", id: msg.id, result: result ?? null };
       } catch (error) {
         const normalized = this.normalizeError(error);
         response = {
