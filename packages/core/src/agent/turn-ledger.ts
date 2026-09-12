@@ -217,11 +217,34 @@ export class TurnLedger {
       throw new Error(`Turn '${turnId}' does not have a durable terminal record`);
     }
 
+    if (!this.projectionAcks.has(turnId)) {
+      this.metrics.acknowledgedTurns++;
+    }
     this.projectionAcks.set(turnId, summary.terminalSeq);
-    this.metrics.acknowledgedTurns++;
+    this.advanceProjectionWatermark();
+  }
 
-    if (summary.terminalSeq > this.projectionCommittedThroughSeq) {
-      this.projectionCommittedThroughSeq = summary.terminalSeq;
+  /**
+   * Advance the projection watermark only through a contiguous prefix of acknowledged turns.
+   * A later turn may be projected before an earlier one; that gap must keep the earlier replay
+   * records durable until the lagging projection catches up.
+   */
+  private advanceProjectionWatermark(): void {
+    let watermark = this.compactedThroughSeq;
+
+    for (const summary of this.summaries) {
+      if (summary.terminalSeq <= watermark) {
+        continue;
+      }
+      const acknowledgedSeq = this.projectionAcks.get(summary.turnId);
+      if (acknowledgedSeq === undefined || acknowledgedSeq < summary.terminalSeq) {
+        break;
+      }
+      watermark = summary.terminalSeq;
+    }
+
+    if (watermark > this.projectionCommittedThroughSeq) {
+      this.projectionCommittedThroughSeq = watermark;
     }
   }
 
@@ -294,14 +317,13 @@ export class TurnLedger {
 
   /**
    * Compacts raw event history up through throughSeq.
-   * Discards intermediate stream deltas for turns that are fully acknowledged.
+   * Discards intermediate stream deltas only for a contiguous prefix of fully acknowledged turns.
    */
   public compact(throughSeq: number): void {
     if (throughSeq <= this.compactedThroughSeq) {
       return;
     }
 
-    // Only compact through acknowledged projections
     const safeLimit = Math.min(throughSeq, this.projectionCommittedThroughSeq);
     if (safeLimit <= this.compactedThroughSeq) {
       return;
