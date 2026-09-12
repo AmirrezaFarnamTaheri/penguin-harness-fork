@@ -4,8 +4,6 @@
  * Monitors subagent and autonomous workflow execution for timeouts, runaway step loops,
  * silent process hangs, and stalled heartbeats. Enforces stage time budgets and triggers
  * structured abort or intervention events.
- *
- * Synthesized from aif-handoff taskWatchdog, claurst hooks, and CCB execution services.
  */
 
 export interface WatchdogConfig {
@@ -40,6 +38,8 @@ export interface WatchdogStatus {
   abortReason?: string;
 }
 
+type TerminalWatchdogState = "timed_out" | "max_steps_exceeded" | "aborted";
+
 export class TaskWatchdog {
   private readonly config: WatchdogConfig;
   private startTime = 0;
@@ -48,7 +48,7 @@ export class TaskWatchdog {
   private currentStepStartedAt = 0;
   private lastAction?: string;
   private abortReason?: string;
-  private aborted = false;
+  private terminalState?: TerminalWatchdogState;
   private readonly warnings: string[] = [];
 
   constructor(config: Partial<WatchdogConfig> = {}) {
@@ -61,40 +61,59 @@ export class TaskWatchdog {
     this.lastHeartbeatTime = now;
     this.currentStep = 0;
     this.currentStepStartedAt = now;
-    this.aborted = false;
+    this.terminalState = undefined;
     this.abortReason = undefined;
     this.warnings.length = 0;
   }
 
   public heartbeat(info?: { stepNumber?: number; action?: string }): WatchdogStatus {
-    const now = Date.now();
-    if (this.startTime === 0) {
-      this.start();
-    }
+    if (this.startTime === 0) this.start();
+    if (this.terminalState) return this.checkHealth();
 
-    this.lastHeartbeatTime = now;
+    const now = Date.now();
     const previousStep = this.currentStep;
     if (info?.stepNumber !== undefined) {
+      if (!Number.isInteger(info.stepNumber) || info.stepNumber < previousStep) {
+        throw new Error(
+          `Watchdog stepNumber must be a monotonic integer (current: ${previousStep}, received: ${info.stepNumber})`,
+        );
+      }
       this.currentStep = info.stepNumber;
     } else {
       this.currentStep++;
     }
 
-    if (this.currentStep !== previousStep) {
-      this.currentStepStartedAt = now;
-    }
-
-    if (info?.action) {
-      this.lastAction = info.action;
-    }
+    this.lastHeartbeatTime = now;
+    if (this.currentStep !== previousStep) this.currentStepStartedAt = now;
+    if (info?.action) this.lastAction = info.action;
 
     return this.checkHealth();
   }
 
   public abort(reason: string): WatchdogStatus {
-    this.aborted = true;
+    this.terminalState = "aborted";
     this.abortReason = reason;
     return this.checkHealth();
+  }
+
+  private terminalStatus(
+    state: TerminalWatchdogState,
+    elapsedMs: number,
+    heartbeatAge: number,
+    warnings: string[],
+    reason: string,
+  ): WatchdogStatus {
+    this.terminalState = state;
+    this.abortReason ??= reason;
+    return {
+      state,
+      currentStep: this.currentStep,
+      elapsedMs,
+      lastHeartbeatAgeMs: heartbeatAge,
+      lastAction: this.lastAction,
+      warnings,
+      abortReason: this.abortReason,
+    };
   }
 
   public checkHealth(): WatchdogStatus {
@@ -114,52 +133,50 @@ export class TaskWatchdog {
     const stepDuration = now - (this.currentStepStartedAt || this.startTime);
     const warnings: string[] = [...this.warnings];
 
-    if (this.aborted) {
-      return {
-        state: "aborted",
-        currentStep: this.currentStep,
+    if (this.terminalState === "aborted") {
+      return this.terminalStatus("aborted", elapsedMs, heartbeatAge, warnings, this.abortReason ?? "Execution aborted");
+    }
+    if (this.terminalState === "timed_out") {
+      return this.terminalStatus("timed_out", elapsedMs, heartbeatAge, warnings, this.abortReason ?? "Execution timed out");
+    }
+    if (this.terminalState === "max_steps_exceeded") {
+      return this.terminalStatus(
+        "max_steps_exceeded",
         elapsedMs,
-        lastHeartbeatAgeMs: heartbeatAge,
-        lastAction: this.lastAction,
+        heartbeatAge,
         warnings,
-        abortReason: this.abortReason,
-      };
+        this.abortReason ?? "Step count exceeded runaway threshold",
+      );
     }
 
     if (elapsedMs > this.config.totalTimeoutMs) {
-      return {
-        state: "timed_out",
-        currentStep: this.currentStep,
+      return this.terminalStatus(
+        "timed_out",
         elapsedMs,
-        lastHeartbeatAgeMs: heartbeatAge,
-        lastAction: this.lastAction,
-        warnings: [...warnings, `Total execution duration exceeded ${this.config.totalTimeoutMs}ms`],
-        abortReason: "Execution exceeded total maximum timeout",
-      };
+        heartbeatAge,
+        [...warnings, `Total execution duration exceeded ${this.config.totalTimeoutMs}ms`],
+        "Execution exceeded total maximum timeout",
+      );
     }
 
     if (stepDuration > this.config.stepTimeoutMs) {
-      return {
-        state: "timed_out",
-        currentStep: this.currentStep,
+      return this.terminalStatus(
+        "timed_out",
         elapsedMs,
-        lastHeartbeatAgeMs: heartbeatAge,
-        lastAction: this.lastAction,
-        warnings: [...warnings, `Current step duration ${stepDuration}ms exceeded step limit ${this.config.stepTimeoutMs}ms`],
-        abortReason: "Step execution exceeded step timeout threshold",
-      };
+        heartbeatAge,
+        [...warnings, `Current step duration ${stepDuration}ms exceeded step limit ${this.config.stepTimeoutMs}ms`],
+        "Step execution exceeded step timeout threshold",
+      );
     }
 
     if (this.currentStep > this.config.maxStepCount) {
-      return {
-        state: "max_steps_exceeded",
-        currentStep: this.currentStep,
+      return this.terminalStatus(
+        "max_steps_exceeded",
         elapsedMs,
-        lastHeartbeatAgeMs: heartbeatAge,
-        lastAction: this.lastAction,
-        warnings: [...warnings, `Current step count ${this.currentStep} exceeded maximum ${this.config.maxStepCount}`],
-        abortReason: "Step count exceeded runaway threshold",
-      };
+        heartbeatAge,
+        [...warnings, `Current step count ${this.currentStep} exceeded maximum ${this.config.maxStepCount}`],
+        "Step count exceeded runaway threshold",
+      );
     }
 
     if (heartbeatAge > this.config.stallHeartbeatMs) {
@@ -202,14 +219,11 @@ export class TaskWatchdog {
   }
 }
 
-/**
- * Task Watchdog constants and stale recovery heuristics derived from aif-handoff.
- */
 export const STALE_TIMEOUT_MS = 60_000;
 export const STALE_MAX_RETRY = 1;
 
 export function getRandomBackoffMinutes(): number {
-  return Math.floor(Math.random() * 11) + 5; // 5..15 minutes
+  return Math.floor(Math.random() * 11) + 5;
 }
 
 export interface StaleTaskCandidate {
@@ -240,9 +254,6 @@ export interface BlockedReleaseResult {
   released: boolean;
 }
 
-/**
- * Recovers stale in-progress tasks whose heartbeats or updates exceed the stale timeout.
- */
 export function recoverStaleInProgressTasks(
   candidates: StaleTaskCandidate[],
   timeoutMs = STALE_TIMEOUT_MS,
@@ -252,9 +263,7 @@ export function recoverStaleInProgressTasks(
   const results: StaleRecoveryResult[] = [];
 
   for (const task of candidates) {
-    const refTime = task.lastHeartbeatAt
-      ? Date.parse(task.lastHeartbeatAt)
-      : Date.parse(task.updatedAt);
+    const refTime = task.lastHeartbeatAt ? Date.parse(task.lastHeartbeatAt) : Date.parse(task.updatedAt);
     const age = now - refTime;
 
     if (age > timeoutMs) {
@@ -273,20 +282,13 @@ export function recoverStaleInProgressTasks(
         });
       }
     } else {
-      results.push({
-        taskId: task.id,
-        action: "ignored",
-        reason: "Heartbeat age within acceptable bounds",
-      });
+      results.push({ taskId: task.id, action: "ignored", reason: "Heartbeat age within acceptable bounds" });
     }
   }
 
   return results;
 }
 
-/**
- * Releases tasks from blocked_external status once their retryAfter backoff window has elapsed.
- */
 export function releaseDueBlockedTasks(
   candidates: BlockedTaskCandidate[],
   nowMs = Date.now(),
@@ -301,17 +303,9 @@ export function releaseDueBlockedTasks(
 
     const retryAfterMs = task.retryAfter ? Date.parse(task.retryAfter) : 0;
     if (nowMs >= retryAfterMs) {
-      results.push({
-        taskId: task.id,
-        restoredStatus: task.blockedFromStatus,
-        released: true,
-      });
+      results.push({ taskId: task.id, restoredStatus: task.blockedFromStatus, released: true });
     } else {
-      results.push({
-        taskId: task.id,
-        restoredStatus: task.blockedFromStatus,
-        released: false,
-      });
+      results.push({ taskId: task.id, restoredStatus: task.blockedFromStatus, released: false });
     }
   }
 
