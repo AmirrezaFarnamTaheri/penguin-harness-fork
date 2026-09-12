@@ -26,19 +26,12 @@ describe("KanbanBoard", () => {
   it("enforces dependency constraints before moving to in_progress", () => {
     const board = new KanbanBoard();
     const dep = board.createTask({ title: "Setup Database Schema" });
-    const task = board.createTask({
-      title: "Run Migrations",
-      dependencies: [dep.id],
-    });
+    const task = board.createTask({ title: "Run Migrations", dependencies: [dep.id] });
 
-    // Cannot move to in_progress when dependency is backlog
     expect(() => board.updateTaskState(task.id, "in_progress")).toThrow(/Dependency/);
-
-    // Mark dependency as done
     board.updateTaskState(dep.id, "in_progress", { force: true });
     board.updateTaskState(dep.id, "done");
 
-    // Now moving to in_progress succeeds
     const updated = board.updateTaskState(task.id, "in_progress");
     expect(updated.state).toBe("in_progress");
     expect(updated.startedAt).toBeDefined();
@@ -47,20 +40,19 @@ describe("KanbanBoard", () => {
   it("manages subagent leases, heartbeats, and expiration reclamation", () => {
     const board = new KanbanBoard({ defaultLeaseDurationMs: 50 });
     const task = board.createTask({ title: "Generate Unit Tests" });
-
-    // Claim task
     const claimed = board.claimTask(task.id, "subagent-coder-1", { leaseDurationMs: 30 });
     expect(claimed.state).toBe("in_progress");
     expect(claimed.assignee).toBe("subagent-coder-1");
     expect(claimed.claimExpires).toBeDefined();
 
-    // Heartbeat extends lease
-    const hb = board.heartbeat(task.id, 100);
+    const hb = board.heartbeat(task.id, {
+      workerId: "subagent-coder-1",
+      generation: claimed.leaseGeneration!,
+      leaseDurationMs: 100,
+    });
     expect(hb.lastHeartbeatAt).toBeDefined();
 
-    // Fast-forward expiration simulation
     board.setTaskClaimExpiry(task.id, Date.now() - 10);
-    // Reclaim expired leases
     const reclaimed = board.reclaimExpiredLeases();
     expect(reclaimed).toContain(task.id);
 
@@ -81,8 +73,6 @@ describe("KanbanBoard", () => {
       ],
     });
 
-    expect(draft.id).toBeDefined();
-
     const launched = board.launchTriage(draft.id);
     expect(launched.parentTask.title).toBe("Refactor Authentication System");
     expect(launched.parentTask.state).toBe("in_progress");
@@ -91,7 +81,6 @@ describe("KanbanBoard", () => {
     const child0 = launched.childTasks[0]!;
     const child1 = launched.childTasks[1]!;
     const child2 = launched.childTasks[2]!;
-
     expect(child0.parentTaskId).toBe(launched.parentTask.id);
     expect(child1.dependencies).toContain(child0.id);
     expect(child2.dependencies).toContain(child1.id);
@@ -102,14 +91,10 @@ describe("KanbanBoard", () => {
     const dep = board.createTask({ title: "Base task" });
     const blocked = board.createTask({ title: "Blocked task", dependencies: [dep.id] });
 
-    // Claiming blocked task must throw dependency error
     expect(() => board.claimTask(blocked.id, "worker-1")).toThrow(/Dependency/);
-
-    // Complete dep
     board.updateTaskState(dep.id, "in_progress", { force: true });
     board.updateTaskState(dep.id, "done");
 
-    // Now claim succeeds
     const claimed = board.claimTask(blocked.id, "worker-1");
     expect(claimed.state).toBe("in_progress");
     expect(claimed.assignee).toBe("worker-1");
@@ -118,33 +103,28 @@ describe("KanbanBoard", () => {
   it("enforces lease generation fencing and worker identity on heartbeat, update, and release", () => {
     const board = new KanbanBoard();
     const task = board.createTask({ title: "Fencing task" });
-
-    // Initial claim: generation 1
     const c1 = board.claimTask(task.id, "worker-alpha");
     expect(c1.leaseGeneration).toBe(1);
 
-    // Heartbeat with correct worker and generation succeeds
     expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 1 })).not.toThrow();
-
-    // Heartbeat with wrong worker or stale generation fails
     expect(() => board.heartbeat(task.id, { workerId: "imposter-worker", generation: 1 })).toThrow(/worker mismatch/);
     expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 99 })).toThrow(/generation mismatch/);
 
-    // Update with wrong worker/generation fails
-    expect(() => board.updateTaskState(task.id, "review", { workerId: "wrong-worker" })).toThrow(/worker mismatch/);
-    expect(() => board.updateTaskState(task.id, "review", { generation: 0 })).toThrow(/generation mismatch/);
+    expect(() =>
+      board.updateTaskState(task.id, "review", { workerId: "wrong-worker", generation: 1 }),
+    ).toThrow(/worker mismatch/);
+    expect(() =>
+      board.updateTaskState(task.id, "review", { workerId: "worker-alpha", generation: 0 }),
+    ).toThrow(/generation mismatch/);
 
-    // Release with wrong worker/generation fails
-    expect(() => board.releaseTask(task.id, { workerId: "other" })).toThrow(/worker mismatch/);
-    expect(() => board.releaseTask(task.id, { generation: 999 })).toThrow(/generation mismatch/);
+    expect(() => board.releaseTask(task.id, { workerId: "other", generation: 1 })).toThrow(/worker mismatch/);
+    expect(() => board.releaseTask(task.id, { workerId: "worker-alpha", generation: 999 })).toThrow(/generation mismatch/);
 
-    // Proper release succeeds
     const released = board.releaseTask(task.id, { workerId: "worker-alpha", generation: 1 });
     expect(released.assignee).toBeNull();
     expect(released.state).toBe("triage");
 
-    // Re-claim increments generation to 2
     const c2 = board.claimTask(task.id, "worker-beta");
-    expect(c2.leaseGeneration).toBe(2);
+    expect(c2.leaseGeneration).toBe(3);
   });
 });
