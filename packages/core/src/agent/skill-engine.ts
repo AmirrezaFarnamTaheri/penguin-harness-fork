@@ -3,8 +3,6 @@
  *
  * Provides structured skill definition, parameter interpolation, semantic relevance
  * scoring against task prompts, and prompt section formatting for LLM contexts.
- *
- * Synthesized from skills-manager, ccpm, ui-ux-pro-max, and reasonix skill systems.
  */
 
 export interface SkillParameter {
@@ -40,19 +38,16 @@ export interface SkillMatchResult {
 }
 
 /**
- * Parses frontmatter YAML-like block from markdown files.
- * Handles both key: value scalars and list syntax ([a, b] or multi-line - item).
+ * Parses frontmatter YAML-like blocks from markdown skill files.
+ * Structured `parameters` JSON is preserved before generic simple-array handling.
  */
 export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDefinition | null {
   const clean = rawContent.replace(/^\uFEFF/, "");
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n([\s\S]*))?$/.exec(clean);
-  if (!match) {
-    return null;
-  }
+  if (!match) return null;
 
   const frontmatterStr = match[1] ?? "";
   const body = match[2]?.trim() ?? "";
-
   const fields: Record<string, string> = {};
   const arrayFields: Record<string, string[]> = {};
   let currentListKey: string | null = null;
@@ -61,7 +56,6 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
 
-    // Check list item (- item)
     if (trimmed.startsWith("- ") && currentListKey) {
       const val = trimmed.slice(2).trim().replace(/^['"]|['"]$/g, "");
       if (val) {
@@ -73,9 +67,16 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
 
     const colonIdx = line.indexOf(":");
     if (colonIdx <= 0) continue;
-
     const key = line.slice(0, colonIdx).trim();
     const rawVal = line.slice(colonIdx + 1).trim();
+
+    // Parameters may be an inline JSON array of objects. Keep the original JSON
+    // intact rather than treating it as a comma-separated scalar list.
+    if (key === "parameters" && rawVal.startsWith("[") && rawVal.endsWith("]")) {
+      currentListKey = null;
+      fields[key] = rawVal;
+      continue;
+    }
 
     if (rawVal === "" || rawVal === "[]") {
       currentListKey = key;
@@ -83,15 +84,22 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
       continue;
     }
 
-    // Inline array: [a, b, c]
     if (rawVal.startsWith("[") && rawVal.endsWith("]")) {
       currentListKey = null;
-      const items = rawVal
+      try {
+        const parsed: unknown = JSON.parse(rawVal.replace(/'/g, '"'));
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+          arrayFields[key] = parsed as string[];
+          continue;
+        }
+      } catch {
+        // Fall through to the legacy simple-list syntax below.
+      }
+      arrayFields[key] = rawVal
         .slice(1, -1)
         .split(",")
-        .map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
+        .map((value) => value.trim().replace(/^['"]|['"]$/g, ""))
         .filter(Boolean);
-      arrayFields[key] = items;
       continue;
     }
 
@@ -99,17 +107,15 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
     fields[key] = rawVal.replace(/^['"]|['"]$/g, "");
   }
 
-  const name = fields["name"];
+  const name = fields.name;
   if (!name) return null;
+  const description = fields.description ?? "";
+  const shortDescription = fields["short-description"] ?? fields.short_description;
+  const version = fields.version;
+  const author = fields.author;
 
-  const description = fields["description"] ?? "";
-  const shortDescription = fields["short-description"] ?? fields["short_description"];
-  const version = fields["version"];
-  const author = fields["author"];
-
-  // Category inference
   let category: SkillMetadataInfo["category"] = "general";
-  const rawCat = (fields["category"] ?? "").toLowerCase();
+  const rawCat = (fields.category ?? "").toLowerCase();
   if (["engineering", "design", "qa", "science", "ops", "management"].includes(rawCat)) {
     category = rawCat as SkillMetadataInfo["category"];
   } else {
@@ -129,29 +135,29 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
     }
   }
 
-  const tags = arrayFields["tags"] ?? [];
-  const allowedTools = arrayFields["allowed_tools"] ?? arrayFields["tools"] ?? [];
-
-  // Parse parameters
+  const tags = arrayFields.tags ?? [];
+  const allowedTools = arrayFields.allowed_tools ?? arrayFields.tools ?? [];
   const parameters: SkillParameter[] = [];
-  const rawParams = fields["parameters"];
+  const rawParams = fields.parameters;
   if (rawParams) {
     try {
-      const parsed = JSON.parse(rawParams);
-      if (Array.isArray(parsed)) {
-        for (const item of parsed) {
-          if (item && typeof item.name === "string") {
-            parameters.push({
-              name: item.name,
-              description: typeof item.description === "string" ? item.description : "",
-              required: Boolean(item.required),
-              default: typeof item.default === "string" ? item.default : undefined,
-            });
-          }
+      const parsed: unknown = JSON.parse(rawParams);
+      if (!Array.isArray(parsed)) throw new Error("parameters must be a JSON array");
+      for (const item of parsed) {
+        if (typeof item !== "object" || item === null || typeof (item as { name?: unknown }).name !== "string") {
+          continue;
         }
+        const parameter = item as Record<string, unknown>;
+        parameters.push({
+          name: parameter.name as string,
+          description: typeof parameter.description === "string" ? parameter.description : "",
+          required: Boolean(parameter.required),
+          default: typeof parameter.default === "string" ? parameter.default : undefined,
+        });
       }
     } catch {
-      // Ignored non-json parameters
+      // Unsupported structured parameter syntax remains empty rather than being
+      // misparsed as comma-separated fragments.
     }
   }
 
@@ -171,81 +177,51 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
   };
 }
 
-/**
- * Evaluates relevance between a prompt and a skill.
- * Returns a score between 0.0 and 1.0.
- */
 export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): SkillMatchResult {
   const lowerPrompt = prompt.toLowerCase();
   const matchedKeywords: string[] = [];
   let score = 0;
-
-  // Exact skill name match (very high confidence)
   const normalizedName = skill.name.toLowerCase().replace(/[-_]/g, " ");
   if (lowerPrompt.includes(skill.name.toLowerCase()) || lowerPrompt.includes(normalizedName)) {
     score += 0.5;
     matchedKeywords.push(skill.name);
   }
-
-  // Tag matches
   for (const tag of skill.tags) {
-    const t = tag.toLowerCase();
-    if (t.length > 2 && lowerPrompt.includes(t)) {
+    const value = tag.toLowerCase();
+    if (value.length > 2 && lowerPrompt.includes(value)) {
       score += 0.15;
       matchedKeywords.push(tag);
     }
   }
-
-  // Keyword tokens in description and name
-  const nameTokens = skill.name.toLowerCase().split(/[-_]/);
-  for (const token of nameTokens) {
+  for (const token of skill.name.toLowerCase().split(/[-_]/)) {
     if (token.length > 3 && lowerPrompt.includes(token) && !matchedKeywords.includes(token)) {
       score += 0.1;
       matchedKeywords.push(token);
     }
   }
-
-  // Category match
   if (lowerPrompt.includes(skill.category)) {
     score += 0.1;
     matchedKeywords.push(skill.category);
   }
-
-  const normalizedScore = Math.min(1.0, Math.round(score * 100) / 100);
-  const reason = matchedKeywords.length > 0
-    ? `Matched terms: ${matchedKeywords.join(", ")}`
-    : "No strong term match";
-
+  const normalizedScore = Math.min(1, Math.round(score * 100) / 100);
   return {
     skill,
     score: normalizedScore,
     matchedKeywords,
-    reason,
+    reason: matchedKeywords.length ? `Matched terms: ${matchedKeywords.join(", ")}` : "No strong term match",
   };
 }
 
-/**
- * Interpolates variables in a template string.
- * Supports {{variable}}, {variable}, and $variable formats.
- */
+/** Literal, single-pass interpolation: replacement-language tokens in values are data. */
 export function interpolateVariables(template: string, vars: Record<string, string>): string {
-  let result = template;
-  for (const [key, value] of Object.entries(vars)) {
-    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    result = result
-      .replace(new RegExp(`\\{\\{${escapedKey}\\}\\}`, "g"), value)
-      .replace(new RegExp(`\\{${escapedKey}\\}`, "g"), value)
-      .replace(new RegExp(`\\$${escapedKey}\\b`, "g"), value);
-  }
-  return result;
+  const token = /\{\{([A-Za-z0-9_.-]+)\}\}|\{([A-Za-z0-9_.-]+)\}|\$([A-Za-z_][A-Za-z0-9_.-]*)\b/g;
+  return template.replace(token, (match, doubleKey: string | undefined, braceKey: string | undefined, dollarKey: string | undefined) => {
+    const key = doubleKey ?? braceKey ?? dollarKey;
+    return key !== undefined && Object.prototype.hasOwnProperty.call(vars, key) ? vars[key]! : match;
+  });
 }
 
-/**
- * Standard alias mapping for deprecated, short, or refactored skill names.
- * Ensures backward-compatible resolution across prompts, CLI invocation, and API calls.
- */
 export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
-  // Generic Action Verbs -> Canonical Scoped Runners
   "plan": "task-planning-runner",
   "review": "diff-correctness-review",
   "test": "project-test-runner",
@@ -264,15 +240,11 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "customize": "agent-profile-customizer",
   "screenshot": "window-screenshot-capture",
   "draft": "legal-clinic-document-drafter",
-
-  // Framework-Specific Precision Renames
   "auth-patterns": "nextjs-auth-patterns",
   "workflow-patterns": "conductor-workflow-patterns",
   "workflow-orchestration-patterns": "temporal-workflow-orchestration",
   "connect": "composio-cli-connect",
   "connect-apps": "composio-cli-connect",
-
-  // Deprecated/Purged Stubs & Duplicates
   "pptx": "pptx-author",
   "xlsx": "xlsx-author",
   "spreadsheets": "xlsx-author",
@@ -282,8 +254,6 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "relational-database-mcp-cloudbase": "postgresql-development-cloudbase",
   "relational-database-web-cloudbase": "postgresql-development-cloudbase",
   "rust-check": "cargo-test",
-
-  // Suffix Normalization & Sibling Disambiguation
   "secrets-management-best-practices": "aws-secrets-manager-best-practices",
   "seo-audit-expert": "seo-optimization-bilingual",
   "e2e-testing-expert": "e2e-testing-bilingual",
@@ -292,20 +262,13 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "ai-prompt-engineering-expert": "prompt-engineering-bilingual",
 };
 
-/**
- * Resolves a given skill name against the canonical alias table.
- */
 export function resolveSkillAlias(name: string, customAliases?: Record<string, string>): string {
   const lower = name.toLowerCase();
-  if (customAliases && customAliases[lower]) {
-    return customAliases[lower]!;
-  }
+  if (customAliases?.[lower]) return customAliases[lower]!;
   return DEFAULT_SKILL_ALIASES[lower] ?? name;
 }
 
-/**
- * SkillRegistry provides in-memory indexing, querying, matching, and prompt assembly.
- */
+/** Exact registered names take precedence over aliases consistently. */
 export class SkillRegistry {
   private readonly skills = new Map<string, SkillDefinition>();
   private readonly aliases = new Map<string, string>();
@@ -329,128 +292,100 @@ export class SkillRegistry {
     this.skills.set(skill.name.toLowerCase(), skill);
   }
 
+  private resolveRegisteredKey(name: string): string | undefined {
+    const exact = name.toLowerCase();
+    if (this.skills.has(exact)) return exact;
+    const aliasTarget = this.resolveAlias(name);
+    return this.skills.has(aliasTarget) ? aliasTarget : undefined;
+  }
+
   public get(name: string): SkillDefinition | undefined {
-    const canonical = this.resolveAlias(name);
-    return this.skills.get(canonical) ?? this.skills.get(name.toLowerCase());
+    const key = this.resolveRegisteredKey(name);
+    return key ? this.skills.get(key) : undefined;
   }
 
   public has(name: string): boolean {
-    const canonical = this.resolveAlias(name);
-    return this.skills.has(canonical) || this.skills.has(name.toLowerCase());
+    return this.resolveRegisteredKey(name) !== undefined;
   }
 
   public delete(name: string): boolean {
-    const canonical = this.resolveAlias(name);
-    const deletedCanonical = this.skills.delete(canonical);
-    const deletedExact = this.skills.delete(name.toLowerCase());
-    return deletedCanonical || deletedExact;
+    const key = this.resolveRegisteredKey(name);
+    return key ? this.skills.delete(key) : false;
   }
 
   public size(): number {
     return this.skills.size;
   }
 
-  public list(filter?: {
-    category?: string;
-    tag?: string;
-    tool?: string;
-    query?: string;
-  }): SkillDefinition[] {
+  public list(filter?: { category?: string; tag?: string; tool?: string; query?: string }): SkillDefinition[] {
     let list = Array.from(this.skills.values());
-
     if (filter?.category) {
-      const cat = filter.category.toLowerCase();
-      list = list.filter((s) => s.category.toLowerCase() === cat);
+      const category = filter.category.toLowerCase();
+      list = list.filter((skill) => skill.category.toLowerCase() === category);
     }
-
     if (filter?.tag) {
       const tag = filter.tag.toLowerCase();
-      list = list.filter((s) => s.tags.some((t) => t.toLowerCase() === tag));
+      list = list.filter((skill) => skill.tags.some((value) => value.toLowerCase() === tag));
     }
-
     if (filter?.tool) {
       const tool = filter.tool.toLowerCase();
-      list = list.filter((s) =>
-        s.allowedTools.includes("*") || s.allowedTools.some((t) => t.toLowerCase() === tool)
-      );
-    }
-
-    if (filter?.query) {
-      const q = filter.query.toLowerCase();
       list = list.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.description.toLowerCase().includes(q) ||
-          (s.shortDescription && s.shortDescription.toLowerCase().includes(q))
+        (skill) => skill.allowedTools.includes("*") || skill.allowedTools.some((value) => value.toLowerCase() === tool),
       );
     }
-
+    if (filter?.query) {
+      const query = filter.query.toLowerCase();
+      list = list.filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(query) ||
+          skill.description.toLowerCase().includes(query) ||
+          Boolean(skill.shortDescription?.toLowerCase().includes(query)),
+      );
+    }
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   public match(
     prompt: string,
-    options?: {
-      maxResults?: number;
-      minScore?: number;
-      category?: string;
-    }
+    options?: { maxResults?: number; minScore?: number; category?: string },
   ): SkillMatchResult[] {
     const maxResults = options?.maxResults ?? 5;
     const minScore = options?.minScore ?? 0.2;
-
     const candidates = this.list(options?.category ? { category: options.category } : undefined);
-    const scored = candidates
+    return candidates
       .map((skill) => scoreSkillRelevance(skill, prompt))
-      .filter((res) => res.score >= minScore)
-      .sort((a, b) => b.score - a.score);
-
-    return scored.slice(0, maxResults);
+      .filter((result) => result.score >= minScore)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults);
   }
 
   public buildPromptSection(
     skillName: string,
     variables: Record<string, string> = {},
-    includeReferences = false
+    includeReferences = false,
   ): string {
     const skill = this.get(skillName);
-    if (!skill) {
-      throw new Error(`Skill "${skillName}" is not registered`);
-    }
+    if (!skill) throw new Error(`Skill "${skillName}" is not registered`);
 
     const interpolatedBody = interpolateVariables(skill.content, variables);
     let output = `=== SKILL: ${skill.name} ===\n${interpolatedBody}\n`;
-
     if (includeReferences && Object.keys(skill.referenceFiles).length > 0) {
       output += "\n--- REFERENCES ---\n";
       for (const [relPath, refContent] of Object.entries(skill.referenceFiles)) {
         output += `\n[Reference: ${relPath}]\n${refContent}\n`;
       }
     }
-
-    output += `=== END SKILL: ${skill.name} ===\n`;
-    return output;
+    return `${output}=== END SKILL: ${skill.name} ===\n`;
   }
 }
 
-/**
- * Validates agent names according to Anda engine naming rules.
- * - Must not be empty
- * - Must not exceed 64 bytes
- * - Must start with a lowercase letter (a-z)
- * - Can only contain lowercase letters, digits, underscores, and hyphens
- */
 export function validateAgentName(name: string): { valid: boolean; error?: string } {
-  if (!name || name.trim().length === 0) {
-    return { valid: false, error: "Agent name must not be empty" };
-  }
+  if (!name || name.trim().length === 0) return { valid: false, error: "Agent name must not be empty" };
   const bytes = new TextEncoder().encode(name);
   if (bytes.length > 64) {
     return { valid: false, error: `Agent name exceeds maximum length of 64 bytes (got ${bytes.length})` };
   }
-  if (!/^[a-z]/.test(name)) {
-    return { valid: false, error: "Agent name must start with a lowercase letter (a-z)" };
-  }
+  if (!/^[a-z]/.test(name)) return { valid: false, error: "Agent name must start with a lowercase letter (a-z)" };
   if (!/^[a-z0-9_-]+$/.test(name)) {
     return { valid: false, error: "Agent name can only contain lowercase letters (a-z), digits (0-9), underscores (_), and hyphens (-)" };
   }
@@ -465,16 +400,9 @@ export interface StrictFunctionDefinitionOptions {
   strict?: boolean;
 }
 
-/**
- * Synthesizes a strict JSON function schema suitable for OpenAI/Claude/Gemini tool calling,
- * enforcing additionalProperties: false and strict: true (derived from anda_core/src/agent.rs).
- */
 export function synthesizeFunctionDefinition(options: StrictFunctionDefinitionOptions): Record<string, unknown> {
   const validation = validateAgentName(options.name);
-  if (!validation.valid) {
-    throw new Error(`Invalid function definition name: ${validation.error}`);
-  }
-
+  if (!validation.valid) throw new Error(`Invalid function definition name: ${validation.error}`);
   return {
     name: options.name.toLowerCase(),
     description: options.description,
