@@ -3,7 +3,7 @@
   "version": "0.2.11",
   "private": true,
   "type": "module",
-  "description": "PenguinHarness \u2014 TypeScript AI Agent (SDK + CLI).",
+  "description": "PenguinHarness — TypeScript AI Agent (SDK + CLI).",
   "engines": {
     "node": ">=24"
   },
@@ -11,6 +11,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
+    "skills:audit": "node scripts/skills/audit.mjs",
+    "skills:check": "node scripts/skills/audit.mjs --check",
+    "skills:catalog": "node scripts/skills/catalog.mjs --json=artifacts/skill-catalog.json --markdown=artifacts/skill-catalog.md",
     "gen:ifaces": "node scripts/gen-ifaces.mjs --project packages/server/tsconfig.json --out packages/server/src/ifaces.json",
     "ifaces:page": "pnpm gen:ifaces && node scripts/iface-page.mjs --in packages/server/src/ifaces.json --out dist-ifaces",
     "typecheck": "pnpm gen:ifaces && pnpm -r typecheck",
