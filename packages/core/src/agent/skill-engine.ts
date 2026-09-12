@@ -1,8 +1,5 @@
 /**
  * Skill Engine & Cross-Agent Capability Registry.
- *
- * Provides structured skill definition, parameter interpolation, semantic relevance
- * scoring against task prompts, and prompt section formatting for LLM contexts.
  */
 
 export interface SkillParameter {
@@ -217,8 +214,7 @@ export function bindSkillVariables(
 ): Record<string, string> {
   const bound = { ...variables };
   for (const parameter of skill.parameters) {
-    const supplied = bound[parameter.name];
-    if (supplied !== undefined) continue;
+    if (bound[parameter.name] !== undefined) continue;
     if (parameter.default !== undefined) {
       bound[parameter.name] = parameter.default;
       continue;
@@ -230,6 +226,7 @@ export function bindSkillVariables(
   return bound;
 }
 
+/** Aliases bundled with the runtime must only target capabilities still present in the shipped corpus. */
 export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "plan": "task-planning-runner",
   "review": "diff-correctness-review",
@@ -254,15 +251,10 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "workflow-orchestration-patterns": "temporal-workflow-orchestration",
   "connect": "composio-cli-connect",
   "connect-apps": "composio-cli-connect",
-  "pptx": "pptx-author",
-  "xlsx": "xlsx-author",
-  "spreadsheets": "xlsx-author",
   "journal-entry-prep": "journal-entry",
   "data-model-creation": "database-design",
-  "plain-language-letters": "legal-plain-language",
   "relational-database-mcp-cloudbase": "postgresql-development-cloudbase",
   "relational-database-web-cloudbase": "postgresql-development-cloudbase",
-  "rust-check": "cargo-test",
   "secrets-management-best-practices": "aws-secrets-manager-best-practices",
   "seo-audit-expert": "seo-optimization-bilingual",
   "e2e-testing-expert": "e2e-testing-bilingual",
