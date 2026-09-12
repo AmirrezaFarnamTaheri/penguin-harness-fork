@@ -18,31 +18,118 @@ export interface AgentWorktree {
   createdAt: number;
 }
 
+interface LaneRegistration {
+  worktreePath: string;
+  branch: string;
+  agentId: string;
+  createdAt: number;
+}
+
+function isErrno(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+}
+
 export class WorktreeManager {
   constructor(private readonly repoRoot: string) {}
 
+  private lanesRoot(): string {
+    return path.resolve(this.repoRoot, ".lanes");
+  }
+
+  private registryRoot(): string {
+    return path.join(this.lanesRoot(), ".registry");
+  }
+
+  private assertManagedLanePath(candidate: string): string {
+    const lanesRoot = this.lanesRoot();
+    const resolved = path.resolve(candidate);
+    const relative = path.relative(lanesRoot, resolved);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error(`Refusing worktree operation outside managed lane directory '${lanesRoot}'`);
+    }
+    return resolved;
+  }
+
+  private registrationPath(cleanAgentId: string): string {
+    return path.join(this.registryRoot(), `${cleanAgentId}.json`);
+  }
+
+  private async pathExists(candidate: string): Promise<boolean> {
+    try {
+      await fs.lstat(candidate);
+      return true;
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return false;
+      throw error;
+    }
+  }
+
+  private async readRegistration(cleanAgentId: string): Promise<LaneRegistration | null> {
+    try {
+      const raw = await fs.readFile(this.registrationPath(cleanAgentId), "utf-8");
+      const parsed = JSON.parse(raw) as Partial<LaneRegistration>;
+      if (
+        typeof parsed.worktreePath !== "string" ||
+        typeof parsed.branch !== "string" ||
+        typeof parsed.agentId !== "string" ||
+        typeof parsed.createdAt !== "number"
+      ) {
+        throw new Error(`Invalid lane registration for '${cleanAgentId}'`);
+      }
+      return parsed as LaneRegistration;
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return null;
+      throw error;
+    }
+  }
+
   /**
    * Creates an isolated worktree for an autonomous subagent lane.
+   * Existing lanes are never force-removed: callers must explicitly resolve a conflict first.
    */
   async createWorktree(agentId: string, branchName?: string): Promise<AgentWorktree> {
     const cleanAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const branch = branchName ?? `lane/${cleanAgentId}-${Date.now()}`;
-    const worktreesDir = path.join(this.repoRoot, ".lanes");
-    await fs.mkdir(worktreesDir, { recursive: true });
-
-    const worktreePath = path.join(worktreesDir, cleanAgentId);
-
-    // Remove existing if any
-    try {
-      await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: this.repoRoot });
-    } catch {
-      // ignore if didn't exist
+    if (!cleanAgentId) {
+      throw new Error("Agent id does not contain any usable lane identifier characters");
     }
 
-    // Add worktree
+    const branch = branchName ?? `lane/${cleanAgentId}-${Date.now()}`;
+    const worktreesDir = this.lanesRoot();
+    const registryDir = this.registryRoot();
+    await fs.mkdir(worktreesDir, { recursive: true });
+    await fs.mkdir(registryDir, { recursive: true });
+
+    const worktreePath = this.assertManagedLanePath(path.join(worktreesDir, cleanAgentId));
+    const registration = await this.readRegistration(cleanAgentId);
+    if (registration || (await this.pathExists(worktreePath))) {
+      throw new Error(
+        `Managed lane '${cleanAgentId}' already exists at '${worktreePath}'. Refusing to replace existing work.`,
+      );
+    }
+
+    const registered = await this.listWorktrees();
+    if (registered.some((entry) => path.resolve(entry.path) === worktreePath)) {
+      throw new Error(`Git already has a worktree registered at '${worktreePath}'`);
+    }
+
     await execFileAsync("git", ["worktree", "add", "-b", branch, worktreePath], { cwd: this.repoRoot });
 
-    // Get HEAD sha
+    const createdAt = Date.now();
+    const laneRegistration: LaneRegistration = { worktreePath, branch, agentId, createdAt };
+    try {
+      await fs.writeFile(
+        this.registrationPath(cleanAgentId),
+        JSON.stringify(laneRegistration, null, 2),
+        { encoding: "utf-8", flag: "wx" },
+      );
+    } catch (error) {
+      // Do not destroy a successfully-created worktree when bookkeeping fails. Leaving it intact
+      // is safer than guessing whether another actor has already begun using it.
+      throw new Error(
+        `Created worktree '${worktreePath}' but could not persist its ownership registration: ${String(error)}`,
+      );
+    }
+
     const { stdout: headSha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
 
     return {
@@ -50,21 +137,35 @@ export class WorktreeManager {
       branch,
       headSha: headSha.trim(),
       agentId,
-      createdAt: Date.now(),
+      createdAt,
     };
   }
 
   /**
-   * Removes an isolated worktree and prunes git tracking.
+   * Removes an isolated worktree only when it is a registered, clean lane owned by this manager.
+   * Git removal failures are surfaced; they are never converted into recursive filesystem deletion.
    */
   async removeWorktree(worktreePath: string): Promise<void> {
-    try {
-      await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: this.repoRoot });
-    } catch {
-      // Fallback manual cleanup if git remove failed
-      await fs.rm(worktreePath, { recursive: true, force: true });
-      await execFileAsync("git", ["worktree", "prune"], { cwd: this.repoRoot });
+    const resolved = this.assertManagedLanePath(worktreePath);
+    const cleanAgentId = path.basename(resolved);
+    const registration = await this.readRegistration(cleanAgentId);
+    if (!registration || path.resolve(registration.worktreePath) !== resolved) {
+      throw new Error(`Refusing to remove unowned or unregistered worktree '${resolved}'`);
     }
+
+    const registered = await this.listWorktrees();
+    if (!registered.some((entry) => path.resolve(entry.path) === resolved)) {
+      throw new Error(`Refusing to remove '${resolved}' because Git does not register it as a worktree`);
+    }
+
+    const { stdout: porcelain } = await execFileAsync("git", ["status", "--porcelain"], { cwd: resolved });
+    if (porcelain.trim().length > 0) {
+      throw new Error(`Refusing to remove dirty worktree '${resolved}'. Commit, stash, or discard changes explicitly first.`);
+    }
+
+    await execFileAsync("git", ["worktree", "remove", resolved], { cwd: this.repoRoot });
+    await fs.unlink(this.registrationPath(cleanAgentId));
+    await execFileAsync("git", ["worktree", "prune"], { cwd: this.repoRoot });
   }
 
   /**
