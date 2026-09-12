@@ -39,8 +39,17 @@ export interface BrokerEvent<T = unknown> {
 export interface BrokerMetrics {
   publishedEvents: number;
   droppedEvents: number;
+  subscriberFailures: number;
   mustDeliverPublished: number;
   mustDeliverDropped: number;
+}
+
+export interface BrokerDeliveryError {
+  eventId: string;
+  type: string;
+  critical: boolean;
+  message: string;
+  timestamp: number;
 }
 
 export function normalizeMailboxOwnerName(rawName: string): string {
@@ -61,9 +70,6 @@ export class MailboxKernel {
   private readonly deadLetters = new Map<string, Array<{ msg: MailboxMessage; reason: string }>>();
   private readonly lastActivity = new Map<string, number>();
 
-  /**
-   * Post a message into a recipient agent's mailbox.
-   */
   public send<T = unknown>(
     toAgent: string,
     fromAgent: string,
@@ -90,20 +96,13 @@ export class MailboxKernel {
     };
 
     const queue = this.queues.get(target) ?? [];
-    if (priority === "high") {
-      queue.unshift(msg as MailboxMessage);
-    } else {
-      queue.push(msg as MailboxMessage);
-    }
+    if (priority === "high") queue.unshift(msg as MailboxMessage);
+    else queue.push(msg as MailboxMessage);
     this.queues.set(target, queue);
     this.lastActivity.set(target, Date.now());
-
     return msg;
   }
 
-  /**
-   * Acquire an exclusive processing lease on an agent's mailbox.
-   */
   public acquireLease(agentName: string, eventId: string, ttlMs = 30000): MailboxLease {
     const name = normalizeMailboxOwnerName(agentName);
     const existing = this.leases.get(name);
@@ -111,9 +110,7 @@ export class MailboxKernel {
 
     if (existing && existing.leaseState === "acquired" && existing.expiresAt > now) {
       throw new Error(
-        `Agent '${name}' lease is already held by '${existing.inboundEventId}' until ${new Date(
-          existing.expiresAt
-        ).toISOString()}`
+        `Agent '${name}' lease is already held by '${existing.inboundEventId}' until ${new Date(existing.expiresAt).toISOString()}`
       );
     }
 
@@ -130,9 +127,6 @@ export class MailboxKernel {
     return lease;
   }
 
-  /**
-   * Renew an active lease.
-   */
   public renewLease(agentName: string, ttlMs = 30000): MailboxLease {
     const name = normalizeMailboxOwnerName(agentName);
     const existing = this.leases.get(name);
@@ -147,26 +141,16 @@ export class MailboxKernel {
     return existing;
   }
 
-  /**
-   * Release an acquired lease.
-   */
   public releaseLease(agentName: string): void {
     const name = normalizeMailboxOwnerName(agentName);
     const lease = this.leases.get(name);
-    if (lease) {
-      lease.leaseState = "idle";
-    }
+    if (lease) lease.leaseState = "idle";
   }
 
-  /**
-   * Poll next available message from the agent's queue.
-   */
   public poll<T = unknown>(agentName: string): MailboxMessage<T> | null {
     const name = normalizeMailboxOwnerName(agentName);
     const queue = this.queues.get(name);
-    if (!queue || queue.length === 0) {
-      return null;
-    }
+    if (!queue || queue.length === 0) return null;
 
     const msg = queue.shift() as MailboxMessage<T>;
     msg.attempts++;
@@ -174,9 +158,6 @@ export class MailboxKernel {
     return msg;
   }
 
-  /**
-   * Move an unprocessable message to the dead letter queue.
-   */
   public deadLetter(agentName: string, message: MailboxMessage, reason: string): void {
     const name = normalizeMailboxOwnerName(agentName);
     const list = this.deadLetters.get(name) ?? [];
@@ -184,16 +165,12 @@ export class MailboxKernel {
     this.deadLetters.set(name, list);
   }
 
-  /**
-   * Get queue summary for an agent.
-   */
   public getSummary(agentName: string): MailboxSummary {
     const name = normalizeMailboxOwnerName(agentName);
     const queue = this.queues.get(name) ?? [];
     const lease = this.leases.get(name) ?? null;
     const now = Date.now();
 
-    // Check if lease expired
     if (lease && lease.leaseState === "acquired" && lease.expiresAt <= now) {
       lease.leaseState = "expired";
     }
@@ -220,18 +197,22 @@ export class MailboxKernel {
 export type Subscriber<T = unknown> = (event: BrokerEvent<T>) => void | Promise<void>;
 
 /**
- * EventBroker provides fan-out event delivery with dual delivery semantics:
- * - publish: Non-blocking, lossy under buffer saturation for high-frequency stream updates.
- * - publishMustDeliver: Bounded-blocking with timeout for terminal events.
+ * EventBroker provides fan-out event delivery with per-subscriber ordering:
+ * - publish: non-blocking and lossy only at the configured queue bound.
+ * - publishMustDeliver: joins the same ordered queue and rejects when any critical delivery fails.
  */
 export class EventBroker {
   private readonly subscribers = new Map<string, Set<Subscriber<any>>>();
   private readonly maxBufferSize: number;
   private readonly pendingBuffers = new Map<Subscriber<any>, number>();
+  private readonly deliveryTails = new Map<Subscriber<any>, Promise<void>>();
+  private readonly deliveryErrors: BrokerDeliveryError[] = [];
+  private readonly maxRecordedErrors = 100;
 
   public readonly metrics: BrokerMetrics = {
     publishedEvents: 0,
     droppedEvents: 0,
+    subscriberFailures: 0,
     mustDeliverPublished: 0,
     mustDeliverDropped: 0,
   };
@@ -245,24 +226,77 @@ export class EventBroker {
     set.add(sub as Subscriber<any>);
     this.subscribers.set(type, set);
     this.pendingBuffers.set(sub as Subscriber<any>, 0);
+    this.deliveryTails.set(sub as Subscriber<any>, Promise.resolve());
 
     return () => {
       set.delete(sub as Subscriber<any>);
-      if (set.size === 0) {
-        this.subscribers.delete(type);
-      }
+      if (set.size === 0) this.subscribers.delete(type);
       this.pendingBuffers.delete(sub as Subscriber<any>);
+      this.deliveryTails.delete(sub as Subscriber<any>);
     };
   }
 
-  /**
-   * Non-blocking, lossy publish under buffer pressure.
-   */
+  public getDeliveryErrors(): BrokerDeliveryError[] {
+    return this.deliveryErrors.map((entry) => ({ ...entry }));
+  }
+
+  private recordFailure(event: BrokerEvent, critical: boolean, error: unknown): void {
+    this.metrics.subscriberFailures++;
+    this.deliveryErrors.push({
+      eventId: event.id,
+      type: event.type,
+      critical,
+      message: error instanceof Error ? error.message : String(error),
+      timestamp: Date.now(),
+    });
+    if (this.deliveryErrors.length > this.maxRecordedErrors) {
+      this.deliveryErrors.splice(0, this.deliveryErrors.length - this.maxRecordedErrors);
+    }
+  }
+
+  private enqueueDelivery(
+    sub: Subscriber<any>,
+    event: BrokerEvent,
+    options: { critical: boolean; timeoutMs?: number },
+  ): Promise<void> {
+    const previous = this.deliveryTails.get(sub) ?? Promise.resolve();
+    this.pendingBuffers.set(sub, (this.pendingBuffers.get(sub) ?? 0) + 1);
+
+    const execute = previous.catch(() => undefined).then(
+      () => new Promise<void>((resolve, reject) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        if (options.timeoutMs !== undefined) {
+          timer = setTimeout(
+            () => reject(new Error(`Event delivery timed out after ${options.timeoutMs}ms on ${event.type}`)),
+            options.timeoutMs,
+          );
+        }
+
+        Promise.resolve()
+          .then(() => sub(event))
+          .then(
+            () => resolve(),
+            (error) => reject(error),
+          )
+          .finally(() => {
+            if (timer) clearTimeout(timer);
+          });
+      }),
+    );
+
+    const observed = execute.finally(() => {
+      const depth = this.pendingBuffers.get(sub) ?? 1;
+      this.pendingBuffers.set(sub, Math.max(0, depth - 1));
+    });
+
+    // The stored tail always resolves so one failed subscriber invocation cannot poison later order.
+    this.deliveryTails.set(sub, observed.catch(() => undefined));
+    return observed;
+  }
+
   public publish<T = unknown>(type: string, payload: T): void {
     const set = this.subscribers.get(type);
-    if (!set || set.size === 0) {
-      return;
-    }
+    if (!set || set.size === 0) return;
 
     const event: BrokerEvent<T> = {
       id: `ev-${randomUUID().slice(0, 8)}`,
@@ -278,32 +312,20 @@ export class EventBroker {
         continue;
       }
 
-      this.pendingBuffers.set(sub, current + 1);
       this.metrics.publishedEvents++;
-
-      queueMicrotask(async () => {
-        try {
-          await sub(event);
-        } finally {
-          const depth = this.pendingBuffers.get(sub) ?? 1;
-          this.pendingBuffers.set(sub, Math.max(0, depth - 1));
-        }
+      void this.enqueueDelivery(sub, event, { critical: false }).catch((error) => {
+        this.recordFailure(event, false, error);
       });
     }
   }
 
-  /**
-   * Bounded-blocking publish for terminal/critical events that must deliver.
-   */
   public async publishMustDeliver<T = unknown>(
     type: string,
     payload: T,
     timeoutMs = 500
   ): Promise<void> {
     const set = this.subscribers.get(type);
-    if (!set || set.size === 0) {
-      return;
-    }
+    if (!set || set.size === 0) return;
 
     const event: BrokerEvent<T> = {
       id: `ev-must-${randomUUID().slice(0, 8)}`,
@@ -312,31 +334,22 @@ export class EventBroker {
       timestamp: Date.now(),
     };
 
-    const deliveryPromises: Promise<void>[] = [];
+    const deliveries = [...set].map(async (sub) => {
+      try {
+        await this.enqueueDelivery(sub, event, { critical: true, timeoutMs });
+        this.metrics.mustDeliverPublished++;
+      } catch (error) {
+        this.metrics.mustDeliverDropped++;
+        this.recordFailure(event, true, error);
+        throw error;
+      }
+    });
 
-    for (const sub of set) {
-      const deliverPromise = new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          this.metrics.mustDeliverDropped++;
-          reject(new Error(`PublishMustDeliver timed out after ${timeoutMs}ms on event ${type}`));
-        }, timeoutMs);
-
-        Promise.resolve(sub(event))
-          .then(() => {
-            clearTimeout(timer);
-            this.metrics.mustDeliverPublished++;
-            resolve();
-          })
-          .catch((err) => {
-            clearTimeout(timer);
-            this.metrics.mustDeliverDropped++;
-            reject(err);
-          });
-      });
-
-      deliveryPromises.push(deliverPromise);
+    const results = await Promise.allSettled(deliveries);
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failures.length > 0) {
+      const details = failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason));
+      throw new Error(`Critical event '${type}' failed for ${failures.length} subscriber(s): ${details.join("; ")}`);
     }
-
-    await Promise.allSettled(deliveryPromises);
   }
 }
