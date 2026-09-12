@@ -29,7 +29,7 @@ export interface ConversationMessage {
 export interface ContextCompactorOptions {
   /** Token budget threshold to trigger auto-compaction (default: 80,000 tokens). */
   tokenThreshold?: number;
-  /** Number of most recent turns (user + assistant pairs) to preserve intact (default: 4). */
+  /** Number of most recent user-started turns to preserve intact (default: 4). */
   keepRecentTurns?: number;
   /** Keep system instructions intact at index 0 (default: true). */
   preserveSystemPrompt?: boolean;
@@ -50,9 +50,6 @@ export class ContextCompactor {
     return currentEstimatedTokens >= this.tokenThreshold;
   }
 
-  /**
-   * Estimate token count using a standard 4-chars-per-token heuristic.
-   */
   public estimateTokens(messages: ConversationMessage[]): number {
     let charCount = 0;
     for (const msg of messages) {
@@ -62,8 +59,28 @@ export class ContextCompactor {
   }
 
   /**
-   * Compactor that folds conversation history older than keepRecentTurns into a structured memory summary.
+   * Return the start index of the suffix containing the requested number of complete, user-started
+   * turns. Tool calls/results and all assistant follow-ups remain attached to their user message.
    */
+  private recentTurnStart(messages: ConversationMessage[]): number {
+    if (this.keepRecentTurns <= 0) return messages.length;
+
+    let turns = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role !== "user") continue;
+      turns++;
+      if (turns === this.keepRecentTurns) return i;
+    }
+    return 0;
+  }
+
+  private boundSummary(summary: string, folded: ConversationMessage[]): string {
+    const sourceChars = folded.reduce((sum, message) => sum + message.content.length, 0);
+    const maxChars = Math.min(16_000, Math.max(256, Math.floor(sourceChars * 0.5)));
+    if (summary.length <= maxChars) return summary;
+    return `${summary.slice(0, Math.max(0, maxChars - 24)).trimEnd()}\n[summary truncated]`;
+  }
+
   public async compact(
     messages: ConversationMessage[],
     trigger: CompactionTrigger = "auto",
@@ -78,7 +95,6 @@ export class ContextCompactor {
     const startTime = Date.now();
     const preTokens = this.estimateTokens(messages);
 
-    // Identify system prompt at index 0
     let systemMessage: ConversationMessage | null = null;
     let pool = [...messages];
 
@@ -88,12 +104,8 @@ export class ContextCompactor {
       pool = pool.slice(1);
     }
 
-    // Determine how many messages to keep from recent history
-    // Each turn is approximately 2 messages (user + assistant) plus optional tool calls
-    const recentMessagesCount = Math.max(2, this.keepRecentTurns * 2);
-
-    if (pool.length <= recentMessagesCount) {
-      // Nothing eligible to fold
+    const foldSliceIndex = this.recentTurnStart(pool);
+    if (foldSliceIndex <= 0) {
       return {
         compactedMessages: [...messages],
         anchor: {
@@ -111,36 +123,68 @@ export class ContextCompactor {
       };
     }
 
-    const foldSliceIndex = pool.length - recentMessagesCount;
     const messagesToFold = pool.slice(0, foldSliceIndex);
     const recentMessages = pool.slice(foldSliceIndex);
-
-    // Generate summary of folded messages
-    let summaryText: string;
-    if (customSummarizer) {
-      summaryText = await customSummarizer(messagesToFold);
-    } else {
-      summaryText = this.defaultSummary(messagesToFold);
+    if (messagesToFold.length === 0) {
+      return {
+        compactedMessages: [...messages],
+        anchor: {
+          anchorId,
+          status: "skipped",
+          phase,
+          trigger,
+          preTokens,
+          postTokens: preTokens,
+          durationMs: Date.now() - startTime,
+          foldedCount: 0,
+          startedAt,
+          completedAt: new Date().toISOString(),
+        },
+      };
     }
+
+    const rawSummary = customSummarizer
+      ? await customSummarizer(messagesToFold)
+      : this.defaultSummary(messagesToFold);
+    const summaryText = this.boundSummary(rawSummary, messagesToFold);
 
     const summaryMessage: ConversationMessage = {
       id: `compaction-summary-${randomUUID().slice(0, 8)}`,
       role: "user",
-      content: `[Context Compaction Summary - ${messagesToFold.length} earlier turns folded]\n${summaryText}`,
+      content: `[Context Compaction Summary - ${messagesToFold.length} earlier messages folded]\n${summaryText}`,
     };
 
-    const compactedMessages: ConversationMessage[] = [];
-    if (systemMessage) {
-      compactedMessages.push(systemMessage);
-    }
-    compactedMessages.push(summaryMessage);
-    compactedMessages.push(...recentMessages);
+    const candidate: ConversationMessage[] = [];
+    if (systemMessage) candidate.push(systemMessage);
+    candidate.push(summaryMessage, ...recentMessages);
 
-    const postTokens = this.estimateTokens(compactedMessages);
-    const durationMs = Date.now() - startTime;
+    const postTokens = this.estimateTokens(candidate);
+    const reduction = preTokens - postTokens;
+    const minUsefulReduction = Math.max(1, Math.ceil(preTokens * 0.05));
+    const crossedBudget = preTokens >= this.tokenThreshold && postTokens < this.tokenThreshold;
+
+    // A compaction operation must actually relieve pressure. Do not replace context with a larger
+    // or negligibly smaller representation and still report success.
+    if (reduction < minUsefulReduction && !crossedBudget) {
+      return {
+        compactedMessages: [...messages],
+        anchor: {
+          anchorId,
+          status: "skipped",
+          phase,
+          trigger,
+          preTokens,
+          postTokens: preTokens,
+          durationMs: Date.now() - startTime,
+          foldedCount: 0,
+          startedAt,
+          completedAt: new Date().toISOString(),
+        },
+      };
+    }
 
     return {
-      compactedMessages,
+      compactedMessages: candidate,
       anchor: {
         anchorId,
         status: "done",
@@ -148,7 +192,7 @@ export class ContextCompactor {
         trigger,
         preTokens,
         postTokens,
-        durationMs,
+        durationMs: Date.now() - startTime,
         foldedCount: messagesToFold.length,
         startedAt,
         completedAt: new Date().toISOString(),
@@ -164,9 +208,7 @@ export class ContextCompactor {
         .replace(/\s+/g, " ")
         .slice(0, 120)
         .trim();
-      if (preview.length > 0) {
-        lines.push(`- [${msg.role}]: ${preview}`);
-      }
+      if (preview.length > 0) lines.push(`- [${msg.role}]: ${preview}`);
     }
     return lines.join("\n");
   }
