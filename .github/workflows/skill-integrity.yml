@@ -16,6 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
+      - name: Verify normalized imported skill metadata
+        run: pnpm skills:normalize:check
+      - name: Verify declarative and runtime aliases are synchronized
+        run: pnpm skills:aliases:check
       - name: Validate skill identities, metadata, resources and aliases
         run: pnpm skills:check -- --json=artifacts/skill-audit.json
       - name: Build taxonomy and overlap report
