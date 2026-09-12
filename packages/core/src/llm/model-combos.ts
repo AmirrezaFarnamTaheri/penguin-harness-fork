@@ -44,6 +44,14 @@ const DEFAULT_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
   "timeout",
 ];
 
+function cloneCombo(combo: ModelCombo): ModelCombo {
+  return {
+    ...combo,
+    targets: combo.targets.map((target) => ({ ...target })),
+    fallbackTriggers: combo.fallbackTriggers ? [...combo.fallbackTriggers] : undefined,
+  };
+}
+
 function classifyFallbackReasons(
   detection: QuotaDetectionResult,
   isTimeout: boolean,
@@ -51,13 +59,14 @@ function classifyFallbackReasons(
   const reasons = new Set<FallbackTrigger>();
   if (isTimeout) reasons.add("timeout");
   if (detection.isQuota) {
-    // QuotaDetectionResult historically combines provider quota and rate-limit failures.
-    // Until the parser supplies a narrower category, either configured quota reason may opt in.
     reasons.add("rate_limit");
     reasons.add("quota_exhausted");
   }
   if (detection.isAuthenticationFailure) reasons.add("auth_error");
+  if (detection.isOverloaded) reasons.add("overloaded");
+  if (detection.isContextLengthExceeded) reasons.add("context_length_exceeded");
 
+  // Backward compatibility for callers constructing older QuotaDetectionResult objects manually.
   const diagnosticText = `${detection.code ?? ""} ${detection.reason ?? ""}`.toLowerCase();
   if (
     /\boverload(?:ed|ing)?\b|\bcapacity\b|temporar(?:y|ily) unavailable|service unavailable|server busy|\b529\b|\b503\b/.test(
@@ -82,20 +91,30 @@ export class ModelComboRegistry {
 
   constructor(initialCombos?: ModelCombo[]) {
     if (initialCombos) {
-      for (const combo of initialCombos) this.combos.set(combo.id, combo);
+      for (const combo of initialCombos) this.combos.set(combo.id, cloneCombo(combo));
     }
   }
 
   get(id: string): ModelCombo | undefined {
-    return this.combos.get(id);
+    const combo = this.combos.get(id);
+    return combo ? cloneCombo(combo) : undefined;
   }
 
   list(): ModelCombo[] {
-    return Array.from(this.combos.values());
+    return Array.from(this.combos.values(), cloneCombo);
   }
 
   set(combo: ModelCombo): void {
-    this.combos.set(combo.id, { ...combo, updatedAt: new Date().toISOString() });
+    const existing = this.combos.get(combo.id);
+    const now = new Date().toISOString();
+    this.combos.set(
+      combo.id,
+      cloneCombo({
+        ...combo,
+        createdAt: combo.createdAt ?? existing?.createdAt ?? now,
+        updatedAt: now,
+      }),
+    );
   }
 
   delete(id: string): boolean {
@@ -117,13 +136,12 @@ export class ModelComboRegistry {
     for (const target of combo.targets) {
       const key = `${target.provider}:${target.modelId}`;
       if (failedKeys.has(key) || cooling.has(key)) continue;
-      return target;
+      return { ...target };
     }
     return undefined;
   }
 
-  /** Every accepted FallbackTrigger has a concrete classification path. */
-  shouldTriggerFallback(
+  public shouldTriggerFallback(
     combo: ModelCombo,
     detection: QuotaDetectionResult,
     isTimeout: boolean = false,
@@ -173,11 +191,6 @@ export interface SlimModelEntry {
   supportsReasoning?: boolean;
 }
 
-/**
- * Compress a capability catalog while merging provider aliases into one namespace.
- * Canonical provider spellings win genuine duplicate model conflicts; otherwise raw provider
- * names are ordered lexicographically, making the result independent of object insertion order.
- */
 export function slimModelCatalog(
   rawCatalog: Record<string, any>,
 ): Record<string, Record<string, SlimModelEntry>> {
