@@ -163,7 +163,10 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
 
         let workerId: string | undefined;
         let generation: number | undefined;
-        if (!force && existing.assignee) {
+        if (!force && (existing.assignee || (existing.leaseGeneration ?? 0) > 0)) {
+          // Once a task has ever been leased, non-owner state changes remain fenced even after
+          // release/reclamation. A replacement worker must claim a fresh generation first; stale
+          // workers cannot bypass fencing simply by omitting their old identity after assignee clears.
           workerId = requireString(body, "workerId", { minLen: 1, maxLen: 100, label: "workerId" });
           generation = requireGeneration(body);
         }
