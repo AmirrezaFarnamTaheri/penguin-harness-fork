@@ -144,12 +144,22 @@ function stripAnchorAndQuery(value) {
   return value.split("#", 1)[0].split("?", 1)[0];
 }
 
+function isConcreteLocalReference(value) {
+  // Placeholders, globs and illustrative pseudo-paths are routing/documentation examples,
+  // not dependency-closure claims. Keep the audit focused on concrete paths a package can
+  // actually ship and resolve.
+  if (/[<>{}*\[\]]/.test(value) || value.includes("...")) return false;
+  if (value.endsWith("/")) return false;
+  return true;
+}
+
 export function extractLocalReferences(markdown) {
   const refs = new Set();
   const add = (raw) => {
     const value = stripAnchorAndQuery(raw.trim().replace(/^['"<]|['">]$/g, ""));
     if (!value || /^(?:https?:|mailto:|data:|asset:|#)/i.test(value)) return;
     if (value.startsWith("/") || value.startsWith("~")) return;
+    if (!isConcreteLocalReference(value)) return;
     if (/^(?:scripts|references|assets|_common|_templates)\//.test(value)) refs.add(value);
   };
 
