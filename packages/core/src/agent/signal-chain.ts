@@ -3,8 +3,6 @@
  *
  * Implements causal provenance and depth-controlled action tracking for autonomous agent decisions,
  * chaining Root Source -> Intermediate Signals -> Dispatched Actions -> Execution Attempts.
- *
- * Synthesized from lobehub agent-signal and hermes-agent event tracking architectures.
  */
 
 export interface SignalScope {
@@ -62,6 +60,7 @@ export interface ActionNode {
   sourceId: string;
   payload: Record<string, unknown>;
   status: ActionStatus;
+  maxAttempts: number;
   attempts: ExecutionAttempt[];
   timestamp: number;
   completedAt?: number;
@@ -70,6 +69,10 @@ export interface ActionNode {
 export interface SignalChainManagerOptions {
   maxDepth?: number;
   maxRetries?: number;
+}
+
+function isTerminalAction(status: ActionStatus): boolean {
+  return status === "succeeded" || status === "failed" || status === "cancelled" || status === "skipped";
 }
 
 export class SignalChainManager {
@@ -130,10 +133,19 @@ export class SignalChainManager {
 
     if (input.parentActionId) {
       const parentAction = this.actions.get(input.parentActionId);
-      if (parentAction) {
-        parentDepth = parentAction.chain.depth;
-        parentNodeId = parentAction.actionId;
+      if (!parentAction) {
+        throw new Error(`Parent action with id '${input.parentActionId}' not found`);
       }
+      if (
+        parentAction.chain.chainId !== source.chain.chainId ||
+        parentAction.chain.rootSourceId !== source.sourceId
+      ) {
+        throw new Error(
+          `Parent action '${input.parentActionId}' belongs to causal root '${parentAction.chain.rootSourceId}', not source '${source.sourceId}'`,
+        );
+      }
+      parentDepth = parentAction.chain.depth;
+      parentNodeId = parentAction.actionId;
     }
 
     const nextDepth = parentDepth + 1;
@@ -180,6 +192,11 @@ export class SignalChainManager {
       throw new Error(`Exceeded maximum causal depth of ${this.maxDepth} (current: ${nextDepth})`);
     }
 
+    const maxAttempts = input.maxAttempts ?? this.maxRetries;
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+      throw new Error("maxAttempts must be a positive integer");
+    }
+
     const actionId = input.actionId ?? `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const chain: SignalChainRef = {
       chainId: signal.chain.chainId,
@@ -198,12 +215,13 @@ export class SignalChainManager {
       sourceId: signal.sourceId,
       payload: input.payload ?? {},
       status: "pending",
+      maxAttempts,
       attempts: [],
       timestamp: Date.now(),
     };
 
     this.actions.set(actionId, node);
-    return { ...node };
+    return { ...node, attempts: [] };
   }
 
   public startAttempt(actionId: string): ExecutionAttempt {
@@ -211,11 +229,22 @@ export class SignalChainManager {
     if (!action) {
       throw new Error(`Action with id '${actionId}' not found`);
     }
+    if (isTerminalAction(action.status)) {
+      throw new Error(`Action '${actionId}' is terminal with status '${action.status}'`);
+    }
+    if (action.status === "running") {
+      throw new Error(`Action '${actionId}' already has an active attempt`);
+    }
+    if (action.attempts.length >= action.maxAttempts) {
+      action.status = "failed";
+      action.completedAt ??= Date.now();
+      throw new Error(`Action '${actionId}' exhausted its ${action.maxAttempts} attempt budget`);
+    }
 
     const attemptNumber = action.attempts.length + 1;
     const attempt: ExecutionAttempt = {
       attemptNumber,
-      maxAttempts: this.maxRetries,
+      maxAttempts: action.maxAttempts,
       startedAt: Date.now(),
       status: "running",
     };
@@ -228,6 +257,8 @@ export class SignalChainManager {
   public completeAttempt(
     actionId: string,
     result: {
+      /** Required after the first attempt so late retry callbacks cannot complete a newer attempt. */
+      attemptNumber?: number;
       status: "succeeded" | "failed" | "cancelled" | "skipped";
       output?: Record<string, unknown>;
       error?: string;
@@ -237,59 +268,73 @@ export class SignalChainManager {
     if (!action) {
       throw new Error(`Action with id '${actionId}' not found`);
     }
+    if (isTerminalAction(action.status)) {
+      throw new Error(`Action '${actionId}' is already terminal with status '${action.status}'`);
+    }
 
     const currentAttempt = action.attempts[action.attempts.length - 1];
-    if (currentAttempt && currentAttempt.status === "running") {
-      currentAttempt.completedAt = Date.now();
-      currentAttempt.status = result.status;
-      currentAttempt.output = result.output;
-      currentAttempt.error = result.error;
+    if (!currentAttempt || currentAttempt.status !== "running" || action.status !== "running") {
+      throw new Error(`Action '${actionId}' has no active attempt to complete`);
     }
+    if (action.attempts.length > 1 && result.attemptNumber === undefined) {
+      throw new Error(`attemptNumber is required when completing a retried action '${actionId}'`);
+    }
+    if (result.attemptNumber !== undefined && result.attemptNumber !== currentAttempt.attemptNumber) {
+      throw new Error(
+        `Attempt ${result.attemptNumber} is not active for action '${actionId}' (active: ${currentAttempt.attemptNumber})`,
+      );
+    }
+
+    const completedAt = Date.now();
+    currentAttempt.completedAt = completedAt;
+    currentAttempt.status = result.status;
+    currentAttempt.output = result.output;
+    currentAttempt.error = result.error;
 
     if (result.status === "succeeded") {
       action.status = "succeeded";
-      action.completedAt = Date.now();
+      action.completedAt = completedAt;
     } else if (result.status === "failed") {
-      if (action.attempts.length >= this.maxRetries) {
+      if (action.attempts.length >= action.maxAttempts) {
         action.status = "failed";
-        action.completedAt = Date.now();
+        action.completedAt = completedAt;
       } else {
-        action.status = "pending"; // Ready for retry
+        action.status = "pending";
       }
     } else {
       action.status = result.status;
-      action.completedAt = Date.now();
+      action.completedAt = completedAt;
     }
 
-    return { ...action };
+    return { ...action, attempts: action.attempts.map((attempt) => ({ ...attempt })) };
   }
 
   public getTrace(nodeId: string): Array<SourceNode | SignalNode | ActionNode> {
     const trace: Array<SourceNode | SignalNode | ActionNode> = [];
     let currentId: string | undefined = nodeId;
+    let expectedRoot: string | undefined;
+    let expectedChain: string | undefined;
 
     while (currentId) {
-      const action = this.actions.get(currentId);
-      if (action) {
-        trace.unshift({ ...action });
-        currentId = action.chain.parentNodeId;
-        continue;
+      const node = this.actions.get(currentId) ?? this.signals.get(currentId) ?? this.sources.get(currentId);
+      if (!node) {
+        throw new Error(`Causal trace references missing node '${currentId}'`);
       }
 
-      const signal = this.signals.get(currentId);
-      if (signal) {
-        trace.unshift({ ...signal });
-        currentId = signal.chain.parentNodeId;
-        continue;
+      expectedRoot ??= node.chain.rootSourceId;
+      expectedChain ??= node.chain.chainId;
+      if (node.chain.rootSourceId !== expectedRoot || node.chain.chainId !== expectedChain) {
+        throw new Error(`Causal trace for '${nodeId}' contains incompatible roots or chain ids`);
       }
 
-      const source = this.sources.get(currentId);
-      if (source) {
-        trace.unshift({ ...source });
-        break;
+      if ("actionId" in node) {
+        trace.unshift({ ...node, attempts: node.attempts.map((attempt) => ({ ...attempt })) });
+      } else {
+        trace.unshift({ ...node });
       }
 
-      break;
+      if ("sourceId" in node && "sourceType" in node) break;
+      currentId = node.chain.parentNodeId;
     }
 
     return trace;
@@ -297,15 +342,15 @@ export class SignalChainManager {
 
   public getAction(actionId: string): ActionNode | undefined {
     const action = this.actions.get(actionId);
-    return action ? { ...action } : undefined;
+    return action ? { ...action, attempts: action.attempts.map((attempt) => ({ ...attempt })) } : undefined;
   }
 
   public listActions(filter?: { status?: ActionStatus; actionType?: string }): ActionNode[] {
     const list: ActionNode[] = [];
-    for (const a of this.actions.values()) {
-      if (filter?.status && a.status !== filter.status) continue;
-      if (filter?.actionType && a.actionType !== filter.actionType) continue;
-      list.push({ ...a });
+    for (const action of this.actions.values()) {
+      if (filter?.status && action.status !== filter.status) continue;
+      if (filter?.actionType && action.actionType !== filter.actionType) continue;
+      list.push({ ...action, attempts: action.attempts.map((attempt) => ({ ...attempt })) });
     }
     return list;
   }
