@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
-import { Input } from "../../components/ui/input.js";
 
 export interface GatewayDialogProps {
   open: boolean;
@@ -9,376 +8,204 @@ export interface GatewayDialogProps {
   projectId?: string;
 }
 
-export interface ModelQuotaStatus {
-  provider: string;
-  modelId: string;
-  isCooling: boolean;
-  cooldownRemainingText?: string;
+interface QuotaPayload {
+  activeQuota: {
+    sessionUsedPct: number | null;
+    weeklyUsedPct: number | null;
+    resetsIn: string | null;
+    status: "unknown" | string;
+  };
+  models: Array<{ provider: string; modelId: string; isCooling: boolean | null }>;
 }
 
-export interface ModelComboView {
+interface ModelComboView {
   id: string;
   name: string;
   description?: string;
   targets: Array<{ provider: string; modelId: string; label?: string }>;
+  updatedAt?: string;
 }
 
-export interface GatewayAccount {
-  id: string;
-  name: string;
-  provider: string;
-  tier: "Free" | "Pro" | "Enterprise" | "Pay-As-You-Go";
-  isActive: boolean;
-  latencyMs?: number;
-  status: "healthy" | "degraded" | "cooling";
+type Tab = "quota" | "combos" | "pricing";
+
+async function fetchJson<T>(url: string, signal: AbortSignal): Promise<T> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json() as Promise<T>;
+}
+
+function Meter({ label, value }: { label: string; value: number | null }) {
+  const known = typeof value === "number" && Number.isFinite(value);
+  const bounded = known ? Math.max(0, Math.min(100, value)) : 0;
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700/60 dark:bg-gray-800/60">
+      <div className="mb-1 text-xs text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
+        {known ? `${value}%` : "Unknown"}
+      </div>
+      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div className="h-full rounded-full bg-cyan-500 transition-all duration-300" style={{ width: `${bounded}%` }} />
+      </div>
+      <div className="mt-1 text-[11px] text-gray-400">
+        {known ? "Provider-reported usage" : "No usage telemetry is available for this project."}
+      </div>
+    </div>
+  );
 }
 
 export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) {
-  const [tab, setTab] = useState<"quota" | "combos" | "pricing" | "accounts">("quota");
-  const [quotaStatus, setQuotaStatus] = useState<{
-    coolingModels: Array<{ provider: string; modelId: string; cooldownRemainingMs: number }>;
-    activeQuota: number | null;
-  } | null>(null);
-
-  const [combos, setCombos] = useState<ModelComboView[]>([
-    {
-      id: "coding-cascade",
-      name: "Autonomous Coding Cascade",
-      description: "Falls back from Claude 3.7 Sonnet to DeepSeek R1 to GPT-4o upon quota exhaustion",
-      targets: [
-        { provider: "anthropic", modelId: "claude-3-7-sonnet-20250219", label: "Primary (Sonnet 3.7)" },
-        { provider: "deepseek", modelId: "deepseek-reasoner", label: "Fallback 1 (DeepSeek R1)" },
-        { provider: "openai", modelId: "gpt-4o", label: "Fallback 2 (GPT-4o)" },
-      ],
-    },
-  ]);
-
-  const [accounts, setAccounts] = useState<GatewayAccount[]>([
-    { id: "acc-1", name: "Anthropic Team Primary", provider: "anthropic", tier: "Enterprise", isActive: true, status: "healthy" },
-    { id: "acc-2", name: "DeepSeek Reasoner Pool", provider: "deepseek", tier: "Pro", isActive: true, status: "healthy" },
-    { id: "acc-3", name: "OpenAI Fallback PayG", provider: "openai", tier: "Pay-As-You-Go", isActive: false, status: "healthy" },
-    { id: "acc-4", name: "Google Vertex Exp", provider: "google", tier: "Pro", isActive: true, status: "healthy" },
-  ]);
-  const [pinging, setPinging] = useState(false);
+  const [tab, setTab] = useState<Tab>("quota");
+  const [quota, setQuota] = useState<QuotaPayload | null>(null);
+  const [combos, setCombos] = useState<ModelComboView[]>([]);
+  const [pricing, setPricing] = useState<unknown>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || !projectId) return;
-    fetch(`/api/projects/${projectId}/gateway/status`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) setQuotaStatus(data);
-      })
-      .catch(() => {});
+    if (!open) return;
+    if (!projectId) {
+      setQuota(null);
+      setCombos([]);
+      setPricing(null);
+      setError("Select a project to inspect gateway state.");
+      return;
+    }
 
-    fetch(`/api/projects/${projectId}/gateway/combos`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.combos?.length) {
-          setCombos(data.combos);
-        }
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+
+    Promise.all([
+      fetchJson<QuotaPayload>(`/api/projects/${projectId}/gateway/quota`, controller.signal),
+      fetchJson<{ combos: ModelComboView[] }>(`/api/projects/${projectId}/gateway/combos`, controller.signal),
+      fetchJson<{ catalog: unknown }>(`/api/projects/${projectId}/gateway/pricing`, controller.signal),
+    ])
+      .then(([quotaResult, comboResult, pricingResult]) => {
+        setQuota(quotaResult);
+        setCombos(comboResult.combos ?? []);
+        setPricing(pricingResult.catalog);
       })
-      .catch(() => {});
+      .catch((cause: unknown) => {
+        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        setError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [open, projectId]);
 
-  const handlePingEndpoints = async () => {
-    setPinging(true);
-    try {
-      if (projectId) {
-        const start = performance.now();
-        const res = await fetch(`/api/projects/${projectId}/gateway/status`);
-        const elapsed = Math.round(performance.now() - start);
-        setAccounts((prev) =>
-          prev.map((acc) => ({
-            ...acc,
-            latencyMs: res.ok ? elapsed : undefined,
-            status: res.ok ? "healthy" : "degraded",
-          }))
-        );
-      } else {
-        setAccounts((prev) =>
-          prev.map((acc) => ({
-            ...acc,
-            latencyMs: undefined,
-          }))
-        );
-      }
-    } catch {
-      setAccounts((prev) =>
-        prev.map((acc) => ({
-          ...acc,
-          latencyMs: undefined,
-          status: "degraded",
-        }))
-      );
-    } finally {
-      setPinging(false);
-    }
-  };
-
-  const toggleAccount = (id: string) => {
-    setAccounts((prev) =>
-      prev.map((acc) => (acc.id === id ? { ...acc, isActive: !acc.isActive } : acc))
-    );
-  };
-
-  const [newComboName, setNewComboName] = useState("");
+  const tabs: Array<{ id: Tab; label: string }> = [
+    { id: "quota", label: "Quota & Limits" },
+    { id: "combos", label: `Fallback Combos (${combos.length})` },
+    { id: "pricing", label: "Pricing Catalog" },
+  ];
 
   return (
-    <Modal open={open} onClose={onClose} title="AI Gateway & Quota Cockpit" widthClass="sm:max-w-2xl">
+    <Modal open={open} onClose={onClose} title="AI Gateway" widthClass="sm:max-w-2xl">
       <div className="flex flex-col gap-4">
-        {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-800 gap-2">
-          <button
-            type="button"
-            onClick={() => setTab("quota")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "quota"
-                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            Quota & Limits
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("combos")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "combos"
-                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            Fusion Combos
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("pricing")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "pricing"
-                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            Token Intelligence & Rates
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("accounts")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "accounts"
-                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            Accounts & Latency ({accounts.filter((a) => a.isActive).length}/{accounts.length})
-          </button>
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
+          {tabs.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setTab(item.id)}
+              className={`border-b-2 px-3 py-2 text-xs font-medium transition-colors ${
+                tab === item.id
+                  ? "border-cyan-500 font-semibold text-cyan-600 dark:text-cyan-400"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
 
-        {/* Tab Content */}
-        {tab === "quota" && (
+        {loading && <div className="text-sm text-gray-500">Loading gateway state…</div>}
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+            Gateway data could not be loaded: {error}
+          </div>
+        )}
+
+        {!loading && !error && tab === "quota" && (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700/60">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Active Session Quota</div>
-                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
-                  {quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "Unmetered"}
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="bg-cyan-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "0%" }}
-                  />
-                </div>
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {quotaStatus?.activeQuota != null ? "Usage tracked" : "No hard usage cap • Direct provider billing"}
-                </div>
-              </div>
-
-              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700/60">
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Weekly Rolling Quota</div>
-                <div className="text-2xl font-semibold text-gray-800 dark:text-gray-100">
-                  {quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "Unmetered"}
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full mt-2 overflow-hidden">
-                  <div
-                    className="bg-blue-500 h-full rounded-full transition-all duration-300"
-                    style={{ width: quotaStatus?.activeQuota != null ? `${quotaStatus.activeQuota}%` : "0%" }}
-                  />
-                </div>
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {quotaStatus?.activeQuota != null ? "Rolling window active" : "Unmetered enterprise / BYOK connection"}
-                </div>
-              </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Meter label="Active Session Usage" value={quota?.activeQuota.sessionUsedPct ?? null} />
+              <Meter label="Weekly Rolling Usage" value={quota?.activeQuota.weeklyUsedPct ?? null} />
             </div>
-
-            {quotaStatus?.coolingModels && quotaStatus.coolingModels.length > 0 && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-1">Active Cooldowns</div>
-                <div className="flex flex-col gap-1 text-[11px] text-amber-600 dark:text-amber-300">
-                  {quotaStatus.coolingModels.map((m, idx) => (
-                    <div key={idx}>
-                      {m.provider} / {m.modelId}: resets in {Math.round(m.cooldownRemainingMs / 1000)}s
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Configured models</div>
+              {quota?.models.length ? (
+                <div className="flex flex-col gap-2">
+                  {quota.models.map((model) => (
+                    <div key={`${model.provider}:${model.modelId}`} className="flex items-center justify-between gap-3 text-sm">
+                      <div className="min-w-0">
+                        <span className="font-medium text-gray-800 dark:text-gray-100">{model.provider}</span>
+                        <span className="text-gray-400"> / </span>
+                        <span className="break-all text-gray-600 dark:text-gray-300">{model.modelId}</span>
+                      </div>
+                      <span className="shrink-0 text-xs text-gray-500">
+                        {model.isCooling === true ? "Cooling" : model.isCooling === false ? "Ready" : "Status unknown"}
+                      </span>
                     </div>
                   ))}
                 </div>
+              ) : (
+                <div className="text-sm text-gray-500">No models are configured for this project.</div>
+              )}
+            </div>
+            <div className="text-xs text-gray-500">
+              Quota status: {quota?.activeQuota.status ?? "unknown"}
+              {quota?.activeQuota.resetsIn ? ` · resets in ${quota.activeQuota.resetsIn}` : ""}
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && tab === "combos" && (
+          <div className="flex flex-col gap-3">
+            {combos.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500 dark:border-gray-700">
+                No fallback combos are configured.
               </div>
-            )}
-
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Automatic cooldown detection parses 429 and RESOURCE_EXHAUSTED reset timestamps to dynamically
-              route requests to active fallback models.
-            </div>
-          </div>
-        )}
-
-        {tab === "combos" && (
-          <div className="flex flex-col gap-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Fusion Combos automatically cascade and switch providers upon encountering rate limits or quota exhaustion:
-            </div>
-            {combos.map((c) => (
-              <div
-                key={c.id}
-                className="p-3 bg-gray-50 dark:bg-gray-850 rounded-lg border border-gray-200 dark:border-gray-800 flex flex-col gap-2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-gray-800 dark:text-gray-200">{c.name}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 font-mono">
-                    {c.targets.length} Models
-                  </span>
-                </div>
-                {c.description && (
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400">{c.description}</div>
-                )}
-                <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                  {c.targets.map((t, idx) => (
-                    <span key={idx} className="inline-flex items-center gap-1 text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 rounded">
-                      <span className="font-mono text-cyan-600 dark:text-cyan-400">#{idx + 1}</span>
-                      <span>{t.label ?? t.modelId}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "pricing" && (
-          <div className="flex flex-col gap-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Active token rates per 1,000,000 tokens (USD):
-            </div>
-            <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden text-xs">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium">
-                  <tr>
-                    <th className="p-2">Model</th>
-                    <th className="p-2">Input</th>
-                    <th className="p-2">Output</th>
-                    <th className="p-2">Cache Read</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  <tr>
-                    <td className="p-2 font-mono text-[11px]">Claude 3.7 Sonnet</td>
-                    <td className="p-2">$3.00</td>
-                    <td className="p-2">$15.00</td>
-                    <td className="p-2 text-cyan-600 dark:text-cyan-400">$0.30 (90% off)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 font-mono text-[11px]">DeepSeek R1</td>
-                    <td className="p-2">$0.55</td>
-                    <td className="p-2">$2.19</td>
-                    <td className="p-2 text-cyan-600 dark:text-cyan-400">$0.14 (75% off)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 font-mono text-[11px]">GPT-4o</td>
-                    <td className="p-2">$2.50</td>
-                    <td className="p-2">$10.00</td>
-                    <td className="p-2 text-cyan-600 dark:text-cyan-400">$1.25 (50% off)</td>
-                  </tr>
-                  <tr>
-                    <td className="p-2 font-mono text-[11px]">Gemini 2.5 Pro</td>
-                    <td className="p-2">$1.25</td>
-                    <td className="p-2">$5.00</td>
-                    <td className="p-2 text-cyan-600 dark:text-cyan-400">$0.31 (75% off)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {tab === "accounts" && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                Multi-account pool routing & endpoint latency probes:
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handlePingEndpoints}
-                disabled={pinging}
-              >
-                {pinging ? "Probing..." : "Ping All Endpoints"}
-              </Button>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              {accounts.map((acc) => (
-                <div
-                  key={acc.id}
-                  className="p-3 bg-gray-50 dark:bg-gray-850 rounded-lg border border-gray-200 dark:border-gray-800 flex items-center justify-between"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-gray-800 dark:text-gray-200">
-                        {acc.name}
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                        {acc.provider}
-                      </span>
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                        {acc.tier}
-                      </span>
+            ) : (
+              combos.map((combo) => (
+                <div key={combo.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-gray-800 dark:text-gray-100">{combo.name}</div>
+                      {combo.description && <div className="mt-1 text-xs text-gray-500">{combo.description}</div>}
                     </div>
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-3 mt-1">
-                      <span>Status: <strong className="text-emerald-600 dark:text-emerald-400">{acc.status}</strong></span>
-                      <span>
-                        Latency:{" "}
-                        {acc.latencyMs !== undefined ? (
-                          <span className={`font-mono font-semibold ${acc.latencyMs < 200 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                            {acc.latencyMs}ms
-                          </span>
-                        ) : (
-                          <span className="font-mono text-gray-400 dark:text-gray-500">—</span>
-                        )}
-                      </span>
-                    </div>
+                    <code className="text-[11px] text-gray-400">{combo.id}</code>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleAccount(acc.id)}
-                    className={`px-3 py-1 text-xs rounded font-medium border transition-colors ${
-                      acc.isActive
-                        ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/20"
-                        : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                    }`}
-                  >
-                    {acc.isActive ? "Active in Pool" : "Disabled"}
-                  </button>
+                  <ol className="mt-3 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
+                    {combo.targets.map((target, index) => (
+                      <li key={`${target.provider}:${target.modelId}:${index}`}>
+                        {index + 1}. {target.label ? `${target.label} · ` : ""}{target.provider}/{target.modelId}
+                      </li>
+                    ))}
+                  </ol>
+                  {combo.updatedAt && <div className="mt-2 text-[11px] text-gray-400">Updated {combo.updatedAt}</div>}
                 </div>
-              ))}
-            </div>
+              ))
+            )}
           </div>
         )}
 
-        <div className="flex justify-end pt-2 border-t border-gray-100 dark:border-gray-800">
-          <Button variant="secondary" size="sm" onClick={onClose}>
-            Close
-          </Button>
+        {!loading && !error && tab === "pricing" && (
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <div className="mb-2 text-xs text-gray-500">
+              Server pricing catalog. Values are shown as supplied by the backend; unknown prices are not inferred.
+            </div>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-[11px] text-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              {JSON.stringify(pricing, null, 2)}
+            </pre>
+          </div>
+        )}
+
+        <div className="flex justify-end border-t border-gray-200 pt-3 dark:border-gray-800">
+          <Button onClick={onClose}>Close</Button>
         </div>
       </div>
     </Modal>
