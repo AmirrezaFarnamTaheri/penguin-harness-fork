@@ -26,7 +26,33 @@ Use this workflow to port a skill from a Git repository, marketplace, archive, o
 └── assets/               # optional
 ```
 
-`SKILL.md` must use the canonical uppercase filename. The directory name is the installed identity and must match `[A-Za-z0-9_-]+`.
+`SKILL.md` must use the canonical uppercase filename. The directory and frontmatter `name` are the skill identity and must match exactly. Use lowercase letters, digits, and hyphens only, with a maximum of 64 characters.
+
+## Naming, categorization, and routing
+
+Names are routing contracts, not marketing labels. Prefer the narrowest stable capability name that distinguishes the skill from its siblings.
+
+- Avoid generic single-word verbs such as `review`, `test`, `debug`, `plan`, or `draft`. Use a domain + purpose name such as `diff-correctness-review` or `project-test-runner`.
+- Preserve product/service names for service-specific automation. `*-automation` means automation for the named external service and should not compete for generic automation requests.
+- Use `*-patterns` / `*-best-practices` for reference guidance, `*-runner` for execution workflows, `*-review` for inspection/audit workflows, `*-author` for artifact authoring, and `*-bilingual` only for a genuinely bilingual specialization.
+- Do not rename two semantically different skills merely because their descriptions overlap. Consolidate only exact or demonstrably equivalent workflows.
+- When replacing a legacy name, keep one canonical skill and add a compatibility alias. The alias must resolve directly to an installed canonical target; chains and cycles are forbidden.
+- Add precise descriptions and tags that state both positive applicability and important exclusions. Routing should prefer explicit canonical names, then explicit aliases, then distinctive name tokens/tags/domain evidence, and use description text only as weaker evidence.
+
+Before and after any naming or consolidation change, run:
+
+```bash
+pnpm skills:check
+pnpm skills:catalog
+```
+
+For a port whose instructions reference local scripts/assets/shared resources, also run the strict closure check:
+
+```bash
+node scripts/skills/audit.mjs --check --strict-resources
+```
+
+The generated taxonomy report identifies exact-body duplicate candidates, suffix/stem overlap families, ambiguous single-word names, inferred domains/kinds, and routing tokens. Treat overlap entries as review candidates, not automatic deletion instructions.
 
 ## Normalize frontmatter
 
@@ -60,6 +86,22 @@ Reject the candidate when:
 - the package's license does not permit the intended redistribution;
 - a required connector/runtime has no Penguin equivalent and the workflow cannot be rewritten faithfully.
 
+## Deterministic helper scripts
+
+If a skill repeatedly performs parsing, normalization, validation, file generation, or another deterministic transformation, put that logic in a small reviewed helper under `scripts/` instead of expanding `SKILL.md` with repeated procedural code.
+
+For new JavaScript helpers, prefer `.mjs` and the repository's Node >= 24 runtime. A helper must:
+
+- use explicit inputs and deterministic outputs;
+- avoid hidden network access or destructive defaults;
+- fail non-zero on invalid input;
+- keep paths relative to the skill root unless a user explicitly supplies another destination;
+- document its command line in `SKILL.md`;
+- be included in the dependency-closure audit; and
+- have at least one representative successful invocation and one failure/validation case exercised before activation.
+
+Do not invent a wrapper merely to make an incomplete upstream package look executable. If the real implementation is absent, quarantine or classify the skill as reference-only instead.
+
 ## Staging and installation
 
 Work in a scratch directory first. Never copy directly over the active installed directory.
@@ -83,6 +125,7 @@ Before declaring success, verify all of the following:
 - binary assets retain their original bytes;
 - aliases resolve to installed canonical targets without cycles;
 - executable commands reference files that actually exist;
-- a failed replacement can restore the previous working installation.
+- a failed replacement can restore the previous working installation;
+- a renamed or consolidated skill still routes correctly for representative positive and negative prompts.
 
 Report the pinned source revision, any normalization performed, any content deliberately excluded, and the verification evidence.
