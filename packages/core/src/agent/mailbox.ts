@@ -5,6 +5,7 @@ export type LeaseState = "idle" | "acquired" | "expired";
 export interface MailboxLease {
   agentName: string;
   inboundEventId: string;
+  leaseToken: string;
   leaseState: LeaseState;
   acquiredAt: number;
   expiresAt: number;
@@ -61,9 +62,6 @@ export function normalizeMailboxOwnerName(rawName: string): string {
     .replace(/^-|-$/g, "");
 }
 
-/**
- * MailboxKernel manages message delivery, recipient queues, and leases across multi-agent setups.
- */
 export class MailboxKernel {
   private readonly queues = new Map<string, MailboxMessage[]>();
   private readonly leases = new Map<string, MailboxLease>();
@@ -75,14 +73,12 @@ export class MailboxKernel {
     fromAgent: string,
     eventType: string,
     payload: T,
-    priority: "normal" | "high" = "normal"
+    priority: "normal" | "high" = "normal",
   ): MailboxMessage<T> {
     const target = normalizeMailboxOwnerName(toAgent);
     const source = normalizeMailboxOwnerName(fromAgent);
 
-    if (!target) {
-      throw new Error("Recipient agent name cannot be empty");
-    }
+    if (!target) throw new Error("Recipient agent name cannot be empty");
 
     const msg: MailboxMessage<T> = {
       id: `msg-${randomUUID().slice(0, 12)}`,
@@ -110,13 +106,14 @@ export class MailboxKernel {
 
     if (existing && existing.leaseState === "acquired" && existing.expiresAt > now) {
       throw new Error(
-        `Agent '${name}' lease is already held by '${existing.inboundEventId}' until ${new Date(existing.expiresAt).toISOString()}`
+        `Agent '${name}' lease is already held by '${existing.inboundEventId}' until ${new Date(existing.expiresAt).toISOString()}`,
       );
     }
 
     const lease: MailboxLease = {
       agentName: name,
       inboundEventId: eventId,
+      leaseToken: randomUUID(),
       leaseState: "acquired",
       acquiredAt: now,
       expiresAt: now + ttlMs,
@@ -124,10 +121,10 @@ export class MailboxKernel {
 
     this.leases.set(name, lease);
     this.lastActivity.set(name, now);
-    return lease;
+    return { ...lease };
   }
 
-  public renewLease(agentName: string, ttlMs = 30000): MailboxLease {
+  public renewLease(agentName: string, leaseToken: string, ttlMs = 30000): MailboxLease {
     const name = normalizeMailboxOwnerName(agentName);
     const existing = this.leases.get(name);
     const now = Date.now();
@@ -135,16 +132,23 @@ export class MailboxKernel {
     if (!existing || existing.leaseState !== "acquired" || existing.expiresAt <= now) {
       throw new Error(`Cannot renew inactive or expired lease for agent '${name}'`);
     }
+    if (existing.leaseToken !== leaseToken) {
+      throw new Error(`Cannot renew lease for agent '${name}': lease token mismatch`);
+    }
 
     existing.expiresAt = now + ttlMs;
     this.lastActivity.set(name, now);
-    return existing;
+    return { ...existing };
   }
 
-  public releaseLease(agentName: string): void {
+  public releaseLease(agentName: string, leaseToken: string): void {
     const name = normalizeMailboxOwnerName(agentName);
     const lease = this.leases.get(name);
-    if (lease) lease.leaseState = "idle";
+    if (!lease) return;
+    if (lease.leaseToken !== leaseToken) {
+      throw new Error(`Cannot release lease for agent '${name}': lease token mismatch`);
+    }
+    lease.leaseState = "idle";
   }
 
   public poll<T = unknown>(agentName: string): MailboxMessage<T> | null {
@@ -171,19 +175,17 @@ export class MailboxKernel {
     const lease = this.leases.get(name) ?? null;
     const now = Date.now();
 
-    if (lease && lease.leaseState === "acquired" && lease.expiresAt <= now) {
-      lease.leaseState = "expired";
-    }
+    if (lease && lease.leaseState === "acquired" && lease.expiresAt <= now) lease.leaseState = "expired";
 
     const pendingReplyCount = queue.filter(
-      (m) => m.eventType === "reply" || m.eventType === "response"
+      (message) => message.eventType === "reply" || message.eventType === "response",
     ).length;
 
     return {
       agentName: name,
       queueDepth: queue.length,
       pendingReplyCount,
-      lease,
+      lease: lease ? { ...lease } : null,
       lastActivityAt: this.lastActivity.get(name) ?? null,
     };
   }
@@ -196,11 +198,6 @@ export class MailboxKernel {
 
 export type Subscriber<T = unknown> = (event: BrokerEvent<T>) => void | Promise<void>;
 
-/**
- * EventBroker provides fan-out event delivery with per-subscriber ordering:
- * - publish: non-blocking and lossy only at the configured queue bound.
- * - publishMustDeliver: joins the same ordered queue and rejects when any critical delivery fails.
- */
 export class EventBroker {
   private readonly subscribers = new Map<string, Set<Subscriber<any>>>();
   private readonly maxBufferSize: number;
@@ -221,18 +218,28 @@ export class EventBroker {
     this.maxBufferSize = maxBufferSize;
   }
 
+  private subscriberStillRegistered(sub: Subscriber<any>): boolean {
+    for (const set of this.subscribers.values()) {
+      if (set.has(sub)) return true;
+    }
+    return false;
+  }
+
   public subscribe<T = unknown>(type: string, sub: Subscriber<T>): () => void {
+    const subscriber = sub as Subscriber<any>;
     const set = this.subscribers.get(type) ?? new Set();
-    set.add(sub as Subscriber<any>);
+    set.add(subscriber);
     this.subscribers.set(type, set);
-    this.pendingBuffers.set(sub as Subscriber<any>, 0);
-    this.deliveryTails.set(sub as Subscriber<any>, Promise.resolve());
+    if (!this.pendingBuffers.has(subscriber)) this.pendingBuffers.set(subscriber, 0);
+    if (!this.deliveryTails.has(subscriber)) this.deliveryTails.set(subscriber, Promise.resolve());
 
     return () => {
-      set.delete(sub as Subscriber<any>);
+      set.delete(subscriber);
       if (set.size === 0) this.subscribers.delete(type);
-      this.pendingBuffers.delete(sub as Subscriber<any>);
-      this.deliveryTails.delete(sub as Subscriber<any>);
+      if (!this.subscriberStillRegistered(subscriber)) {
+        this.pendingBuffers.delete(subscriber);
+        this.deliveryTails.delete(subscriber);
+      }
     };
   }
 
@@ -262,36 +269,28 @@ export class EventBroker {
     const previous = this.deliveryTails.get(sub) ?? Promise.resolve();
     this.pendingBuffers.set(sub, (this.pendingBuffers.get(sub) ?? 0) + 1);
 
-    const execute = previous.catch(() => undefined).then(
-      () => new Promise<void>((resolve, reject) => {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        if (options.timeoutMs !== undefined) {
-          timer = setTimeout(
-            () => reject(new Error(`Event delivery timed out after ${options.timeoutMs}ms on ${event.type}`)),
-            options.timeoutMs,
-          );
-        }
+    const execute = previous.catch(() => undefined).then(() => Promise.resolve().then(() => sub(event)));
+    const orderedTail = execute
+      .finally(() => {
+        const depth = this.pendingBuffers.get(sub) ?? 1;
+        this.pendingBuffers.set(sub, Math.max(0, depth - 1));
+      })
+      .then(() => undefined);
 
-        Promise.resolve()
-          .then(() => sub(event))
-          .then(
-            () => resolve(),
-            (error) => reject(error),
-          )
-          .finally(() => {
-            if (timer) clearTimeout(timer);
-          });
-      }),
-    );
+    // Ordering follows the actual callback lifetime, not the caller's observation deadline.
+    this.deliveryTails.set(sub, orderedTail.catch(() => undefined));
 
-    const observed = execute.finally(() => {
-      const depth = this.pendingBuffers.get(sub) ?? 1;
-      this.pendingBuffers.set(sub, Math.max(0, depth - 1));
+    if (options.timeoutMs === undefined) return orderedTail;
+
+    const deadline = new Promise<void>((_, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Event delivery timed out after ${options.timeoutMs}ms on ${event.type}`)),
+        options.timeoutMs,
+      );
+      timer.unref?.();
+      void orderedTail.finally(() => clearTimeout(timer)).catch(() => undefined);
     });
-
-    // The stored tail always resolves so one failed subscriber invocation cannot poison later order.
-    this.deliveryTails.set(sub, observed.catch(() => undefined));
-    return observed;
+    return Promise.race([orderedTail, deadline]);
   }
 
   public publish<T = unknown>(type: string, payload: T): void {
@@ -322,7 +321,7 @@ export class EventBroker {
   public async publishMustDeliver<T = unknown>(
     type: string,
     payload: T,
-    timeoutMs = 500
+    timeoutMs = 500,
   ): Promise<void> {
     const set = this.subscribers.get(type);
     if (!set || set.size === 0) return;
@@ -348,7 +347,9 @@ export class EventBroker {
     const results = await Promise.allSettled(deliveries);
     const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
     if (failures.length > 0) {
-      const details = failures.map((failure) => failure.reason instanceof Error ? failure.reason.message : String(failure.reason));
+      const details = failures.map((failure) =>
+        failure.reason instanceof Error ? failure.reason.message : String(failure.reason),
+      );
       throw new Error(`Critical event '${type}' failed for ${failures.length} subscriber(s): ${details.join("; ")}`);
     }
   }
