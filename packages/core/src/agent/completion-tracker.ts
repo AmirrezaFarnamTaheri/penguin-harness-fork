@@ -4,8 +4,6 @@
  * Enforces verifiable evidence standards before an agent can claim task completion.
  * Requires concrete test passes, clean typechecks, or explicit validation receipts
  * to prevent hallucinated completion claims.
- *
- * Synthesized from claude_codex_bridge completion detectors and claurst review gates.
  */
 
 export type VerificationKind =
@@ -71,17 +69,21 @@ export class CompletionTracker {
   public recordEvidence(
     id: string,
     passed: boolean,
-    evidence: string
+    evidence: string,
   ): CompletionVerificationItem {
     const existing = this.items.get(id);
     if (!existing) {
       throw new Error(`Verification requirement "${id}" is not registered`);
     }
+    const normalizedEvidence = evidence.trim();
+    if (passed && normalizedEvidence.length === 0) {
+      throw new Error(`Passing verification requirement "${id}" requires non-empty evidence`);
+    }
 
     const updated: CompletionVerificationItem = {
       ...existing,
       status: passed ? "passed" : "failed",
-      evidence,
+      evidence: normalizedEvidence,
       timestamp: Date.now(),
     };
 
@@ -94,11 +96,15 @@ export class CompletionTracker {
     if (!existing) {
       throw new Error(`Verification requirement "${id}" is not registered`);
     }
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length === 0) {
+      throw new Error(`Skipping verification requirement "${id}" requires a reason`);
+    }
 
     const updated: CompletionVerificationItem = {
       ...existing,
       status: "skipped",
-      evidence: `Skipped: ${reason}`,
+      evidence: `Skipped: ${normalizedReason}`,
       timestamp: Date.now(),
     };
 
@@ -119,16 +125,20 @@ export class CompletionTracker {
 
     for (const item of allItems) {
       if (item.status === "passed") {
-        passedItems.push(item);
-      } else if (item.status === "failed") {
-        if (item.required) {
-          failedItems.push(item);
+        if (!item.evidence?.trim()) {
+          if (item.required) failedItems.push(item);
+          continue;
         }
+        passedItems.push(item);
       } else if (item.status === "pending") {
         if (item.required) {
           pendingCount++;
           failedItems.push(item);
         }
+      } else if (item.required) {
+        // A required failed or skipped gate is not verification. Waivers must be modeled by
+        // making the gate optional before execution rather than silently converting a skip to pass.
+        failedItems.push(item);
       }
     }
 
@@ -144,7 +154,7 @@ export class CompletionTracker {
 
   public generateReceipt(
     summary: string,
-    diffStats?: { filesChanged: number; insertions: number; deletions: number }
+    diffStats?: { filesChanged: number; insertions: number; deletions: number },
   ): CompletionReceipt {
     const check = this.verifyAll();
 
