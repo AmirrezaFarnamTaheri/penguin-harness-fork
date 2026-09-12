@@ -1,6 +1,7 @@
 /**
  * Skill Engine & Cross-Agent Capability Registry.
  */
+import { parse as parseYaml } from "yaml";
 
 export interface SkillParameter {
   name: string;
@@ -34,118 +35,131 @@ export interface SkillMatchResult {
   reason: string;
 }
 
+const GENERIC_ROUTING_TOKENS = new Set([
+  "agent",
+  "automation",
+  "best",
+  "expert",
+  "helper",
+  "patterns",
+  "runner",
+  "skill",
+  "tool",
+  "workflow",
+]);
+
+const DESCRIPTION_STOP_WORDS = new Set([
+  "about",
+  "after",
+  "also",
+  "and",
+  "are",
+  "for",
+  "from",
+  "into",
+  "that",
+  "the",
+  "their",
+  "this",
+  "through",
+  "use",
+  "using",
+  "when",
+  "with",
+  "your",
+]);
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+}
+
+function inferSkillCategory(name: string, description: string, tags: string[]): SkillMetadataInfo["category"] {
+  const haystack = `${name.replace(/[-_]/g, " ")} ${description} ${tags.join(" ")}`.toLowerCase();
+  if (/\b(test|testing|qa|quality|verify|verification|debug|debugging|regression|lint|review|audit)\b/.test(haystack)) return "qa";
+  if (/\b(ui|ux|design|figma|visual|typography|brand|branding|css|accessibility)\b/.test(haystack)) return "design";
+  if (/\b(devops|deploy|deployment|ci|cd|pipeline|infra|infrastructure|docker|kubernetes|terraform|observability|monitoring|release)\b/.test(haystack)) return "ops";
+  if (/\b(plan|planning|project|product|prd|roadmap|epic|triage|strategy|management|manager|hiring|finance|budget)\b/.test(haystack)) return "management";
+  if (/\b(science|scientific|biology|bioinformatics|protein|chemistry|chemical|physics|medical|genomics|statistics|statistical)\b/.test(haystack)) return "science";
+  if (/\b(code|coding|software|engineer|engineering|api|backend|frontend|typescript|javascript|python|rust|golang|java|react|nextjs|architecture|security|database|sql)\b/.test(haystack)) return "engineering";
+  return "general";
+}
+
+function distinctiveNameTokens(name: string): string[] {
+  return name
+    .toLowerCase()
+    .split(/[-_]/)
+    .filter((token) => token.length > 2 && !GENERIC_ROUTING_TOKENS.has(token));
+}
+
+function textTokens(value: string): Set<string> {
+  return new Set(value.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+}
+
+function descriptionTokens(value: string): string[] {
+  return [...textTokens(value)].filter(
+    (token) => token.length > 3 && !DESCRIPTION_STOP_WORDS.has(token) && !GENERIC_ROUTING_TOKENS.has(token),
+  );
+}
+
 export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDefinition | null {
   const clean = rawContent.replace(/^\uFEFF/, "");
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n([\s\S]*))?$/.exec(clean);
   if (!match) return null;
 
-  const frontmatterStr = match[1] ?? "";
+  let fields: Record<string, unknown>;
+  try {
+    const parsed = parseYaml(match[1] ?? "");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    fields = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
   const body = match[2]?.trim() ?? "";
-  const fields: Record<string, string> = {};
-  const arrayFields: Record<string, string[]> = {};
-  let currentListKey: string | null = null;
-
-  for (const line of frontmatterStr.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-
-    if (trimmed.startsWith("- ") && currentListKey) {
-      const val = trimmed.slice(2).trim().replace(/^['"]|['"]$/g, "");
-      if (val) {
-        if (!arrayFields[currentListKey]) arrayFields[currentListKey] = [];
-        arrayFields[currentListKey]!.push(val);
-      }
-      continue;
-    }
-
-    const colonIdx = line.indexOf(":");
-    if (colonIdx <= 0) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const rawVal = line.slice(colonIdx + 1).trim();
-
-    if (key === "parameters" && rawVal.startsWith("[") && rawVal.endsWith("]")) {
-      currentListKey = null;
-      fields[key] = rawVal;
-      continue;
-    }
-
-    if (rawVal === "" || rawVal === "[]") {
-      currentListKey = key;
-      arrayFields[key] = [];
-      continue;
-    }
-
-    if (rawVal.startsWith("[") && rawVal.endsWith("]")) {
-      currentListKey = null;
-      try {
-        const parsed: unknown = JSON.parse(rawVal.replace(/'/g, '"'));
-        if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-          arrayFields[key] = parsed as string[];
-          continue;
-        }
-      } catch {
-        // Fall through to the legacy simple-list syntax below.
-      }
-      arrayFields[key] = rawVal
-        .slice(1, -1)
-        .split(",")
-        .map((value) => value.trim().replace(/^['"]|['"]$/g, ""))
-        .filter(Boolean);
-      continue;
-    }
-
-    currentListKey = null;
-    fields[key] = rawVal.replace(/^['"]|['"]$/g, "");
-  }
-
-  const name = fields.name;
+  const name = asString(fields.name);
   if (!name) return null;
-  const description = fields.description ?? "";
-  const shortDescription = fields["short-description"] ?? fields.short_description;
-  const version = fields.version;
-  const author = fields.author;
+  const description = asString(fields.description) ?? "";
+  const shortDescription = asString(fields["short-description"]) ?? asString(fields.short_description);
+  const version = asString(fields.version);
+  const author = asString(fields.author);
+  const tags = asStringArray(fields.tags);
+  const allowedTools = asStringArray(fields.allowed_tools).length > 0
+    ? asStringArray(fields.allowed_tools)
+    : asStringArray(fields.tools);
 
-  let category: SkillMetadataInfo["category"] = "general";
-  const rawCat = (fields.category ?? "").toLowerCase();
-  if (["engineering", "design", "qa", "science", "ops", "management"].includes(rawCat)) {
-    category = rawCat as SkillMetadataInfo["category"];
-  } else {
-    const lowerName = name.toLowerCase();
-    if (lowerName.includes("test") || lowerName.includes("qa") || lowerName.includes("verify") || lowerName.includes("debug")) {
-      category = "qa";
-    } else if (lowerName.includes("design") || lowerName.includes("ui") || lowerName.includes("ux") || lowerName.includes("css")) {
-      category = "design";
-    } else if (lowerName.includes("deploy") || lowerName.includes("ci") || lowerName.includes("pipeline") || lowerName.includes("ops")) {
-      category = "ops";
-    } else if (lowerName.includes("plan") || lowerName.includes("prd") || lowerName.includes("epic") || lowerName.includes("triage")) {
-      category = "management";
-    } else if (lowerName.includes("protein") || lowerName.includes("fold") || lowerName.includes("bio") || lowerName.includes("chem")) {
-      category = "science";
-    } else {
-      category = "engineering";
+  const rawCategory = asString(fields.category)?.toLowerCase();
+  const category: SkillMetadataInfo["category"] =
+    rawCategory && ["engineering", "design", "qa", "science", "ops", "management", "general"].includes(rawCategory)
+      ? (rawCategory as SkillMetadataInfo["category"])
+      : inferSkillCategory(name, description, tags);
+
+  const parameters: SkillParameter[] = [];
+  let rawParameters: unknown = fields.parameters;
+  if (typeof rawParameters === "string") {
+    try {
+      rawParameters = JSON.parse(rawParameters);
+    } catch {
+      rawParameters = undefined;
     }
   }
-
-  const tags = arrayFields.tags ?? [];
-  const allowedTools = arrayFields.allowed_tools ?? arrayFields.tools ?? [];
-  const parameters: SkillParameter[] = [];
-  const rawParams = fields.parameters;
-  if (rawParams) {
-    try {
-      const parsed: unknown = JSON.parse(rawParams);
-      if (!Array.isArray(parsed)) throw new Error("parameters must be a JSON array");
-      for (const item of parsed) {
-        if (typeof item !== "object" || item === null || typeof (item as { name?: unknown }).name !== "string") continue;
-        const parameter = item as Record<string, unknown>;
-        parameters.push({
-          name: parameter.name as string,
-          description: typeof parameter.description === "string" ? parameter.description : "",
-          required: Boolean(parameter.required),
-          default: typeof parameter.default === "string" ? parameter.default : undefined,
-        });
-      }
-    } catch {
-      // Unsupported structured parameter syntax remains empty rather than being misparsed.
+  if (Array.isArray(rawParameters)) {
+    for (const item of rawParameters) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const parameter = item as Record<string, unknown>;
+      const parameterName = asString(parameter.name);
+      if (!parameterName) continue;
+      const defaultValue = asString(parameter.default);
+      parameters.push({
+        name: parameterName,
+        description: asString(parameter.description) ?? "",
+        required: parameter.required === true,
+        ...(defaultValue !== undefined ? { default: defaultValue } : {}),
+      });
     }
   }
 
@@ -167,36 +181,64 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
 
 export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): SkillMatchResult {
   const lowerPrompt = prompt.toLowerCase();
+  const promptTokens = textTokens(prompt);
   const matchedKeywords: string[] = [];
   let score = 0;
-  const normalizedName = skill.name.toLowerCase().replace(/[-_]/g, " ");
-  if (lowerPrompt.includes(skill.name.toLowerCase()) || lowerPrompt.includes(normalizedName)) {
-    score += 0.5;
+
+  const canonicalName = skill.name.toLowerCase();
+  const normalizedName = canonicalName.replace(/[-_]/g, " ");
+  const exactNameMatch = lowerPrompt.includes(canonicalName) || lowerPrompt.includes(normalizedName);
+  if (exactNameMatch) {
+    score += 0.6;
     matchedKeywords.push(skill.name);
   }
-  for (const tag of skill.tags) {
-    const value = tag.toLowerCase();
-    if (value.length > 2 && lowerPrompt.includes(value)) {
-      score += 0.15;
-      matchedKeywords.push(tag);
-    }
-  }
-  for (const token of skill.name.toLowerCase().split(/[-_]/)) {
-    if (token.length > 3 && lowerPrompt.includes(token) && !matchedKeywords.includes(token)) {
-      score += 0.1;
+
+  const distinctiveTokens = distinctiveNameTokens(skill.name);
+  let matchedDistinctive = 0;
+  for (const token of distinctiveTokens) {
+    if (promptTokens.has(token)) {
+      matchedDistinctive += 1;
+      score += 0.11;
       matchedKeywords.push(token);
     }
   }
-  if (lowerPrompt.includes(skill.category)) {
-    score += 0.1;
+  if (distinctiveTokens.length > 1 && matchedDistinctive === distinctiveTokens.length) score += 0.12;
+
+  for (const tag of skill.tags) {
+    const value = tag.toLowerCase();
+    if (value.length > 2 && (lowerPrompt.includes(value) || promptTokens.has(value))) {
+      score += 0.14;
+      matchedKeywords.push(tag);
+    }
+  }
+
+  if (skill.category !== "general" && promptTokens.has(skill.category)) {
+    score += 0.08;
     matchedKeywords.push(skill.category);
   }
+
+  let descriptionMatches = 0;
+  for (const token of descriptionTokens(`${skill.shortDescription ?? ""} ${skill.description}`)) {
+    if (!promptTokens.has(token) || matchedKeywords.includes(token)) continue;
+    matchedKeywords.push(token);
+    descriptionMatches += 1;
+    score += 0.025;
+    if (descriptionMatches >= 4) break;
+  }
+
+  // Service wrappers are intentionally numerous. A generic request mentioning only words such
+  // as "automation" must not fan out across hundreds of unrelated integrations; require at
+  // least one distinctive service/product token (or an explicit canonical-name match).
+  if (canonicalName.endsWith("-automation") && !exactNameMatch && matchedDistinctive === 0) {
+    score = Math.min(score, 0.19);
+  }
+
   const normalizedScore = Math.min(1, Math.round(score * 100) / 100);
   return {
     skill,
     score: normalizedScore,
-    matchedKeywords,
-    reason: matchedKeywords.length ? `Matched terms: ${matchedKeywords.join(", ")}` : "No strong term match",
+    matchedKeywords: [...new Set(matchedKeywords)],
+    reason: matchedKeywords.length ? `Matched terms: ${[...new Set(matchedKeywords)].join(", ")}` : "No strong term match",
   };
 }
 
@@ -264,9 +306,15 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
 };
 
 export function resolveSkillAlias(name: string, customAliases?: Record<string, string>): string {
-  const lower = name.toLowerCase();
-  if (customAliases?.[lower]) return customAliases[lower]!;
-  return DEFAULT_SKILL_ALIASES[lower] ?? name;
+  const aliases = customAliases ?? DEFAULT_SKILL_ALIASES;
+  let current = name.toLowerCase();
+  const visited = new Set<string>();
+  while (aliases[current]) {
+    if (visited.has(current)) return name;
+    visited.add(current);
+    current = aliases[current]!;
+  }
+  return current === name.toLowerCase() ? name : current;
 }
 
 export class SkillRegistry {
@@ -280,12 +328,31 @@ export class SkillRegistry {
   }
 
   public registerAlias(alias: string, canonicalName: string): void {
-    this.aliases.set(alias.toLowerCase(), canonicalName.toLowerCase());
+    const lowerAlias = alias.toLowerCase();
+    const lowerTarget = canonicalName.toLowerCase();
+    if (lowerAlias === lowerTarget) throw new Error(`Skill alias '${alias}' cannot target itself`);
+    const previous = this.aliases.get(lowerAlias);
+    this.aliases.set(lowerAlias, lowerTarget);
+    try {
+      this.resolveAlias(lowerAlias);
+    } catch (error) {
+      if (previous === undefined) this.aliases.delete(lowerAlias);
+      else this.aliases.set(lowerAlias, previous);
+      throw error;
+    }
   }
 
   public resolveAlias(name: string): string {
-    const lower = name.toLowerCase();
-    return this.aliases.get(lower) ?? lower;
+    let current = name.toLowerCase();
+    const visited = new Set<string>();
+    while (this.aliases.has(current)) {
+      if (visited.has(current)) {
+        throw new Error(`Skill alias cycle detected at '${current}'`);
+      }
+      visited.add(current);
+      current = this.aliases.get(current)!;
+    }
+    return current;
   }
 
   public register(skill: SkillDefinition): void {
@@ -355,7 +422,11 @@ export class SkillRegistry {
     return candidates
       .map((skill) => scoreSkillRelevance(skill, prompt))
       .filter((result) => result.score >= minScore)
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const specificity = distinctiveNameTokens(b.skill.name).length - distinctiveNameTokens(a.skill.name).length;
+        return specificity !== 0 ? specificity : a.skill.name.localeCompare(b.skill.name);
+      })
       .slice(0, maxResults);
   }
 
