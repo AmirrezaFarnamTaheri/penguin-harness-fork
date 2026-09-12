@@ -1,13 +1,8 @@
 /**
  * Credential and Sensitive Secret Redaction Engine.
  *
- * Synthesized from Qwen-Code (Project 126: @qwen-code/acp-bridge logRedaction.ts)
- * and OpenFang (Project 110: secret isolation).
- *
- * Guarantees zero credential leakage across:
- * - Agent session transcripts and replay journals
- * - External logging and telemetry sinks
- * - Omnimessage previews and error diagnostics
+ * Redaction is defense-in-depth: value-format rules catch recognizable credentials while
+ * structured-object redaction also uses the field name so opaque secrets are not missed.
  */
 
 export const REDACTED_MARKER = "<redacted>";
@@ -18,78 +13,69 @@ export interface RedactionRule {
   replace: (substring: string, ...args: string[]) => string;
 }
 
+export interface RedactObjectOptions {
+  /** Additional structured field names whose values must be removed in full. */
+  sensitiveFields?: Iterable<string>;
+}
+
 export const CREDENTIAL_RULES: RedactionRule[] = [
-  // 1. PEM formatted private keys
   {
     name: "pem_private_key",
     pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
     replace: () => `-----BEGIN PRIVATE KEY-----\n[${REDACTED_MARKER}]\n-----END PRIVATE KEY-----`,
   },
-  // 2. Bearer & QQBot authorization tokens
   {
     name: "bearer_token",
     pattern: /(Bearer\s+|QQBot\s+)[A-Za-z0-9._~+/=-]+/gi,
     replace: (_match, prefix) => `${prefix}${REDACTED_MARKER}`,
   },
-  // 3. Authorization header (Basic, Digest, or custom)
   {
     name: "auth_header",
     pattern: /((?:authorization|x-api-key|x-auth-token|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?\S+/gi,
     replace: (_match, header) => `${header}${REDACTED_MARKER}`,
   },
-  // 4. API keys with standard sk- prefix (OpenAI, Anthropic, DeepSeek, Google, etc. >=20 chars)
   {
     name: "sk_api_key",
     pattern: /sk-(?:ant-api03-|proj-)?[a-zA-Z0-9_-]{20,}/g,
     replace: () => `sk-${REDACTED_MARKER}`,
   },
-  // 5. GitHub personal access tokens and OAuth tokens
   {
     name: "github_token",
     pattern: /(?:ghp|gho|ghu|ghs|ghr|github_pat)_[a-zA-Z0-9_]{20,}/g,
     replace: () => `ghp_${REDACTED_MARKER}`,
   },
-  // 6. GitLab personal access tokens
   {
     name: "gitlab_token",
     pattern: /glpat-[a-zA-Z0-9_-]{20,}/g,
     replace: () => `glpat-${REDACTED_MARKER}`,
   },
-  // 7. Slack API tokens (bot & user)
   {
     name: "slack_token",
     pattern: /xox[baprs]-[a-zA-Z0-9-]{20,}/g,
     replace: () => `xoxb-${REDACTED_MARKER}`,
   },
-  // 8. AWS Access Key IDs (AKIA, ASIA, ABIA, ACCA)
   {
     name: "aws_access_key",
     pattern: /(?:AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}/g,
     replace: () => `AKIA${REDACTED_MARKER}`,
   },
-  // 9. AWS Secret Access Keys (40 chars base64, usually preceded by label)
   {
     name: "aws_secret_key",
     pattern: /((?:aws_secret_access_key|aws_secret_key)\s*[:=]\s*)[A-Za-z0-9/+=]{40}/gi,
     replace: (_match, prefix) => `${prefix}${REDACTED_MARKER}`,
   },
-  // 10. URI embedded basic auth credentials (https://user:pass@host)
   {
     name: "uri_credentials",
     pattern: /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^:@\s]+):([^@\s]+)@/g,
     replace: (_match, scheme, user) => `${scheme}${user}:${REDACTED_MARKER}@`,
   },
-  // 11. Generic key-value secret assignments (e.g. api_key="secret", password: 'xyz')
   {
     name: "generic_assignment",
-    pattern: /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
+    pattern: /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
     replace: (_match, prefix, quote) => `${prefix}${REDACTED_MARKER}${quote || ""}`,
   },
 ];
 
-/**
- * Scans a string for sensitive credentials and returns true if any pattern matches.
- */
 export function containsCredentials(text: string): boolean {
   if (!text || typeof text !== "string") return false;
   return CREDENTIAL_RULES.some((rule) => {
@@ -98,9 +84,6 @@ export function containsCredentials(text: string): boolean {
   });
 }
 
-/**
- * Redacts all identified credentials from the input string.
- */
 export function redactCredentials(text: string): string {
   if (!text || typeof text !== "string") return text;
 
@@ -112,30 +95,72 @@ export function redactCredentials(text: string): string {
   return result;
 }
 
+function normalizeFieldName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+const DEFAULT_SENSITIVE_FIELDS = new Set([
+  "apikey",
+  "clientsecret",
+  "password",
+  "passwd",
+  "pwd",
+  "accesstoken",
+  "refreshtoken",
+  "secrettoken",
+  "sessiontoken",
+  "authorization",
+  "proxyauthorization",
+  "auth",
+  "credential",
+  "credentials",
+  "secret",
+  "token",
+  "privatekey",
+  "awssecretaccesskey",
+]);
+
+function buildSensitiveFieldSet(options?: RedactObjectOptions): Set<string> {
+  const set = new Set(DEFAULT_SENSITIVE_FIELDS);
+  for (const field of options?.sensitiveFields ?? []) {
+    const normalized = normalizeFieldName(field);
+    if (normalized) set.add(normalized);
+  }
+  return set;
+}
+
+function isSensitiveField(key: string, sensitive: Set<string>): boolean {
+  const normalized = normalizeFieldName(key);
+  if (sensitive.has(normalized)) return true;
+
+  // Cover common vendor/config prefixes without treating analytical fields such as tokenCount as secrets.
+  return (
+    /^(?:openai|anthropic|google|github|gitlab|slack|aws)?apikey$/.test(normalized) ||
+    /^(?:client|app|oauth)secret$/.test(normalized) ||
+    /^(?:access|refresh|secret|session|auth|oauth)token$/.test(normalized) ||
+    /^(?:private|signing|encryption)key$/.test(normalized)
+  );
+}
+
 /**
- * Recursively redacts credentials across JSON objects, arrays, and primitive fields.
+ * Recursively redact credentials while preserving the structured key context at every level.
+ * Values below a sensitive field are removed in full even when the opaque value has no detectable prefix.
  */
-export function redactObject<T>(input: T): T {
-  if (input === null || input === undefined) return input;
-  if (typeof input === "string") return redactCredentials(input) as unknown as T;
-  if (typeof input !== "object") return input;
+export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T {
+  const sensitive = buildSensitiveFieldSet(options);
 
-  if (Array.isArray(input)) {
-    return input.map((item) => redactObject(item)) as unknown as T;
-  }
+  const visit = (value: unknown): unknown => {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") return redactCredentials(value);
+    if (typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map(visit);
 
-  const copy: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    // If key name itself indicates a secret, redact entire string value immediately
-    if (
-      typeof value === "string" &&
-      /^(?:api_?key|password|secret|token|auth|credential)$/i.test(key)
-    ) {
-      copy[key] = REDACTED_MARKER;
-    } else {
-      copy[key] = redactObject(value);
+    const copy: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      copy[key] = isSensitiveField(key, sensitive) ? REDACTED_MARKER : visit(child);
     }
-  }
+    return copy;
+  };
 
-  return copy as T;
+  return visit(input) as T;
 }
