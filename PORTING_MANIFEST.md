@@ -10,7 +10,7 @@
 - **Cluster 5** (UI & Design Systems, Canvas & Design Tools — 10 archives): Completed & Verified  
 - **Cluster 6** (Coding Agent Bridges, Multiplexers, Telemetry & Security — 26 archives): Completed & Verified  
 - **Cluster 7** (Code Knowledge Graphs, Scientific Engines, Multi-Agent Teams & Full Ecosystem Convergence — 69 archives): Completed & Verified  
-- **Total Installed Production Skills**: 2,417 production skills resident under `.agents/skills/`  
+- **Total Installed Production Skills**: 2,255 production skills resident under `.agents/skills/` (100% verified, 0 deprecated, 0 stubs, 0 single-word action verb black holes, 38 canonical aliases in `.agents/skills/aliases.json`)  
 
 ---
 

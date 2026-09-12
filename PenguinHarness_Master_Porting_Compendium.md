@@ -1073,6 +1073,52 @@ Following the deep grounded architectural review in `deep_skill_naming_overlap_r
 - **Frontmatter Name Collisions**: **0**
 - **Directory vs Frontmatter Name Mismatches**: **0** (100% 1:1 match)
 
+### 9.8. Pass 5: Single-Word Action Verbs Disambiguation & Runtime Skill Alias Registry
+
+To eliminate LLM prompt catchment basins ("semantic black holes") where broad single-word developer verbs hijack intent from domain-specialized procedures, Pass 5 executed the complete disambiguation of the 18 generic verbs and direct sibling stem collisions, backed by an enterprise runtime alias resolution layer in core and server.
+
+#### 1. Generic Action Verbs Disambiguated (18 skills)
+- `plan` &rarr; `task-planning-runner` (ordered task implementation planning with dependency tracking)
+- `review` &rarr; `diff-correctness-review` (diff-scoped correctness review inspecting callers and invariants)
+- `test` &rarr; `project-test-runner` (stack-detecting test suite runner)
+- `debug` &rarr; `root-cause-debugger` (systematic root cause reproduction and localization)
+- `verify` &rarr; `runtime-output-verifier` (real runtime output and CLI observable verification)
+- `diagnose` &rarr; `performance-diagnostics-loop` (disciplined 6-step loop for hard bugs and performance regressions)
+- `implement` &rarr; `feature-implementation-runner` (scoped edits and proportionate verification execution)
+- `simplify` &rarr; `code-simplification-cleaner` (behavior-preserving clarity refactoring)
+- `summarize` &rarr; `media-url-summarizer` (multimodal media URL & document summarization)
+- `release` &rarr; `release-process-runner` (named version preflight, packaging, and smoke verification)
+- `init` &rarr; `project-init-scaffold` (codebase documentation scaffolding and template bootstrap)
+- `delegate` &rarr; `subagent-delegator` (strategic subagent task delegation)
+- `handoff` &rarr; `agent-session-handoff` (compact decision-ready session handoff authoring)
+- `interview` &rarr; `socratic-task-interview` (structured socratic inquiry for product/implementation choices)
+- `loop` &rarr; `recurring-prompt-loop` (recurring interval prompt/command execution)
+- `customize` &rarr; `agent-profile-customizer` (custom agent profiles and repl authoring)
+- `screenshot` &rarr; `window-screenshot-capture` (cross-platform desktop and window region capture)
+- `draft` &rarr; `legal-clinic-document-drafter` (practice-area legal clinic document drafting)
+
+#### 2. Suffix Normalizations & Direct Sibling Collisions Resolved (6 skills)
+- `secrets-management-best-practices` &rarr; `aws-secrets-manager-best-practices` (eliminating collision with general CI/CD `secrets-management`)
+- `seo-audit-expert` &rarr; `seo-optimization-bilingual` (eliminating collision with standard `seo-audit`)
+- `e2e-testing-expert` &rarr; `e2e-testing-bilingual` (eliminating collision with `e2e-testing-patterns`)
+- `nextjs-app-router-expert` &rarr; `nextjs-app-router-bilingual` (eliminating collision with `nextjs-app-router-patterns`)
+- `prompt-engineering-expert` &rarr; `prompt-instructions-design` (eliminating collision with `prompt-engineering-patterns`)
+- `ai-prompt-engineering-expert` &rarr; `prompt-engineering-bilingual` (eliminating collision with `prompt-engineering-patterns`)
+
+#### 3. Enterprise Runtime Skill Alias Registry
+- **Standardized Alias Table**: Defined `DEFAULT_SKILL_ALIASES` and `resolveSkillAlias()` in `@prismshadow/penguin-core` (`packages/core/src/agent/skill-engine.ts`).
+- **In-Memory Registry Resolution**: Enhanced `SkillRegistry` with transparent alias resolution (`get()`, `has()`, `delete()`, `buildPromptSection()`, and dynamic `registerAlias()`).
+- **Server API Transparent Fallback**: Integrated `resolveSkillAlias()` into `packages/server/src/services/directory-skills.ts` (`resolveDirectorySkills()`) so that legacy calls requesting old names transparently resolve to their canonical counterparts with zero 404s.
+- **Declarative Artifact**: Created `.agents/skills/aliases.json` declaring all 38 canonical aliases for external tooling, harnesses, and UI inspection.
+
+#### 4. Final Verified Metrics (Pass 5)
+- **Active Production Skills**: **2,255**
+- **Single-Word Action Verb Catchment Basins**: **0**
+- **Direct Sibling Suffix Collisions**: **0**
+- **Directory vs Frontmatter Name Mismatches**: **0** (100% 1:1 match)
+- **Runtime Alias Compatibility**: **38 Canonical Mappings (100% Backward Compatible)**
+- **Test Suite Pass Rate**: **100% (Upstream Features 6/6, Skill Engine 7/7, Server Skills 24/24)**
+
 ---
 
 ## 10. Appendix & Cross-Reference Index

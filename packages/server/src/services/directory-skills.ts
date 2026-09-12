@@ -22,7 +22,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseSkillFrontmatter, PLUGIN_NAME_PATTERN } from "@prismshadow/penguin-core";
+import { parseSkillFrontmatter, PLUGIN_NAME_PATTERN, resolveSkillAlias } from "@prismshadow/penguin-core";
 import type { SkillMetadata } from "@prismshadow/penguin-core";
 import { HttpError } from "../http/errors.js";
 import {
@@ -218,7 +218,11 @@ export async function resolveDirectorySkills(
   if (names.length === 0) return [];
   const found = new Map((await discoverDirectorySkills(dir)).map((s) => [s.name, s]));
   const picked = names.map((name) => {
-    const skill = found.get(name);
+    let skill = found.get(name);
+    if (!skill) {
+      const alias = resolveSkillAlias(name);
+      skill = found.get(alias);
+    }
     if (!skill) {
       throw new HttpError(404, "unknown_skill", `Skill is not in ${dir}: ${name}`);
     }

@@ -241,25 +241,109 @@ export function interpolateVariables(template: string, vars: Record<string, stri
 }
 
 /**
+ * Standard alias mapping for deprecated, short, or refactored skill names.
+ * Ensures backward-compatible resolution across prompts, CLI invocation, and API calls.
+ */
+export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
+  // Generic Action Verbs -> Canonical Scoped Runners
+  "plan": "task-planning-runner",
+  "review": "diff-correctness-review",
+  "test": "project-test-runner",
+  "debug": "root-cause-debugger",
+  "verify": "runtime-output-verifier",
+  "diagnose": "performance-diagnostics-loop",
+  "implement": "feature-implementation-runner",
+  "simplify": "code-simplification-cleaner",
+  "summarize": "media-url-summarizer",
+  "release": "release-process-runner",
+  "init": "project-init-scaffold",
+  "delegate": "subagent-delegator",
+  "handoff": "agent-session-handoff",
+  "interview": "socratic-task-interview",
+  "loop": "recurring-prompt-loop",
+  "customize": "agent-profile-customizer",
+  "screenshot": "window-screenshot-capture",
+  "draft": "legal-clinic-document-drafter",
+
+  // Framework-Specific Precision Renames
+  "auth-patterns": "nextjs-auth-patterns",
+  "workflow-patterns": "conductor-workflow-patterns",
+  "workflow-orchestration-patterns": "temporal-workflow-orchestration",
+  "connect": "composio-cli-connect",
+  "connect-apps": "composio-cli-connect",
+
+  // Deprecated/Purged Stubs & Duplicates
+  "pptx": "pptx-author",
+  "xlsx": "xlsx-author",
+  "spreadsheets": "xlsx-author",
+  "journal-entry-prep": "journal-entry",
+  "data-model-creation": "database-design",
+  "plain-language-letters": "legal-plain-language",
+  "relational-database-mcp-cloudbase": "postgresql-development-cloudbase",
+  "relational-database-web-cloudbase": "postgresql-development-cloudbase",
+  "rust-check": "cargo-test",
+
+  // Suffix Normalization & Sibling Disambiguation
+  "secrets-management-best-practices": "aws-secrets-manager-best-practices",
+  "seo-audit-expert": "seo-optimization-bilingual",
+  "e2e-testing-expert": "e2e-testing-bilingual",
+  "nextjs-app-router-expert": "nextjs-app-router-bilingual",
+  "prompt-engineering-expert": "prompt-instructions-design",
+  "ai-prompt-engineering-expert": "prompt-engineering-bilingual",
+};
+
+/**
+ * Resolves a given skill name against the canonical alias table.
+ */
+export function resolveSkillAlias(name: string, customAliases?: Record<string, string>): string {
+  const lower = name.toLowerCase();
+  if (customAliases && customAliases[lower]) {
+    return customAliases[lower]!;
+  }
+  return DEFAULT_SKILL_ALIASES[lower] ?? name;
+}
+
+/**
  * SkillRegistry provides in-memory indexing, querying, matching, and prompt assembly.
  */
 export class SkillRegistry {
   private readonly skills = new Map<string, SkillDefinition>();
+  private readonly aliases = new Map<string, string>();
+
+  constructor(initialAliases: Record<string, string> = DEFAULT_SKILL_ALIASES) {
+    for (const [alias, target] of Object.entries(initialAliases)) {
+      this.aliases.set(alias.toLowerCase(), target.toLowerCase());
+    }
+  }
+
+  public registerAlias(alias: string, canonicalName: string): void {
+    this.aliases.set(alias.toLowerCase(), canonicalName.toLowerCase());
+  }
+
+  public resolveAlias(name: string): string {
+    const lower = name.toLowerCase();
+    return this.aliases.get(lower) ?? lower;
+  }
 
   public register(skill: SkillDefinition): void {
     this.skills.set(skill.name.toLowerCase(), skill);
   }
 
   public get(name: string): SkillDefinition | undefined {
-    return this.skills.get(name.toLowerCase());
+    const canonical = this.resolveAlias(name);
+    return this.skills.get(canonical) ?? this.skills.get(name.toLowerCase());
   }
 
   public has(name: string): boolean {
-    return this.skills.has(name.toLowerCase());
+    const canonical = this.resolveAlias(name);
+    return this.skills.has(canonical) || this.skills.has(name.toLowerCase());
   }
 
   public delete(name: string): boolean {
-    return this.skills.delete(name.toLowerCase());
+    const canonical = this.resolveAlias(name);
+    const deletedCanonical = this.skills.delete(canonical);
+    const deletedExact = this.skills.delete(name.toLowerCase());
+    return deletedCanonical || deletedExact;
   }
 
   public size(): number {

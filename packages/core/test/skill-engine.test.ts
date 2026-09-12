@@ -4,6 +4,8 @@ import {
   scoreSkillRelevance,
   interpolateVariables,
   SkillRegistry,
+  DEFAULT_SKILL_ALIASES,
+  resolveSkillAlias,
 } from "../src/agent/skill-engine.js";
 
 describe("SkillEngine", () => {
@@ -94,5 +96,47 @@ Deploy container images via registry.`)!;
     expect(promptSection).toContain("=== SKILL: ui-ux-pro-max ===");
     expect(promptSection).toContain("Use high-contrast accessible color palettes.");
     expect(promptSection).toContain("=== END SKILL: ui-ux-pro-max ===");
+  });
+
+  it("resolves default and custom skill aliases transparently", () => {
+    expect(resolveSkillAlias("plan")).toBe("task-planning-runner");
+    expect(resolveSkillAlias("review")).toBe("diff-correctness-review");
+    expect(resolveSkillAlias("test")).toBe("project-test-runner");
+    expect(resolveSkillAlias("debug")).toBe("root-cause-debugger");
+    expect(resolveSkillAlias("auth-patterns")).toBe("nextjs-auth-patterns");
+    expect(resolveSkillAlias("pptx")).toBe("pptx-author");
+    expect(resolveSkillAlias("xlsx")).toBe("xlsx-author");
+    expect(resolveSkillAlias("unknown-custom-skill")).toBe("unknown-custom-skill");
+
+    // Custom alias override
+    expect(resolveSkillAlias("custom-alias", { "custom-alias": "canonical-target" })).toBe("canonical-target");
+  });
+
+  it("SkillRegistry retrieves skills by legacy aliases seamlessly", () => {
+    const registry = new SkillRegistry();
+    const planner = parseSkillMarkdown(`---
+name: task-planning-runner
+description: Ordered task implementation planning.
+category: management
+tags: [planning, tasks]
+---
+Create ordered step-by-step implementation plans.`)!;
+
+    registry.register(planner);
+
+    // Both canonical and alias lookups succeed
+    expect(registry.has("task-planning-runner")).toBe(true);
+    expect(registry.has("plan")).toBe(true);
+    expect(registry.get("plan")?.name).toBe("task-planning-runner");
+
+    // Prompt section formatting with legacy alias
+    const section = registry.buildPromptSection("plan");
+    expect(section).toContain("=== SKILL: task-planning-runner ===");
+    expect(section).toContain("Create ordered step-by-step implementation plans.");
+
+    // Dynamic alias registration
+    registry.registerAlias("my-custom-plan-alias", "task-planning-runner");
+    expect(registry.has("my-custom-plan-alias")).toBe(true);
+    expect(registry.get("my-custom-plan-alias")?.name).toBe("task-planning-runner");
   });
 });

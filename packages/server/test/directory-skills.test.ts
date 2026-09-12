@@ -292,4 +292,31 @@ describe("directory skills api", () => {
       ).status,
     ).toBe(400);
   });
+
+  it("resolves legacy skill aliases transparently to canonical directory skills", async () => {
+    // Write canonical skill "task-planning-runner" to directory
+    await writeSkill(".agents/skills", "task-planning-runner", {
+      description: "Ordered task implementation planning",
+    });
+
+    // Request using legacy alias "plan"
+    const res = await owner.post(`/api/projects/${projectId}/agents`, {
+      agentId: "aliased_skill_agent",
+      skillsDirectory: dir,
+      directorySkills: ["plan"],
+    });
+
+    expect(res.status).toBe(201);
+
+    const onDisk = await fs.readFile(
+      path.join(skillsDir(t.root, projectId, "aliased_skill_agent"), "task-planning-runner", "SKILL.md"),
+      "utf8",
+    );
+    expect(onDisk).toBe(skillMd("task-planning-runner", "Ordered task implementation planning"));
+
+    const installed = (await (
+      await owner.get(`/api/projects/${projectId}/agents/aliased_skill_agent/skills`)
+    ).json()) as AgentSkillsResponse;
+    expect(installed.skills.some((s) => s.name === "task-planning-runner")).toBe(true);
+  });
 });
