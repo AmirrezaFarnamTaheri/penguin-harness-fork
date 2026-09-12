@@ -14,6 +14,7 @@
     "skills:audit": "node scripts/skills/audit.mjs",
     "skills:check": "node scripts/skills/audit.mjs --check",
     "skills:catalog": "node scripts/skills/catalog.mjs --json=artifacts/skill-catalog.json --markdown=artifacts/skill-catalog.md",
+    "skills:readiness": "node scripts/skills/readiness.mjs --json=artifacts/skill-readiness.json --markdown=artifacts/skill-readiness.md",
     "skills:normalize": "node scripts/skills/normalize-frontmatter.mjs --write",
     "skills:normalize:check": "node scripts/skills/normalize-frontmatter.mjs",
     "skills:aliases:check": "node scripts/skills/sync-aliases.mjs",
