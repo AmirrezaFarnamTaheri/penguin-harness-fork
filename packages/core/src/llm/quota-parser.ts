@@ -1,25 +1,23 @@
 /**
  * Quota and rate-limit detection, error classification, and cooldown calculation.
- * Absorbed and unified from agy-bridge, antigravity-quota-monitor, 9router, and gpt-load.
  */
 
 export interface QuotaDetectionResult {
   isQuota: boolean;
   isAuthenticationFailure: boolean;
+  isOverloaded?: boolean;
+  isContextLengthExceeded?: boolean;
   resetMs?: number;
   resetText?: string;
   code?: number | string;
   reason?: string;
 }
 
-export const DEFAULT_COOLDOWN_SEC = 15 * 60; // 900 seconds default cooldown
+export const DEFAULT_COOLDOWN_SEC = 15 * 60;
 
 export const QUOTA_RE = /RESOURCE_EXHAUSTED \(code 429\)/;
 export const RESET_RE = /Resets in ((?:\d+h)?(?:\d+m)?(?:\d+s)?)\b/;
 
-/**
- * Parses duration text into seconds (agy-bridge compatibility).
- */
 export function parseResetDuration(text: string): number | undefined {
   const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(text.trim());
   if (!m || (!m[1] && !m[2] && !m[3])) return undefined;
@@ -49,21 +47,34 @@ const AUTH_PATTERNS = [
   /permission denied/i,
 ];
 
+const OVERLOAD_PATTERNS = [
+  /\boverload(?:ed|ing)?\b/i,
+  /\bcapacity\b/i,
+  /temporar(?:y|ily) unavailable/i,
+  /service unavailable/i,
+  /server busy/i,
+  /\b529\b/,
+  /\b503\b/,
+];
+
+const CONTEXT_LENGTH_PATTERNS = [
+  /context[_\s-]*(?:length|window)/i,
+  /context_length_exceeded/i,
+  /maximum context/i,
+  /max(?:imum)? tokens/i,
+  /too many tokens/i,
+];
+
 const RESET_DURATION_RE = /Resets in ((?:\d+h)?(?:\d+m)?(?:\d+s)?)\b/i;
 const RETRY_AFTER_RE = /retry-after:\s*(\d+)/i;
 const SECONDS_RESET_RE = /reset_after[:\s]+(\d+(?:\.\d+)?)\s*s?/i;
 
-/**
- * Parses natural duration strings like "96h53m25s", "1h30m", "45s", or "90m".
- */
 export function parseDurationToMs(text: string): number | undefined {
   if (!text) return undefined;
   const match = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i.exec(text.trim());
   if (!match || (!match[1] && !match[2] && !match[3])) {
     const rawNum = Number(text);
-    if (!Number.isNaN(rawNum) && rawNum > 0) {
-      return rawNum * 1000;
-    }
+    if (!Number.isNaN(rawNum) && rawNum > 0) return rawNum * 1000;
     return undefined;
   }
   const hours = Number(match[1] ?? 0);
@@ -72,9 +83,6 @@ export function parseDurationToMs(text: string): number | undefined {
   return (hours * 3600 + minutes * 60 + seconds) * 1000;
 }
 
-/**
- * Formats milliseconds into human-readable duration strings (e.g. "1h 35m", "45s").
- */
 export function formatDurationMs(ms: number): string {
   if (ms <= 0) return "0s";
   const totalSeconds = Math.floor(ms / 1000);
@@ -89,30 +97,48 @@ export function formatDurationMs(ms: number): string {
   return parts.join(" ");
 }
 
-/**
- * Analyzes error messages, log lines, or response bodies to detect quota exhaustion or rate limiting.
- */
-export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
-  const text = typeof input === "string" 
-    ? input 
-    : input instanceof Error 
-      ? `${input.name}: ${input.message} ${input.stack ?? ""}`
-      : JSON.stringify(input ?? "");
+function extractCode(input: unknown): number | string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const record = input as Record<string, unknown>;
+  const code = record.code ?? record.status ?? record.statusCode;
+  return typeof code === "number" || typeof code === "string" ? code : undefined;
+}
 
-  const isAuth = AUTH_PATTERNS.some((p) => p.test(text));
+export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
+  const text = typeof input === "string"
+    ? input
+    : input instanceof Error
+      ? `${input.name}: ${input.message}`
+      : JSON.stringify(input ?? "");
+  const code = extractCode(input);
+  const isAuth = AUTH_PATTERNS.some((pattern) => pattern.test(text));
+  const isQuota = QUOTA_PATTERNS.some((pattern) => pattern.test(text));
+  const isOverloaded = OVERLOAD_PATTERNS.some((pattern) => pattern.test(text));
+  const isContextLengthExceeded = CONTEXT_LENGTH_PATTERNS.some((pattern) => pattern.test(text));
+
   if (isAuth) {
     return {
       isQuota: false,
       isAuthenticationFailure: true,
+      isOverloaded,
+      isContextLengthExceeded,
+      code,
       reason: "Authentication error / invalid API key",
     };
   }
 
-  const isQuota = QUOTA_PATTERNS.some((p) => p.test(text));
   if (!isQuota) {
     return {
       isQuota: false,
       isAuthenticationFailure: false,
+      isOverloaded,
+      isContextLengthExceeded,
+      code,
+      reason: isOverloaded
+        ? "Provider overloaded or temporarily unavailable"
+        : isContextLengthExceeded
+          ? "Context length exceeded"
+          : undefined,
     };
   }
 
@@ -147,7 +173,6 @@ export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
     }
   }
 
-  // Default fallback cooldown if server didn't specify exact reset: 60s
   if (!resetMs) {
     resetMs = 60_000;
     resetText = "60s";
@@ -156,15 +181,15 @@ export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
   return {
     isQuota: true,
     isAuthenticationFailure: false,
+    isOverloaded,
+    isContextLengthExceeded,
     resetMs,
     resetText,
+    code,
     reason: "Rate limit or quota exhausted",
   };
 }
 
-/**
- * CooldownRegistry tracking per-model failover cooldowns (absorbed from agy-bridge).
- */
 export class CooldownRegistry {
   private until = new Map<string, number>();
 
@@ -186,10 +211,7 @@ export class CooldownRegistry {
   }
 
   public clear(model?: string): void {
-    if (model) {
-      this.until.delete(model);
-    } else {
-      this.until.clear();
-    }
+    if (model) this.until.delete(model);
+    else this.until.clear();
   }
 }
