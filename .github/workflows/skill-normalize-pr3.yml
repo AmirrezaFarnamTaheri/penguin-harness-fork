@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: skill-normalize-pr3
+  cancel-in-progress: true
+
 jobs:
   normalize:
     if: github.actor != 'github-actions[bot]'
@@ -18,16 +22,18 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Normalize imported skill metadata
         run: node scripts/skills/normalize-frontmatter.mjs --write
+      - name: Prune dangling aliases and synchronize runtime aliases
+        run: node scripts/skills/sync-aliases.mjs --write --prune-dangling
       - name: Commit deterministic normalization
         shell: bash
         run: |
-          if git diff --quiet -- .agents/skills; then
+          if git diff --quiet -- .agents/skills packages/core/src/agent/skill-engine.ts; then
             echo "No normalization changes required."
             exit 0
           fi
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .agents/skills
-          git commit -m "fix(skills): normalize imported skill frontmatter"
+          git add .agents/skills packages/core/src/agent/skill-engine.ts
+          git commit -m "fix(skills): normalize metadata and prune dead aliases"
           git push origin HEAD:feat/integrate-upstream-features
