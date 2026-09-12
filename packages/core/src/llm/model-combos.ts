@@ -1,9 +1,6 @@
 /**
  * Model Combos (Fusion Fallback Cascades).
- * Absorbed and unified from 9router, agentgateway, and AIClient2API.
- *
- * Allows configuring an ordered sequence of models (e.g. Claude 3.7 Sonnet -> DeepSeek R1 -> GPT-4o)
- * that automatically cascades and falls back upon quota exhaustion, rate limits, or service outages.
+ * Allows an ordered sequence of models to cascade on explicitly configured failure reasons.
  */
 
 import type { QuotaDetectionResult } from "./quota-parser.js";
@@ -40,14 +37,52 @@ export interface ComboResolutionContext {
   triggerReason?: FallbackTrigger;
 }
 
+const DEFAULT_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
+  "rate_limit",
+  "quota_exhausted",
+  "overloaded",
+  "timeout",
+];
+
+function classifyFallbackReasons(
+  detection: QuotaDetectionResult,
+  isTimeout: boolean,
+): Set<FallbackTrigger> {
+  const reasons = new Set<FallbackTrigger>();
+  if (isTimeout) reasons.add("timeout");
+  if (detection.isQuota) {
+    // QuotaDetectionResult historically combines provider quota and rate-limit failures.
+    // Until the parser supplies a narrower category, either configured quota reason may opt in.
+    reasons.add("rate_limit");
+    reasons.add("quota_exhausted");
+  }
+  if (detection.isAuthenticationFailure) reasons.add("auth_error");
+
+  const diagnosticText = `${detection.code ?? ""} ${detection.reason ?? ""}`.toLowerCase();
+  if (
+    /\boverload(?:ed|ing)?\b|\bcapacity\b|temporar(?:y|ily) unavailable|service unavailable|server busy|\b529\b|\b503\b/.test(
+      diagnosticText,
+    )
+  ) {
+    reasons.add("overloaded");
+  }
+  if (
+    /context[_\s-]*(?:length|window)|context_length_exceeded|maximum context|max(?:imum)? tokens|too many tokens/.test(
+      diagnosticText,
+    )
+  ) {
+    reasons.add("context_length_exceeded");
+  }
+
+  return reasons;
+}
+
 export class ModelComboRegistry {
   private combos = new Map<string, ModelCombo>();
 
   constructor(initialCombos?: ModelCombo[]) {
     if (initialCombos) {
-      for (const c of initialCombos) {
-        this.combos.set(c.id, c);
-      }
+      for (const combo of initialCombos) this.combos.set(combo.id, combo);
     }
   }
 
@@ -60,20 +95,13 @@ export class ModelComboRegistry {
   }
 
   set(combo: ModelCombo): void {
-    this.combos.set(combo.id, {
-      ...combo,
-      updatedAt: new Date().toISOString(),
-    });
+    this.combos.set(combo.id, { ...combo, updatedAt: new Date().toISOString() });
   }
 
   delete(id: string): boolean {
     return this.combos.delete(id);
   }
 
-  /**
-   * Resolves the next candidate model to execute within a combo sequence.
-   * Returns undefined if all candidates in the combo have been exhausted or are cooling down.
-   */
   resolveCandidate(
     comboId: string,
     context: ComboResolutionContext = {},
@@ -82,50 +110,36 @@ export class ModelComboRegistry {
     if (!combo || combo.targets.length === 0) return undefined;
 
     const failedKeys = new Set(
-      (context.failedTargets ?? []).map((t) => `${t.provider}:${t.modelId}`),
+      (context.failedTargets ?? []).map((target) => `${target.provider}:${target.modelId}`),
     );
     const cooling = context.coolingModels ?? new Set<string>();
 
     for (const target of combo.targets) {
       const key = `${target.provider}:${target.modelId}`;
-      if (failedKeys.has(key)) continue;
-      if (cooling.has(key)) continue;
+      if (failedKeys.has(key) || cooling.has(key)) continue;
       return target;
     }
-
     return undefined;
   }
 
-  /**
-   * Checks if an error condition qualifies for triggering a fallback based on the combo's rules.
-   */
+  /** Every accepted FallbackTrigger has a concrete classification path. */
   shouldTriggerFallback(
     combo: ModelCombo,
     detection: QuotaDetectionResult,
     isTimeout: boolean = false,
   ): boolean {
-    const allowed = combo.fallbackTriggers ?? [
-      "rate_limit",
-      "quota_exhausted",
-      "overloaded",
-      "timeout",
-    ];
+    const allowed = new Set(combo.fallbackTriggers ?? DEFAULT_FALLBACK_TRIGGERS);
+    if (allowed.size === 0) return false;
 
-    if (isTimeout && allowed.includes("timeout")) return true;
-    if (detection.isQuota && (allowed.includes("rate_limit") || allowed.includes("quota_exhausted"))) {
-      return true;
-    }
-    if (detection.isAuthenticationFailure && allowed.includes("auth_error")) {
-      return true;
+    const detected = classifyFallbackReasons(detection, isTimeout);
+    for (const reason of detected) {
+      if (allowed.has(reason)) return true;
     }
     return false;
   }
 }
 
-/**
- * 9router catalog synchronization constants and provider normalizer.
- */
-export const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours (86,400,000 ms)
+export const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export const PROVIDER_ALIASES: Record<string, string> = {
   glm: "zai",
@@ -142,18 +156,11 @@ export const PROVIDER_ALIASES: Record<string, string> = {
   "cloudflare-ai": "cloudflare-workers-ai",
 };
 
-/**
- * Normalizes provider identifiers against known alias mappings.
- */
 export function normalizeProvider(alias: string): string {
   const normalized = alias.trim().toLowerCase();
   return PROVIDER_ALIASES[normalized] ?? normalized;
 }
 
-/**
- * Strips vendor prefix and version tags to extract canonical base model ID.
- * e.g. "zai-org/GLM-4.6V:free" -> "glm-4.6v"
- */
 export function baseModelId(modelId: string): string {
   const withoutVendor = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
   return withoutVendor.toLowerCase().split(":")[0]!;
@@ -167,25 +174,38 @@ export interface SlimModelEntry {
 }
 
 /**
- * Compresses an upstream 4+ MB capability catalog to a lightweight lookup table
- * containing only input modalities, context limits, output limits, and reasoning capability.
+ * Compress a capability catalog while merging provider aliases into one namespace.
+ * Canonical provider spellings win genuine duplicate model conflicts; otherwise raw provider
+ * names are ordered lexicographically, making the result independent of object insertion order.
  */
 export function slimModelCatalog(
   rawCatalog: Record<string, any>,
 ): Record<string, Record<string, SlimModelEntry>> {
   const out: Record<string, Record<string, SlimModelEntry>> = {};
 
-  for (const [rawProviderId, provider] of Object.entries(rawCatalog)) {
+  const providers = Object.entries(rawCatalog).sort(([rawA], [rawB]) => {
+    const normalizedA = normalizeProvider(rawA);
+    const normalizedB = normalizeProvider(rawB);
+    if (normalizedA !== normalizedB) return normalizedA.localeCompare(normalizedB);
+
+    const canonicalA = rawA.trim().toLowerCase() === normalizedA ? 0 : 1;
+    const canonicalB = rawB.trim().toLowerCase() === normalizedB ? 0 : 1;
+    if (canonicalA !== canonicalB) return canonicalA - canonicalB;
+    return rawA.localeCompare(rawB);
+  });
+
+  for (const [rawProviderId, provider] of providers) {
     const providerId = normalizeProvider(rawProviderId);
-    const models: Record<string, SlimModelEntry> = {};
+    const models = out[providerId] ?? (out[providerId] = {});
+    const rawModels = provider?.models ?? {};
 
-    const rawModels = provider?.models || {};
-    for (const [modelId, model] of Object.entries<any>(rawModels)) {
+    for (const [modelId, model] of Object.entries<any>(rawModels).sort(([a], [b]) => a.localeCompare(b))) {
       const id = baseModelId(modelId);
-      const modalities: string[] = (model?.modalities?.input || []).filter(
-        (x: string) => x !== "text",
-      );
+      if (models[id] !== undefined) continue;
 
+      const modalities: string[] = (model?.modalities?.input ?? []).filter(
+        (value: string) => value !== "text",
+      );
       models[id] = {
         inputModalities: modalities,
         contextLimit: model?.limit?.context,
@@ -193,7 +213,6 @@ export function slimModelCatalog(
         supportsReasoning: Boolean(model?.reasoning),
       };
     }
-    out[providerId] = models;
   }
 
   return out;
