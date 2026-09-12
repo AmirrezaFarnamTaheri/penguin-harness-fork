@@ -1,13 +1,6 @@
 /**
- * Gateway, Fallback Combos, Quota & Pricing Routes:
- * GET|PUT /api/projects/:projectId/gateway/combos — manage model fallback combos
- * DELETE /api/projects/:projectId/gateway/combos/:id — delete a combo
- * GET /api/projects/:projectId/gateway/quota — live quota & cooldown status
- * GET /api/projects/:projectId/gateway/pricing — model token pricing & custom rate overrides
- * POST /api/projects/:projectId/gateway/cost — calculate granular cost breakdown
+ * Gateway, Fallback Combos, Quota & Pricing Routes.
  */
-import path from "node:path";
-import fs from "node:fs/promises";
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
@@ -17,8 +10,6 @@ import {
   ModelComboRegistry,
   PricingCatalog,
   computeSpendFlow,
-  projectDir,
-  atomicWriteFile,
 } from "@prismshadow/penguin-core";
 import type {
   ModelCombo,
@@ -27,49 +18,22 @@ import type {
   DetailedUsageCounts,
   SessionCostRecord,
 } from "@prismshadow/penguin-core";
+import { ProjectJsonStore } from "../../services/project-json-store.js";
 
-const projectComboRegistries = new Map<string, ModelComboRegistry>();
 const pricingCatalog = new PricingCatalog();
 
-async function getProjectComboRegistry(root: string, projectId: string): Promise<ModelComboRegistry> {
-  let reg = projectComboRegistries.get(projectId);
-  if (!reg) {
-    reg = new ModelComboRegistry();
-    projectComboRegistries.set(projectId, reg);
-    try {
-      const pDir = projectDir(root, projectId);
-      const filePath = path.join(pDir, ".combos.json");
-      const content = await fs.readFile(filePath, "utf-8");
-      const list = JSON.parse(content);
-      if (Array.isArray(list)) {
-        for (const item of list) {
-          reg.set(item);
-        }
-      }
-    } catch {
-      // Start empty if not persisted yet
-    }
-  }
-  return reg;
+function decodeCombos(raw: string): ModelCombo[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("Gateway combo persistence file must contain a JSON array.");
+  return parsed as ModelCombo[];
 }
 
-async function saveProjectCombos(root: string, projectId: string): Promise<void> {
-  const reg = projectComboRegistries.get(projectId);
-  if (!reg) return;
-  try {
-    const pDir = projectDir(root, projectId);
-    await fs.mkdir(pDir, { recursive: true });
-    const filePath = path.join(pDir, ".combos.json");
-    await atomicWriteFile(filePath, JSON.stringify(reg.list(), null, 2));
-  } catch {
-    // Disk write error recovery
-  }
+function registryFrom(combos: ModelCombo[]): ModelComboRegistry {
+  const registry = new ModelComboRegistry();
+  for (const combo of combos) registry.set(combo);
+  return registry;
 }
 
-/**
- * Model Path & Segment Safety Validator (ported from agentgateway crates/llm/src/lib.rs)
- * Rejects path traversal (../), control characters, query/hash fragments, and dangerous delimiters.
- */
 export function isSafeSegment(segment: string): boolean {
   if (!segment || segment.length === 0 || segment.length > 128) return false;
   if (segment === "." || segment === "..") return false;
@@ -81,28 +45,28 @@ export function isSafeSegment(segment: string): boolean {
 export function isSafeResourceName(name: string): boolean {
   if (!name || name.length === 0 || name.length > 256) return false;
   if (name.startsWith("/") || name.endsWith("/") || name.includes("//")) return false;
-  const segments = name.split("/");
-  return segments.every(isSafeSegment);
+  return name.split("/").every(isSafeSegment);
 }
 
 export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const combos = new ProjectJsonStore<ModelCombo[]>(
+    deps.config.root,
+    ".combos.json",
+    () => [],
+    decodeCombos,
+  );
 
-  // GET /combos
   app.get("/combos", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const reg = await getProjectComboRegistry(deps.config.root, projectId);
-    return c.json({ combos: reg.list() });
+    return c.json({ combos: registryFrom(await combos.read(projectId)).list() });
   });
 
-  // PUT /combos
   app.put("/combos", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
-    const reg = await getProjectComboRegistry(deps.config.root, projectId);
     const body = await readJson(c);
-
     const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
     const name = requireString(body, "name", { minLen: 1, maxLen: 100, label: "name" });
     const description = typeof body.description === "string" ? body.description : undefined;
@@ -111,99 +75,76 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       throw badRequest("targets must be a non-empty array of model references.");
     }
 
-    const targets: ModelComboTarget[] = body.targets.map((item, i) => {
-      if (typeof item !== "object" || item === null) {
-        throw badRequest(`targets[${i}] must be an object.`);
-      }
-      const t = item as Record<string, unknown>;
+    const targets: ModelComboTarget[] = body.targets.map((item, index) => {
+      if (typeof item !== "object" || item === null) throw badRequest(`targets[${index}] must be an object.`);
+      const target = item as Record<string, unknown>;
       return {
-        provider: requireString(t, "provider", { minLen: 1, maxLen: 64, label: `targets[${i}].provider` }),
-        modelId: requireString(t, "modelId", { minLen: 1, maxLen: 200, label: `targets[${i}].modelId` }),
-        label: typeof t.label === "string" ? t.label : undefined,
-        maxRetries: typeof t.maxRetries === "number" ? t.maxRetries : 2,
-        timeoutMs: typeof t.timeoutMs === "number" ? t.timeoutMs : undefined,
+        provider: requireString(target, "provider", { minLen: 1, maxLen: 64, label: `targets[${index}].provider` }),
+        modelId: requireString(target, "modelId", { minLen: 1, maxLen: 200, label: `targets[${index}].modelId` }),
+        label: typeof target.label === "string" ? target.label : undefined,
+        maxRetries: typeof target.maxRetries === "number" ? target.maxRetries : 2,
+        timeoutMs: typeof target.timeoutMs === "number" ? target.timeoutMs : undefined,
       };
     });
 
     const fallbackTriggers: FallbackTrigger[] = Array.isArray(body.fallbackTriggers)
       ? (body.fallbackTriggers as FallbackTrigger[])
       : ["rate_limit", "quota_exhausted", "overloaded", "timeout"];
+    const combo: ModelCombo = { id, name, description, targets, fallbackTriggers };
 
-    const combo: ModelCombo = {
-      id,
-      name,
-      description,
-      targets,
-      fallbackTriggers,
-    };
-
-    reg.set(combo);
-    await saveProjectCombos(deps.config.root, projectId);
+    await combos.update(projectId, (current) => {
+      const registry = registryFrom(current);
+      registry.set(combo);
+      return { value: registry.list(), result: undefined };
+    });
     return c.json({ ok: true, combo });
   });
 
-  // DELETE /combos/:id
   app.delete("/combos/:id", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
-    const reg = await getProjectComboRegistry(deps.config.root, projectId);
     const id = requireValidId(c, "id");
-    const deleted = reg.delete(id);
-    await saveProjectCombos(deps.config.root, projectId);
+    const deleted = await combos.update(projectId, (current) => {
+      const registry = registryFrom(current);
+      const result = registry.delete(id);
+      return { value: registry.list(), result };
+    });
     return c.json({ ok: true, deleted });
   });
 
-  // GET /quota
   app.get("/quota", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-
     const modelsCfg = await deps.projectConfigService.getModels(projectId);
-    const quotaStatuses: Array<{
-      provider: string;
-      modelId: string;
-      isCooling: boolean;
-    }> = [];
-
+    const models: Array<{ provider: string; modelId: string; isCooling: boolean | null }> = [];
     if (modelsCfg?.models) {
-      for (const m of modelsCfg.models) {
-        quotaStatuses.push({
-          provider: m.provider,
-          modelId: m.modelId,
-          isCooling: false,
-        });
+      for (const model of modelsCfg.models) {
+        models.push({ provider: model.provider, modelId: model.modelId, isCooling: null });
       }
     }
-
     return c.json({
       activeQuota: {
         sessionUsedPct: null,
         weeklyUsedPct: null,
         resetsIn: null,
-        status: "unmetered",
+        status: "unknown",
       },
-      models: quotaStatuses,
+      models,
     });
   });
 
-  // GET /pricing
   app.get("/pricing", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    return c.json({
-      catalog: DEFAULT_PRICING_CATALOG,
-    });
+    return c.json({ catalog: DEFAULT_PRICING_CATALOG });
   });
 
-  // POST /cost
   app.post("/cost", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-
     const provider = requireString(body, "provider", { minLen: 1, maxLen: 64, label: "provider" });
     const modelId = requireString(body, "modelId", { minLen: 1, maxLen: 200, label: "modelId" });
-
     const usage: DetailedUsageCounts = {
       promptTokens: typeof body.promptTokens === "number" ? body.promptTokens : 0,
       completionTokens: typeof body.completionTokens === "number" ? body.completionTokens : 0,
@@ -211,7 +152,6 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       cacheReadTokens: typeof body.cacheReadTokens === "number" ? body.cacheReadTokens : 0,
       cacheWriteTokens: typeof body.cacheWriteTokens === "number" ? body.cacheWriteTokens : 0,
     };
-
     const breakdown = pricingCatalog.calculateCost(provider, modelId, usage);
     return c.json({
       breakdown,
@@ -220,45 +160,38 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     });
   });
 
-  // POST /spend-flow
   app.post("/spend-flow", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-
     const rawSessions = Array.isArray(body.sessions) ? body.sessions : [];
-    const sessions: SessionCostRecord[] = rawSessions.map((s: Record<string, unknown>) => ({
-      sessionId: typeof s.sessionId === "string" ? s.sessionId : "",
-      projectId: typeof s.projectId === "string" ? s.projectId : projectId,
-      projectPath: typeof s.projectPath === "string" ? s.projectPath : undefined,
+    const sessions: SessionCostRecord[] = rawSessions.map((session: Record<string, unknown>) => ({
+      sessionId: typeof session.sessionId === "string" ? session.sessionId : "",
+      projectId: typeof session.projectId === "string" ? session.projectId : projectId,
+      projectPath: typeof session.projectPath === "string" ? session.projectPath : undefined,
       modelBreakdown:
-        typeof s.modelBreakdown === "object" && s.modelBreakdown !== null
-          ? (s.modelBreakdown as Record<string, { costUSD: number; tokens?: number }>)
+        typeof session.modelBreakdown === "object" && session.modelBreakdown !== null
+          ? (session.modelBreakdown as Record<string, { costUSD: number; tokens?: number }>)
           : {},
     }));
-
-    const report = computeSpendFlow(sessions, {
-      topNodeLimit: typeof body.limit === "number" ? body.limit : 8,
+    return c.json({
+      report: computeSpendFlow(sessions, {
+        topNodeLimit: typeof body.limit === "number" ? body.limit : 8,
+      }),
     });
-    return c.json({ report });
   });
 
-  // POST /chat/completions — OpenAI-compatible proxy interface (ported from agy2api / AIClient2API)
   app.post("/chat/completions", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-
     const model = requireString(body, "model", { minLen: 1, maxLen: 256, label: "model" });
     if (!isSafeResourceName(model)) {
       throw badRequest(`Invalid model resource name: "${model}". Prohibited characters or path traversal pattern.`);
     }
-
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       throw badRequest("messages must be a non-empty array of chat message objects.");
     }
-
-    // Direct proxy completions are not supported; clients must use session execution
     return c.json(
       {
         error: {
@@ -267,50 +200,56 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
           code: 501,
         },
       },
-      501
+      501,
     );
   });
 
-  // POST /webhooks/approval — IM human-in-the-loop approval callback (ported from cc-haha / feishu-notify)
   app.post("/webhooks/approval", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-
     const approvalId = requireString(body, "approvalId", { minLen: 1, maxLen: 128, label: "approvalId" });
     const action = requireString(body, "action", { minLen: 1, maxLen: 32, label: "action" });
-
     if (action !== "approve" && action !== "reject") {
       throw badRequest('action must be either "approve" or "reject".');
     }
 
-    const comment = typeof body.comment === "string" ? body.comment : undefined;
-    const approver = typeof body.approver === "string" ? body.approver : c.var.user.userId;
-
-    let sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
-    let toolCallId = typeof body.toolCallId === "string" ? body.toolCallId : undefined;
-
-    if (!sessionId && approvalId.includes(":")) {
-      const parts = approvalId.split(":");
-      sessionId = parts[0];
-      toolCallId = parts.slice(1).join(":");
-    } else if (!sessionId) {
-      sessionId = approvalId;
-      toolCallId = approvalId;
+    let sessionId: string;
+    let toolCallId: string;
+    if (typeof body.sessionId === "string" && body.sessionId.length > 0) {
+      sessionId = body.sessionId;
+      toolCallId =
+        typeof body.toolCallId === "string" && body.toolCallId.length > 0 ? body.toolCallId : approvalId;
+    } else if (approvalId.includes(":")) {
+      const separator = approvalId.indexOf(":");
+      sessionId = approvalId.slice(0, separator);
+      toolCallId = approvalId.slice(separator + 1);
+    } else {
+      throw badRequest("sessionId and toolCallId are required when approvalId is not '<sessionId>:<toolCallId>'.");
     }
+    if (!sessionId || !toolCallId || sessionId.length > 128 || toolCallId.length > 128) {
+      throw badRequest("sessionId and toolCallId must be non-empty identifiers no longer than 128 characters.");
+    }
+
+    const session = deps.sessionsRepo.findById(sessionId);
+    if (!session || session.projectId !== projectId) {
+      // Deliberately hide whether an out-of-project session exists.
+      throw notFound("Approval does not exist or is not accessible in this project.");
+    }
+    deps.projectService.requireProjectAccess(c.var.user.userId, session.projectId);
 
     const decision = action === "approve" ? "allow" : "deny";
-    const ok = deps.manager.decideApproval(sessionId, toolCallId ?? approvalId, decision);
-    if (!ok) {
-      throw notFound("Approval does not exist or has already been decided.");
-    }
+    const ok = deps.manager.decideApproval(sessionId, toolCallId, decision);
+    if (!ok) throw notFound("Approval does not exist or has already been decided.");
 
     return c.json({
       ok: true,
       approvalId,
+      sessionId,
+      toolCallId,
       status: action === "approve" ? "approved" : "rejected",
-      comment,
-      approver,
+      comment: typeof body.comment === "string" ? body.comment : undefined,
+      approver: c.var.user.userId,
       timestamp: new Date().toISOString(),
     });
   });

@@ -1,11 +1,5 @@
 /**
  * Agent Kanban & Task Orchestration Engine.
- *
- * Implements a full state machine for autonomous and human-guided task pipelines,
- * subagent leases with heartbeats, dependency-aware task transitions, and
- * conversational triage draft decomposition.
- *
- * Synthesized from kandev, hermes-war-room, and paperclip task architectures.
  */
 
 export type KanbanTaskState =
@@ -81,6 +75,11 @@ export interface KanbanBoardOptions {
   defaultLeaseDurationMs?: number;
 }
 
+export interface LeaseIdentity {
+  workerId: string;
+  generation: number;
+}
+
 export class KanbanBoard {
   public readonly boardId: string;
   private readonly defaultLeaseDurationMs: number;
@@ -96,7 +95,7 @@ export class KanbanBoard {
   public subscribe(listener: KanbanEventListener): () => void {
     this.listeners.push(listener);
     return () => {
-      this.listeners = this.listeners.filter((l) => l !== listener);
+      this.listeners = this.listeners.filter((candidate) => candidate !== listener);
     };
   }
 
@@ -105,8 +104,38 @@ export class KanbanBoard {
       try {
         listener(event);
       } catch {
-        // Silently isolate subscriber faults
+        // Subscriber faults must not corrupt board state.
       }
+    }
+  }
+
+  private assertDependenciesComplete(dependencies: string[]): void {
+    for (const depId of dependencies) {
+      const dep = this.tasks.get(depId);
+      if (!dep) throw new Error(`Dependency ${depId} does not exist`);
+      if (dep.state !== "done") {
+        throw new Error(`Dependency ${depId} (${dep.title}) is ${dep.state}, not done`);
+      }
+    }
+  }
+
+  private assertActiveLease(task: KanbanTask, identity: LeaseIdentity, operation: string): void {
+    const now = Date.now();
+    if (!task.assignee || task.claimExpires === null || task.claimExpires === undefined) {
+      throw new Error(`Cannot ${operation} task '${task.id}': task has no active lease`);
+    }
+    if (task.claimExpires <= now) {
+      throw new Error(`Cannot ${operation} task '${task.id}': lease has expired`);
+    }
+    if (task.assignee !== identity.workerId) {
+      throw new Error(
+        `Cannot ${operation} task '${task.id}': worker mismatch (claimed by '${task.assignee}', got '${identity.workerId}')`,
+      );
+    }
+    if (task.leaseGeneration !== identity.generation) {
+      throw new Error(
+        `Cannot ${operation} task '${task.id}': lease generation mismatch (expected ${task.leaseGeneration ?? 0}, got ${identity.generation})`,
+      );
     }
   }
 
@@ -122,6 +151,12 @@ export class KanbanBoard {
     metadata?: Record<string, unknown>;
   }): KanbanTask {
     const id = input.id ?? `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (this.tasks.has(id)) throw new Error(`Task with id '${id}' already exists`);
+
+    const dependencies = [...(input.dependencies ?? [])];
+    if (input.state === "in_progress") this.assertDependenciesComplete(dependencies);
+
+    const now = Date.now();
     const task: KanbanTask = {
       id,
       boardId: this.boardId,
@@ -132,11 +167,11 @@ export class KanbanBoard {
       assignee: input.assignee ?? null,
       workerPid: null,
       parentTaskId: input.parentTaskId ?? null,
-      dependencies: [...(input.dependencies ?? [])],
+      dependencies,
       childTaskIds: [],
-      createdAt: Date.now(),
-      startedAt: input.state === "in_progress" ? Date.now() : null,
-      completedAt: input.state === "done" ? Date.now() : null,
+      createdAt: now,
+      startedAt: input.state === "in_progress" ? now : null,
+      completedAt: input.state === "done" ? now : null,
       claimExpires: null,
       lastHeartbeatAt: null,
       leaseGeneration: 0,
@@ -145,9 +180,7 @@ export class KanbanBoard {
 
     if (task.parentTaskId) {
       const parent = this.tasks.get(task.parentTaskId);
-      if (parent && !parent.childTaskIds.includes(id)) {
-        parent.childTaskIds.push(id);
-      }
+      if (parent && !parent.childTaskIds.includes(id)) parent.childTaskIds.push(id);
     }
 
     this.tasks.set(id, task);
@@ -155,16 +188,15 @@ export class KanbanBoard {
       type: "task.created",
       taskId: id,
       boardId: this.boardId,
-      timestamp: Date.now(),
+      timestamp: now,
       payload: { task: { ...task } },
     });
-
     return { ...task };
   }
 
   public getTask(id: string): KanbanTask | undefined {
     const task = this.tasks.get(id);
-    return task ? { ...task } : undefined;
+    return task ? { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] } : undefined;
   }
 
   public listTasks(filter?: {
@@ -179,7 +211,7 @@ export class KanbanBoard {
       if (filter?.assignee !== undefined && task.assignee !== filter.assignee) continue;
       if (filter?.priority && task.priority !== filter.priority) continue;
       if (filter?.parentTaskId !== undefined && task.parentTaskId !== filter.parentTaskId) continue;
-      list.push({ ...task });
+      list.push({ ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] });
     }
     return list;
   }
@@ -187,53 +219,42 @@ export class KanbanBoard {
   public canTransitionToInProgress(taskId: string): { allowed: boolean; reason?: string } {
     const task = this.tasks.get(taskId);
     if (!task) return { allowed: false, reason: "Task not found" };
-
-    for (const depId of task.dependencies) {
-      const dep = this.tasks.get(depId);
-      if (!dep) {
-        return { allowed: false, reason: `Dependency ${depId} does not exist` };
-      }
-      if (dep.state !== "done") {
-        return { allowed: false, reason: `Dependency ${depId} (${dep.title}) is ${dep.state}, not done` };
-      }
+    try {
+      this.assertDependenciesComplete(task.dependencies);
+      return { allowed: true };
+    } catch (error) {
+      return { allowed: false, reason: (error as Error).message };
     }
-
-    return { allowed: true };
   }
 
   public updateTaskState(
     taskId: string,
     nextState: KanbanTaskState,
-    options?: { force?: boolean; workerId?: string; generation?: number }
+    options?: { force?: boolean; workerId?: string; generation?: number },
   ): KanbanTask {
     const task = this.tasks.get(taskId);
-    if (!task) {
-      throw new Error(`Task with id '${taskId}' not found`);
-    }
+    if (!task) throw new Error(`Task with id '${taskId}' not found`);
 
-    if (options?.workerId !== undefined && task.assignee && task.assignee !== options.workerId) {
-      throw new Error(`Cannot update task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${options.workerId}')`);
-    }
-
-    if (options?.generation !== undefined && task.leaseGeneration !== undefined && task.leaseGeneration !== options.generation) {
-      throw new Error(`Cannot update task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${options.generation})`);
+    if (!options?.force && (options?.workerId !== undefined || options?.generation !== undefined)) {
+      if (!options.workerId || options.generation === undefined) {
+        throw new Error(`Cannot update task '${taskId}': workerId and generation must be supplied together`);
+      }
+      this.assertActiveLease(task, { workerId: options.workerId, generation: options.generation }, "update");
     }
 
     if (nextState === "in_progress" && !options?.force) {
-      const check = this.canTransitionToInProgress(taskId);
-      if (!check.allowed) {
-        throw new Error(`Cannot move task to in_progress: ${check.reason}`);
-      }
+      this.assertDependenciesComplete(task.dependencies);
     }
 
     const previousState = task.state;
     task.state = nextState;
-
-    if (nextState === "in_progress" && !task.startedAt) {
-      task.startedAt = Date.now();
-    }
-    if (nextState === "done" || nextState === "archived") {
-      task.completedAt = Date.now();
+    const now = Date.now();
+    if (nextState === "in_progress" && !task.startedAt) task.startedAt = now;
+    if (nextState === "done" || nextState === "archived" || nextState === "failed") {
+      task.completedAt = now;
+      if (task.assignee) task.leaseGeneration = (task.leaseGeneration ?? 0) + 1;
+      task.assignee = null;
+      task.workerPid = null;
       task.claimExpires = null;
     }
 
@@ -241,38 +262,31 @@ export class KanbanBoard {
       type: "task.state_changed",
       taskId,
       boardId: this.boardId,
-      timestamp: Date.now(),
+      timestamp: now,
       payload: { previousState, nextState, task: { ...task } },
     });
-
     return { ...task };
   }
 
   public claimTask(
     taskId: string,
     assignee: string,
-    options?: { leaseDurationMs?: number; workerPid?: number }
+    options?: { leaseDurationMs?: number; workerPid?: number },
   ): KanbanTask {
     const task = this.tasks.get(taskId);
-    if (!task) {
-      throw new Error(`Task with id '${taskId}' not found`);
-    }
-
-    // Enforce dependency constraints before transitioning to in_progress
-    if (task.state === "backlog" || task.state === "triage") {
-      const check = this.canTransitionToInProgress(taskId);
-      if (!check.allowed) {
-        throw new Error(`Cannot claim task: ${check.reason}`);
-      }
-    }
+    if (!task) throw new Error(`Task with id '${taskId}' not found`);
+    if (task.state === "backlog" || task.state === "triage") this.assertDependenciesComplete(task.dependencies);
 
     const now = Date.now();
-    const isExpired = task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires < now;
+    const isExpired = task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires <= now;
     if (task.assignee && task.assignee !== assignee && !isExpired && task.state === "in_progress") {
       throw new Error(`Task is already claimed by ${task.assignee} until ${new Date(task.claimExpires ?? 0).toISOString()}`);
     }
 
     const leaseDuration = options?.leaseDurationMs ?? this.defaultLeaseDurationMs;
+    if (!Number.isFinite(leaseDuration) || leaseDuration <= 0) {
+      throw new Error("leaseDurationMs must be a positive finite number");
+    }
     task.assignee = assignee;
     task.workerPid = options?.workerPid ?? null;
     task.lastHeartbeatAt = now;
@@ -289,83 +303,61 @@ export class KanbanBoard {
       taskId,
       boardId: this.boardId,
       timestamp: now,
-      payload: { assignee, claimExpires: task.claimExpires, workerPid: task.workerPid, leaseGeneration: task.leaseGeneration },
+      payload: {
+        assignee,
+        claimExpires: task.claimExpires,
+        workerPid: task.workerPid,
+        leaseGeneration: task.leaseGeneration,
+      },
     });
-
     return { ...task };
   }
 
   public heartbeat(
     taskId: string,
-    optionsOrDuration?: number | { leaseDurationMs?: number; workerId?: string; generation?: number }
+    identity: LeaseIdentity & { leaseDurationMs?: number },
   ): KanbanTask {
     const task = this.tasks.get(taskId);
-    if (!task) {
-      throw new Error(`Task with id '${taskId}' not found`);
-    }
+    if (!task) throw new Error(`Task with id '${taskId}' not found`);
+    this.assertActiveLease(task, identity, "heartbeat");
 
-    let duration = this.defaultLeaseDurationMs;
-    if (typeof optionsOrDuration === "number") {
-      duration = optionsOrDuration;
-    } else if (typeof optionsOrDuration === "object" && optionsOrDuration !== null) {
-      if (optionsOrDuration.leaseDurationMs !== undefined) {
-        duration = optionsOrDuration.leaseDurationMs;
-      }
-      if (optionsOrDuration.workerId !== undefined && task.assignee !== optionsOrDuration.workerId) {
-        throw new Error(`Cannot heartbeat task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${optionsOrDuration.workerId}')`);
-      }
-      if (optionsOrDuration.generation !== undefined && task.leaseGeneration !== optionsOrDuration.generation) {
-        throw new Error(`Cannot heartbeat task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${optionsOrDuration.generation})`);
-      }
+    const duration = identity.leaseDurationMs ?? this.defaultLeaseDurationMs;
+    if (!Number.isFinite(duration) || duration <= 0) {
+      throw new Error("leaseDurationMs must be a positive finite number");
     }
-
     const now = Date.now();
     task.lastHeartbeatAt = now;
     task.claimExpires = now + duration;
-
     this.emit({
       type: "task.heartbeat",
       taskId,
       boardId: this.boardId,
       timestamp: now,
-      payload: { lastHeartbeatAt: now, claimExpires: task.claimExpires, leaseGeneration: task.leaseGeneration },
+      payload: {
+        lastHeartbeatAt: now,
+        claimExpires: task.claimExpires,
+        leaseGeneration: task.leaseGeneration,
+      },
     });
-
     return { ...task };
   }
 
   public setTaskClaimExpiry(taskId: string, expiresAt: number | null): void {
     const task = this.tasks.get(taskId);
-    if (task) {
-      task.claimExpires = expiresAt;
-    }
+    if (task) task.claimExpires = expiresAt;
   }
 
-  public releaseTask(
-    taskId: string,
-    options?: { workerId?: string; generation?: number }
-  ): KanbanTask {
+  public releaseTask(taskId: string, identity: LeaseIdentity): KanbanTask {
     const task = this.tasks.get(taskId);
-    if (!task) {
-      throw new Error(`Task with id '${taskId}' not found`);
-    }
-
-    if (options?.workerId !== undefined && task.assignee && task.assignee !== options.workerId) {
-      throw new Error(`Cannot release task '${taskId}': worker mismatch (claimed by '${task.assignee}', got '${options.workerId}')`);
-    }
-
-    if (options?.generation !== undefined && task.leaseGeneration !== undefined && task.leaseGeneration !== options.generation) {
-      throw new Error(`Cannot release task '${taskId}': lease generation mismatch (expected ${task.leaseGeneration}, got ${options.generation})`);
-    }
+    if (!task) throw new Error(`Task with id '${taskId}' not found`);
+    this.assertActiveLease(task, identity, "release");
 
     const previousAssignee = task.assignee;
     task.assignee = null;
     task.workerPid = null;
     task.claimExpires = null;
-
-    if (task.state === "in_progress") {
-      task.state = "triage";
-    }
+    task.leaseGeneration = (task.leaseGeneration ?? 0) + 1;
+    if (task.state === "in_progress") task.state = "triage";
 
     this.emit({
       type: "task.unassigned",
@@ -374,38 +366,35 @@ export class KanbanBoard {
       timestamp: Date.now(),
       payload: { previousAssignee, leaseGeneration: task.leaseGeneration },
     });
-
     return { ...task };
   }
 
   public reclaimExpiredLeases(): string[] {
     const now = Date.now();
     const reclaimed: string[] = [];
-
     for (const [id, task] of this.tasks.entries()) {
       if (
         task.state === "in_progress" &&
         task.claimExpires !== null &&
         task.claimExpires !== undefined &&
-        task.claimExpires < now
+        task.claimExpires <= now
       ) {
         const expiredAssignee = task.assignee;
         task.assignee = null;
         task.workerPid = null;
         task.claimExpires = null;
+        task.leaseGeneration = (task.leaseGeneration ?? 0) + 1;
         task.state = "triage";
         reclaimed.push(id);
-
         this.emit({
           type: "task.lease_expired",
           taskId: id,
           boardId: this.boardId,
           timestamp: now,
-          payload: { expiredAssignee },
+          payload: { expiredAssignee, leaseGeneration: task.leaseGeneration },
         });
       }
     }
-
     return reclaimed;
   }
 
@@ -430,7 +419,6 @@ export class KanbanBoard {
       createdAt: Date.now(),
       messageId: input.messageId ?? null,
     };
-
     this.drafts.set(id, draft);
     this.emit({
       type: "triage.draft_created",
@@ -438,62 +426,50 @@ export class KanbanBoard {
       timestamp: Date.now(),
       payload: { draft: { ...draft } },
     });
-
     return { ...draft };
   }
 
   public launchTriage(draftId: string): { parentTask: KanbanTask; childTasks: KanbanTask[] } {
     const draft = this.drafts.get(draftId);
-    if (!draft) {
-      throw new Error(`Triage draft with id '${draftId}' not found`);
-    }
+    if (!draft) throw new Error(`Triage draft with id '${draftId}' not found`);
 
-    // Create root triage task
     const parentTask = this.createTask({
       title: draft.title,
       description: draft.body,
       state: "in_progress",
       priority: "high",
     });
-
     const childTasks: KanbanTask[] = [];
     const indexToCreatedId = new Map<number, string>();
 
-    // Pass 1: create all children
-    draft.suggestedTasks.forEach((st, idx) => {
+    draft.suggestedTasks.forEach((suggestion, index) => {
       const child = this.createTask({
-        title: st.title,
-        description: st.description,
+        title: suggestion.title,
+        description: suggestion.description,
         state: "backlog",
-        priority: st.priority ?? "normal",
+        priority: suggestion.priority ?? "normal",
         parentTaskId: parentTask.id,
       });
-      indexToCreatedId.set(idx, child.id);
+      indexToCreatedId.set(index, child.id);
       childTasks.push(child);
     });
 
-    // Pass 2: link index-based or name-based dependencies
-    draft.suggestedTasks.forEach((st, idx) => {
-      const currentId = indexToCreatedId.get(idx);
-      if (!currentId || !st.dependencies || st.dependencies.length === 0) return;
-
+    draft.suggestedTasks.forEach((suggestion, index) => {
+      const currentId = indexToCreatedId.get(index);
+      if (!currentId || !suggestion.dependencies?.length) return;
       const currentTask = this.tasks.get(currentId);
       if (!currentTask) return;
 
-      for (const dep of st.dependencies) {
-        // If dep is integer string index
-        const depIdx = parseInt(dep, 10);
-        if (!isNaN(depIdx) && indexToCreatedId.has(depIdx)) {
-          const resolvedId = indexToCreatedId.get(depIdx);
-          if (resolvedId && !currentTask.dependencies.includes(resolvedId)) {
-            currentTask.dependencies.push(resolvedId);
-          }
+      for (const dependency of suggestion.dependencies) {
+        const dependencyIndex = Number.parseInt(dependency, 10);
+        if (!Number.isNaN(dependencyIndex) && indexToCreatedId.has(dependencyIndex)) {
+          const resolvedId = indexToCreatedId.get(dependencyIndex);
+          if (resolvedId && !currentTask.dependencies.includes(resolvedId)) currentTask.dependencies.push(resolvedId);
         } else {
-          // If dep is title match
-          const found = childTasks.find((c) => c.title.toLowerCase() === dep.toLowerCase());
-          if (found && !currentTask.dependencies.includes(found.id)) {
-            currentTask.dependencies.push(found.id);
-          }
+          const found = childTasks.find(
+            (candidate) => candidate.title.toLowerCase() === dependency.toLowerCase(),
+          );
+          if (found && !currentTask.dependencies.includes(found.id)) currentTask.dependencies.push(found.id);
         }
       }
     });
@@ -507,35 +483,37 @@ export class KanbanBoard {
       payload: {
         draftId,
         parentTaskId: parentTask.id,
-        childTaskIds: childTasks.map((c) => c.id),
+        childTaskIds: childTasks.map((task) => task.id),
       },
     });
-
     return {
       parentTask: { ...parentTask },
-      childTasks: childTasks.map((c) => this.tasks.get(c.id) ?? c),
+      childTasks: childTasks.map((task) => this.getTask(task.id) ?? task),
     };
   }
 
   public exportState(): { tasks: KanbanTask[]; drafts: TriageDraft[] } {
     return {
-      tasks: Array.from(this.tasks.values()).map((t) => ({ ...t })),
-      drafts: Array.from(this.drafts.values()).map((d) => ({ ...d })),
+      tasks: Array.from(this.tasks.values()).map((task) => ({
+        ...task,
+        dependencies: [...task.dependencies],
+        childTaskIds: [...task.childTaskIds],
+      })),
+      drafts: Array.from(this.drafts.values()).map((draft) => ({ ...draft })),
     };
   }
 
   public importState(data: { tasks?: KanbanTask[]; drafts?: TriageDraft[] }): void {
-    if (data.tasks) {
-      this.tasks.clear();
-      for (const t of data.tasks) {
-        this.tasks.set(t.id, { ...t });
-      }
+    this.tasks.clear();
+    this.drafts.clear();
+    for (const task of data.tasks ?? []) {
+      this.tasks.set(task.id, {
+        ...task,
+        dependencies: [...(task.dependencies ?? [])],
+        childTaskIds: [...(task.childTaskIds ?? [])],
+        leaseGeneration: task.leaseGeneration ?? 0,
+      });
     }
-    if (data.drafts) {
-      this.drafts.clear();
-      for (const d of data.drafts) {
-        this.drafts.set(d.id, { ...d });
-      }
-    }
+    for (const draft of data.drafts ?? []) this.drafts.set(draft.id, { ...draft });
   }
 }

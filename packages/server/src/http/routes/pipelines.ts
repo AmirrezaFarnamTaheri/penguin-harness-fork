@@ -1,139 +1,118 @@
 /**
  * Autonomous Workflow Pipelines & Persona Presets Routes:
  * Mounted at /api/projects/:projectId/pipelines
- * GET    / - list pipeline definitions
- * POST   / - create pipeline
- * POST   /:pipelineId/runs - create run
- * GET    /:pipelineId/runs/:runId - get run
- * POST   /:pipelineId/runs/:runId/nodes/:nodeId/complete - step run
- * Persona Presets:
- * GET    /api/personas - list personas
- * GET    /api/personas/:personaId - get persona
  */
 import { Hono } from "hono";
-import path from "node:path";
-import fs from "node:fs/promises";
 import type { AppEnv } from "../../auth/middleware.js";
+import { HttpError } from "../errors.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
 import {
   WorkflowPipeline,
   PersonaRegistry,
   BUILTIN_PERSONA_MASKS,
-  projectDir,
-  atomicWriteFile,
 } from "@prismshadow/penguin-core";
-import type { WorkflowNode, WorkflowEdge, WorkflowRunState, WorkflowNodeKind } from "@prismshadow/penguin-core";
+import type {
+  WorkflowNode,
+  WorkflowEdge,
+  WorkflowRunState,
+  WorkflowNodeKind,
+} from "@prismshadow/penguin-core";
+import { ProjectJsonStore } from "../../services/project-json-store.js";
+
+export interface PipelineDefinitionRecord {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
 
 export interface ScopedRunRecord {
   projectId: string;
   pipelineId: string;
+  /** Immutable definition snapshot used for the lifetime of this run. */
+  definition?: PipelineDefinitionRecord;
   run: WorkflowRunState;
 }
 
-const projectPipelines = new Map<string, Map<string, WorkflowPipeline>>();
-const activeRuns = new Map<string, ScopedRunRecord>();
 const personaRegistry = new PersonaRegistry(BUILTIN_PERSONA_MASKS);
 
-const ALLOWED_NODE_KINDS: readonly WorkflowNodeKind[] = ["trigger", "agent", "condition", "gate", "output"];
+const ALLOWED_NODE_KINDS: readonly WorkflowNodeKind[] = [
+  "trigger",
+  "agent",
+  "condition",
+  "gate",
+  "output",
+];
 
-async function getProjectPipelineMap(root: string, projectId: string): Promise<Map<string, WorkflowPipeline>> {
-  let map = projectPipelines.get(projectId);
-  if (!map) {
-    map = new Map<string, WorkflowPipeline>();
-    projectPipelines.set(projectId, map);
-    try {
-      const pDir = projectDir(root, projectId);
-      const filePath = path.join(pDir, ".pipelines.json");
-      const content = await fs.readFile(filePath, "utf-8");
-      const list = JSON.parse(content);
-      if (Array.isArray(list)) {
-        for (const item of list) {
-          map.set(item.id, new WorkflowPipeline(item));
-        }
-      }
-    } catch {
-      // File doesn't exist yet or unparseable, start empty
-    }
+function decodeArray<T>(label: string, raw: string): T[] {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${label} persistence file must contain a JSON array.`);
   }
-  return map;
+  return parsed as T[];
 }
 
-async function saveProjectPipelines(root: string, projectId: string): Promise<void> {
-  const map = projectPipelines.get(projectId);
-  if (!map) return;
-  try {
-    const pDir = projectDir(root, projectId);
-    await fs.mkdir(pDir, { recursive: true });
-    const filePath = path.join(pDir, ".pipelines.json");
-    const list = Array.from(map.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      nodes: p.listNodes(),
-      edges: p.listEdges(),
-    }));
-    await atomicWriteFile(filePath, JSON.stringify(list, null, 2));
-  } catch {
-    // Disk write error recovery
-  }
+function cloneDefinition(definition: PipelineDefinitionRecord): PipelineDefinitionRecord {
+  return {
+    id: definition.id,
+    name: definition.name,
+    description: definition.description,
+    nodes: definition.nodes.map((node) => ({
+      ...node,
+      config: node.config ? { ...node.config } : undefined,
+    })),
+    edges: definition.edges.map((edge) => ({ ...edge })),
+  };
 }
 
-async function loadProjectRuns(root: string, projectId: string): Promise<void> {
-  try {
-    const pDir = projectDir(root, projectId);
-    const filePath = path.join(pDir, ".pipeline_runs.json");
-    const content = await fs.readFile(filePath, "utf-8");
-    const list = JSON.parse(content);
-    if (Array.isArray(list)) {
-      for (const item of list) {
-        if (item && item.run && item.projectId === projectId) {
-          activeRuns.set(item.run.runId, item);
-        }
-      }
-    }
-  } catch {
-    // Start empty if file does not exist
-  }
-}
-
-async function saveProjectRuns(root: string, projectId: string): Promise<void> {
-  try {
-    const pDir = projectDir(root, projectId);
-    await fs.mkdir(pDir, { recursive: true });
-    const filePath = path.join(pDir, ".pipeline_runs.json");
-    const list = Array.from(activeRuns.values()).filter((r) => r.projectId === projectId);
-    await atomicWriteFile(filePath, JSON.stringify(list, null, 2));
-  } catch {
-    // Disk write error recovery
-  }
+function definitionFromPipeline(pipeline: WorkflowPipeline): PipelineDefinitionRecord {
+  return {
+    id: pipeline.id,
+    name: pipeline.name,
+    description: pipeline.description,
+    nodes: pipeline.listNodes(),
+    edges: pipeline.listEdges(),
+  };
 }
 
 export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const pipelines = new ProjectJsonStore<PipelineDefinitionRecord[]>(
+    deps.config.root,
+    ".pipelines.json",
+    () => [],
+    (raw) => decodeArray<PipelineDefinitionRecord>("Pipeline", raw),
+  );
+  const runs = new ProjectJsonStore<ScopedRunRecord[]>(
+    deps.config.root,
+    ".pipeline_runs.json",
+    () => [],
+    (raw) => decodeArray<ScopedRunRecord>("Pipeline run", raw),
+  );
 
   // GET / (list pipelines)
   app.get("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const map = await getProjectPipelineMap(deps.config.root, projectId);
+    const definitions = await pipelines.read(projectId);
 
-    const pipelines = Array.from(map.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      nodeCount: p.listNodes().length,
-      edgeCount: p.listEdges().length,
-    }));
-
-    return c.json({ pipelines });
+    return c.json({
+      pipelines: definitions.map((definition) => ({
+        id: definition.id,
+        name: definition.name,
+        description: definition.description,
+        nodeCount: definition.nodes.length,
+        edgeCount: definition.edges.length,
+      })),
+    });
   });
 
-  // POST / (create pipeline)
+  // POST / (create an immutable pipeline definition)
   app.post("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const map = await getProjectPipelineMap(deps.config.root, projectId);
     const body = await readJson(c);
 
     const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
@@ -152,16 +131,30 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
         throw badRequest(`nodes[${i}] must be an object`);
       }
       const raw = item as Record<string, unknown>;
-      const nodeId = requireString(raw, "id", { minLen: 1, maxLen: 64, label: `nodes[${i}].id` });
+      const nodeId = requireString(raw, "id", {
+        minLen: 1,
+        maxLen: 64,
+        label: `nodes[${i}].id`,
+      });
       if (seenIds.has(nodeId)) {
         throw badRequest(`Duplicate node ID '${nodeId}' at nodes[${i}]`);
       }
       seenIds.add(nodeId);
 
-      const nodeName = requireString(raw, "name", { minLen: 1, maxLen: 200, label: `nodes[${i}].name` });
-      const kindStr = requireString(raw, "kind", { minLen: 1, maxLen: 32, label: `nodes[${i}].kind` }) as WorkflowNodeKind;
+      const nodeName = requireString(raw, "name", {
+        minLen: 1,
+        maxLen: 200,
+        label: `nodes[${i}].name`,
+      });
+      const kindStr = requireString(raw, "kind", {
+        minLen: 1,
+        maxLen: 32,
+        label: `nodes[${i}].kind`,
+      }) as WorkflowNodeKind;
       if (!ALLOWED_NODE_KINDS.includes(kindStr)) {
-        throw badRequest(`Invalid kind '${kindStr}' for node '${nodeId}'. Must be one of: ${ALLOWED_NODE_KINDS.join(", ")}`);
+        throw badRequest(
+          `Invalid kind '${kindStr}' for node '${nodeId}'. Must be one of: ${ALLOWED_NODE_KINDS.join(", ")}`,
+        );
       }
 
       nodes.push({
@@ -171,10 +164,16 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
         summary: typeof raw.summary === "string" ? raw.summary : undefined,
         agentRole: typeof raw.agentRole === "string" ? raw.agentRole : undefined,
         conditionField: typeof raw.conditionField === "string" ? raw.conditionField : undefined,
-        conditionExpected: (typeof raw.conditionExpected === "string" || typeof raw.conditionExpected === "boolean" || typeof raw.conditionExpected === "number")
-          ? raw.conditionExpected
-          : undefined,
-        config: typeof raw.config === "object" && raw.config !== null ? (raw.config as Record<string, unknown>) : undefined,
+        conditionExpected:
+          typeof raw.conditionExpected === "string" ||
+          typeof raw.conditionExpected === "boolean" ||
+          typeof raw.conditionExpected === "number"
+            ? raw.conditionExpected
+            : undefined,
+        config:
+          typeof raw.config === "object" && raw.config !== null
+            ? (raw.config as Record<string, unknown>)
+            : undefined,
       });
     }
 
@@ -186,11 +185,22 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
           throw badRequest(`edges[${i}] must be an object`);
         }
         const raw = item as Record<string, unknown>;
-        const from = requireString(raw, "from", { minLen: 1, maxLen: 64, label: `edges[${i}].from` });
-        const to = requireString(raw, "to", { minLen: 1, maxLen: 64, label: `edges[${i}].to` });
-        const conditionValue = (typeof raw.conditionValue === "string" || typeof raw.conditionValue === "boolean" || typeof raw.conditionValue === "number")
-          ? raw.conditionValue
-          : undefined;
+        const from = requireString(raw, "from", {
+          minLen: 1,
+          maxLen: 64,
+          label: `edges[${i}].from`,
+        });
+        const to = requireString(raw, "to", {
+          minLen: 1,
+          maxLen: 64,
+          label: `edges[${i}].to`,
+        });
+        const conditionValue =
+          typeof raw.conditionValue === "string" ||
+          typeof raw.conditionValue === "boolean" ||
+          typeof raw.conditionValue === "number"
+            ? raw.conditionValue
+            : undefined;
         edges.push({ from, to, conditionValue });
       }
     }
@@ -200,39 +210,58 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
     if (!check.isValid) {
       throw badRequest(`Invalid DAG: ${check.errors.join("; ")}`);
     }
+    const definition = definitionFromPipeline(pipeline);
 
-    map.set(id, pipeline);
-    await saveProjectPipelines(deps.config.root, projectId);
+    await pipelines.update(projectId, (current) => {
+      if (current.some((existing) => existing.id === id)) {
+        throw new HttpError(
+          409,
+          "pipeline_already_exists",
+          `Pipeline '${id}' already exists. Pipeline IDs are immutable; create a new ID for a new revision.`,
+        );
+      }
+      return {
+        value: [...current, cloneDefinition(definition)],
+        result: undefined,
+      };
+    });
 
-    return c.json({
-      id: pipeline.id,
-      name: pipeline.name,
-      description: pipeline.description,
-      nodes: pipeline.listNodes(),
-      edges: pipeline.listEdges(),
-    }, 201);
+    return c.json(definition, 201);
   });
 
   // POST /:pipelineId/runs
   app.post("/:pipelineId/runs", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const map = await getProjectPipelineMap(deps.config.root, projectId);
-    const pipelineId = c.req.param("pipelineId");
-
-    const pipeline = map.get(pipelineId);
-    if (!pipeline) {
+    const pipelineId = requireValidId(c, "pipelineId");
+    const definitions = await pipelines.read(projectId);
+    const definition = definitions.find((candidate) => candidate.id === pipelineId);
+    if (!definition) {
       throw notFound(`Pipeline '${pipelineId}' not found in project`);
     }
 
     const body = (await readJson(c).catch(() => ({}))) as Record<string, unknown>;
-    const initialContext = (typeof body.context === "object" && body.context !== null)
-      ? (body.context as Record<string, unknown>)
-      : {};
+    const initialContext =
+      typeof body.context === "object" && body.context !== null
+        ? (body.context as Record<string, unknown>)
+        : {};
 
+    const definitionSnapshot = cloneDefinition(definition);
+    const pipeline = new WorkflowPipeline(definitionSnapshot);
     const run = pipeline.createRun(initialContext);
-    activeRuns.set(run.runId, { projectId, pipelineId, run });
-    await saveProjectRuns(deps.config.root, projectId);
+    const record: ScopedRunRecord = {
+      projectId,
+      pipelineId,
+      definition: definitionSnapshot,
+      run,
+    };
+
+    await runs.update(projectId, (current) => {
+      if (current.some((existing) => existing.run.runId === run.runId)) {
+        throw new HttpError(409, "pipeline_run_id_collision", "Generated pipeline run ID already exists.");
+      }
+      return { value: [...current, record], result: undefined };
+    });
 
     return c.json({ run }, 201);
   });
@@ -241,15 +270,18 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/:pipelineId/runs/:runId", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const pipelineId = c.req.param("pipelineId");
-    const runId = c.req.param("runId");
-
-    await loadProjectRuns(deps.config.root, projectId);
-    const record = activeRuns.get(runId);
-    if (!record || record.projectId !== projectId || record.pipelineId !== pipelineId) {
+    const pipelineId = requireValidId(c, "pipelineId");
+    const runId = requireValidId(c, "runId");
+    const records = await runs.read(projectId);
+    const record = records.find(
+      (candidate) =>
+        candidate.run.runId === runId &&
+        candidate.projectId === projectId &&
+        candidate.pipelineId === pipelineId,
+    );
+    if (!record) {
       throw notFound(`Pipeline run '${runId}' not found`);
     }
-
     return c.json({ run: record.run });
   });
 
@@ -257,32 +289,46 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/:pipelineId/runs/:runId/nodes/:nodeId/complete", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const map = await getProjectPipelineMap(deps.config.root, projectId);
-    const pipelineId = c.req.param("pipelineId");
-    const runId = c.req.param("runId");
-    const nodeId = c.req.param("nodeId");
-
-    const pipeline = map.get(pipelineId);
-    if (!pipeline) {
-      throw notFound(`Pipeline '${pipelineId}' not found`);
-    }
-
-    await loadProjectRuns(deps.config.root, projectId);
-    const record = activeRuns.get(runId);
-    if (!record || record.projectId !== projectId || record.pipelineId !== pipelineId) {
-      throw notFound(`Pipeline run '${runId}' not found`);
-    }
-
+    const pipelineId = requireValidId(c, "pipelineId");
+    const runId = requireValidId(c, "runId");
+    const nodeId = requireValidId(c, "nodeId");
     const body = (await readJson(c).catch(() => ({}))) as Record<string, unknown>;
-    const output = typeof body.output === "object" && body.output !== null ? (body.output as Record<string, unknown>) : undefined;
+    const output =
+      typeof body.output === "object" && body.output !== null
+        ? (body.output as Record<string, unknown>)
+        : undefined;
     const error = typeof body.error === "string" ? body.error : undefined;
 
     try {
-      const updatedRun = pipeline.completeNode(record.run, nodeId, { output, error });
-      record.run = updatedRun;
-      await saveProjectRuns(deps.config.root, projectId);
+      const updatedRun = await runs.update(projectId, (records) => {
+        const index = records.findIndex(
+          (candidate) =>
+            candidate.run.runId === runId &&
+            candidate.projectId === projectId &&
+            candidate.pipelineId === pipelineId,
+        );
+        if (index < 0) {
+          throw notFound(`Pipeline run '${runId}' not found`);
+        }
+
+        const record = records[index]!;
+        if (!record.definition) {
+          throw new HttpError(
+            409,
+            "pipeline_definition_snapshot_missing",
+            "This legacy in-flight run has no immutable pipeline definition snapshot and cannot be completed safely. Start a new run.",
+          );
+        }
+
+        const pipeline = new WorkflowPipeline(cloneDefinition(record.definition));
+        const nextRun = pipeline.completeNode(record.run, nodeId, { output, error });
+        const nextRecords = records.slice();
+        nextRecords[index] = { ...record, run: nextRun };
+        return { value: nextRecords, result: nextRun };
+      });
       return c.json({ run: updatedRun });
     } catch (err) {
+      if (err instanceof HttpError) throw err;
       throw badRequest((err as Error).message);
     }
   });
@@ -293,14 +339,12 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
 export function personaRoutes(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  // GET /personas
   app.get("/", async (c) => {
     const category = c.req.query("category");
     const personas = personaRegistry.listPersonas(category);
     return c.json({ personas });
   });
 
-  // GET /personas/:personaId
   app.get("/:personaId", async (c) => {
     const personaId = c.req.param("personaId");
     const persona = personaRegistry.getPersona(personaId);
