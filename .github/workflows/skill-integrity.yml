@@ -27,6 +27,9 @@ jobs:
       - name: Build taxonomy and overlap report
         if: always()
         run: pnpm skills:catalog
+      - name: Build readiness and resource-gap report
+        if: always()
+        run: pnpm skills:readiness
       - name: Upload skill audit evidence
         if: always()
         uses: actions/upload-artifact@v4
