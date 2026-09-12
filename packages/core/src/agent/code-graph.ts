@@ -156,6 +156,8 @@ export class CodeGraph {
 
   /**
    * Calculates the blast/impact radius of altering a node up to maxDepth.
+   * Uses shortest incoming distance rather than first DFS visitation, so a shared
+   * dependent reached through a long path can still be re-expanded through a shorter one.
    */
   public getImpactRadius(
     nodeId: string,
@@ -165,31 +167,44 @@ export class CodeGraph {
     if (!focalNode) return { nodes: [], edges: [] };
 
     const impactedNodes = new Map<string, CodeGraphNode>([[nodeId, focalNode]]);
-    const impactedEdges: CodeGraphEdge[] = [];
-    const visited = new Set<string>();
+    const impactedEdges = new Map<string, CodeGraphEdge>();
+    const bestDepth = new Map<string, number>([[nodeId, 0]]);
+    const queue: Array<{ id: string; depth: number }> = [{ id: nodeId, depth: 0 }];
 
-    const traverseImpact = (id: string, depth: number) => {
-      if (visited.has(id) || depth >= maxDepth) return;
-      visited.add(id);
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift()!;
+      if (depth >= maxDepth) continue;
 
-      // Incoming dependencies (callers, importers, references)
-      const incoming = this.getIncomingEdges(id);
-      for (const edge of incoming) {
-        impactedEdges.push(edge);
+      for (const edge of this.getIncomingEdges(id)) {
+        const edgeKey = `${edge.source}->${edge.target}:${edge.kind}:${edge.line ?? ""}`;
+        impactedEdges.set(edgeKey, edge);
+
         const sourceNode = this.getNode(edge.source);
-        if (sourceNode) {
-          impactedNodes.set(sourceNode.id, sourceNode);
-          traverseImpact(sourceNode.id, depth + 1);
+        if (!sourceNode) continue;
+        impactedNodes.set(sourceNode.id, sourceNode);
+
+        const nextDepth = depth + 1;
+        const previousDepth = bestDepth.get(sourceNode.id);
+        if (previousDepth === undefined || nextDepth < previousDepth) {
+          bestDepth.set(sourceNode.id, nextDepth);
+          queue.push({ id: sourceNode.id, depth: nextDepth });
         }
       }
-    };
+    }
 
-    traverseImpact(nodeId, 0);
+    const orderedNodes = [...impactedNodes.values()].sort((a, b) => {
+      const depthA = bestDepth.get(a.id) ?? Number.POSITIVE_INFINITY;
+      const depthB = bestDepth.get(b.id) ?? Number.POSITIVE_INFINITY;
+      return depthA - depthB || a.id.localeCompare(b.id);
+    });
+    const orderedEdges = [...impactedEdges.values()].sort((a, b) =>
+      a.source.localeCompare(b.source) ||
+      a.target.localeCompare(b.target) ||
+      a.kind.localeCompare(b.kind) ||
+      (a.line ?? 0) - (b.line ?? 0),
+    );
 
-    return {
-      nodes: Array.from(impactedNodes.values()),
-      edges: impactedEdges,
-    };
+    return { nodes: orderedNodes, edges: orderedEdges };
   }
 
   /**
@@ -348,11 +363,9 @@ export class CodeGraph {
 
           low.set(u, Math.min(low.get(u)!, low.get(v)!));
 
-          // Root of DFS tree is an articulation point if it has 2 or more children
           if (parent.get(u) === null && children > 1) {
             articulationPoints.add(u);
           }
-          // Non-root node u is an articulation point if low[v] >= discoveryTime[u]
           if (parent.get(u) !== null && low.get(v)! >= discoveryTime.get(u)!) {
             articulationPoints.add(u);
           }
@@ -401,7 +414,6 @@ export class CodeGraph {
         const { id, depth } = queue.shift()!;
         if (depth >= radius) continue;
 
-        // Outgoing
         for (const edge of this.getOutgoingEdges(id)) {
           const edgeKey = `${edge.source}->${edge.target}:${edge.kind}`;
           subEdges.set(edgeKey, edge);
@@ -415,7 +427,6 @@ export class CodeGraph {
           }
         }
 
-        // Incoming
         for (const edge of this.getIncomingEdges(id)) {
           const edgeKey = `${edge.source}->${edge.target}:${edge.kind}`;
           subEdges.set(edgeKey, edge);
@@ -444,7 +455,6 @@ export class CodeGraph {
   public static fromFileSummaries(summaries: FileSummary[]): CodeGraph {
     const graph = new CodeGraph();
 
-    // 1. Register file nodes
     for (const fs of summaries) {
       graph.addNode({
         id: fs.filePath,
@@ -456,7 +466,6 @@ export class CodeGraph {
         imports: fs.imports,
       });
 
-      // Register symbol nodes
       for (const cls of fs.classes) {
         const id = `${fs.filePath}#${cls}`;
         graph.addNode({
@@ -503,10 +512,8 @@ export class CodeGraph {
       }
     }
 
-    // 2. Resolve import edges
     for (const fs of summaries) {
       for (const imp of fs.imports) {
-        // Match import to candidate files
         const target = summaries.find((other) => {
           if (other.filePath === fs.filePath) return false;
           const otherBase = other.filePath.replace(/\.[^/.]+$/, "");
