@@ -26,13 +26,9 @@ function scanJsonStructure(text: string): JsonScan {
 
   for (const char of text) {
     if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
       continue;
     }
 
@@ -70,10 +66,6 @@ export function isTruncatedJSON(text: string): boolean {
   }
 }
 
-/**
- * Repair only structurally truncated JSON. Delimiters are closed in the exact reverse nesting
- * order in which they were opened; malformed/mismatched structures remain rejected.
- */
 export function repairTruncatedJSON(text: string): { repaired: string; fixed: boolean } {
   if (!text || typeof text !== "string") return { repaired: text, fixed: false };
 
@@ -90,14 +82,10 @@ export function repairTruncatedJSON(text: string): { repaired: string; fixed: bo
   if (scan.invalid) return { repaired: text, fixed: false };
 
   if (scan.inString) {
-    // A trailing escape cannot be followed by a synthetic closing quote without changing it into
-    // an escaped quote. Drop only that incomplete escape byte, then close the truncated string.
     if (scan.escaped && working.endsWith("\\")) working = working.slice(0, -1);
     working += '"';
   }
 
-  // A model may be cut immediately after a key/colon or comma. Removing only the incomplete tail
-  // is safer than inventing a value. Complete nested objects/arrays before this point are retained.
   working = working
     .replace(/,\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "")
     .replace(/\{\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, "{")
@@ -134,8 +122,6 @@ export function scavengeToolCalls(content: string | null | undefined): Scavenged
         parsed = JSON.parse(text);
         if (typeof parsed === "string") parsed = JSON.parse(parsed);
       } catch {
-        // Tool scavenging must not silently accept a meaningful prefix of malformed arguments.
-        // Structural repair remains an explicit helper for callers that knowingly opt into it.
         return;
       }
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
@@ -172,7 +158,6 @@ export function scavengeToolCalls(content: string | null | undefined): Scavenged
   return found;
 }
 
-/** Return complete balanced JSON object candidates without treating nested closing braces as roots. */
 function completeJsonObjects(text: string): string[] {
   const candidates: string[] = [];
   let start = -1;
@@ -220,18 +205,26 @@ function extractFromBlock(
     }
 
     const object = value as Record<string, unknown>;
+    const skipKeys = new Set<string>();
+
     const fn = object.function;
     if (fn && typeof fn === "object" && !Array.isArray(fn)) {
       const functionObject = fn as Record<string, unknown>;
       if (typeof functionObject.name === "string" && functionObject.arguments !== undefined) {
         register(functionObject.name, functionObject.arguments, source);
+        // Once an OpenAI-style function envelope is recognized, its function/arguments subtree is
+        // opaque domain data. Do not recursively reinterpret nested name/arguments pairs as calls.
+        skipKeys.add("function");
       }
     }
     if (typeof object.name === "string" && object.arguments !== undefined) {
       register(object.name, object.arguments, source);
+      skipKeys.add("arguments");
     }
 
-    for (const child of Object.values(object)) visit(child);
+    for (const [key, child] of Object.entries(object)) {
+      if (!skipKeys.has(key)) visit(child);
+    }
   };
 
   for (const candidate of completeJsonObjects(text)) {
@@ -243,7 +236,6 @@ function extractFromBlock(
   }
 }
 
-/** Dual-end truncation preserving both setup and conclusion. */
 export function truncateKeepEnds(
   content: string,
   maxChars = 12000,
