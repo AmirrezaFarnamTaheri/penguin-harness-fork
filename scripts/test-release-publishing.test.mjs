@@ -149,7 +149,9 @@ test("release.yml is the only workflow allowed to publish npm packages", () => {
         .split("\n")
         .filter((line) => !line.trimStart().startsWith("#"))
         .join("\n");
-      return /^\s*(?:-\s+run:\s*)?(?:npm|pnpm)\b[^\n]*\bpublish\b/m.test(executable);
+      // Match an actual package-manager `publish` command token, not unrelated flags such
+      // as electron-builder's `--publish never` on a `pnpm exec ...` command.
+      return /^\s*(?:-\s+run:\s*)?(?:npm|pnpm)\b[^\n]*\spublish(?:\s|$)/m.test(executable);
     });
   assert.deepEqual(
     publishers,
