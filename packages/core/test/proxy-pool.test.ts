@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   InferenceProxyPool,
   parseProxyUrl,
@@ -74,6 +74,33 @@ describe("InferenceProxyPool", () => {
     expect(entry?.tags).toContain("fast");
   });
 
+  it("rejects non-finite and non-positive explicit weights", () => {
+    for (const weight of [Number.POSITIVE_INFINITY, Number.NaN, 0, -1]) {
+      expect(() => pool.addProxy({ url: "http://weight.proxy:8080", weight })).toThrow(
+        "positive finite number",
+      );
+    }
+    expect(pool.getStats().total).toBe(0);
+  });
+
+  it("does not expose mutable internal proxy state", () => {
+    const added = pool.addProxy({
+      url: "http://encapsulated.proxy:8080",
+      tags: ["initial"],
+    });
+    added.status = "disabled";
+    added.tags.push("injected");
+
+    const stored = pool.getProxyEntry("http://encapsulated.proxy:8080");
+    expect(stored?.status).toBe("healthy");
+    expect(stored?.tags).toEqual(["initial"]);
+
+    const selected = pool.getNextProxy();
+    expect(selected).toBeDefined();
+    selected!.status = "dead";
+    expect(pool.getProxyEntry("http://encapsulated.proxy:8080")?.status).toBe("healthy");
+  });
+
   it("adds multiple proxies ignoring malformed inputs", () => {
     const entries = pool.addProxies([
       "http://1.1.1.1:8080",
@@ -93,6 +120,17 @@ describe("InferenceProxyPool", () => {
 
     const next = pool.getNextProxy();
     expect(next?.url).toBe("http://fast.proxy:8080");
+  });
+
+  it("rejects invalid latency observations", () => {
+    pool.addProxy("http://latency.proxy:8080");
+    expect(() => pool.recordSuccess("http://latency.proxy:8080", Number.POSITIVE_INFINITY)).toThrow(
+      "non-negative finite number",
+    );
+    expect(() => pool.recordSuccess("http://latency.proxy:8080", -1)).toThrow(
+      "non-negative finite number",
+    );
+    expect(pool.getProxyEntry("http://latency.proxy:8080")?.successCount).toBe(0);
   });
 
   it("calculates exponential moving average (EMA) latency", () => {
@@ -158,5 +196,14 @@ describe("InferenceProxyPool", () => {
     const importedEntry = newPool.getProxyEntry("http://1.1.1.1:8080");
     expect(importedEntry?.latencyMs).toBe(120);
     expect(importedEntry?.weight).toBe(3);
+  });
+
+  it("rejects imported entries with invalid weights", () => {
+    const entry = pool.addProxy("http://import.proxy:8080");
+    const newPool = new InferenceProxyPool();
+    expect(() => newPool.importEntries([{ ...entry, weight: Number.POSITIVE_INFINITY }])).toThrow(
+      "positive finite number",
+    );
+    expect(newPool.getStats().total).toBe(0);
   });
 });
