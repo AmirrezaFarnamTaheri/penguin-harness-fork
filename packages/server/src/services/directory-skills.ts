@@ -33,15 +33,29 @@ export interface DirectorySkillEntry extends Omit<DirectorySkill, "files"> {
   abs: string;
 }
 
+function isStrictDescendant(root: string, candidate: string): boolean {
+  const rel = path.relative(root, candidate);
+  return rel.length > 0 && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
+
 async function resolveSkillRoots(
   dir: string,
 ): Promise<Array<{ abs: string; source: SkillSourceDir }>> {
   const roots: Array<{ abs: string; source: SkillSourceDir }> = [];
   const seen = new Set<string>();
+  let selectedRoot: string;
+  try {
+    selectedRoot = await fs.realpath(dir);
+    if (!(await fs.stat(selectedRoot)).isDirectory()) return roots;
+  } catch {
+    return roots;
+  }
+
   for (const source of SKILL_SOURCE_DIRS) {
     let abs: string;
     try {
-      abs = await fs.realpath(path.join(dir, source));
+      abs = await fs.realpath(path.join(selectedRoot, source));
+      if (!isStrictDescendant(selectedRoot, abs)) continue;
       if (!(await fs.stat(abs)).isDirectory()) continue;
     } catch {
       continue;
@@ -103,13 +117,13 @@ function extractLocalReferences(markdown: string): string[] {
   return [...refs].sort((a, b) => a.localeCompare(b));
 }
 
-async function hasCompleteLocalResourceClosure(dir: string, content: string): Promise<boolean> {
-  for (const rel of extractLocalReferences(content)) {
+async function isOwnedLocalResource(root: string, rel: string): Promise<boolean> {
+  let current = root;
+  for (const segment of rel.split("/")) {
+    current = path.join(current, segment);
+    let stat: Awaited<ReturnType<typeof fs.lstat>>;
     try {
-      const stat = await fs.lstat(path.join(dir, rel));
-      // Auxiliary collection deliberately ignores symlinks and other special files, so accepting
-      // one here would advertise a resource that disappears during installation.
-      if (!stat.isFile() && !stat.isDirectory()) return false;
+      stat = await fs.lstat(current);
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -122,6 +136,18 @@ async function hasCompleteLocalResourceClosure(dir: string, content: string): Pr
       }
       throw error;
     }
+    if (stat.isSymbolicLink()) return false;
+  }
+
+  const stat = await fs.lstat(current);
+  return stat.isFile() || stat.isDirectory();
+}
+
+async function hasCompleteLocalResourceClosure(dir: string, content: string): Promise<boolean> {
+  for (const rel of extractLocalReferences(content)) {
+    // Reject symlinks in every path component, not just at the leaf. Otherwise a package could
+    // claim `references/foo.md` while `references` itself points outside the selected checkout.
+    if (!(await isOwnedLocalResource(dir, rel))) return false;
   }
   return true;
 }
@@ -176,7 +202,9 @@ async function readAuxiliaryFiles(dir: string): Promise<Record<string, string>> 
       if (!isSafeSkillFilePath(relChild)) continue;
 
       const child = path.join(abs, entry.name);
-      const size = (await fs.stat(child)).size;
+      const stat = await fs.lstat(child);
+      if (!stat.isFile()) continue;
+      const size = stat.size;
       count += 1;
       total += size;
       if (count > MAX_ARCHIVE_FILES || size > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) {
