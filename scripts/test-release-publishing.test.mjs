@@ -8,6 +8,10 @@ const desktopWorkflow = readFileSync(
   new URL("../.github/workflows/desktop-build.yml", import.meta.url),
   "utf8",
 );
+const dockerWorkflow = readFileSync(
+  new URL("../.github/workflows/docker.yml", import.meta.url),
+  "utf8",
+);
 const publishing = workflow.slice(workflow.indexOf("          package_version_exists() {"));
 const validator = /node -e '([\s\S]*?)' "\$versions" "\$version"/.exec(publishing)?.[1];
 assert.ok(validator, "release workflow must expose its registry-response validator");
@@ -83,5 +87,23 @@ test("canonical release desktop builds cannot silently downgrade required signin
     desktopWorkflow,
     /if \(\$sig\.Status -eq "NotSigned" -and \$env:REQUIRE_WINDOWS_SIGNING -ne "true"\) \{/,
     "unsigned Windows artifacts are acceptable only for an explicitly non-required dry-run",
+  );
+});
+
+test("fork Docker workflows build without authenticating to the upstream registry", () => {
+  assert.match(
+    dockerWorkflow,
+    /PUBLISH_IMAGE: \$\{\{ github\.repository == 'Prism-Shadow\/penguin-harness' && \(github\.event_name == 'push' \|\| inputs\.push\) && 'true' \|\| 'false' \}\}/,
+    "only the canonical repository may publish the upstream Docker image",
+  );
+  assert.match(
+    dockerWorkflow,
+    /- uses: docker\/login-action@v3\n\s+if: env\.PUBLISH_IMAGE == 'true'/,
+    "fork runs must skip Docker Hub login when upstream credentials are unavailable",
+  );
+  assert.match(
+    dockerWorkflow,
+    /push: \$\{\{ env\.PUBLISH_IMAGE == 'true' \}\}/,
+    "fork runs must still build while keeping registry mutation disabled",
   );
 });
