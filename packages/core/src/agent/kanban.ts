@@ -80,6 +80,10 @@ export interface LeaseIdentity {
   generation: number;
 }
 
+function stateRequiresCompletedDependencies(state: KanbanTaskState): boolean {
+  return state === "in_progress" || state === "review" || state === "done";
+}
+
 export class KanbanBoard {
   public readonly boardId: string;
   private readonly defaultLeaseDurationMs: number;
@@ -106,6 +110,12 @@ export class KanbanBoard {
       } catch {
         // Subscriber faults must not corrupt board state.
       }
+    }
+  }
+
+  private assertDependenciesExist(dependencies: string[]): void {
+    for (const depId of dependencies) {
+      if (!this.tasks.has(depId)) throw new Error(`Dependency ${depId} does not exist`);
     }
   }
 
@@ -153,8 +163,19 @@ export class KanbanBoard {
     const id = input.id ?? `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     if (this.tasks.has(id)) throw new Error(`Task with id '${id}' already exists`);
 
-    const dependencies = [...(input.dependencies ?? [])];
-    if (input.state === "in_progress") this.assertDependenciesComplete(dependencies);
+    const dependencies = Array.from(new Set(input.dependencies ?? []));
+    this.assertDependenciesExist(dependencies);
+    const initialState = input.state ?? "backlog";
+    if (stateRequiresCompletedDependencies(initialState)) {
+      this.assertDependenciesComplete(dependencies);
+    }
+
+    let parent: KanbanTask | undefined;
+    if (input.parentTaskId) {
+      if (input.parentTaskId === id) throw new Error(`Task '${id}' cannot be its own parent`);
+      parent = this.tasks.get(input.parentTaskId);
+      if (!parent) throw new Error(`Parent task ${input.parentTaskId} does not exist`);
+    }
 
     const now = Date.now();
     const task: KanbanTask = {
@@ -162,7 +183,7 @@ export class KanbanBoard {
       boardId: this.boardId,
       title: input.title,
       description: input.description,
-      state: input.state ?? "backlog",
+      state: initialState,
       priority: input.priority ?? "normal",
       assignee: input.assignee ?? null,
       workerPid: null,
@@ -170,18 +191,15 @@ export class KanbanBoard {
       dependencies,
       childTaskIds: [],
       createdAt: now,
-      startedAt: input.state === "in_progress" ? now : null,
-      completedAt: input.state === "done" ? now : null,
+      startedAt: initialState === "in_progress" ? now : null,
+      completedAt: initialState === "done" ? now : null,
       claimExpires: null,
       lastHeartbeatAt: null,
       leaseGeneration: 0,
       metadata: input.metadata ? { ...input.metadata } : {},
     };
 
-    if (task.parentTaskId) {
-      const parent = this.tasks.get(task.parentTaskId);
-      if (parent && !parent.childTaskIds.includes(id)) parent.childTaskIds.push(id);
-    }
+    if (parent && !parent.childTaskIds.includes(id)) parent.childTaskIds.push(id);
 
     this.tasks.set(id, task);
     this.emit({
@@ -191,7 +209,7 @@ export class KanbanBoard {
       timestamp: now,
       payload: { task: { ...task } },
     });
-    return { ...task };
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
   public getTask(id: string): KanbanTask | undefined {
@@ -235,15 +253,23 @@ export class KanbanBoard {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task with id '${taskId}' not found`);
 
-    if (!options?.force && (options?.workerId !== undefined || options?.generation !== undefined)) {
-      if (!options.workerId || options.generation === undefined) {
+    if (!options?.force) {
+      const hasWorkerId = options?.workerId !== undefined;
+      const hasGeneration = options?.generation !== undefined;
+      if (hasWorkerId !== hasGeneration) {
         throw new Error(`Cannot update task '${taskId}': workerId and generation must be supplied together`);
       }
-      this.assertActiveLease(task, { workerId: options.workerId, generation: options.generation }, "update");
-    }
+      const requiresLeaseIdentity = Boolean(task.assignee) || (task.leaseGeneration ?? 0) > 0 || hasWorkerId;
+      if (requiresLeaseIdentity) {
+        if (!options?.workerId || options.generation === undefined) {
+          throw new Error(`Cannot update task '${taskId}': an active lease identity is required`);
+        }
+        this.assertActiveLease(task, { workerId: options.workerId, generation: options.generation }, "update");
+      }
 
-    if (nextState === "in_progress" && !options?.force) {
-      this.assertDependenciesComplete(task.dependencies);
+      if (stateRequiresCompletedDependencies(nextState)) {
+        this.assertDependenciesComplete(task.dependencies);
+      }
     }
 
     const previousState = task.state;
@@ -265,7 +291,7 @@ export class KanbanBoard {
       timestamp: now,
       payload: { previousState, nextState, task: { ...task } },
     });
-    return { ...task };
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
   public claimTask(
@@ -310,7 +336,7 @@ export class KanbanBoard {
         leaseGeneration: task.leaseGeneration,
       },
     });
-    return { ...task };
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
   public heartbeat(
@@ -339,7 +365,7 @@ export class KanbanBoard {
         leaseGeneration: task.leaseGeneration,
       },
     });
-    return { ...task };
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
   public setTaskClaimExpiry(taskId: string, expiresAt: number | null): void {
@@ -366,7 +392,7 @@ export class KanbanBoard {
       timestamp: Date.now(),
       payload: { previousAssignee, leaseGeneration: task.leaseGeneration },
     });
-    return { ...task };
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
   public reclaimExpiredLeases(): string[] {
