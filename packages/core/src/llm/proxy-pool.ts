@@ -69,6 +69,22 @@ function defaultProxyPort(protocol: ProxyProtocol): number {
   return 1080;
 }
 
+function normalizeWeight(weight: number | undefined): number {
+  if (weight === undefined) return 1;
+  if (!Number.isFinite(weight) || weight <= 0) {
+    throw new Error("Proxy weight must be a positive finite number");
+  }
+  return weight;
+}
+
+function cloneProxyEntry(entry: ProxyEntry): ProxyEntry {
+  return {
+    ...entry,
+    auth: entry.auth ? { ...entry.auth } : undefined,
+    tags: [...entry.tags],
+  };
+}
+
 /**
  * Extract the port spelling from the original authority before WHATWG URL normalization.
  * URL.port intentionally becomes empty for explicit standard ports (HTTP 80 / HTTPS 443), so
@@ -177,9 +193,17 @@ export class InferenceProxyPool {
     this.emaAlpha = Math.max(0.01, Math.min(1.0, options.emaAlpha ?? 0.3));
   }
 
+  private findProxyEntry(idOrUrl: string): ProxyEntry | undefined {
+    if (this.proxies.has(idOrUrl)) return this.proxies.get(idOrUrl);
+    for (const entry of this.proxies.values()) {
+      if (entry.id === idOrUrl) return entry;
+    }
+    return undefined;
+  }
+
   public addProxy(input: string | ProxyInput): ProxyEntry {
     const rawUrl = typeof input === "string" ? input : input.url;
-    const weight = typeof input === "object" && input.weight && input.weight > 0 ? input.weight : 1;
+    const weight = normalizeWeight(typeof input === "object" ? input.weight : undefined);
     const tags = typeof input === "object" && Array.isArray(input.tags) ? input.tags : [];
 
     const parsed = parseProxyUrl(rawUrl);
@@ -187,7 +211,7 @@ export class InferenceProxyPool {
     if (existing) {
       existing.weight = weight;
       existing.tags = Array.from(new Set([...existing.tags, ...tags]));
-      return existing;
+      return cloneProxyEntry(existing);
     }
 
     const entry: ProxyEntry = {
@@ -206,11 +230,11 @@ export class InferenceProxyPool {
       cooldownUntil: 0,
       lastUsedAt: 0,
       lastTestedAt: 0,
-      tags,
+      tags: [...tags],
     };
 
     this.proxies.set(parsed.canonicalUrl, entry);
-    return entry;
+    return cloneProxyEntry(entry);
   }
 
   public addProxies(inputs: (string | ProxyInput)[]): ProxyEntry[] {
@@ -241,11 +265,8 @@ export class InferenceProxyPool {
   }
 
   public getProxyEntry(idOrUrl: string): ProxyEntry | undefined {
-    if (this.proxies.has(idOrUrl)) return this.proxies.get(idOrUrl);
-    for (const entry of this.proxies.values()) {
-      if (entry.id === idOrUrl) return entry;
-    }
-    return undefined;
+    const entry = this.findProxyEntry(idOrUrl);
+    return entry ? cloneProxyEntry(entry) : undefined;
   }
 
   private isDisabled(entry: ProxyEntry): boolean {
@@ -276,10 +297,10 @@ export class InferenceProxyPool {
         selected = candidates[0] ?? firstCandidate;
       }
     } else if (this.strategy === "weighted") {
-      const totalWeight = candidates.reduce((sum, candidate) => sum + Math.max(1, candidate.weight), 0);
+      const totalWeight = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
       let random = Math.random() * totalWeight;
       for (const candidate of candidates) {
-        random -= Math.max(1, candidate.weight);
+        random -= candidate.weight;
         if (random <= 0) {
           selected = candidate;
           break;
@@ -292,12 +313,15 @@ export class InferenceProxyPool {
     }
 
     selected.lastUsedAt = Date.now();
-    return selected;
+    return cloneProxyEntry(selected);
   }
 
   public recordSuccess(idOrUrl: string, latencyMs: number): void {
-    const entry = this.getProxyEntry(idOrUrl);
+    const entry = this.findProxyEntry(idOrUrl);
     if (!entry) return;
+    if (!Number.isFinite(latencyMs) || latencyMs < 0) {
+      throw new Error("Proxy latency must be a non-negative finite number");
+    }
 
     entry.successCount += 1;
     entry.consecutiveFailures = 0;
@@ -319,7 +343,7 @@ export class InferenceProxyPool {
     idOrUrl: string,
     options: { isRateLimit?: boolean; isAuthFailure?: boolean; error?: string } = {},
   ): void {
-    const entry = this.getProxyEntry(idOrUrl);
+    const entry = this.findProxyEntry(idOrUrl);
     if (!entry) return;
 
     entry.failureCount += 1;
@@ -350,7 +374,7 @@ export class InferenceProxyPool {
 
   /** Explicit status changes are administrative and therefore may clear a manual disable. */
   public setStatus(idOrUrl: string, status: ProxyStatus): boolean {
-    const entry = this.getProxyEntry(idOrUrl);
+    const entry = this.findProxyEntry(idOrUrl);
     if (!entry) return false;
 
     if (status === "disabled") {
@@ -430,10 +454,8 @@ export class InferenceProxyPool {
 
   public exportEntries(): ProxyEntry[] {
     return Array.from(this.proxies.values()).map((entry) => ({
-      ...entry,
+      ...cloneProxyEntry(entry),
       status: this.isDisabled(entry) ? "disabled" : entry.status,
-      auth: entry.auth ? { ...entry.auth } : undefined,
-      tags: [...entry.tags],
     }));
   }
 
@@ -442,6 +464,7 @@ export class InferenceProxyPool {
       if (!source?.url) continue;
       const entry: ProxyEntry = {
         ...source,
+        weight: normalizeWeight(source.weight),
         auth: source.auth ? { ...source.auth } : undefined,
         tags: Array.isArray(source.tags) ? [...source.tags] : [],
       };
