@@ -4,7 +4,7 @@
  * one-line mime/size note), the text-only path (a fake VisionDescriberService: single-shot
  * prompt + image request, streamed text, default prompt, no vision model configured, vision
  * request failure), failure cases shared by both (oversize, unsupported type, missing file,
- * empty file), the URL source (stubbed global fetch), and the Environment-side assembly with
+ * empty file), the URL source (stubbed safe HTTP client), and the Environment-side assembly with
  * and without an injected describer. Drives BuiltinTool.execute directly like
  * file-tools.test.ts; the text window itself is covered there.
  */
@@ -12,6 +12,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+const { safeFetchMock } = vi.hoisted(() => ({ safeFetchMock: vi.fn() }));
+vi.mock("../src/internal/safe-http.js", () => ({ safeFetch: safeFetchMock }));
+
 import { READ_FILE_NAME, createReadFileTool } from "../src/environment/tools/read-file.js";
 import { MAX_IMAGE_BYTES } from "../src/environment/tools/image-source.js";
 import { BUILTIN_TOOL_FACTORIES } from "../src/environment/tools/registry.js";
@@ -104,6 +108,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  safeFetchMock.mockReset();
   vi.unstubAllGlobals();
   await rm(tmp, { recursive: true, force: true });
 });
@@ -261,40 +266,64 @@ describe("read_file on an image — text-only session model (describer injected)
 });
 
 describe("read_file on an http(s) URL", () => {
-  it("downloads via the global fetch, taking the content-type header as the mime", async () => {
-    const fetchMock = vi.fn(
-      async (_input: unknown) =>
-        new Response(PNG_1X1, { status: 200, headers: { "content-type": "image/png" } }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("downloads through the bounded SSRF-safe client, taking the content-type header as the mime", async () => {
+    safeFetchMock.mockResolvedValue({
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "image/png" }),
+      buffer: async () => PNG_1X1,
+    });
     const { result, text } = await run({ file_path: "https://example.com/a" }, tmp);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]![0]).toBe("https://example.com/a");
+    expect(safeFetchMock).toHaveBeenCalledWith(
+      "https://example.com/a",
+      undefined,
+      expect.objectContaining({ allowLocalhost: false, maxBytes: MAX_IMAGE_BYTES }),
+    );
     expect(result?.images).toEqual([PNG_DATA_URL]);
     expect(text).toContain("image/png");
   });
 
   it("fails with the status code on a non-2xx response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("nope", { status: 404 })),
-    );
+    safeFetchMock.mockResolvedValue({
+      status: 404,
+      statusText: "Not Found",
+      headers: new Headers(),
+      buffer: async () => Buffer.from("nope"),
+    });
     const { result, text } = await run({ file_path: "https://example.com/missing.png" }, tmp);
     expect(result?.stopReason).toBe("fatal");
     expect(text).toContain("404");
   });
 
   it("rejects a URL that is not an image", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response("<html></html>", { status: 200, headers: { "content-type": "text/html" } }),
-      ),
-    );
+    safeFetchMock.mockResolvedValue({
+      status: 200,
+      statusText: "OK",
+      headers: new Headers({ "content-type": "text/html" }),
+      buffer: async () => Buffer.from("<html></html>"),
+    });
     const { result, text } = await run({ file_path: "https://example.com/page" }, tmp);
     expect(result?.stopReason).toBe("fatal");
     expect(text).toContain("Unsupported image type");
+  });
+
+  it("fails closed when the safe client rejects a private or oversized destination", async () => {
+    safeFetchMock.mockRejectedValueOnce(
+      new Error("SafeHttp: Blocked SSRF destination '169.254.169.254'"),
+    );
+    const privateTarget = await run(
+      { file_path: "http://169.254.169.254/latest/meta-data/screenshot.png" },
+      tmp,
+    );
+    expect(privateTarget.result?.stopReason).toBe("fatal");
+    expect(privateTarget.text).toContain("Blocked SSRF destination");
+
+    safeFetchMock.mockRejectedValueOnce(
+      new Error(`SafeHttp: Response body exceeded maximum limit of ${MAX_IMAGE_BYTES} bytes`),
+    );
+    const oversized = await run({ file_path: "https://example.com/chunked.png" }, tmp);
+    expect(oversized.result?.stopReason).toBe("fatal");
+    expect(oversized.text).toContain("exceeded maximum limit");
   });
 });
 

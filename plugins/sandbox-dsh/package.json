@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-plugin-sandbox-dsh",
-  "version": "0.2.2",
+  "version": "0.2.12",
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness sandbox adaptor for PenguinHarness: the DSH local backend chain behind the harness's own sandbox interface.",
@@ -30,6 +30,6 @@
   "devDependencies": {
     "@prismshadow/penguin-core": "workspace:*",
     "tsup": "^8.3.0",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   }
 }

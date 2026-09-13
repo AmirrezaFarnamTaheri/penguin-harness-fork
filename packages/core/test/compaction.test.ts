@@ -29,6 +29,7 @@ import {
   assistantText,
   compactionBegin,
   compactionEnd,
+  isEventMessage,
   mcpConnectBegin,
   mcpConnectEnd,
   partialText,
@@ -826,7 +827,14 @@ describe("context compaction", () => {
     const llm1 = new ScriptedLLM(
       [
         { messages: [assistantText("answer"), usage(150, 150)] },
-        { messages: [], outcome: { status: "retryable", errorMessage: "502 upstream" } },
+        {
+          messages: [],
+          outcome: {
+            status: "retryable",
+            errorMessage: "502 upstream",
+            usage: { cache_read: 0, cache_write: 20, output: 5, total: 25 },
+          },
+        },
         { messages: [assistantText("[summary]recovered[/summary]")] },
       ],
       "llm1",
@@ -848,6 +856,14 @@ describe("context compaction", () => {
     });
     // 1 turn request + 2 compaction attempts (the failed one, then the retry that succeeds).
     expect(llm1.calls).toHaveLength(3);
+    const failedUsage = out.filter(
+      (msg) =>
+        isEventMessage(msg) &&
+        msg.payload.type === "request_end" &&
+        msg.payload.usage !== undefined,
+    );
+    expect(failedUsage).toHaveLength(1);
+    expect(failedUsage[0]!.payload).toMatchObject({ status: "retryable", usage: { total: 25 } });
     // The retry resends the same input (tool results + prompt; only the prompt here).
     expect(payloadTypes(llm1.calls[2]!)).toEqual(["text"]);
   });

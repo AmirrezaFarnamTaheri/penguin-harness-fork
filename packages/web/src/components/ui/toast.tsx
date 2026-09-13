@@ -83,14 +83,20 @@ export function Toaster() {
   return createPortal(
     <div className="pointer-events-none fixed inset-x-0 top-3 z-[100] flex flex-col items-center gap-2 px-4">
       {list.map((t) => (
-        <button
+        <div
           key={t.id}
-          type="button"
-          onClick={() => dismiss(t.id)}
-          className={`pointer-events-auto max-w-lg break-words rounded-md border px-3 py-2 text-left text-sm shadow-lg ${t.leaving ? "anim-toast-out" : "anim-toast-in"} ${KIND_CLASS[t.kind]}`}
+          role={t.kind === "error" ? "alert" : "status"}
+          aria-live={t.kind === "error" ? "assertive" : "polite"}
+          aria-atomic="true"
         >
-          {t.text}
-        </button>
+          <button
+            type="button"
+            onClick={() => dismiss(t.id)}
+            className={`pointer-events-auto max-w-lg break-words rounded-md border px-3 py-2 text-left text-sm shadow-lg ${t.leaving ? "anim-toast-out" : "anim-toast-in"} ${KIND_CLASS[t.kind]}`}
+          >
+            {t.text}
+          </button>
+        </div>
       ))}
     </div>,
     document.body,

@@ -97,7 +97,7 @@ describe("the session file", () => {
     expect(fs.statSync(path.join(root, "cli-session.json")).mode & 0o777).toBe(0o600);
   });
 
-  it("refuses to write the token through a symlink parked at its path", () => {
+  it.skipIf(process.platform === "win32")("refuses to write the token through a symlink parked at its path", () => {
     const outside = path.join(root, "attacker-readable");
     fs.writeFileSync(outside, "");
     fs.symlinkSync(outside, path.join(root, "cli-session.json"));

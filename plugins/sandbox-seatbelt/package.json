@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-plugin-sandbox-seatbelt",
-  "version": "0.2.2",
+  "version": "0.2.12",
   "private": true,
   "type": "module",
   "description": "macOS Seatbelt sandbox backend for PenguinHarness: filesystem confinement plus network isolation and path masking.",
@@ -25,6 +25,6 @@
   "devDependencies": {
     "@prismshadow/penguin-core": "workspace:*",
     "tsup": "^8.3.0",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   }
 }

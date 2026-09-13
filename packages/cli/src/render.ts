@@ -426,6 +426,7 @@ export class StreamRenderer {
   /** This task's accumulated request tokens, the parent session's cumulative Session tokens, and whether this task has seen any usage. */
   private taskTokens = 0;
   private sessionTotal = 0;
+  private failedSessionTokens = 0;
   private hasUsage = false;
   /**
    * Session-level accumulation of sub-session (subagent) request tokens: persists across
@@ -780,7 +781,7 @@ export class StreamRenderer {
         // Accumulate this task's usage, printed together when the task ends (endTask),
         // not shown after every tool call/round.
         const p = payload as TokenUsagePayload;
-        this.sessionTotal = p.session.total;
+        this.sessionTotal = p.session.total + this.failedSessionTokens;
         if (this.compactionActive) {
           // Usage of a compaction request: staged first (final attribution depends on
           // whether a normal request_end still follows in this turn), and accumulated
@@ -832,6 +833,17 @@ export class StreamRenderer {
         }
       } else if (payload.type === "request_end") {
         const p = payload as RequestEndPayload;
+        if (p.status !== "completed" && p.usage) {
+          this.failedSessionTokens += p.usage.total;
+          this.sessionTotal += p.usage.total;
+          if (this.compactionActive) {
+            this.pendingCompactionTokens += p.usage.total;
+            this.compactionTokens += p.usage.total;
+          } else {
+            this.taskTokens += p.usage.total;
+            this.hasUsage = true;
+          }
+        }
         if (!this.compactionActive) {
           // A non-compaction request_end = the end of the turn so far: records the
           // timestamp (the end point for elapsed time), and settles any previously
@@ -1012,6 +1024,14 @@ export class StreamRenderer {
         const req = (msg.payload as TokenUsagePayload).request.total;
         this.taskTokens += req;
         this.subagentTotal += req;
+        this.hasUsage = true;
+      } else if (
+        msg.payload.type === "request_end" &&
+        msg.payload.status !== "completed" &&
+        msg.payload.usage
+      ) {
+        this.taskTokens += msg.payload.usage.total;
+        this.subagentTotal += msg.payload.usage.total;
         this.hasUsage = true;
       }
     }

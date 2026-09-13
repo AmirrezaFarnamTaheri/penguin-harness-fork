@@ -80,7 +80,7 @@ describe("workspace-files-service", () => {
     expect(sub.entries.map((e) => e.name)).toEqual(["c.md"]);
   });
 
-  it("a symlink to a directory inside the Workspace: kind is dir and it can be drilled into", async () => {
+  it.skipIf(process.platform === "win32")("a symlink to a directory inside the Workspace: kind is dir and it can be drilled into", async () => {
     await fs.symlink(path.join(ws, "sub"), path.join(ws, "link-sub"));
     const root = await svc.list(ws, "");
     expect(root.entries.map((e) => `${e.kind}:${e.name}`)).toEqual([
@@ -92,7 +92,7 @@ describe("workspace-files-service", () => {
     expect(viaLink.entries.map((e) => e.name)).toEqual(["c.md"]);
   });
 
-  it("symlink escape: reads and writes are both rejected when the link points outside the Workspace", async () => {
+  it.skipIf(process.platform === "win32")("symlink escape: reads and writes are both rejected when the link points outside the Workspace", async () => {
     await fs.symlink(outside, path.join(ws, "link-out"));
     const root = await svc.list(ws, "");
     expect(root.entries.map((entry) => entry.name)).not.toContain("link-out");
@@ -115,7 +115,7 @@ describe("workspace-files-service", () => {
     ).toBe(false);
   });
 
-  it("writing through a last-segment symlink: O_NOFOLLOW refuses to overwrite files outside the Workspace by proxy", async () => {
+  it.skipIf(process.platform === "win32")("writing through a last-segment symlink: O_NOFOLLOW refuses to overwrite files outside the Workspace by proxy", async () => {
     // The Agent has a symlink inside the Workspace pointing to an outside file; an upload attempts to overwrite it.
     const victim = path.join(outside, "secret.txt");
     await fs.symlink(victim, path.join(ws, "report.pdf"));
@@ -258,7 +258,7 @@ describe("workspace-files-service", () => {
     });
   });
 
-  it("move and delete confinement: `..` at either end, a symlinked destination directory, and a symlink at the final segment are all refused", async () => {
+  it.skipIf(process.platform === "win32")("move and delete confinement: `..` at either end, a symlinked destination directory, and a symlink at the final segment are all refused", async () => {
     const outsideName = path.basename(outside);
     await fs.symlink(outside, path.join(ws, "link-out"));
 
@@ -358,7 +358,7 @@ describe("workspace-files-service", () => {
     ]);
   });
 
-  it("search confinement: an out-of-bounds symlink is never walked into and never appears as a hit, and a link back to the root cannot spin the walk", async () => {
+  it.skipIf(process.platform === "win32")("search confinement: an out-of-bounds symlink is never walked into and never appears as a hit, and a link back to the root cannot spin the walk", async () => {
     await fs.writeFile(path.join(outside, "secret-needle.txt"), "s");
     await fs.symlink(outside, path.join(ws, "link-out"));
     // A cycle: the Workspace root reachable from inside itself, twice over.

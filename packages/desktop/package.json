@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-desktop",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "private": true,
   "type": "module",
   "description": "PenguinHarness desktop app: Electron shell running @prismshadow/penguin-server as a utilityProcess, window on http://localhost (same-origin HTTP/SSE, no private IPC).",
@@ -27,8 +27,8 @@
     "@penguinharness/skill-porting": "workspace:*",
     "@penguinharness/software-development": "workspace:*",
     "@penguinharness/use-bento-slides": "workspace:*",
-    "@penguinharness/use-firecrawl": "workspace:*",
     "@penguinharness/use-claude-code": "workspace:*",
+    "@penguinharness/use-firecrawl": "workspace:*",
     "@penguinharness/use-spexcode": "workspace:*"
   },
   "devDependencies": {
@@ -41,6 +41,6 @@
     "electron-updater": "^6.8.9",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   }
 }

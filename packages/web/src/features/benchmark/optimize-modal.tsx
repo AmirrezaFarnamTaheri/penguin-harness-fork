@@ -27,13 +27,8 @@ import { MAGIC_WAND_ICON } from "../../components/ui/icons";
 import { Input, Textarea } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { Select } from "../../components/ui/select";
-import {
-  AiCreatePanel,
-  PromptFold,
-  composeAiPrompt,
-  pickDefaultAgent,
-  useAiBridge,
-} from "../ai-create";
+import { AiCreatePanel, PromptFold, composeAiPrompt, pickDefaultAgent } from "../ai-create";
+import { useAiBridge } from "../ai-create/ai-bridge";
 import { defaultTargetScore, latestScore } from "./benchmark-metrics";
 import { MAX_RUNS, optimizeExamples, optimizeTail } from "./benchmark-prompts";
 import type { OptimizeParams } from "./benchmark-prompts";

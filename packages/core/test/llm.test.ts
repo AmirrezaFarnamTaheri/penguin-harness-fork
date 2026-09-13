@@ -1706,6 +1706,33 @@ describe("GenerativeModel.streamGenerate outcome classification (PRN-013)", () =
     return { messages, outcome: res.value as LLMOutcome };
   }
 
+  it.each(["retryable", "fatal", "aborted"] as const)(
+    "retains reported usage on a %s attempt without emitting committed token_usage",
+    async (status) => {
+      const model = new SeamModel(async function* () {
+        yield ev({
+          content_items: [{ type: "text", text: "partial" }],
+          usage_metadata: {
+            cached_tokens: 0,
+            prompt_tokens: 12,
+            thoughts_tokens: 0,
+            response_tokens: 4,
+          },
+        });
+        if (status === "aborted") throw abortError();
+        throw Object.assign(new Error("request failed"), {
+          status: status === "fatal" ? 400 : 503,
+        });
+      });
+      const { messages, outcome } = await drain(
+        model.streamGenerate({ newMessages: [userText("go")] }),
+      );
+      expect(outcome.status).toBe(status);
+      expect(outcome.usage).toEqual({ cache_read: 0, cache_write: 12, output: 4, total: 16 });
+      expect(messages.map(typeOf)).not.toContain("token_usage");
+    },
+  );
+
   it("returns fatal on a build failure such as empty input (never throws)", async () => {
     const model = new SeamModel((sig) => hang(sig));
     const { messages, outcome } = await drain(model.streamGenerate({ newMessages: [] }));
@@ -1713,6 +1740,7 @@ describe("GenerativeModel.streamGenerate outcome classification (PRN-013)", () =
     // assemble on a retry), never throws.
     expect(outcome.status).toBe("fatal");
     expect(messages).toHaveLength(0);
+    expect(outcome.usage).toBeUndefined();
   });
 
   it("interrupt lands while the consumer is suspended at yield: finish immediately as aborted, never pull the already-aborted upstream again", async () => {
@@ -1758,6 +1786,7 @@ describe("GenerativeModel.streamGenerate outcome classification (PRN-013)", () =
       model.streamGenerate({ newMessages: [userText("go")] }),
     );
     expect(outcome.status).toBe("retryable");
+    expect(outcome.usage).toBeUndefined();
     expect(messages.map(typeOf)).not.toContain("token_usage");
   });
 

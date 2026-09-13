@@ -94,7 +94,9 @@ describe("directory skills api", () => {
     expect(res.skills[0]).not.toHaveProperty("content");
   });
 
-  it("offers each Skill once when .claude is a symlink to .agents", async () => {
+  it.skipIf(process.platform === "win32")(
+    "offers each Skill once when .claude is a symlink to .agents",
+    async () => {
     await writeSkill(".agents/skills", "alpha");
     await writeSkill(".agents/skills", "gamma");
     await fs.symlink(path.join(dir, ".agents"), path.join(dir, ".claude"));
@@ -122,17 +124,21 @@ describe("directory skills api", () => {
     // A name the installer would reject.
     await fs.mkdir(path.join(dir, ".agents/skills/bad name"), { recursive: true });
     await fs.writeFile(path.join(dir, ".agents/skills/bad name/SKILL.md"), skillMd("bad name"));
-    // A symlinked Skill directory: how a tree outside the layout would otherwise be read.
-    const outside = path.join(dir, "outside-skill");
-    await fs.mkdir(outside, { recursive: true });
-    await fs.writeFile(path.join(outside, "SKILL.md"), skillMd("linked"));
-    await fs.symlink(outside, path.join(dir, ".agents/skills/linked"));
+    if (process.platform !== "win32") {
+      // A symlinked Skill directory: how a tree outside the layout would otherwise be read.
+      const outside = path.join(dir, "outside-skill");
+      await fs.mkdir(outside, { recursive: true });
+      await fs.writeFile(path.join(outside, "SKILL.md"), skillMd("linked"));
+      await fs.symlink(outside, path.join(dir, ".agents/skills/linked"));
+    }
 
     const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
     expect(res.skills.map((s) => s.name)).toEqual(["real"]);
   });
 
-  it("does not follow a symlinked SKILL.md or icon.svg out of the Skill directory", async () => {
+  it.skipIf(process.platform === "win32")(
+    "does not follow a symlinked SKILL.md or icon.svg out of the Skill directory",
+    async () => {
     const secret = path.join(dir, "outside", "id_rsa");
     await fs.mkdir(path.dirname(secret), { recursive: true });
     await fs.writeFile(secret, "-----BEGIN PRIVATE KEY-----\nSECRET\n");

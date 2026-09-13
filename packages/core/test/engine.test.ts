@@ -1592,7 +1592,10 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
           yield partialText("delta", "thinking...");
           yield partialText("stop", "", "retryable");
           yield assistantText("thinking...", "retryable");
-          return { status: "retryable" };
+          return {
+            status: "retryable",
+            usage: { cache_read: 0, cache_write: 0, output: 5, total: 500 },
+          };
         }
         // Retry succeeds: completes normally.
         yield assistantText("done");
@@ -1619,6 +1622,13 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     const all = await collectRun(engine, [userText("go")], allowAll);
 
     expect(calls).toBe(2); // Initial timeout -> auto-retries once within the same run and succeeds.
+    const ends = all.filter((m) => (m.payload as { type?: string }).type === "request_end");
+    expect(ends[0]!.payload).toMatchObject({ status: "retryable", usage: { total: 500 } });
+    const committedUsage = all.filter(
+      (m) => (m.payload as { type?: string }).type === "token_usage",
+    );
+    expect(committedUsage).toHaveLength(1);
+    expect(committedUsage[0]!.payload).toMatchObject({ request: { total: 1 } });
     // Retry = original input kept as-is + one [turn_retried] carrying the partial products
     // already produced (not [turn_aborted], to avoid the model mistaking it for a user interrupt).
     expect(inputs[1]).toHaveLength(2);

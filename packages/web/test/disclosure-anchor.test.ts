@@ -69,9 +69,14 @@ function slotIn(node: ts.Node): { host: ts.JsxElement | ts.JsxFragment; slot: ts
 function findOrphans(): string[] {
   const orphans: string[] = [];
   for (const path of tsxFiles()) {
+    const raw = readFileSync(path, "utf8");
+    // Most TSX files cannot contribute to this invariant. Avoid constructing a full TypeScript
+    // AST for them; the literal tag spelling is required by jsxTag below, so this prefilter
+    // cannot hide an InfoPopover the structural check would otherwise inspect.
+    if (!raw.includes("<InfoPopover")) continue;
     const source = ts.createSourceFile(
       path,
-      readFileSync(path, "utf8"),
+      raw,
       ts.ScriptTarget.Latest,
       /* setParentNodes */ true,
       ts.ScriptKind.TSX,

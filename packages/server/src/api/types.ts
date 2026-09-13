@@ -1572,6 +1572,7 @@ export interface MessagesPageInfo {
     apiMs: number;
     toolMs: number;
     sessionTokens: number;
+    failedSessionTokens?: number;
     contextTokens: number;
   };
 }

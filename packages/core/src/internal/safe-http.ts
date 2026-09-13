@@ -334,6 +334,7 @@ function requestBoundAddress(
     };
 
     const onResponse = (response: http.IncomingMessage) => {
+      response.on("error", fail);
       const responseHeaders = new Headers();
       for (const [name, value] of Object.entries(response.headers)) {
         if (Array.isArray(value)) {
@@ -372,7 +373,6 @@ function requestBoundAddress(
         }
         chunks.push(buffer);
       });
-      response.on("error", fail);
       response.on("end", () => {
         if (settled) return;
         settled = true;

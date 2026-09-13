@@ -134,7 +134,9 @@ describe("memory api", () => {
     expect(await fs.readdir(wsDir)).not.toContain(name);
   });
 
-  it("neither lists nor follows a symlinked topic file", async () => {
+  it.skipIf(process.platform === "win32")(
+    "neither lists nor follows a symlinked topic file",
+    async () => {
     const outside = path.join(t.root, "outside-secret.txt");
     await fs.writeFile(outside, "secret", "utf8");
     await fs.symlink(outside, path.join(wsDir, "leak.md"));
@@ -144,7 +146,9 @@ describe("memory api", () => {
     expect((await owner.get(`${filesPath()}/leak.md`)).status).toBe(404);
   });
 
-  it("404s a scope directory smuggled in as a symlink", async () => {
+  it.skipIf(process.platform === "win32")(
+    "404s a scope directory smuggled in as a symlink",
+    async () => {
     const outside = path.join(t.root, "outside-dir");
     await fs.mkdir(outside, { recursive: true });
     await fs.writeFile(path.join(outside, "loot.md"), "---\nname: l\n---\nx\n", "utf8");
@@ -622,7 +626,7 @@ describe("memory scope export/import", () => {
     );
   });
 
-  it("replaces a symlink standing at a memory's name instead of writing through it", async () => {
+  it.skipIf(process.platform === "win32")("replaces a symlink standing at a memory's name instead of writing through it", async () => {
     const outside = path.join(t.root, "outside-secret.md");
     await fs.writeFile(outside, "secret\n", "utf8");
     await fs.symlink(outside, path.join(wsDir, "leak.md"));
@@ -650,14 +654,16 @@ describe("memory scope export/import", () => {
     expect((await owner.get(exportPath("never-run-0badc0de"))).status).toBe(404);
     expect((await runImport(document([]), { key: "never-run-0badc0de" })).status).toBe(404);
 
-    const outside = path.join(t.root, "outside-dir");
-    await fs.mkdir(outside, { recursive: true });
-    await fs.symlink(outside, memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"));
-    expect((await owner.get(exportPath("evil-12345678"))).status).toBe(404);
-    expect((await runImport(document([topic("a.md", "x")]), { key: "evil-12345678" })).status).toBe(
-      404,
-    );
-    expect(await fs.readdir(outside)).toEqual([]);
+    if (process.platform !== "win32") {
+      const outside = path.join(t.root, "outside-dir");
+      await fs.mkdir(outside, { recursive: true });
+      await fs.symlink(outside, memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"));
+      expect((await owner.get(exportPath("evil-12345678"))).status).toBe(404);
+      expect((await runImport(document([topic("a.md", "x")]), { key: "evil-12345678" })).status).toBe(
+        404,
+      );
+      expect(await fs.readdir(outside)).toEqual([]);
+    }
   });
 
   // —— Authorization ——

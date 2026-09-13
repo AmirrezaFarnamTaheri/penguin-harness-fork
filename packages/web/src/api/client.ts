@@ -35,6 +35,8 @@ function isAuthEndpoint(path: string): boolean {
 }
 
 export interface ApiFetchOptions {
+  /** AuthProvider handles identity failures with its own request generation check. */
+  handleUnauthorized?: boolean;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** JSON request body (auto-serialized with Content-Type: application/json). */
   body?: unknown;
@@ -101,7 +103,8 @@ export async function apiFetchWithMeta<T>(
     } catch {
       // Non-JSON error body: fall back to the default message.
     }
-    if (response.status === 401 && !isAuthEndpoint(path)) onUnauthorized?.();
+    if (response.status === 401 && !isAuthEndpoint(path) && options.handleUnauthorized !== false)
+      onUnauthorized?.();
     throw new ApiError(response.status, code, message);
   }
 

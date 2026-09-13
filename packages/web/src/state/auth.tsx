@@ -4,7 +4,7 @@
  * redirects to /login; a successful login/registration holds a session cookie (HttpOnly,
  * issued by the server).
  */
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { MeResponse, UploadLimits, UserInfo } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
@@ -28,6 +28,8 @@ const DEFAULT_UPLOAD_LIMITS: UploadLimits = {
 interface AuthContextValue {
   /** undefined = initializing; null = not logged in. */
   user: UserInfo | null | undefined;
+  /** The initial /api/me request failed without proving that the session is unauthorized. */
+  initializationFailed: boolean;
   /**
    * Whether Workspace HTML previews open on a separate origin. False means this
    * deployment falls back to the same-origin sandbox, where `localStorage`, cookies and
@@ -69,8 +71,25 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** A failed identity request proves sign-out only when the server explicitly answers 401. */
+export function isConfirmedUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+export function authFailureState(
+  currentUser: UserInfo | null | undefined,
+  error: unknown,
+): Pick<AuthContextValue, "user" | "initializationFailed"> {
+  if (isConfirmedUnauthorized(error)) return { user: null, initializationFailed: false };
+  return { user: currentUser, initializationFailed: currentUser === undefined };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Latest auth operation owns the result. This prevents the mount-time /me request from
+  // overwriting a newer login, logout, or manual retry when responses arrive out of order.
+  const authGeneration = useRef(0);
   const [user, setUser] = useState<UserInfo | null | undefined>(undefined);
+  const [initializationFailed, setInitializationFailed] = useState(false);
   // Assume isolated until told otherwise: the warning is the exceptional state, and
   // flashing it during initialization would be noise.
   const [previewIsolated, setPreviewIsolated] = useState(true);
@@ -86,35 +105,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Must be registered before the GET /api/me effect below (effects in the same component
   // run in declaration order).
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    setUnauthorizedHandler(() => {
+      authGeneration.current += 1;
+      setUser(null);
+      setInitializationFailed(false);
+    });
     return () => setUnauthorizedHandler(null);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getMe()
-      .then((res) => {
-        if (cancelled) return;
-        setUser(res.user);
-        setPreviewIsolated(res.previewIsolated);
-        setDesktopMode(res.desktopMode);
-        setSessionVia(res.sessionVia);
-        setUploadLimits(res.uploadLimits);
-        setCompanyMode(res.companyMode);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (err instanceof ApiError && err.status === 401) setUser(null);
-        else setUser(null);
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const login = useCallback(async (userId: string, password: string) => {
     const res = await api.login({ userId, password });
+    const generation = ++authGeneration.current;
     setUser(res.user);
     // previewIsolated only rides on GET /api/me, and the mount-time fetch ran before
     // this session existed — without a refetch, a deployment with no separate preview
@@ -124,19 +125,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // cookie is already set, so a transient /me error just leaves the default in place
     // until the next refresh.
     try {
-      const me = await api.getMe();
+      const me = await api.getMe({ handleUnauthorized: false });
+      if (authGeneration.current !== generation) return;
       setUser(me.user);
       setPreviewIsolated(me.previewIsolated);
       setDesktopMode(me.desktopMode);
       setSessionVia(me.sessionVia);
       setUploadLimits(me.uploadLimits);
       setCompanyMode(me.companyMode);
-    } catch {
-      // Login itself succeeded; keep the optimistic default.
+    } catch (error) {
+      if (authGeneration.current === generation && isConfirmedUnauthorized(error)) setUser(null);
     }
   }, []);
 
   const logout = useCallback(async () => {
+    authGeneration.current += 1;
     try {
       await api.logout();
     } finally {
@@ -145,19 +148,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const res = await api.getMe();
-    setUser(res.user);
-    setPreviewIsolated(res.previewIsolated);
-    setDesktopMode(res.desktopMode);
-    setSessionVia(res.sessionVia);
-    setUploadLimits(res.uploadLimits);
-    setCompanyMode(res.companyMode);
+    const generation = ++authGeneration.current;
+    setInitializationFailed(false);
+    try {
+      const res = await api.getMe({ handleUnauthorized: false });
+      if (authGeneration.current !== generation) return;
+      setUser(res.user);
+      setPreviewIsolated(res.previewIsolated);
+      setDesktopMode(res.desktopMode);
+      setSessionVia(res.sessionVia);
+      setUploadLimits(res.uploadLimits);
+      setCompanyMode(res.companyMode);
+    } catch (err) {
+      if (authGeneration.current !== generation) return;
+      if (isConfirmedUnauthorized(err)) setUser(null);
+      else setInitializationFailed(true);
+      throw err;
+    }
   }, []);
+
+  useEffect(() => {
+    // A transport error or 5xx says nothing about the cookie. Keep the guard in an explicit
+    // retry state; redirecting to login would discard a valid signed-in screen merely because
+    // the server was restarting. Only a confirmed 401 changes the user to unauthenticated.
+    void refresh().catch(() => undefined);
+    return () => {
+      authGeneration.current += 1;
+    };
+  }, [refresh]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        initializationFailed,
         previewIsolated,
         desktopMode,
         sessionVia,

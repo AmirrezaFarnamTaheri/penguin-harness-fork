@@ -23,6 +23,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
 import { bootInstallScope, watchInstallScope } from "./lib/install-scope";
+import { zh } from "./lib/strings";
+import { en } from "./lib/strings-en";
 // KaTeX's stylesheet and its woff2 faces, resolved out of node_modules so Vite emits them as local
 // assets: the desktop app has to render math with no network, and a CDN <link> would leave every
 // formula as unstyled markup offline. Imported before styles.css so the app's own `.katex` rules
@@ -33,8 +35,31 @@ import "./styles.css";
 const container = document.getElementById("root");
 if (!container) throw new Error("#root mount point not found");
 
+const root = createRoot(container);
+
+function BootStatus() {
+  let preference: string | null = null;
+  try {
+    preference = localStorage.getItem("penguin.lang");
+  } catch {
+    // Blocked site storage falls back to the browser language, as the app does.
+  }
+  const strings =
+    preference === "zh" ||
+    (preference !== "en" && navigator.language.toLowerCase().startsWith("zh"))
+      ? zh
+      : en;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-white text-gray-700 dark:bg-gray-950 dark:text-gray-200">
+      <p role="status" aria-live="polite">
+        {strings.common.loading}
+      </p>
+    </main>
+  );
+}
+
 function mount(): void {
-  createRoot(container!).render(
+  root.render(
     <StrictMode>
       <App />
     </StrictMode>,
@@ -44,6 +69,11 @@ function mount(): void {
 // A second tab can recognise a replaced root while this one is open, leaving everything on
 // screen here pointing at a data root that is gone.
 watchInstallScope();
+
+// Paint immediately while install-scope reconciliation waits for the server. This component
+// deliberately imports no feature state, so a subsequent sweep still cannot be repopulated by
+// application initializers before the reload.
+root.render(<BootStatus />);
 
 // The rejection handler mounts too: bootInstallScope already swallows everything it can, and
 // the app must mount even if it somehow does not.

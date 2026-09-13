@@ -457,6 +457,7 @@ describe("read_file — argument coercion, CRLF, secret guard", () => {
     const upper = await run(tool(), { file_path: ".VAULT.TOML" }, tmp);
     expect(upper.result?.stopReason).toBe("fatal");
     expect(upper.text).toContain("Refusing to read");
+    if (process.platform === "win32") return;
     // Symlink: the link's own basename says nothing about what it dereferences to.
     await symlink(path.join(tmp, ".vault.toml"), path.join(tmp, "notes.txt"));
     const linked = await run(tool(), { file_path: "notes.txt" }, tmp);
@@ -731,7 +732,7 @@ describe("write_file — overwrite diffs", () => {
   });
 });
 
-describe("edit_file / write_file — symlinked targets", () => {
+describe.skipIf(process.platform === "win32")("edit_file / write_file — symlinked targets", () => {
   const edit = () => createEditFileTool(def(EDIT_FILE_NAME, "rw"));
   const write = () => createWriteFileTool(def(WRITE_FILE_NAME, "rw"));
 

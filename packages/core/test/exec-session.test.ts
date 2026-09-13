@@ -68,12 +68,15 @@ async function runTool(
   name: string,
   args: Record<string, unknown>,
   signal?: AbortSignal,
+  onOutput?: (output: string) => void,
 ): Promise<FinalOutput> {
   let last: OmniMessage | null = null;
   for await (const msg of env.executeTool({
     toolCall: toolCall({ name, arguments: JSON.stringify(args), toolCallId: `call_${name}` }),
     ...(signal ? { signal } : {}),
   })) {
+    const payload = msg.payload as { output?: string };
+    if (payload.output) onOutput?.(payload.output);
     if ((msg.payload as { type?: string }).type === "tool_call_output") last = msg;
   }
   const p = (last?.payload ?? {}) as { output?: string; stop_reason?: string };
@@ -84,6 +87,29 @@ function extractProcessId(output: string): string {
   const m = output.match(/process_id (proc-[0-9a-f]+)/);
   expect(m, `expected a process_id in: ${JSON.stringify(output)}`).toBeTruthy();
   return m![1]!;
+}
+
+/** Collect every yielded window for assertions about completed command output. */
+async function runCommandToCompletion(cmd: string): Promise<FinalOutput> {
+  let result = await runTool(env, "exec_command", { cmd, yield_time_ms: 300 });
+  let output = result.output;
+  if (result.output.includes("process running with process_id")) {
+    const processId = extractProcessId(result.output);
+    await expect
+      .poll(
+        async () => {
+          result = await runTool(env, "input_command", {
+            process_id: processId,
+            yield_time_ms: 300,
+          });
+          output += result.output;
+          return result.output.includes("process still running");
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(false);
+  }
+  return { output, stopReason: result.stopReason };
 }
 
 let tmp: string;
@@ -107,11 +133,22 @@ describe("exec_command — long-running command sessions", () => {
     // after the foreground echo. The old implementation waited for close (pipe EOF) -> stuck
     // for 5s; the new implementation goes by the foreground exit + a short drain, returning
     // within seconds, and reaps the leftover background process.
-    const startedAt = Date.now();
-    const res = await runTool(env, "exec_command", {
-      cmd: 'node -e "setTimeout(()=>{},5000)" & echo hello',
-    });
-    const elapsed = Date.now() - startedAt;
+    // Measure pipe-drain latency after foreground output arrives, excluding cold shell
+    // startup. The regression is waiting on inherited pipes after the foreground exits.
+    let foregroundOutputAt: number | undefined;
+    const res = await runTool(
+      env,
+      "exec_command",
+      {
+        cmd: 'node -e "setTimeout(()=>{},5000)" & echo hello',
+      },
+      undefined,
+      (output) => {
+        if (output.includes("hello")) foregroundOutputAt ??= Date.now();
+      },
+    );
+    expect(foregroundOutputAt).toBeDefined();
+    const elapsed = Date.now() - foregroundOutputAt!;
     expect(elapsed).toBeLessThan(2000);
     expect(res.output).toContain("hello");
     expect(res.output).not.toContain("process running with process_id");
@@ -172,13 +209,21 @@ describe("exec_command — long-running command sessions", () => {
     });
     const pid = extractProcessId(start.output);
 
-    const res = await runTool(env, "input_command", {
-      process_id: pid,
-      chars: "",
-      yield_time_ms: 2000,
-    });
-    // The command finishes during polling, yielding the remaining output and exit status.
-    expect(res.output).toContain("line3");
+    let output = "";
+    let res;
+    const deadline = Date.now() + 15_000;
+    do {
+      res = await runTool(env, "input_command", {
+        process_id: pid,
+        chars: "",
+        yield_time_ms: 2000,
+      });
+      output += res.output;
+    } while (res.output.includes("process still running") && Date.now() < deadline);
+    // A poll may yield before the shell starts on a loaded runner. Keep polling like a
+    // real caller, preserving each chunk, and still require completion within a deadline.
+    expect(output).toContain("line3");
+    expect(res.output).not.toContain("process still running");
     expect(res.stopReason).toBe("completed");
   });
 
@@ -244,19 +289,17 @@ describe("exec_command — long-running command sessions", () => {
   });
 
   it("runs commands through pipes, not a TTY (isTTY=false)", async () => {
-    const res = await runTool(env, "exec_command", {
-      cmd: 'node -e "process.stdout.write(String(Boolean(process.stdout.isTTY)))"',
-      yield_time_ms: 3000,
-    });
+    const res = await runCommandToCompletion(
+      'node -e "process.stdout.write(String(Boolean(process.stdout.isTTY)))"',
+    );
     expect(res.output).toContain("false");
     expect(res.stopReason).toBe("completed");
   });
 
   it("hardens the child env against interactive hangs (editor/credentials/pager)", async () => {
-    const res = await runTool(env, "exec_command", {
-      cmd: 'echo "$GIT_EDITOR|$GIT_TERMINAL_PROMPT|$PAGER|$TERM"',
-      yield_time_ms: 3000,
-    });
+    const res = await runCommandToCompletion(
+      'echo "$GIT_EDITOR|$GIT_TERMINAL_PROMPT|$PAGER|$TERM"',
+    );
     expect(res.output).toContain("true|0|cat|dumb");
     expect(res.stopReason).toBe("completed");
   });

@@ -115,10 +115,12 @@ describe("benchmarks api", () => {
       "PRIVATE GOLD: never return this text",
       "utf8",
     );
-    await fs.symlink(
-      path.join(dir, "CASE-002-web-task", "rubric", "README.md"),
-      path.join(dir, "CASE-001-excel-task", "statement", "private-link.md"),
-    );
+    if (process.platform !== "win32") {
+      await fs.symlink(
+        path.join(dir, "CASE-002-web-task", "rubric", "README.md"),
+        path.join(dir, "CASE-001-excel-task", "statement", "private-link.md"),
+      );
+    }
     await fs.writeFile(
       path.join(dir, "benchmark_config.toml"),
       `title = "SWE Bench v2"\ndescription = "Example"\nruns = 2\n`,
@@ -239,13 +241,15 @@ describe("benchmarks api", () => {
       "file:README.md",
     ]);
     expect(JSON.stringify(files)).not.toContain("private-link.md");
-    expect(
-      (
-        await member.get(
-          `${filesBase}/content?path=${encodeURIComponent("private-link.md")}&preview=1`,
-        )
-      ).status,
-    ).toBe(400);
+    if (process.platform !== "win32") {
+      expect(
+        (
+          await member.get(
+            `${filesBase}/content?path=${encodeURIComponent("private-link.md")}&preview=1`,
+          )
+        ).status,
+      ).toBe(400);
+    }
 
     const nested = (await (
       await member.get(`${filesBase}?path=${encodeURIComponent("assets")}`)

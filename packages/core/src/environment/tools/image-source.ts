@@ -1,7 +1,8 @@
 /**
  * Image loading for read_file's image branch: which sources count as images, how their bytes
- * are fetched (an http(s) URL through the global fetch, anything else as a path resolved
- * against the Workspace), and the validation every image passes (size cap, supported mime).
+ * are fetched (an http(s) URL through the SSRF-safe client, anything else as a path resolved
+ * against the Workspace), and the validation every image passes (SSRF policy, streaming size
+ * cap, supported mime).
  *
  * Detection order is magic number → response content-type (URLs only) → extension: a file
  * whose bytes say PNG is an image whatever it is called, and a `.png` path with unrecognized
@@ -9,6 +10,7 @@
  */
 import path from "node:path";
 import { open, readFile, stat } from "node:fs/promises";
+import { safeFetch } from "../../internal/safe-http.js";
 
 /**
  * Image size upper bound (bytes): errors out above this. Taken as the common denominator of
@@ -110,9 +112,10 @@ export type LoadImageResult =
   | { ok: false; reason: "failed"; message: string };
 
 /**
- * Reads and validates an image: an http(s) URL is downloaded with the global fetch, otherwise
- * read as a local path (resolved against Workspace); validates the size upper bound and mime
- * type (determined in order by response header / magic number / extension). Never throws.
+ * Reads and validates an image: an http(s) URL is downloaded through the bounded SSRF-safe
+ * client, otherwise read as a local path (resolved against Workspace); validates the size upper
+ * bound and mime type (determined in order by response header / magic number / extension). Never
+ * throws.
  */
 export async function loadImage(
   source: string,
@@ -124,12 +127,15 @@ export async function loadImage(
   let bytes: Buffer;
   let mime: string | null;
   if (isHttpUrl(source)) {
-    // URL branch: downloads via the global fetch (abort signal passed through to the request);
-    // mime is preferentially taken from the response header, falling back to magic number / URL
-    // extension.
-    let res: Response;
+    // URL branch: the safe client rejects private/reserved destinations, pins DNS, revalidates
+    // redirects, enforces the byte cap while streaming, and carries the abort signal. Mime is
+    // preferentially taken from the response header, falling back to magic number / URL extension.
+    let res: Awaited<ReturnType<typeof safeFetch>>;
     try {
-      res = await fetch(source, signal ? { signal } : {});
+      res = await safeFetch(source, signal ? { signal } : undefined, {
+        allowLocalhost: false,
+        maxBytes: MAX_IMAGE_BYTES,
+      });
     } catch (err) {
       if (signal?.aborted) return { ok: false, reason: "aborted" };
       const message = err instanceof Error ? err.message : String(err);
@@ -139,21 +145,15 @@ export async function loadImage(
         message: `Failed to download image "${source}": ${message}`,
       };
     }
-    if (!res.ok) {
+    if (res.status < 200 || res.status >= 300) {
       return {
         ok: false,
         reason: "failed",
         message: `Failed to download image "${source}": HTTP ${res.status}`,
       };
     }
-    // When content-length is trustworthy, reject an oversized response early to avoid reading it
-    // into memory for nothing.
-    const declared = Number(res.headers.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > MAX_IMAGE_BYTES) {
-      return { ok: false, reason: "failed", message: OVERSIZE_MESSAGE(declared) };
-    }
     try {
-      bytes = Buffer.from(await res.arrayBuffer());
+      bytes = await res.buffer();
     } catch (err) {
       if (signal?.aborted) return { ok: false, reason: "aborted" };
       const message = err instanceof Error ? err.message : String(err);

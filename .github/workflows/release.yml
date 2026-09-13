@@ -135,8 +135,9 @@ jobs:
           # Referenced as a plain shell variable so the run block stays free of GitHub
           # expressions: scripts/test-installer.sh replays this block verbatim as sh.
           EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          TAG="${TAG:?release tag is required}"
           V="${TAG#v}"
           printf '%s\n' "$TAG" | grep -Eq '^v[0-9A-Za-z][0-9A-Za-z._-]*$'
           # Guard: release prep must bump the repo to the tag's version (root + every workspace
@@ -160,6 +161,8 @@ jobs:
           grep -q 'export const VERSION = "' packages/core/src/index.ts
           sed -i "s/export const VERSION = \"[^\"]*\"/export const VERSION = \"$V\"/" packages/core/src/index.ts
           SH_MARKER='EMBEDDED_RELEASE_VERSION="__PENGUIN_RELEASE_VERSION__"'
+          # The PowerShell variable must remain literal.
+          # shellcheck disable=SC2016
           PS_MARKER='$EmbeddedReleaseVersion = "__PENGUIN_RELEASE_VERSION__"'
           if grep -Fq "$SH_MARKER" install.sh; then SH_HAS_MARKER=1; else SH_HAS_MARKER=0; fi
           if grep -Fq "$PS_MARKER" install.ps1; then PS_HAS_MARKER=1; else PS_HAS_MARKER=0; fi
@@ -558,8 +561,9 @@ jobs:
           # Same shell-variable indirection as the release job's stamp step (no GitHub
           # expressions in the body; see scripts/test-installer.sh).
           EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          TAG="${TAG:?release tag is required}"
           V="${TAG#v}"
           # Same repo-version guard as the release job: both jobs start from a tag push in
           # parallel, so the check must fail here too or npm would publish from a tag whose
@@ -616,14 +620,36 @@ jobs:
       # Copy LICENSE into the package dirs (the files allowlist includes it, so artifacts ship the license)
       # and the built web assets into the server package (web-dist/, in its files allowlist: an npm install
       # serves the Web UI from there without PENGUIN_WEB_DIST).
-      # Idempotent: a version already on the registry is skipped. The check tests `npm view`'s output
-      # rather than its exit code -- for a missing version of an existing package, older npm exits 0 and
-      # newer npm exits 1, but the output is non-empty only when the version exists. Re-running the tag
-      # after a mid-chain failure (e.g. Trusted Publisher not configured yet) picks up where it left off.
+      # Idempotent: a version already on the registry is skipped. Query each package's complete version
+      # list so a missing version is distinct from a failed registry request. Re-running the tag after a
+      # mid-chain failure (e.g. Trusted Publisher not configured yet) picks up where it left off.
       - name: Publish to npm
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          TAG="${TAG:?release tag is required}"
           V="${TAG#v}"
+          package_version_exists() {
+            name="$1"
+            version="$2"
+            versions="$(npm view "$name" versions --json)" || {
+              echo "Failed to query published versions for $name." >&2
+              return 2
+            }
+            node -e '
+              try {
+                const versions = JSON.parse(process.argv[1]);
+                const list = Array.isArray(versions) ? versions : [versions];
+                if (!list.every((version) => typeof version === "string" && version.length > 0)) {
+                  throw new Error("expected a version string or an array of version strings");
+                }
+                process.exit(list.includes(process.argv[2]) ? 0 : 1);
+              } catch (error) {
+                console.error("Invalid npm registry response: " + error.message);
+                process.exit(2);
+              }
+            ' "$versions" "$version"
+          }
           cp LICENSE packages/core/LICENSE
           cp LICENSE packages/server/LICENSE
           cp LICENSE packages/cli/LICENSE
@@ -636,17 +662,23 @@ jobs:
           # deps, rewritten to their versions at publish time, so they must exist first.
           for dir in plugins/*/; do
             name="@penguinharness/$(basename "$dir")"
-            if [ -n "$(npm view "$name@$V" version 2>/dev/null || true)" ]; then
+            if package_version_exists "$name" "$V"; then
               echo "$name@$V already on the registry, skipping."
               continue
+            else
+              status="$?"
+              [ "$status" -eq 1 ] || exit "$status"
             fi
             pnpm --filter "$name" publish --access public --no-git-checks
           done
           for pkg in core server cli; do
             name="@prismshadow/penguin-$pkg"
-            if [ -n "$(npm view "$name@$V" version 2>/dev/null || true)" ]; then
+            if package_version_exists "$name" "$V"; then
               echo "$name@$V already on the registry, skipping."
               continue
+            else
+              status="$?"
+              [ "$status" -eq 1 ] || exit "$status"
             fi
             pnpm --filter "$name" publish --access public --no-git-checks
           done

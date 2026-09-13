@@ -36,7 +36,7 @@ describe("workspace-guard", () => {
     await expect(guard(outside)).resolves.toBe(await fs.realpath(outside));
   });
 
-  it("symlinks resolve to their realpath before returning", async () => {
+  it.skipIf(process.platform === "win32")("symlinks resolve to their realpath before returning", async () => {
     const outside = path.join(root, "linked");
     await fs.mkdir(outside, { recursive: true });
     const link = path.join(projectA, "escape");

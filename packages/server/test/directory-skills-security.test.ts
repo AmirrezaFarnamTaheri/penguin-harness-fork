@@ -24,7 +24,9 @@ afterEach(async () => {
 });
 
 describe("directory skill containment", () => {
-  it("does not follow a skill source root outside the selected directory", async () => {
+  it.skipIf(process.platform === "win32")(
+    "does not follow a skill source root outside the selected directory",
+    async () => {
     const selected = await tempDir("penguin-dirskills-selected-");
     const outside = await tempDir("penguin-dirskills-outside-");
     const outsideSkills = path.join(outside, "skills");
@@ -37,7 +39,9 @@ describe("directory skill containment", () => {
     await expect(discoverDirectorySkills(selected)).resolves.toEqual([]);
   });
 
-  it("rejects local references that traverse an intermediate symlink", async () => {
+  it.skipIf(process.platform === "win32")(
+    "rejects local references that traverse an intermediate symlink",
+    async () => {
     const selected = await tempDir("penguin-dirskills-selected-");
     const outside = await tempDir("penguin-dirskills-outside-");
     const skill = path.join(selected, ".agents", "skills", "escaped-ref");

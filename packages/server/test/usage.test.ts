@@ -7,7 +7,7 @@
  * series (aborted doesn't count as a model failure).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sessionMeta, tokenUsage, withOrigin } from "@prismshadow/penguin-core";
+import { requestEnd, sessionMeta, tokenUsage, withOrigin } from "@prismshadow/penguin-core";
 import type { SessionMetaPayload, TokenCounts } from "@prismshadow/penguin-core";
 import { ORIGIN_MODELS_MAX, UsageRecorder } from "../src/runtime/usage-recorder.js";
 import { ErrorsRepo } from "../src/db/repos/errors.js";
@@ -51,6 +51,20 @@ describe("usage-recorder", () => {
     repo = new UsageRepo(db);
   });
   afterEach(() => db.close());
+
+  it("records failed attempt usage once and bills the successful retry separately", async () => {
+    const rec = new UsageRecorder(repo);
+    await rec.record(CTX, requestEnd("retryable", { usage: counts(150) }));
+    await rec.record(CTX, tokenUsage(counts(200), counts(200)));
+    await rec.record(CTX, requestEnd("completed"));
+    await rec.record(CTX, requestEnd("aborted"));
+    const rows = db.prepare("SELECT total, status FROM usage_records ORDER BY id").all();
+    expect(rows).toEqual([
+      { total: 150, status: "retryable" },
+      { total: 200, status: "completed" },
+      { total: 0, status: "aborted" },
+    ]);
+  });
 
   it("token_usage → one row (the request bucket; only Tokens persisted, never cost)", async () => {
     const rec = new UsageRecorder(repo);

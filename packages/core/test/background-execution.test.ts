@@ -281,12 +281,18 @@ describe("exec_command run_in_background", () => {
       cmd: "printf early; exit 0",
       run_in_background: true,
     });
-    extractProcessId(res.output);
-    // Let the process exit with no listener attached, then attach.
-    await new Promise((r) => setTimeout(r, 300));
+    const id = extractProcessId(res.output);
+    // Await completion before attaching: a sleep can attach while a cold shell is still
+    // starting, accidentally exercising live delivery instead of the buffered path.
+    await waitFor(
+      () =>
+        !env
+          .listBackgroundCommands()
+          .some((command) => command.processId === id && command.running),
+    );
     const events: BackgroundTaskDoneEvent[] = [];
     env.setBackgroundTaskListener((e) => events.push(e));
-    await waitFor(() => events.length === 1);
+    expect(events).toHaveLength(1);
     expect(events[0]!.output).toContain("early");
   });
 
@@ -440,10 +446,17 @@ describe("detaching an executing tool call", () => {
     expect(env.detachToolCall("call_nobody")).toBe("not_running");
 
     const launched = await runTool(env, "exec_command", {
-      cmd: "printf 'poll me\\n'; sleep 30",
+      cmd: "printf 'poll me http://localhost:5199/\\n'; sleep 30",
       run_in_background: true,
     });
     const id = extractProcessId(launched.output);
+    // Wait without draining output so the detach request is made during a real delta,
+    // even when shell startup exceeds the input call's collection window.
+    await waitFor(() =>
+      env
+        .listBackgroundCommands()
+        .some((command) => command.processId === id && command.serviceUrl !== undefined),
+    );
     // input_command only polls a process the registry already holds — there is nothing to
     // hand back, so the call is refused rather than silently ending early.
     const polled = await runToolDetachedOn(

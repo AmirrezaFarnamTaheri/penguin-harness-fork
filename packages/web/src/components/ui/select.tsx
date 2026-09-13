@@ -6,8 +6,8 @@
  * is never clipped by a Modal or scroll container; it closes on outside click,
  * Esc, a scroll that moves the trigger, or resize. Styling matches Input.
  */
-import { Children, isValidElement, useId, useState } from "react";
-import type { ChangeEvent, ReactNode, SelectHTMLAttributes } from "react";
+import { Children, isValidElement, useEffect, useId, useRef, useState } from "react";
+import type { ChangeEvent, KeyboardEvent, ReactNode, SelectHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
 import { errorClass, sizeClass, sizeTextClass } from "./input";
 import type { ControlSize } from "./input";
@@ -47,6 +47,19 @@ function parseOptions(children: ReactNode): Opt[] {
 
 const CONTROL_CLASS = `flex w-full items-center gap-2 text-left ${controlBase} disabled:cursor-not-allowed disabled:opacity-60`;
 
+/** Move through a circular option list while skipping disabled rows. */
+export function nextEnabledOptionIndex(
+  enabled: readonly boolean[],
+  from: number,
+  direction: 1 | -1,
+): number {
+  for (let step = 1; step <= enabled.length; step += 1) {
+    const index = (from + direction * step + enabled.length) % enabled.length;
+    if (enabled[index]) return index;
+  }
+  return -1;
+}
+
 export function Select({
   label,
   hint,
@@ -67,8 +80,11 @@ export function Select({
   const current = String(value ?? "");
   const selected = options.find((o) => o.value === current);
   const errorId = useId();
+  const listboxId = useId();
 
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const { triggerRef, panelRef, position } = usePortalPanel({
     open,
     onClose: () => setOpen(false),
@@ -76,11 +92,70 @@ export function Select({
     estimatedHeight: options.length * 36 + 8,
   });
 
+  const enabled = options.map((option) => !option.disabled);
+  const selectedIndex = options.findIndex((option) => option.value === current && !option.disabled);
+  const firstEnabled = enabled.indexOf(true);
+  const lastEnabled = enabled.lastIndexOf(true);
+
+  const openAt = (index: number) => {
+    if (index < 0 || index >= options.length) return;
+    setActiveIndex(index);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (open && position && activeIndex >= 0) optionRefs.current[activeIndex]?.focus();
+  }, [open, position, activeIndex]);
+
+  useEffect(() => {
+    if (!open && activeIndex >= 0 && document.activeElement === document.body)
+      triggerRef.current?.focus();
+  }, [open, activeIndex, triggerRef]);
+
   const pick = (v: string) => {
     setOpen(false);
     // Synthesize a minimal event object, following the caller's onChange(e.target.value) convention.
     onChange?.({ target: { value: v } } as unknown as ChangeEvent<HTMLSelectElement>);
     triggerRef.current?.focus();
+  };
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    openAt(
+      selectedIndex >= 0 ? selectedIndex : event.key === "ArrowDown" ? firstEnabled : lastEnabled,
+    );
+  };
+
+  const onOptionKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    switch (event.key) {
+      case "Tab":
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      case "ArrowDown":
+        next = nextEnabledOptionIndex(enabled, index, 1);
+        break;
+      case "ArrowUp":
+        next = nextEnabledOptionIndex(enabled, index, -1);
+        break;
+      case "Home":
+        next = firstEnabled;
+        break;
+      case "End":
+        next = lastEnabled;
+        break;
+      case "Escape":
+        event.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (next >= 0) setActiveIndex(next);
   };
 
   const control = (
@@ -91,11 +166,15 @@ export function Select({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         {...(ariaLabel !== undefined ? { "aria-label": ariaLabel } : {})}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() =>
+          open ? setOpen(false) : openAt(selectedIndex >= 0 ? selectedIndex : firstEnabled)
+        }
+        onKeyDown={onTriggerKeyDown}
         className={`${CONTROL_CLASS} ${sizeClass[size]} ${error ? errorClass : ""} ${className ?? ""}`}
       >
         <span className="min-w-0 flex-1 truncate">
@@ -108,6 +187,7 @@ export function Select({
         createPortal(
           <div
             ref={panelRef}
+            id={listboxId}
             role="listbox"
             className="anim-pop fixed z-[60] max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
             style={{
@@ -119,12 +199,17 @@ export function Select({
           >
             {options.map((o, i) => (
               <button
+                ref={(node) => {
+                  optionRefs.current[i] = node;
+                }}
                 key={`${o.value}-${i}`}
                 type="button"
                 role="option"
                 aria-selected={o.value === current}
                 disabled={o.disabled}
+                tabIndex={i === activeIndex ? 0 : -1}
                 onClick={() => pick(o.value)}
+                onKeyDown={(event) => onOptionKeyDown(event, i)}
                 // Menu-row text takes the control's own tier, so the dropdown reads exactly
                 // like an Input of that tier.
                 className={`flex items-center ${menuRowClass} ${sizeTextClass[size]} disabled:opacity-50 ${

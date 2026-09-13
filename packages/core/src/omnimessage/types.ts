@@ -393,6 +393,8 @@ export interface RetryDetail extends ErrorInfo {
 
 export interface RequestEndPayload extends RetryDetail {
   type: "request_end";
+  /** Provider-reported usage of a failed attempt; does not measure committed context. */
+  usage?: TokenCounts;
   /** Terminal state of this Request (the four StopReason values, sharing its source with this turn's complete message's stop_reason / LLMOutcome; `fatal` carries the no-retry failures — credentials included — with the detail on `error_message`). */
   status: StopReason;
 }
