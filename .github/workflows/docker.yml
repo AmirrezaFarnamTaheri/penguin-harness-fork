@@ -5,11 +5,11 @@
 #   container — readiness, sign-in, the healthcheck, the unprivileged user, a graceful stop and a
 #   restart onto the same data root. It builds the PR's own checkout, so it proves the Dockerfile
 #   against the code the PR carries.
-# - push to main: `publish` builds that commit and moves `latest`. Every push, no path filter —
-#   `latest` follows main, and it is the only tag a push moves.
+# - push to main: `publish` builds that commit. The canonical repository moves `latest`; forks
+#   build the same image without attempting to log in to or mutate the upstream Docker Hub repo.
 # - workflow_call from release.yml's `docker` job: the same build at the tag, published as the
-#   exact version `X.Y.Z` and nothing else.
-# - workflow_dispatch for a manual re-publish, mirroring release.yml's own dispatch input.
+#   exact version `X.Y.Z` and nothing else when invoked by the canonical repository.
+# - workflow_dispatch for a manual build/re-publish. Fork dispatches are always build-only.
 name: Docker
 
 on:
@@ -50,6 +50,10 @@ concurrency:
 
 env:
   IMAGE_NAME: hiyouga/penguinharness
+  # Only the canonical repository owns the Docker Hub namespace and its credentials. A fork
+  # still exercises the complete build on pushes/dispatches, but must never fail because those
+  # upstream secrets are intentionally unavailable or attempt to publish into upstream.
+  PUBLISH_IMAGE: ${{ github.repository == 'Prism-Shadow/penguin-harness' && (github.event_name == 'push' || inputs.push) && 'true' || 'false' }}
 
 jobs:
   # Build once and put the container through the contract the docs promise. Only amd64: this
@@ -185,8 +189,8 @@ jobs:
     permissions:
       contents: read
     # The Docker Hub credentials live in the `docker` GitHub Environment, whose URL is the
-    # published repository, so they reach this job alone — the smoke job and the rest of CI
-    # never see them.
+    # published repository. Forks may have no credentials in that environment; their login
+    # step is skipped and the job remains a build-only verification run.
     environment:
       name: docker
       url: https://hub.docker.com/r/hiyouga/penguinharness
@@ -200,9 +204,9 @@ jobs:
 
       # Two tag policies, one tag each.
       #
-      # A push to main publishes `latest` and nothing else: `latest` always names the newest build
-      # of main. The image is still stamped with `main-<sha7>` as its version (the app's reported
-      # version and the OCI label), so a running container can say which commit it is.
+      # A push to main publishes `latest` and nothing else on the canonical repository: `latest`
+      # always names the newest build of main. Fork pushes build the same tagged image locally in
+      # BuildKit but do not publish it. The image is stamped with `main-<sha7>` as its version.
       #
       # A release publishes the exact version, `X.Y.Z`, and nothing else — no moving `X.Y` or
       # `stable` line: a deployment that wants a release pins its version, and `latest` is main.
@@ -235,10 +239,10 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Docker Hub is the default registry, so the login needs no `registry:`. The two secrets,
-      # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN — a Docker Hub access token with read/write scope
-      # on that repository — belong to the `docker` environment declared on this job.
+      # Only the canonical repository is allowed to authenticate to and mutate the upstream
+      # Docker Hub namespace. Forks intentionally skip this step and still execute the build.
       - uses: docker/login-action@v3
+        if: env.PUBLISH_IMAGE == 'true'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -258,7 +262,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' || inputs.push }}
+          push: ${{ env.PUBLISH_IMAGE == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
