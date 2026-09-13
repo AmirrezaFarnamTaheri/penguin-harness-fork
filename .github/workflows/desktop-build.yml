@@ -76,8 +76,10 @@ env:
   # Explicit callers can require signing. In addition, production release contexts on the
   # canonical repository are fail-closed even if a caller regresses its inputs to false.
   # Forks retain unsigned dry-runs because they do not own the production signing secrets.
-  REQUIRE_MACOS_SIGNING: ${{ (inputs.require_macos_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
-  REQUIRE_WINDOWS_SIGNING: ${{ (inputs.require_windows_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
+  REQUIRE_MACOS_SIGNING: >-
+    ${{ (inputs.require_macos_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
+  REQUIRE_WINDOWS_SIGNING: >-
+    ${{ (inputs.require_windows_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
   # Keep in sync with release.yml (its header comment is the source of truth; duplicated
   # here because reusable workflows do not inherit the caller's env).
   MINGIT_VERSION: 2.55.0.3
