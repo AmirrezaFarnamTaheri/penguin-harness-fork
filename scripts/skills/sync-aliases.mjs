@@ -22,9 +22,13 @@ function bumpPatch(version) {
   return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
 }
 
+function formatPropertyKey(key) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
 function runtimeBlock(aliases) {
   const lines = Object.entries(aliases).map(
-    ([alias, target]) => `  ${JSON.stringify(alias)}: ${JSON.stringify(target)},`,
+    ([alias, target]) => `  ${formatPropertyKey(alias)}: ${JSON.stringify(target)},`,
   );
   return `export const DEFAULT_SKILL_ALIASES: Record<string, string> = {\n${lines.join("\n")}\n};`;
 }
