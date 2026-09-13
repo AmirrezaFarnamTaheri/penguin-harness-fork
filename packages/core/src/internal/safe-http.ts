@@ -121,6 +121,20 @@ function embeddedIpv4(bytes: Uint8Array): Uint8Array | null {
   return null;
 }
 
+/** IPv4 embedded by the RFC 6052 Well-Known NAT64 Prefix 64:ff9b::/96. */
+function nat64EmbeddedIpv4(bytes: Uint8Array): Uint8Array | null {
+  if (
+    bytes[0] === 0x00 &&
+    bytes[1] === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    isAllZero(bytes.slice(4), 8)
+  ) {
+    return bytes.slice(12);
+  }
+  return null;
+}
+
 function ipv4BytesPrivateOrReserved(bytes: Uint8Array): boolean {
   const [a, b, c] = bytes as unknown as [number, number, number, number];
   if (a === 0 || a === 10 || a === 127) return true;
@@ -159,6 +173,24 @@ export function isPrivateOrReservedIPv6(ip: string): boolean {
   // Discard-only 100::/64 and documentation 2001:db8::/32.
   if (bytes[0] === 0x01 && bytes[1] === 0x00 && isAllZero(bytes.slice(2), 6)) return true;
   if (bytes[0] === 0x20 && bytes[1] === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) return true;
+
+  // RFC 8215 reserves 64:ff9b:1::/48 for local-use NAT64. It is intentionally scoped to a
+  // local network, so autonomous HTTP must not treat any address in it as Internet-routable.
+  if (
+    bytes[0] === 0x00 &&
+    bytes[1] === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    bytes[4] === 0x00 &&
+    bytes[5] === 0x01
+  ) {
+    return true;
+  }
+
+  // The RFC 6052 Well-Known Prefix is globally recognizable. Preserve public embedded IPv4
+  // destinations, but apply the IPv4 policy to private, loopback, metadata and reserved ones.
+  const nat64 = nat64EmbeddedIpv4(bytes);
+  if (nat64 && ipv4BytesPrivateOrReserved(nat64)) return true;
 
   const embedded = embeddedIpv4(bytes);
   return embedded ? ipv4BytesPrivateOrReserved(embedded) : false;
