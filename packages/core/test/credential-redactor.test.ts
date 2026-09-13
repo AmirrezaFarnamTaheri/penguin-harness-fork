@@ -19,6 +19,8 @@ describe("containsCredentials", () => {
     expect(containsCredentials("sk-ant-api03-abcdef1234567890abcdef1234567890")).toBe(true);
     expect(containsCredentials("ghp_1234567890abcdef1234567890abcdef123456")).toBe(true);
     expect(containsCredentials("AKIAIOSFODNN7EXAMPLE")).toBe(true);
+    expect(containsCredentials("Cookie: session=opaque-value")).toBe(true);
+    expect(containsCredentials("X-Api-Token: opaque-value")).toBe(true);
   });
 });
 
@@ -29,6 +31,22 @@ describe("redactCredentials", () => {
     expect(redacted).not.toContain("secretToken9876543210");
     expect(redacted).toContain(`Bearer ${REDACTED_MARKER}`);
     expect(redacted).toContain(`Authorization: ${REDACTED_MARKER}`);
+  });
+
+  it("redacts opaque auth and cookie headers", () => {
+    const raw = [
+      "Cookie: session=opaque-session; csrf=opaque-csrf",
+      "Set-Cookie: session=rotated; HttpOnly; Secure",
+      "X-Api-Token: opaque-token",
+      "X-Auth-Key: opaque-key",
+    ].join("\n");
+    const redacted = redactCredentials(raw);
+    expect(redacted).not.toContain("opaque-session");
+    expect(redacted).not.toContain("rotated");
+    expect(redacted).not.toContain("opaque-token");
+    expect(redacted).not.toContain("opaque-key");
+    expect(redacted).toContain(`Cookie: ${REDACTED_MARKER}`);
+    expect(redacted).toContain(`Set-Cookie: ${REDACTED_MARKER}`);
   });
 
   it("redacts OpenAI and Anthropic API keys", () => {
@@ -89,5 +107,30 @@ describe("redactObject", () => {
     expect(redacted.auth.token).toBe(REDACTED_MARKER);
     expect(redacted.auth.headers[0]).toContain(`Bearer ${REDACTED_MARKER}`);
     expect(redacted.apiKey).toBe(REDACTED_MARKER);
+  });
+
+  it("redacts opaque structured HTTP and application secret fields", () => {
+    const obj = {
+      headers: {
+        Cookie: "session=opaque",
+        "Set-Cookie": "session=rotated",
+        "X-Api-Token": "opaque-token",
+        "X-Auth-Key": "opaque-auth-key",
+      },
+      config: {
+        signingSecret: "opaque-signing-secret",
+        webhook_secret: "opaque-webhook-secret",
+      },
+      safe: "visible",
+    };
+
+    const redacted = redactObject(obj);
+    expect(redacted.headers.Cookie).toBe(REDACTED_MARKER);
+    expect(redacted.headers["Set-Cookie"]).toBe(REDACTED_MARKER);
+    expect(redacted.headers["X-Api-Token"]).toBe(REDACTED_MARKER);
+    expect(redacted.headers["X-Auth-Key"]).toBe(REDACTED_MARKER);
+    expect(redacted.config.signingSecret).toBe(REDACTED_MARKER);
+    expect(redacted.config.webhook_secret).toBe(REDACTED_MARKER);
+    expect(redacted.safe).toBe("visible");
   });
 });
