@@ -37,6 +37,31 @@ describe("KanbanBoard", () => {
     expect(updated.startedAt).toBeDefined();
   });
 
+  it("rejects dangling dependency and parent references", () => {
+    const board = new KanbanBoard();
+    expect(() => board.createTask({ title: "Dangling dep", dependencies: ["missing"] })).toThrow(
+      /Dependency missing does not exist/,
+    );
+    expect(() => board.createTask({ title: "Dangling parent", parentTaskId: "missing" })).toThrow(
+      /Parent task missing does not exist/,
+    );
+  });
+
+  it("requires completed dependencies before non-forced review or completion", () => {
+    const board = new KanbanBoard();
+    const dep = board.createTask({ title: "Prerequisite" });
+    const task = board.createTask({ title: "Dependent", dependencies: [dep.id] });
+
+    expect(() => board.updateTaskState(task.id, "review")).toThrow(/not done/);
+    expect(() => board.updateTaskState(task.id, "done")).toThrow(/not done/);
+    expect(() =>
+      board.createTask({ title: "Premature complete", state: "done", dependencies: [dep.id] }),
+    ).toThrow(/not done/);
+
+    board.updateTaskState(dep.id, "done");
+    expect(board.updateTaskState(task.id, "done").state).toBe("done");
+  });
+
   it("manages subagent leases, heartbeats, and expiration reclamation", () => {
     const board = new KanbanBoard({ defaultLeaseDurationMs: 50 });
     const task = board.createTask({ title: "Generate Unit Tests" });
@@ -110,6 +135,7 @@ describe("KanbanBoard", () => {
     expect(() => board.heartbeat(task.id, { workerId: "imposter-worker", generation: 1 })).toThrow(/worker mismatch/);
     expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 99 })).toThrow(/generation mismatch/);
 
+    expect(() => board.updateTaskState(task.id, "review")).toThrow(/active lease identity is required/);
     expect(() =>
       board.updateTaskState(task.id, "review", { workerId: "wrong-worker", generation: 1 }),
     ).toThrow(/worker mismatch/);
@@ -123,8 +149,15 @@ describe("KanbanBoard", () => {
     const released = board.releaseTask(task.id, { workerId: "worker-alpha", generation: 1 });
     expect(released.assignee).toBeNull();
     expect(released.state).toBe("triage");
+    expect(() => board.updateTaskState(task.id, "done")).toThrow(/active lease identity is required/);
 
     const c2 = board.claimTask(task.id, "worker-beta");
     expect(c2.leaseGeneration).toBe(3);
+    expect(
+      board.updateTaskState(task.id, "done", {
+        workerId: "worker-beta",
+        generation: c2.leaseGeneration!,
+      }).state,
+    ).toBe("done");
   });
 });
