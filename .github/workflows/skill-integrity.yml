@@ -22,8 +22,8 @@ jobs:
         run: pnpm skills:names:check
       - name: Verify declarative and runtime aliases are synchronized
         run: pnpm skills:aliases:check
-      - name: Validate skill identities, metadata, resources and aliases
-        run: pnpm skills:check -- --json=artifacts/skill-audit.json
+      - name: Validate skill identities, metadata, resource closure and aliases
+        run: pnpm skills:check -- --strict-resources --json=artifacts/skill-audit.json
       - name: Build taxonomy and overlap report
         if: always()
         run: pnpm skills:catalog
