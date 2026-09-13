@@ -43,6 +43,27 @@ export interface TopicStanding {
   refutedAt?: number;
 }
 
+function validatePolicy(policy: QuorumPolicy): void {
+  if (!Number.isInteger(policy.threshold) || policy.threshold < 1) {
+    throw new Error("Quorum threshold must be a positive integer");
+  }
+  if (policy.refutationCap !== undefined && (!Number.isInteger(policy.refutationCap) || policy.refutationCap < 1)) {
+    throw new Error("Quorum refutationCap must be a positive integer");
+  }
+  if (typeof policy.requireGrounded !== "boolean") {
+    throw new Error("Quorum requireGrounded must be a boolean");
+  }
+}
+
+function cloneStanding(standing: TopicStanding): TopicStanding {
+  return {
+    ...standing,
+    policy: { ...standing.policy },
+    supporters: standing.supporters.map((supporter) => ({ ...supporter })),
+    refuters: standing.refuters.map((refuter) => ({ ...refuter })),
+  };
+}
+
 export class QuorumConsensusEngine {
   private standings = new Map<string, TopicStanding>();
   private readonly defaultPolicy: QuorumPolicy;
@@ -53,6 +74,7 @@ export class QuorumConsensusEngine {
       requireGrounded: defaultPolicy?.requireGrounded ?? true,
       refutationCap: defaultPolicy?.refutationCap ?? 1,
     };
+    validatePolicy(this.defaultPolicy);
   }
 
   public proposeTopic(input: {
@@ -62,12 +84,23 @@ export class QuorumConsensusEngine {
     initialGrounds?: string;
     policy?: Partial<QuorumPolicy>;
   }): TopicStanding {
+    const topic = input.topic.trim();
+    const proposerId = input.proposerId.trim();
+    if (!topic) throw new Error("Consensus topic cannot be empty");
+    if (!proposerId) throw new Error("Consensus proposerId cannot be empty");
+
     const topicId = input.topicId ?? `topic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (!topicId.trim()) throw new Error("Consensus topicId cannot be empty");
+    if (this.standings.has(topicId)) {
+      throw new Error(`Topic with id '${topicId}' already exists`);
+    }
+
     const policy: QuorumPolicy = {
       threshold: input.policy?.threshold ?? this.defaultPolicy.threshold,
       requireGrounded: input.policy?.requireGrounded ?? this.defaultPolicy.requireGrounded,
       refutationCap: input.policy?.refutationCap ?? this.defaultPolicy.refutationCap,
     };
+    validatePolicy(policy);
 
     const now = Date.now();
     const supporters: Endorsement[] = [];
@@ -75,7 +108,7 @@ export class QuorumConsensusEngine {
     // Proposer can be initial supporter if grounds are supplied (or if not required)
     if (!policy.requireGrounded || (input.initialGrounds && input.initialGrounds.trim())) {
       supporters.push({
-        agentId: input.proposerId,
+        agentId: proposerId,
         grounds: input.initialGrounds,
         timestamp: now,
       });
@@ -83,10 +116,10 @@ export class QuorumConsensusEngine {
 
     const standing: TopicStanding = {
       topicId,
-      topic: input.topic,
+      topic,
       status: supporters.length >= policy.threshold ? "settled" : "debating",
       policy,
-      proposerId: input.proposerId,
+      proposerId,
       supporters,
       refuters: [],
       createdAt: now,
@@ -94,7 +127,7 @@ export class QuorumConsensusEngine {
     };
 
     this.standings.set(topicId, standing);
-    return { ...standing };
+    return cloneStanding(standing);
   }
 
   public endorseTopic(topicId: string, agentId: string, grounds?: string): TopicStanding {
@@ -107,15 +140,18 @@ export class QuorumConsensusEngine {
       throw new Error(`Cannot endorse refuted topic '${topicId}'`);
     }
 
+    const normalizedAgentId = agentId.trim();
+    if (!normalizedAgentId) throw new Error("Endorser agentId cannot be empty");
+
     // Check if grounded evidence is required
     if (standing.policy.requireGrounded && (!grounds || !grounds.trim())) {
       throw new Error(`Endorsement requires explicit grounds/evidence citations under current quorum policy`);
     }
 
     // Prevent duplicate endorsements from the same agent
-    if (!standing.supporters.some((s) => s.agentId === agentId)) {
+    if (!standing.supporters.some((s) => s.agentId === normalizedAgentId)) {
       standing.supporters.push({
-        agentId,
+        agentId: normalizedAgentId,
         grounds,
         timestamp: Date.now(),
       });
@@ -127,7 +163,7 @@ export class QuorumConsensusEngine {
       standing.settledAt = Date.now();
     }
 
-    return { ...standing };
+    return cloneStanding(standing);
   }
 
   public refuteTopic(topicId: string, agentId: string, grounds: string): TopicStanding {
@@ -136,13 +172,15 @@ export class QuorumConsensusEngine {
       throw new Error(`Topic with id '${topicId}' not found`);
     }
 
+    const normalizedAgentId = agentId.trim();
+    if (!normalizedAgentId) throw new Error("Refuter agentId cannot be empty");
     if (!grounds || !grounds.trim()) {
       throw new Error("Refutation must provide explicit grounds or contradicting evidence");
     }
 
-    if (!standing.refuters.some((r) => r.agentId === agentId)) {
+    if (!standing.refuters.some((r) => r.agentId === normalizedAgentId)) {
       standing.refuters.push({
-        agentId,
+        agentId: normalizedAgentId,
         grounds,
         timestamp: Date.now(),
       });
@@ -154,19 +192,19 @@ export class QuorumConsensusEngine {
       standing.refutedAt = Date.now();
     }
 
-    return { ...standing };
+    return cloneStanding(standing);
   }
 
   public getStanding(topicId: string): TopicStanding | undefined {
-    const s = this.standings.get(topicId);
-    return s ? { ...s } : undefined;
+    const standing = this.standings.get(topicId);
+    return standing ? cloneStanding(standing) : undefined;
   }
 
   public listStandings(filter?: { status?: TopicConsensusStatus }): TopicStanding[] {
     const list: TopicStanding[] = [];
-    for (const s of this.standings.values()) {
-      if (filter?.status && s.status !== filter.status) continue;
-      list.push({ ...s });
+    for (const standing of this.standings.values()) {
+      if (filter?.status && standing.status !== filter.status) continue;
+      list.push(cloneStanding(standing));
     }
     return list;
   }
