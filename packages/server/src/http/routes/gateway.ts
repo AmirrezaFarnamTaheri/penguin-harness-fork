@@ -260,7 +260,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       sessionId = approvalId.slice(0, separator);
       toolCallId = approvalId.slice(separator + 1);
     } else {
-      throw badRequest("sessionId and toolCallId are required when approvalId is not '<sessionId>:<toolCallId>'.");
+      throw notFound("Approval does not exist or is not accessible in this project.");
     }
     if (!sessionId || !toolCallId || sessionId.length > 128 || toolCallId.length > 128) {
       throw badRequest("sessionId and toolCallId must be non-empty identifiers no longer than 128 characters.");
