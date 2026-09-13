@@ -160,9 +160,24 @@ function isSensitiveField(key: string, sensitive: Set<string>): boolean {
   );
 }
 
+function redactSensitiveValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map(redactSensitiveValue);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        redactSensitiveValue(child),
+      ]),
+    );
+  }
+  return REDACTED_MARKER;
+}
+
 /**
  * Recursively redact credentials while preserving the structured key context at every level.
- * Values below a sensitive field are removed in full even when the opaque value has no detectable prefix.
+ * Sensitive scalar fields are removed in full. Sensitive container fields retain their shape but
+ * every leaf is redacted so callers do not lose object/array contracts while secrets stay opaque.
  */
 export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T {
   const sensitive = buildSensitiveFieldSet(options);
@@ -175,7 +190,7 @@ export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T 
 
     const copy: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      copy[key] = isSensitiveField(key, sensitive) ? REDACTED_MARKER : visit(child);
+      copy[key] = isSensitiveField(key, sensitive) ? redactSensitiveValue(child) : visit(child);
     }
     return copy;
   };
