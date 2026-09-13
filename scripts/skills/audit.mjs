@@ -239,8 +239,12 @@ console.log(
   `Skills: ${report.summary.skills}; aliases: ${report.summary.aliases}; errors: ${errors.length}; warnings: ${warnings.length}`,
 );
 for (const item of errors)
-  console.error(`ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
+  console.error(
+    `ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`,
+  );
 for (const item of warnings)
-  console.warn(`WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
+  console.warn(
+    `WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`,
+  );
 
 if (check && errors.length > 0) process.exitCode = 1;
