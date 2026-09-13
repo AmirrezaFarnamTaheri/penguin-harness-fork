@@ -25,8 +25,19 @@ interface LaneRegistration {
   createdAt: number;
 }
 
+interface RegisteredWorktree {
+  path: string;
+  head: string;
+  branch: string;
+}
+
 function isErrno(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+}
+
+function normalizePathForComparison(candidate: string): string {
+  const normalized = path.normalize(path.resolve(candidate));
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 export class WorktreeManager {
@@ -62,6 +73,28 @@ export class WorktreeManager {
       if (isErrno(error, "ENOENT")) return false;
       throw error;
     }
+  }
+
+  private async canonicalPathForComparison(candidate: string): Promise<string> {
+    try {
+      return normalizePathForComparison(await fs.realpath(candidate));
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return normalizePathForComparison(candidate);
+      throw error;
+    }
+  }
+
+  private async findRegisteredWorktree(
+    candidate: string,
+    registered: RegisteredWorktree[],
+  ): Promise<RegisteredWorktree | undefined> {
+    const canonicalCandidate = await this.canonicalPathForComparison(candidate);
+    for (const entry of registered) {
+      if ((await this.canonicalPathForComparison(entry.path)) === canonicalCandidate) {
+        return entry;
+      }
+    }
+    return undefined;
   }
 
   private async readRegistration(cleanAgentId: string): Promise<LaneRegistration | null> {
@@ -124,7 +157,7 @@ export class WorktreeManager {
     }
 
     const registered = await this.listWorktrees();
-    if (registered.some((entry) => path.resolve(entry.path) === worktreePath)) {
+    if (await this.findRegisteredWorktree(worktreePath, registered)) {
       throw new Error(`Git already has a worktree registered at '${worktreePath}'`);
     }
 
@@ -181,7 +214,7 @@ export class WorktreeManager {
     }
 
     const registered = await this.listWorktrees();
-    if (!registered.some((entry) => path.resolve(entry.path) === resolved)) {
+    if (!(await this.findRegisteredWorktree(resolved, registered))) {
       throw new Error(`Refusing to remove '${resolved}' because Git does not register it as a worktree`);
     }
 
@@ -198,10 +231,10 @@ export class WorktreeManager {
   /**
    * Lists all active git worktrees for the repository.
    */
-  async listWorktrees(): Promise<Array<{ path: string; head: string; branch: string }>> {
+  async listWorktrees(): Promise<RegisteredWorktree[]> {
     try {
       const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd: this.repoRoot });
-      const entries: Array<{ path: string; head: string; branch: string }> = [];
+      const entries: RegisteredWorktree[] = [];
       let currentPath = "";
       let currentHead = "";
       let currentBranch = "";
