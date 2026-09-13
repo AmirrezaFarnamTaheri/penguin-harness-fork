@@ -94,16 +94,11 @@ function openRecoveryMutex(root: string): DatabaseSync {
   const db = new sqlite.DatabaseSync(path.join(root, RECOVERY_DB_NAME));
   db.exec(`PRAGMA busy_timeout = ${LOCK_TIMEOUT_MS};`);
   // Ensure the database has a durable schema page before using a transaction only as a mutex.
-  db.exec(
-    "CREATE TABLE IF NOT EXISTS recovery_guard (id INTEGER PRIMARY KEY CHECK (id = 1));",
-  );
+  db.exec("CREATE TABLE IF NOT EXISTS recovery_guard (id INTEGER PRIMARY KEY CHECK (id = 1));");
   return db;
 }
 
-async function withSqliteRecoveryMutex<R>(
-  root: string,
-  work: () => Promise<R>,
-): Promise<R> {
+async function withSqliteRecoveryMutex<R>(root: string, work: () => Promise<R>): Promise<R> {
   const db = openRecoveryMutex(root);
   let began = false;
   try {
@@ -131,15 +126,10 @@ async function withSqliteRecoveryMutex<R>(
   }
 }
 
-async function withRecoveryMutex<R>(
-  root: string,
-  work: () => Promise<R>,
-): Promise<R> {
+async function withRecoveryMutex<R>(root: string, work: () => Promise<R>): Promise<R> {
   const key = path.resolve(root);
   const previous = recoveryTails.get(key) ?? Promise.resolve();
-  const run = previous
-    .catch(() => undefined)
-    .then(() => withSqliteRecoveryMutex(root, work));
+  const run = previous.catch(() => undefined).then(() => withSqliteRecoveryMutex(root, work));
   const tail = run.then(
     () => undefined,
     () => undefined,
