@@ -1,0 +1,28 @@
+name: Format Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/integrate-upstream-features
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - name: Show pinned Prettier diff
+        run: |
+          pnpm exec prettier --write \
+            packages/server/src/http/routes/gateway.ts \
+            packages/server/src/services/directory-skills.ts \
+            packages/server/test/directory-skills-security.test.ts \
+            scripts/skills/audit.mjs
+          git diff -- \
+            packages/server/src/http/routes/gateway.ts \
+            packages/server/src/services/directory-skills.ts \
+            packages/server/test/directory-skills-security.test.ts \
+            scripts/skills/audit.mjs
