@@ -132,6 +132,19 @@ async function removeLockIfAbandoned(lockPath: string): Promise<boolean> {
   return true;
 }
 
+async function handleStillOwnsPath(
+  handle: Awaited<ReturnType<typeof fs.open>>,
+  lockPath: string,
+): Promise<boolean> {
+  try {
+    const [handleStat, pathStat] = await Promise.all([handle.stat(), fs.stat(lockPath)]);
+    return handleStat.dev === pathStat.dev && handleStat.ino === pathStat.ino;
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return false;
+    throw error;
+  }
+}
+
 async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Promise<R> {
   const lockPath = `${targetPath}.lock`;
   const startedAt = Date.now();
@@ -150,13 +163,33 @@ async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Prom
       createdReservation = true;
       await handle.writeFile(JSON.stringify(owner), "utf-8");
       await handle.sync();
+
+      // A stalled writer can outlive the stale grace period before publishing metadata. Another
+      // process may then quarantine that unpublished inode and acquire a fresh lock at lockPath.
+      // Revalidate the directory entry against our open handle before mutation work starts so the
+      // old writer never proceeds concurrently after losing its reservation.
+      if (!(await handleStillOwnsPath(handle, lockPath))) {
+        await handle.close().catch(() => undefined);
+        handle = null;
+        createdReservation = false;
+        if (Date.now() - startedAt >= LOCK_TIMEOUT_MS) {
+          throw new Error(`Timed out waiting for project state lock '${lockPath}'.`);
+        }
+        await delay(LOCK_POLL_MS);
+        continue;
+      }
     } catch (error) {
+      let ownsReservation = false;
+      if (handle && createdReservation) {
+        ownsReservation = await handleStillOwnsPath(handle, lockPath).catch(() => false);
+      }
       if (handle) {
         await handle.close().catch(() => undefined);
         handle = null;
       }
-      if (createdReservation) {
-        // No mutation work can start until owner metadata has been fully written and synced.
+      if (ownsReservation) {
+        // Only unlink the pathname if it still refers to the inode we created. Otherwise a stale
+        // recovery may already have replaced it with another process's live reservation.
         await fs.unlink(lockPath).catch((unlinkError) => {
           if (!isErrno(unlinkError, "ENOENT")) throw unlinkError;
         });
