@@ -46,8 +46,7 @@ function parseRuntimeAliases(source) {
   const block = /export const DEFAULT_SKILL_ALIASES:[^=]+\=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1];
   if (!block) return null;
   const entries = {};
-  const entryPattern =
-    /(?:"([a-z0-9-]+)"|([A-Za-z_$][A-Za-z0-9_$]*))\s*:\s*"([a-z0-9-]+)"/g;
+  const entryPattern = /(?:"([a-z0-9-]+)"|([A-Za-z_$][A-Za-z0-9_$]*))\s*:\s*"([a-z0-9-]+)"/g;
   for (const match of block.matchAll(entryPattern)) {
     const key = match[1] ?? match[2];
     if (key) entries[key] = match[3];
@@ -239,12 +238,8 @@ console.log(
   `Skills: ${report.summary.skills}; aliases: ${report.summary.aliases}; errors: ${errors.length}; warnings: ${warnings.length}`,
 );
 for (const item of errors)
-  console.error(
-    `ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`,
-  );
+  console.error(`ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
 for (const item of warnings)
-  console.warn(
-    `WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`,
-  );
+  console.warn(`WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
 
 if (check && errors.length > 0) process.exitCode = 1;
