@@ -35,7 +35,9 @@ export interface DirectorySkillEntry extends Omit<DirectorySkill, "files"> {
 
 function isStrictDescendant(root: string, candidate: string): boolean {
   const rel = path.relative(root, candidate);
-  return rel.length > 0 && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+  return (
+    rel.length > 0 && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)
+  );
 }
 
 async function resolveSkillRoots(
