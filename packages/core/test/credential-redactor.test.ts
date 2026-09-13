@@ -105,7 +105,7 @@ describe("redactObject", () => {
     expect(redacted.user).toBe("alice");
     expect(redacted.count).toBe(42);
     expect(redacted.auth.token).toBe(REDACTED_MARKER);
-    expect(redacted.auth.headers[0]).toContain(`Bearer ${REDACTED_MARKER}`);
+    expect(redacted.auth.headers[0]).toBe(REDACTED_MARKER);
     expect(redacted.apiKey).toBe(REDACTED_MARKER);
   });
 
