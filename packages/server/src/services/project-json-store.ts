@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { atomicWriteFile, projectDir } from "@prismshadow/penguin-core";
 
 export interface JsonMutation<T, R> {
@@ -16,6 +17,7 @@ const LOCK_STALE_MS = 60_000;
 const LOCK_HEARTBEAT_MS = 10_000;
 const LOCK_TIMEOUT_MS = 10_000;
 const LOCK_POLL_MS = 25;
+const RECOVERY_DB_NAME = ".project-state-locks.sqlite";
 
 interface LockOwner {
   token: string;
@@ -23,6 +25,8 @@ interface LockOwner {
   hostname: string;
   createdAt: number;
 }
+
+const sqlite = process.getBuiltinModule("node:sqlite");
 
 function isErrno(error: unknown, code: string): boolean {
   return (
@@ -85,51 +89,91 @@ async function quarantineAndDelete(lockPath: string, label: string): Promise<boo
   return true;
 }
 
+function openRecoveryMutex(root: string): DatabaseSync {
+  const db = new sqlite.DatabaseSync(path.join(root, RECOVERY_DB_NAME));
+  db.exec(`PRAGMA busy_timeout = ${LOCK_TIMEOUT_MS};`);
+  // Ensure the database has a durable schema page before using a transaction only as a mutex.
+  db.exec("CREATE TABLE IF NOT EXISTS recovery_guard (id INTEGER PRIMARY KEY CHECK (id = 1));");
+  return db;
+}
+
+async function withRecoveryMutex<R>(root: string, work: () => Promise<R>): Promise<R> {
+  const db = openRecoveryMutex(root);
+  let began = false;
+  try {
+    // SQLite supplies the cross-process primitive the filesystem API lacks here: only one stale
+    // reclaimer may hold an IMMEDIATE transaction for this data root, and the OS releases it if
+    // that process dies. A contender therefore rechecks the lock pathname only after the prior
+    // reclaimer has finished, so it cannot act on an owner snapshot taken before replacement.
+    db.exec("BEGIN IMMEDIATE");
+    began = true;
+    const result = await work();
+    db.exec("COMMIT");
+    began = false;
+    return result;
+  } catch (error) {
+    if (began) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Preserve the original recovery error; closing the connection also drops the transaction.
+      }
+    }
+    throw error;
+  } finally {
+    db.close();
+  }
+}
+
 /**
- * Recover an abandoned lock. A well-formed owner is recovered only when it belongs to this host
- * and its PID is dead. A stale malformed lock represents an acquisition that never published valid
- * ownership metadata; work cannot have started before publication, so that reservation can be
- * quarantined after the stale grace period.
+ * Recover an abandoned lock. Recovery is serialized across processes through SQLite before the
+ * lock is re-read, so two stale reclaimers cannot both act on the same old owner and let the later
+ * one rename a fresh replacement. A well-formed owner is recovered only when it belongs to this
+ * host and its PID is dead. A stale malformed lock represents an acquisition that never published
+ * valid ownership metadata; work cannot have started before publication, so that reservation can
+ * be quarantined after the stale grace period.
  */
-async function removeLockIfAbandoned(lockPath: string): Promise<boolean> {
-  let stat: Awaited<ReturnType<typeof fs.stat>>;
-  try {
-    stat = await fs.stat(lockPath);
-  } catch (error) {
-    if (isErrno(error, "ENOENT")) return true;
-    throw error;
-  }
+async function removeLockIfAbandoned(lockPath: string, root: string): Promise<boolean> {
+  return withRecoveryMutex(root, async () => {
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(lockPath);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return true;
+      throw error;
+    }
 
-  if (Date.now() - stat.mtimeMs <= LOCK_STALE_MS) return false;
+    if (Date.now() - stat.mtimeMs <= LOCK_STALE_MS) return false;
 
-  let owner: LockOwner | null;
-  try {
-    owner = await readLockOwner(lockPath);
-  } catch {
-    return quarantineAndDelete(lockPath, "abandoned-unpublished");
-  }
-  if (!owner) return true;
-  if (owner.hostname !== os.hostname()) return false;
-  if (processIsAlive(owner.pid)) return false;
+    let owner: LockOwner | null;
+    try {
+      owner = await readLockOwner(lockPath);
+    } catch {
+      return quarantineAndDelete(lockPath, "abandoned-unpublished");
+    }
+    if (!owner) return true;
+    if (owner.hostname !== os.hostname()) return false;
+    if (processIsAlive(owner.pid)) return false;
 
-  const quarantine = `${lockPath}.abandoned-${owner.token}-${randomUUID()}`;
-  try {
-    await fs.rename(lockPath, quarantine);
-  } catch (error) {
-    if (isErrno(error, "ENOENT")) return true;
-    throw error;
-  }
+    const quarantine = `${lockPath}.abandoned-${owner.token}-${randomUUID()}`;
+    try {
+      await fs.rename(lockPath, quarantine);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return true;
+      throw error;
+    }
 
-  const movedOwner = await readLockOwner(quarantine);
-  if (!movedOwner || movedOwner.token !== owner.token) {
-    // Preserve the quarantined evidence rather than replacing a potentially new live lock.
-    throw new Error(
-      `Refusing to remove project-state lock '${lockPath}' because ownership changed during stale recovery.`,
-    );
-  }
+    const movedOwner = await readLockOwner(quarantine);
+    if (!movedOwner || movedOwner.token !== owner.token) {
+      // Preserve the quarantined evidence rather than replacing a potentially new live lock.
+      throw new Error(
+        `Refusing to remove project-state lock '${lockPath}' because ownership changed during stale recovery.`,
+      );
+    }
 
-  await fs.unlink(quarantine);
-  return true;
+    await fs.unlink(quarantine);
+    return true;
+  });
 }
 
 async function handleStillOwnsPath(
@@ -145,7 +189,11 @@ async function handleStillOwnsPath(
   }
 }
 
-async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Promise<R> {
+async function withFileLock<R>(
+  targetPath: string,
+  root: string,
+  work: () => Promise<R>,
+): Promise<R> {
   const lockPath = `${targetPath}.lock`;
   const startedAt = Date.now();
   const owner: LockOwner = {
@@ -195,7 +243,7 @@ async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Prom
         });
       }
       if (!isErrno(error, "EEXIST")) throw error;
-      if (await removeLockIfAbandoned(lockPath)) continue;
+      if (await removeLockIfAbandoned(lockPath, root)) continue;
       if (Date.now() - startedAt >= LOCK_TIMEOUT_MS) {
         throw new Error(`Timed out waiting for project state lock '${lockPath}'.`);
       }
@@ -277,7 +325,7 @@ export class ProjectJsonStore<T> {
       .catch(() => undefined)
       .then(async () => {
         await fs.mkdir(path.dirname(filePath), { recursive: true });
-        return withFileLock(filePath, async () => {
+        return withFileLock(filePath, this.root, async () => {
           const current = await this.readPath(filePath);
           const mutation = await mutate(current);
           await atomicWriteFile(filePath, this.encode(mutation.value));
