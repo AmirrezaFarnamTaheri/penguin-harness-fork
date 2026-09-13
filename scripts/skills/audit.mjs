@@ -46,8 +46,11 @@ function parseRuntimeAliases(source) {
   const block = /export const DEFAULT_SKILL_ALIASES:[^=]+\=\s*\{([\s\S]*?)\n\};/.exec(source)?.[1];
   if (!block) return null;
   const entries = {};
-  for (const match of block.matchAll(/"([a-z0-9-]+)"\s*:\s*"([a-z0-9-]+)"/g)) {
-    entries[match[1]] = match[2];
+  const entryPattern =
+    /(?:"([a-z0-9-]+)"|([A-Za-z_$][A-Za-z0-9_$]*))\s*:\s*"([a-z0-9-]+)"/g;
+  for (const match of block.matchAll(entryPattern)) {
+    const key = match[1] ?? match[2];
+    if (key) entries[key] = match[3];
   }
   return entries;
 }
