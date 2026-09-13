@@ -54,12 +54,10 @@ test("malformed registry responses fail instead of authorizing publication", () 
 });
 
 test("canonical release desktop builds cannot silently downgrade required signing", () => {
-  const canonicalGuard =
-    "github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/'))";
-  assert.equal(
-    desktopWorkflow.split(canonicalGuard).length - 1,
-    2,
-    "both macOS and Windows signing requirements must be forced for canonical release contexts",
+  assert.match(
+    desktopWorkflow,
+    /- name: Enforce production release signing[\s\S]*?CANONICAL_REPOSITORY: \$\{\{ github\.repository == 'Prism-Shadow\/penguin-harness' && 'true' \|\| 'false' \}\}[\s\S]*?if \[\[ -n "\$RELEASE_TAG" \|\| "\$RELEASE_REF" == refs\/tags\/v\* \|\| "\$RELEASE_REF_NAME" == release\/\* \]\]; then[\s\S]*?echo "REQUIRE_MACOS_SIGNING=true" >> "\$GITHUB_ENV"[\s\S]*?echo "REQUIRE_WINDOWS_SIGNING=true" >> "\$GITHUB_ENV"/,
+    "canonical tag and release-branch builds must upgrade both signing requirements before credential preparation",
   );
 
   assert.match(
