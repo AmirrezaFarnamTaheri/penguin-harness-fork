@@ -30,6 +30,7 @@ const ALLOWED_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
   "timeout",
   "context_length_exceeded",
 ];
+const MAX_SPEND_FLOW_NODES = 100;
 
 function decodeCombos(raw: string): ModelCombo[] {
   const parsed: unknown = JSON.parse(raw);
@@ -59,6 +60,105 @@ async function getQuotaPayload(deps: AppDeps, projectId: string) {
     },
     models,
   };
+}
+
+function tokenCount(body: Record<string, unknown>, key: string): number {
+  const value = body[key];
+  if (value === undefined) return 0;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw badRequest(`${key} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
+function parseSpendModelBreakdown(
+  value: unknown,
+  sessionIndex: number,
+): SessionCostRecord["modelBreakdown"] {
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw badRequest(`sessions[${sessionIndex}].modelBreakdown must be an object.`);
+  }
+
+  const parsed: SessionCostRecord["modelBreakdown"] = {};
+  for (const [model, rawBreakdown] of Object.entries(value)) {
+    if (!model || model.length > 256) {
+      throw badRequest(
+        `sessions[${sessionIndex}].modelBreakdown contains an invalid model identifier.`,
+      );
+    }
+    if (
+      typeof rawBreakdown !== "object" ||
+      rawBreakdown === null ||
+      Array.isArray(rawBreakdown)
+    ) {
+      throw badRequest(
+        `sessions[${sessionIndex}].modelBreakdown.${model} must be an object.`,
+      );
+    }
+    const breakdown = rawBreakdown as Record<string, unknown>;
+    const costUSD = breakdown.costUSD;
+    if (typeof costUSD !== "number" || !Number.isFinite(costUSD) || costUSD < 0) {
+      throw badRequest(
+        `sessions[${sessionIndex}].modelBreakdown.${model}.costUSD must be a non-negative finite number.`,
+      );
+    }
+    const tokens = breakdown.tokens;
+    if (
+      tokens !== undefined &&
+      (typeof tokens !== "number" || !Number.isSafeInteger(tokens) || tokens < 0)
+    ) {
+      throw badRequest(
+        `sessions[${sessionIndex}].modelBreakdown.${model}.tokens must be a non-negative safe integer.`,
+      );
+    }
+    parsed[model] = {
+      costUSD,
+      ...(typeof tokens === "number" ? { tokens } : {}),
+    };
+  }
+  return parsed;
+}
+
+function parseSpendSessions(value: unknown, projectId: string): SessionCostRecord[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw badRequest("sessions must be an array when provided.");
+
+  return value.map((rawSession, index) => {
+    if (typeof rawSession !== "object" || rawSession === null || Array.isArray(rawSession)) {
+      throw badRequest(`sessions[${index}] must be an object.`);
+    }
+    const session = rawSession as Record<string, unknown>;
+    if (session.sessionId !== undefined && typeof session.sessionId !== "string") {
+      throw badRequest(`sessions[${index}].sessionId must be a string when provided.`);
+    }
+    if (session.projectId !== undefined && typeof session.projectId !== "string") {
+      throw badRequest(`sessions[${index}].projectId must be a string when provided.`);
+    }
+    if (session.projectPath !== undefined && typeof session.projectPath !== "string") {
+      throw badRequest(`sessions[${index}].projectPath must be a string when provided.`);
+    }
+
+    return {
+      sessionId: (session.sessionId as string | undefined) ?? "",
+      projectId: (session.projectId as string | undefined) ?? projectId,
+      projectPath: session.projectPath as string | undefined,
+      modelBreakdown: parseSpendModelBreakdown(session.modelBreakdown, index),
+    };
+  });
+}
+
+function spendFlowLimit(value: unknown): number {
+  if (value === undefined) return 8;
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_SPEND_FLOW_NODES
+  ) {
+    throw badRequest(`limit must be an integer between 1 and ${MAX_SPEND_FLOW_NODES}.`);
+  }
+  return value;
 }
 
 export function isSafeSegment(segment: string): boolean {
@@ -203,17 +303,17 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     const provider = requireString(body, "provider", { minLen: 1, maxLen: 64, label: "provider" });
     const modelId = requireString(body, "modelId", { minLen: 1, maxLen: 200, label: "modelId" });
     const usage: DetailedUsageCounts = {
-      promptTokens: typeof body.promptTokens === "number" ? body.promptTokens : 0,
-      completionTokens: typeof body.completionTokens === "number" ? body.completionTokens : 0,
-      reasoningTokens: typeof body.reasoningTokens === "number" ? body.reasoningTokens : 0,
-      cacheReadTokens: typeof body.cacheReadTokens === "number" ? body.cacheReadTokens : 0,
-      cacheWriteTokens: typeof body.cacheWriteTokens === "number" ? body.cacheWriteTokens : 0,
+      promptTokens: tokenCount(body, "promptTokens"),
+      completionTokens: tokenCount(body, "completionTokens"),
+      reasoningTokens: tokenCount(body, "reasoningTokens"),
+      cacheReadTokens: tokenCount(body, "cacheReadTokens"),
+      cacheWriteTokens: tokenCount(body, "cacheWriteTokens"),
     };
     const breakdown = pricingCatalog.calculateCost(provider, modelId, usage);
     return c.json({
       breakdown,
-      formattedTotal: pricingCatalog.formatCost(breakdown.totalCost),
-      formattedSavings: pricingCatalog.formatCost(breakdown.savingsFromCache),
+      formattedTotal: pricingCatalog.formatCost(breakdown.totalCost, breakdown.priced),
+      formattedSavings: pricingCatalog.formatCost(breakdown.savingsFromCache, breakdown.priced),
     });
   });
 
@@ -221,19 +321,10 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-    const rawSessions = Array.isArray(body.sessions) ? body.sessions : [];
-    const sessions: SessionCostRecord[] = rawSessions.map((session: Record<string, unknown>) => ({
-      sessionId: typeof session.sessionId === "string" ? session.sessionId : "",
-      projectId: typeof session.projectId === "string" ? session.projectId : projectId,
-      projectPath: typeof session.projectPath === "string" ? session.projectPath : undefined,
-      modelBreakdown:
-        typeof session.modelBreakdown === "object" && session.modelBreakdown !== null
-          ? (session.modelBreakdown as Record<string, { costUSD: number; tokens?: number }>)
-          : {},
-    }));
+    const sessions = parseSpendSessions(body.sessions, projectId);
     return c.json({
       report: computeSpendFlow(sessions, {
-        topNodeLimit: typeof body.limit === "number" ? body.limit : 8,
+        topNodeLimit: spendFlowLimit(body.limit),
       }),
     });
   });
