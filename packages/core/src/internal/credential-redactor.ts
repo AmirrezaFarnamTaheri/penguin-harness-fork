@@ -31,7 +31,12 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "auth_header",
-    pattern: /((?:authorization|proxy-authorization|api-key|x-api-key|x-auth-token|x-access-token|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?\S+/gi,
+    pattern: /((?:authorization|proxy-authorization|api-key|x-api-key|x-api-token|x-auth-key|x-auth-token|x-access-token|x-secret-key|client-secret|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?[^\r\n]+/gi,
+    replace: (_match, header) => `${header}${REDACTED_MARKER}`,
+  },
+  {
+    name: "cookie_header",
+    pattern: /((?:cookie|set-cookie)\s*:\s*)[^\r\n]+/gi,
     replace: (_match, header) => `${header}${REDACTED_MARKER}`,
   },
   {
@@ -71,7 +76,7 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "generic_assignment",
-    pattern: /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
+    pattern: /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
     replace: (_match, prefix, quote) => `${prefix}${REDACTED_MARKER}${quote || ""}`,
   },
 ];
@@ -102,13 +107,17 @@ function normalizeFieldName(name: string): string {
 const DEFAULT_SENSITIVE_FIELDS = new Set([
   "apikey",
   "xapikey",
+  "apitoken",
+  "xapitoken",
   "clientsecret",
+  "clienttoken",
   "password",
   "passwd",
   "pwd",
   "accesstoken",
   "xaccesstoken",
   "xauthtoken",
+  "xauthkey",
   "refreshtoken",
   "secrettoken",
   "sessiontoken",
@@ -120,6 +129,12 @@ const DEFAULT_SENSITIVE_FIELDS = new Set([
   "secret",
   "token",
   "privatekey",
+  "secretkey",
+  "xsecretkey",
+  "signingsecret",
+  "webhooksecret",
+  "cookie",
+  "setcookie",
   "awssecretaccesskey",
 ]);
 
@@ -138,9 +153,10 @@ function isSensitiveField(key: string, sensitive: Set<string>): boolean {
 
   return (
     /^(?:x|openai|anthropic|google|github|gitlab|slack|aws)?apikey$/.test(normalized) ||
-    /^(?:client|app|oauth)secret$/.test(normalized) ||
-    /^(?:x)?(?:access|refresh|secret|session|auth|oauth)token$/.test(normalized) ||
-    /^(?:private|signing|encryption)key$/.test(normalized)
+    /^(?:client|app|oauth|webhook|signing)secret$/.test(normalized) ||
+    /^(?:x)?(?:api|access|refresh|secret|session|auth|oauth|client)token$/.test(normalized) ||
+    /^(?:x)?(?:auth|secret|private|signing|encryption)key$/.test(normalized) ||
+    /^(?:set)?cookie$/.test(normalized)
   );
 }
 
