@@ -43,7 +43,7 @@ const x = 42;
   });
 
   it("wraps HTML fragments into complete sandboxed documents", () => {
-    const snippet = "<button class=\"btn\">Click me</button>";
+    const snippet = '<button class="btn">Click me</button>';
     const doc = createSandboxedHtmlDocument(snippet, {
       title: "Button Test",
       theme: "dark",

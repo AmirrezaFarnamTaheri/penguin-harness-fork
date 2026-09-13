@@ -21,12 +21,7 @@ export const DEFAULT_WATCHDOG_CONFIG: WatchdogConfig = {
 };
 
 export type WatchdogState =
-  | "healthy"
-  | "warning"
-  | "stalled"
-  | "timed_out"
-  | "max_steps_exceeded"
-  | "aborted";
+  "healthy" | "warning" | "stalled" | "timed_out" | "max_steps_exceeded" | "aborted";
 
 export interface WatchdogStatus {
   state: WatchdogState;
@@ -134,10 +129,22 @@ export class TaskWatchdog {
     const warnings: string[] = [...this.warnings];
 
     if (this.terminalState === "aborted") {
-      return this.terminalStatus("aborted", elapsedMs, heartbeatAge, warnings, this.abortReason ?? "Execution aborted");
+      return this.terminalStatus(
+        "aborted",
+        elapsedMs,
+        heartbeatAge,
+        warnings,
+        this.abortReason ?? "Execution aborted",
+      );
     }
     if (this.terminalState === "timed_out") {
-      return this.terminalStatus("timed_out", elapsedMs, heartbeatAge, warnings, this.abortReason ?? "Execution timed out");
+      return this.terminalStatus(
+        "timed_out",
+        elapsedMs,
+        heartbeatAge,
+        warnings,
+        this.abortReason ?? "Execution timed out",
+      );
     }
     if (this.terminalState === "max_steps_exceeded") {
       return this.terminalStatus(
@@ -164,7 +171,10 @@ export class TaskWatchdog {
         "timed_out",
         elapsedMs,
         heartbeatAge,
-        [...warnings, `Current step duration ${stepDuration}ms exceeded step limit ${this.config.stepTimeoutMs}ms`],
+        [
+          ...warnings,
+          `Current step duration ${stepDuration}ms exceeded step limit ${this.config.stepTimeoutMs}ms`,
+        ],
         "Step execution exceeded step timeout threshold",
       );
     }
@@ -174,7 +184,10 @@ export class TaskWatchdog {
         "max_steps_exceeded",
         elapsedMs,
         heartbeatAge,
-        [...warnings, `Current step count ${this.currentStep} exceeded maximum ${this.config.maxStepCount}`],
+        [
+          ...warnings,
+          `Current step count ${this.currentStep} exceeded maximum ${this.config.maxStepCount}`,
+        ],
         "Step count exceeded runaway threshold",
       );
     }
@@ -186,7 +199,10 @@ export class TaskWatchdog {
         elapsedMs,
         lastHeartbeatAgeMs: heartbeatAge,
         lastAction: this.lastAction,
-        warnings: [...warnings, `Heartbeat age ${heartbeatAge}ms exceeded stall limit ${this.config.stallHeartbeatMs}ms`],
+        warnings: [
+          ...warnings,
+          `Heartbeat age ${heartbeatAge}ms exceeded stall limit ${this.config.stallHeartbeatMs}ms`,
+        ],
         abortReason: "Agent heartbeat stalled",
       };
     }
@@ -263,7 +279,9 @@ export function recoverStaleInProgressTasks(
   const results: StaleRecoveryResult[] = [];
 
   for (const task of candidates) {
-    const refTime = task.lastHeartbeatAt ? Date.parse(task.lastHeartbeatAt) : Date.parse(task.updatedAt);
+    const refTime = task.lastHeartbeatAt
+      ? Date.parse(task.lastHeartbeatAt)
+      : Date.parse(task.updatedAt);
     const age = now - refTime;
 
     if (age > timeoutMs) {
@@ -282,7 +300,11 @@ export function recoverStaleInProgressTasks(
         });
       }
     } else {
-      results.push({ taskId: task.id, action: "ignored", reason: "Heartbeat age within acceptable bounds" });
+      results.push({
+        taskId: task.id,
+        action: "ignored",
+        reason: "Heartbeat age within acceptable bounds",
+      });
     }
   }
 

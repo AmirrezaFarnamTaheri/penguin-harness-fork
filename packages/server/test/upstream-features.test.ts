@@ -84,7 +84,9 @@ describe("upstream-features integration", () => {
       expect(runData.run.status).toBe("running");
 
       // 6. Project B cannot query the run
-      const crossRunRes = await userB.get(`/api/projects/${projectB}/pipelines/pipe-1/runs/${runId}`);
+      const crossRunRes = await userB.get(
+        `/api/projects/${projectB}/pipelines/pipe-1/runs/${runId}`,
+      );
       expect(crossRunRes.status).toBe(404);
 
       // 7. Complete node in run
@@ -140,10 +142,13 @@ describe("upstream-features integration", () => {
       });
       expect(badActionRes.status).toBe(400);
 
-      const unknownApprRes = await userA.post(`/api/projects/${projectA}/gateway/webhooks/approval`, {
-        approvalId: "nonexistent-appr",
-        action: "approve",
-      });
+      const unknownApprRes = await userA.post(
+        `/api/projects/${projectA}/gateway/webhooks/approval`,
+        {
+          approvalId: "nonexistent-appr",
+          action: "approve",
+        },
+      );
       expect(unknownApprRes.status).toBe(404);
     });
   });
@@ -178,22 +183,30 @@ describe("upstream-features integration", () => {
         leaseDurationMs: 60000,
       });
       expect(claimRes.status).toBe(200);
-      const claimed = (await claimRes.json()) as { task: { leaseGeneration: number; assignee: string } };
+      const claimed = (await claimRes.json()) as {
+        task: { leaseGeneration: number; assignee: string };
+      };
       expect(claimed.task.leaseGeneration).toBe(1);
       expect(claimed.task.assignee).toBe("worker-alpha");
 
       // 5. Heartbeat with wrong worker rejected
-      const badWorkerHb = await userA.post(`/api/projects/${projectA}/kanban/tasks/${taskId}/heartbeat`, {
-        workerId: "worker-impostor",
-        generation: 1,
-      });
+      const badWorkerHb = await userA.post(
+        `/api/projects/${projectA}/kanban/tasks/${taskId}/heartbeat`,
+        {
+          workerId: "worker-impostor",
+          generation: 1,
+        },
+      );
       expect(badWorkerHb.status).toBe(400);
 
       // 6. Release task
-      const releaseRes = await userA.post(`/api/projects/${projectA}/kanban/tasks/${taskId}/release`, {
-        workerId: "worker-alpha",
-        generation: 1,
-      });
+      const releaseRes = await userA.post(
+        `/api/projects/${projectA}/kanban/tasks/${taskId}/release`,
+        {
+          workerId: "worker-alpha",
+          generation: 1,
+        },
+      );
       expect(releaseRes.status).toBe(200);
 
       // 7. Project B cannot view Project A tasks
@@ -209,7 +222,8 @@ describe("upstream-features integration", () => {
       // 1. Add page A linking to page B
       const pageARes = await userA.post(`/api/projects/${projectA}/wiki/nodes`, {
         id: "arch/overview",
-        content: "---\ntitle: Architecture Overview\ntype: concept\n---\nSee [[arch/storage]] for details.",
+        content:
+          "---\ntitle: Architecture Overview\ntype: concept\n---\nSee [[arch/storage]] for details.",
       });
       expect(pageARes.status).toBe(201);
 

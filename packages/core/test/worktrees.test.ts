@@ -23,9 +23,9 @@ async function initRepository(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) =>
-      fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }),
-    ),
+    roots
+      .splice(0)
+      .map((root) => fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 })),
   );
 });
 

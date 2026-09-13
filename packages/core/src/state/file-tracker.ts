@@ -46,7 +46,12 @@ export class SessionFileTracker {
     rec.operations.add("read");
   }
 
-  recordWrite(filePath: string, linesAdded: number = 0, linesRemoved: number = 0, isNew: boolean = false): void {
+  recordWrite(
+    filePath: string,
+    linesAdded: number = 0,
+    linesRemoved: number = 0,
+    isNew: boolean = false,
+  ): void {
     const rec = this.getOrCreate(filePath);
     rec.operations.add(isNew ? "create" : "edit");
     rec.operations.add("write");
@@ -64,7 +69,11 @@ export class SessionFileTracker {
   listModifiedFiles(): string[] {
     const modified: string[] = [];
     for (const [p, rec] of this.records) {
-      if (rec.operations.has("write") || rec.operations.has("create") || rec.operations.has("delete")) {
+      if (
+        rec.operations.has("write") ||
+        rec.operations.has("create") ||
+        rec.operations.has("delete")
+      ) {
         modified.push(p);
       }
     }

@@ -26,16 +26,40 @@ const GENERIC_NAME_TOKENS = new Set([
 ]);
 
 const DOMAIN_RULES = [
-  ["qa", /\b(test|testing|qa|quality|verify|verification|debug|debugging|regression|lint|review|audit)\b/i],
+  [
+    "qa",
+    /\b(test|testing|qa|quality|verify|verification|debug|debugging|regression|lint|review|audit)\b/i,
+  ],
   ["design", /\b(ui|ux|design|figma|visual|typography|brand|branding|css|accessibility)\b/i],
-  ["ops", /\b(devops|deploy|deployment|ci|cd|pipeline|infra|infrastructure|docker|kubernetes|terraform|observability|monitoring|release)\b/i],
-  ["security", /\b(security|secure|auth|authentication|authorization|oauth|secret|vulnerability|threat|pentest|crypto|cryptography)\b/i],
-  ["data", /\b(data|database|sql|postgres|mysql|analytics|spreadsheet|csv|etl|warehouse|visualization)\b/i],
-  ["science", /\b(science|scientific|biology|bioinformatics|protein|chemistry|chemical|physics|medical|genomics|statistics|statistical)\b/i],
-  ["management", /\b(plan|planning|project|product|prd|roadmap|epic|triage|strategy|management|manager|hiring|finance|budget)\b/i],
-  ["communication", /\b(write|writing|copy|email|message|document|docs|documentation|translation|summarize|summary|presentation|slides)\b/i],
+  [
+    "ops",
+    /\b(devops|deploy|deployment|ci|cd|pipeline|infra|infrastructure|docker|kubernetes|terraform|observability|monitoring|release)\b/i,
+  ],
+  [
+    "security",
+    /\b(security|secure|auth|authentication|authorization|oauth|secret|vulnerability|threat|pentest|crypto|cryptography)\b/i,
+  ],
+  [
+    "data",
+    /\b(data|database|sql|postgres|mysql|analytics|spreadsheet|csv|etl|warehouse|visualization)\b/i,
+  ],
+  [
+    "science",
+    /\b(science|scientific|biology|bioinformatics|protein|chemistry|chemical|physics|medical|genomics|statistics|statistical)\b/i,
+  ],
+  [
+    "management",
+    /\b(plan|planning|project|product|prd|roadmap|epic|triage|strategy|management|manager|hiring|finance|budget)\b/i,
+  ],
+  [
+    "communication",
+    /\b(write|writing|copy|email|message|document|docs|documentation|translation|summarize|summary|presentation|slides)\b/i,
+  ],
   ["research", /\b(research|search|investigate|analysis|analyze|literature|evidence)\b/i],
-  ["engineering", /\b(code|coding|software|engineer|engineering|api|backend|frontend|typescript|javascript|python|rust|go|java|react|nextjs|architecture)\b/i],
+  [
+    "engineering",
+    /\b(code|coding|software|engineer|engineering|api|backend|frontend|typescript|javascript|python|rust|go|java|react|nextjs|architecture)\b/i,
+  ],
 ];
 
 export function inferSkillDomain(name, description = "", tags = []) {
@@ -52,7 +76,8 @@ export function inferSkillKind(name, description = "") {
   if (name.endsWith("-bilingual")) return "bilingual-specialist";
   if (name.endsWith("-patterns") || name.endsWith("-best-practices")) return "reference-patterns";
   if (name.endsWith("-runner") || /\b(run|execute|execution)\b/.test(lower)) return "executor";
-  if (name.endsWith("-author") || /\b(author|create|generate|draft)\b/.test(lower)) return "authoring";
+  if (name.endsWith("-author") || /\b(author|create|generate|draft)\b/.test(lower))
+    return "authoring";
   if (name.endsWith("-review") || /\b(review|audit|inspect)\b/.test(lower)) return "review";
   if (/\b(router|route|dispatch|delegate)\b/.test(lower)) return "router";
   if (/\b(catalog(?:ue)? entry|reference-only|reference only)\b/.test(lower)) return "reference";
@@ -96,7 +121,9 @@ export function parseFrontmatter(raw, file = "SKILL.md") {
   try {
     parsed = parseYaml(match[1]);
   } catch (error) {
-    throw new Error(`${file}: invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `${file}: invalid YAML frontmatter: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${file}: frontmatter must be a mapping`);
@@ -122,7 +149,8 @@ export async function loadAliases(file = DEFAULT_ALIASES_FILE) {
     throw new Error(`${file}: aliases must be an object`);
   }
   for (const [alias, target] of Object.entries(aliases)) {
-    if (typeof target !== "string") throw new Error(`${file}: alias '${alias}' must map to a string target`);
+    if (typeof target !== "string")
+      throw new Error(`${file}: alias '${alias}' must map to a string target`);
   }
   return { ...parsed, aliases };
 }
@@ -164,8 +192,14 @@ export function extractLocalReferences(markdown) {
   };
 
   for (const match of markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) add(match[1]);
-  for (const match of markdown.matchAll(/`((?:scripts|references|assets|_common|_templates)\/[^`\s]+)`/g)) add(match[1]);
-  for (const match of markdown.matchAll(/(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm)) add(match[1]);
+  for (const match of markdown.matchAll(
+    /`((?:scripts|references|assets|_common|_templates)\/[^`\s]+)`/g,
+  ))
+    add(match[1]);
+  for (const match of markdown.matchAll(
+    /(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm,
+  ))
+    add(match[1]);
   return [...refs].sort((a, b) => a.localeCompare(b));
 }
 
@@ -232,7 +266,11 @@ export function stableStringify(value) {
   const sort = (input) => {
     if (Array.isArray(input)) return input.map(sort);
     if (input && typeof input === "object") {
-      return Object.fromEntries(Object.keys(input).sort().map((key) => [key, sort(input[key])]));
+      return Object.fromEntries(
+        Object.keys(input)
+          .sort()
+          .map((key) => [key, sort(input[key])]),
+      );
     }
     return input;
   };

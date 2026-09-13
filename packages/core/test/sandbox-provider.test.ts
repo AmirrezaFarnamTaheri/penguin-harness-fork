@@ -56,7 +56,7 @@ describe("SandboxManager", () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-sandbox-"));
     const sbx = manager.createSandbox({ provider: "local_process", workingDirectory: cwd });
 
-    const running = manager.exec(sbx.id, "node -e \"setTimeout(() => {}, 5000)\"");
+    const running = manager.exec(sbx.id, 'node -e "setTimeout(() => {}, 5000)"');
     await new Promise((resolve) => setTimeout(resolve, 25));
     manager.terminate(sbx.id);
     const result = await running;

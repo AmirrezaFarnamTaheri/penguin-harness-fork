@@ -33,7 +33,8 @@ const CRITICAL_RULES: SafetyRule[] = [
   {
     id: "destructive-root-delete",
     severity: "critical",
-    pattern: /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*)\s+([/~]|\/\*|\*)/i,
+    pattern:
+      /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*)\s+([/~]|\/\*|\*)/i,
     description: "Recursive forced deletion of root or wildcards (/ or ~ or *)",
     requiresApproval: true,
   },
@@ -92,14 +93,16 @@ const HIGH_RULES: SafetyRule[] = [
   {
     id: "pwsh-download-iex",
     severity: "high",
-    pattern: /\b(Invoke-Expression|iex)\s+.*(Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString)/i,
+    pattern:
+      /\b(Invoke-Expression|iex)\s+.*(Invoke-WebRequest|Invoke-RestMethod|iwr|irm|DownloadString)/i,
     description: "PowerShell remote script download executed via Invoke-Expression",
     requiresApproval: true,
   },
   {
     id: "credential-file-access",
     severity: "high",
-    pattern: /\b(cat|type|Get-Content|gc)\s+.*(\.aws\/credentials|\.ssh\/id_|\.kube\/config|\.env\.production)/i,
+    pattern:
+      /\b(cat|type|Get-Content|gc)\s+.*(\.aws\/credentials|\.ssh\/id_|\.kube\/config|\.env\.production)/i,
     description: "Accessing sensitive credential or SSH private key files",
     requiresApproval: true,
   },

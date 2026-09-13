@@ -68,9 +68,10 @@ export class SandboxManager {
       // POSIX children are spawned detached below, making the child's pid its process-group id.
       process.kill(-pid, "SIGKILL");
     } catch (error) {
-      const code = typeof error === "object" && error !== null && "code" in error
-        ? (error as { code?: string }).code
-        : undefined;
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? (error as { code?: string }).code
+          : undefined;
       if (code !== "ESRCH") {
         try {
           child.kill("SIGKILL");
@@ -151,7 +152,9 @@ export class SandboxManager {
     const timeoutMs =
       typeof sbx.metadata?.timeoutMs === "number" ? sbx.metadata.timeoutMs : this.defaultTimeoutMs;
     const maxOutputBytes =
-      typeof sbx.metadata?.maxOutputBytes === "number" ? sbx.metadata.maxOutputBytes : this.defaultMaxOutputBytes;
+      typeof sbx.metadata?.maxOutputBytes === "number"
+        ? sbx.metadata.maxOutputBytes
+        : this.defaultMaxOutputBytes;
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
       throw new Error("Sandbox timeout must be a positive finite number");
     }
@@ -189,7 +192,9 @@ export class SandboxManager {
         capturedBytes += buffer.byteLength;
         if (capturedBytes > maxOutputBytes) {
           this.killProcessTree(child);
-          finish(() => reject(new Error(`Sandbox command exceeded output limit of ${maxOutputBytes} bytes`)));
+          finish(() =>
+            reject(new Error(`Sandbox command exceeded output limit of ${maxOutputBytes} bytes`)),
+          );
           return;
         }
         if (stream === "stdout") stdout += buffer.toString("utf-8");
@@ -202,7 +207,11 @@ export class SandboxManager {
       timer = setTimeout(() => {
         this.killProcessTree(child);
         finish(() =>
-          reject(new Error(`Sandbox command timed out after ${timeoutMs}ms in '${sbx.workingDirectory}'`)),
+          reject(
+            new Error(
+              `Sandbox command timed out after ${timeoutMs}ms in '${sbx.workingDirectory}'`,
+            ),
+          ),
         );
       }, timeoutMs);
       timer.unref?.();

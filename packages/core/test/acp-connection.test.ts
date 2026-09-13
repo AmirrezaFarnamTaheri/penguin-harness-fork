@@ -23,7 +23,7 @@ describe("AcpConnection", () => {
 
     const res = await clientConn.sendRequest<{ serverName: string; receivedClient: string }>(
       "initialize",
-      { clientName: "claurst-test" }
+      { clientName: "claurst-test" },
     );
 
     expect(res.serverName).toBe("penguin-harness");
@@ -59,7 +59,7 @@ describe("AcpConnection", () => {
     });
 
     await expect(clientConn.sendRequest("nonexistent/method")).rejects.toThrow(
-      "ACP Error -32601: Method 'nonexistent/method' not found"
+      "ACP Error -32601: Method 'nonexistent/method' not found",
     );
   });
 
@@ -69,7 +69,7 @@ describe("AcpConnection", () => {
     });
 
     await expect(brokenConn.sendRequest("ping")).rejects.toThrow(
-      "Socket connection closed abruptly"
+      "Socket connection closed abruptly",
     );
   });
 });

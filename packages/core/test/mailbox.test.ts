@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  MailboxKernel,
-  EventBroker,
-  normalizeMailboxOwnerName,
-} from "../src/agent/mailbox.js";
+import { MailboxKernel, EventBroker, normalizeMailboxOwnerName } from "../src/agent/mailbox.js";
 
 describe("MailboxKernel", () => {
   it("normalizes owner and agent names consistently", () => {
@@ -100,7 +96,9 @@ describe("EventBroker", () => {
     });
 
     broker.publish("turn_complete", { turnId: "ordinary" });
-    await expect(broker.publishMustDeliver("turn_complete", { turnId: "critical" }, 15)).rejects.toThrow(/timed out/);
+    await expect(
+      broker.publishMustDeliver("turn_complete", { turnId: "critical" }, 15),
+    ).rejects.toThrow(/timed out/);
     expect(calls).toBe(1);
     releaseFirst();
     await new Promise((resolve) => setTimeout(resolve, 20));

@@ -10,7 +10,11 @@ import {
 import type { ToolResult } from "../src/environment/tools/types.js";
 import { toolCall } from "../src/omnimessage/index.js";
 import type { OmniMessage } from "../src/omnimessage/index.js";
-import type { ToolDefinitionConfig, WebSearchFetch, WebSearchService } from "../src/interfaces/index.js";
+import type {
+  ToolDefinitionConfig,
+  WebSearchFetch,
+  WebSearchService,
+} from "../src/interfaces/index.js";
 
 const definition: ToolDefinitionConfig = {
   name: WEB_SEARCH_NAME,

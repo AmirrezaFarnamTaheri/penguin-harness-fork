@@ -378,10 +378,19 @@ export async function installSkill(
 const replacementTails = new Map<string, Promise<void>>();
 
 function isFsError(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === code
+  );
 }
 
-async function recoverInterruptedReplacement(dir: string, staging: string, backup: string): Promise<void> {
+async function recoverInterruptedReplacement(
+  dir: string,
+  staging: string,
+  backup: string,
+): Promise<void> {
   const dirExists = await fileExists(dir);
   const backupExists = await fileExists(backup);
   if (backupExists && !dirExists) {
@@ -460,8 +469,13 @@ export async function replaceSkillDirectory(
 ): Promise<void> {
   const snapshot = [...files];
   const previous = replacementTails.get(dir) ?? Promise.resolve();
-  const run = previous.catch(() => undefined).then(() => performDirectoryReplacement(dir, snapshot));
-  const tail = run.then(() => undefined, () => undefined);
+  const run = previous
+    .catch(() => undefined)
+    .then(() => performDirectoryReplacement(dir, snapshot));
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
   replacementTails.set(dir, tail);
   try {
     await run;

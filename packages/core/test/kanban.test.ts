@@ -131,11 +131,19 @@ describe("KanbanBoard", () => {
     const c1 = board.claimTask(task.id, "worker-alpha");
     expect(c1.leaseGeneration).toBe(1);
 
-    expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 1 })).not.toThrow();
-    expect(() => board.heartbeat(task.id, { workerId: "imposter-worker", generation: 1 })).toThrow(/worker mismatch/);
-    expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 99 })).toThrow(/generation mismatch/);
+    expect(() =>
+      board.heartbeat(task.id, { workerId: "worker-alpha", generation: 1 }),
+    ).not.toThrow();
+    expect(() => board.heartbeat(task.id, { workerId: "imposter-worker", generation: 1 })).toThrow(
+      /worker mismatch/,
+    );
+    expect(() => board.heartbeat(task.id, { workerId: "worker-alpha", generation: 99 })).toThrow(
+      /generation mismatch/,
+    );
 
-    expect(() => board.updateTaskState(task.id, "review")).toThrow(/active lease identity is required/);
+    expect(() => board.updateTaskState(task.id, "review")).toThrow(
+      /active lease identity is required/,
+    );
     expect(() =>
       board.updateTaskState(task.id, "review", { workerId: "wrong-worker", generation: 1 }),
     ).toThrow(/worker mismatch/);
@@ -143,13 +151,19 @@ describe("KanbanBoard", () => {
       board.updateTaskState(task.id, "review", { workerId: "worker-alpha", generation: 0 }),
     ).toThrow(/generation mismatch/);
 
-    expect(() => board.releaseTask(task.id, { workerId: "other", generation: 1 })).toThrow(/worker mismatch/);
-    expect(() => board.releaseTask(task.id, { workerId: "worker-alpha", generation: 999 })).toThrow(/generation mismatch/);
+    expect(() => board.releaseTask(task.id, { workerId: "other", generation: 1 })).toThrow(
+      /worker mismatch/,
+    );
+    expect(() => board.releaseTask(task.id, { workerId: "worker-alpha", generation: 999 })).toThrow(
+      /generation mismatch/,
+    );
 
     const released = board.releaseTask(task.id, { workerId: "worker-alpha", generation: 1 });
     expect(released.assignee).toBeNull();
     expect(released.state).toBe("triage");
-    expect(() => board.updateTaskState(task.id, "done")).toThrow(/active lease identity is required/);
+    expect(() => board.updateTaskState(task.id, "done")).toThrow(
+      /active lease identity is required/,
+    );
 
     const c2 = board.claimTask(task.id, "worker-beta");
     expect(c2.leaseGeneration).toBe(3);

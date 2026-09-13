@@ -3,7 +3,10 @@ import { FileContextTracker } from "../src/state/file-context-tracker.js";
 
 describe("FileContextTracker", () => {
   it("tracks file reads, edits, and computes context token density", () => {
-    const tracker = new FileContextTracker({ contextWindowCapacity: 10000, monopolyThresholdPct: 20 });
+    const tracker = new FileContextTracker({
+      contextWindowCapacity: 10000,
+      monopolyThresholdPct: 20,
+    });
 
     // Turn 0
     tracker.recordFileRead("src/index.ts", 3800); // ~1000 tokens
@@ -25,7 +28,10 @@ describe("FileContextTracker", () => {
   });
 
   it("triggers context governance recommendations on dominating files", () => {
-    const tracker = new FileContextTracker({ contextWindowCapacity: 10000, monopolyThresholdPct: 30 });
+    const tracker = new FileContextTracker({
+      contextWindowCapacity: 10000,
+      monopolyThresholdPct: 30,
+    });
 
     // Inject massive file that consumes > 30% of context
     tracker.recordFileRead("huge-bundle.js", 19000); // 5000 tokens (50% of capacity)

@@ -11,7 +11,17 @@
 export interface SystemPromptProfile {
   id: string;
   name: string;
-  vendor: "anthropic" | "openai" | "deepseek" | "google" | "xai" | "perplexity" | "qwen" | "cursor" | "kimi" | "custom";
+  vendor:
+    | "anthropic"
+    | "openai"
+    | "deepseek"
+    | "google"
+    | "xai"
+    | "perplexity"
+    | "qwen"
+    | "cursor"
+    | "kimi"
+    | "custom";
   description: string;
   targetModels: string[];
   principles: string[];
@@ -25,7 +35,8 @@ export const BUILTIN_PROMPT_PROFILES: SystemPromptProfile[] = [
     id: "claude_code_standard",
     name: "Claude Code Standard",
     vendor: "anthropic",
-    description: "Rigorous coding assistant prompt emphasizing surgical edits, context boundaries, and verification.",
+    description:
+      "Rigorous coding assistant prompt emphasizing surgical edits, context boundaries, and verification.",
     targetModels: ["claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-haiku"],
     principles: [
       "Prioritize surgical, minimal, readable code changes over sweeping refactors.",
@@ -49,7 +60,8 @@ Follow these behavioral standards:
     id: "openai_o3_thinking",
     name: "OpenAI o3 / GPT-5 Autonomous Agent",
     vendor: "openai",
-    description: "Deep reasoning and reflection profile designed for multi-step architectural execution.",
+    description:
+      "Deep reasoning and reflection profile designed for multi-step architectural execution.",
     targetModels: ["o3", "o3-mini", "o4-mini", "gpt-5", "gpt-5.4"],
     principles: [
       "Decompose complex goals into verified milestones before executing state changes.",
@@ -70,7 +82,8 @@ Think deeply through problem constraints before modifying state:
     id: "deepseek_r1_reasoning",
     name: "DeepSeek R1 Reasoning Normalizer",
     vendor: "deepseek",
-    description: "Specialized for DeepSeek R1 / V3 models with explicit reasoning trace discipline.",
+    description:
+      "Specialized for DeepSeek R1 / V3 models with explicit reasoning trace discipline.",
     targetModels: ["deepseek-r1", "deepseek-v3"],
     principles: [
       "Distinguish deep exploratory reasoning traces from final concrete actionable code.",
@@ -140,7 +153,8 @@ Think deeply before executing actions. Verify assumptions against whole-reposito
     id: "qwen_coder_specialist",
     name: "Qwen 2.5 Coder Specialist",
     vendor: "qwen",
-    description: "Polyglot software engineering specialist optimized for high-density code generation.",
+    description:
+      "Polyglot software engineering specialist optimized for high-density code generation.",
     targetModels: ["qwen-2.5-coder-32b", "qwen-2.5-coder-7b", "qwen-max"],
     principles: [
       "Follow language-native idiomatic patterns (Rust memory safety, Go concurrency, TypeScript strict types).",
@@ -156,7 +170,8 @@ Deliver complete, bug-free, high-performance code adhering strictly to language 
     id: "cursor_agent_builder",
     name: "Cursor Agent Builder",
     vendor: "cursor",
-    description: "Fast-iteration agent profile tuned for surgical multi-file diffs and fast refactors.",
+    description:
+      "Fast-iteration agent profile tuned for surgical multi-file diffs and fast refactors.",
     targetModels: ["cursor-small", "claude-3-5-sonnet", "gpt-4o"],
     principles: [
       "Emit targeted unified diffs minimizing churn to surrounding codebase.",
@@ -222,7 +237,7 @@ export class PromptCatalog {
       allowedTools?: string[];
       workspaceRoot?: string;
       additionalContext?: string;
-    }
+    },
   ): string {
     const profile = this.get(profileId);
     if (!profile) {
@@ -240,7 +255,9 @@ export class PromptCatalog {
     }
 
     if (options?.allowedTools && options.allowedTools.length > 0) {
-      sections.push(`### Permitted Tools\n${options.allowedTools.map((t) => `\`${t}\``).join(", ")}`);
+      sections.push(
+        `### Permitted Tools\n${options.allowedTools.map((t) => `\`${t}\``).join(", ")}`,
+      );
     }
 
     if (options?.workspaceRoot) {
@@ -248,7 +265,9 @@ export class PromptCatalog {
     }
 
     if (options?.customDirectives && options.customDirectives.length > 0) {
-      sections.push("### Task Directives\n" + options.customDirectives.map((d) => `- ${d}`).join("\n"));
+      sections.push(
+        "### Task Directives\n" + options.customDirectives.map((d) => `- ${d}`).join("\n"),
+      );
     }
 
     if (options?.additionalContext) {

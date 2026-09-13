@@ -46,7 +46,11 @@ export function extractArtifactsFromText(text: string): ExtractedArtifact[] {
     let previewable = false;
     let language = rawLang || "text";
 
-    if (rawLang === "html" || rawLang === "htm" || (rawLang === "" && (content.startsWith("<!DOCTYPE html>") || content.startsWith("<html")))) {
+    if (
+      rawLang === "html" ||
+      rawLang === "htm" ||
+      (rawLang === "" && (content.startsWith("<!DOCTYPE html>") || content.startsWith("<html")))
+    ) {
       kind = "html";
       language = "html";
       previewable = true;
@@ -114,7 +118,7 @@ export interface SandboxHtmlOptions {
  */
 export function createSandboxedHtmlDocument(
   rawContent: string,
-  options: SandboxHtmlOptions = {}
+  options: SandboxHtmlOptions = {},
 ): string {
   const isFullDocument =
     rawContent.includes("<!DOCTYPE html>") ||
@@ -123,7 +127,10 @@ export function createSandboxedHtmlDocument(
 
   const title = options.title || "Preview Artifact";
   const theme = options.theme || "light";
-  const bgClass = theme === "dark" ? "background-color: #0d1117; color: #c9d1d9;" : "background-color: #ffffff; color: #1f2328;";
+  const bgClass =
+    theme === "dark"
+      ? "background-color: #0d1117; color: #c9d1d9;"
+      : "background-color: #ffffff; color: #1f2328;";
 
   if (isFullDocument) {
     // If full document, inject meta charset and responsive viewport if missing
@@ -134,16 +141,17 @@ export function createSandboxedHtmlDocument(
     if (!doc.includes('name="viewport"')) {
       doc = doc.replace(
         /<head[^>]*>/i,
-        `$&<meta name="viewport" content="width=device-width, initial-scale=1.0">`
+        `$&<meta name="viewport" content="width=device-width, initial-scale=1.0">`,
       );
     }
     return doc;
   }
 
   // Wrap snippet with modern baseline CSS
-  const tailwindScript = options.includeTailwindCdn !== false
-    ? '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>'
-    : "";
+  const tailwindScript =
+    options.includeTailwindCdn !== false
+      ? '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>'
+      : "";
 
   return `<!DOCTYPE html>
 <html lang="en">

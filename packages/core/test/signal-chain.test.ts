@@ -60,13 +60,28 @@ describe("SignalChainManager", () => {
   it("rejects duplicate causal node identities instead of erasing history", () => {
     const manager = new SignalChainManager({ maxRetries: 1 });
     const source = manager.registerSource({ sourceId: "source-1", sourceType: "trigger" });
-    const signal = manager.emitSignal({ signalId: "signal-1", sourceId: source.sourceId, signalType: "go" });
-    const action = manager.dispatchAction({ actionId: "action-1", signalId: signal.signalId, actionType: "run" });
+    const signal = manager.emitSignal({
+      signalId: "signal-1",
+      sourceId: source.sourceId,
+      signalType: "go",
+    });
+    const action = manager.dispatchAction({
+      actionId: "action-1",
+      signalId: signal.signalId,
+      actionType: "run",
+    });
     const attempt = manager.startAttempt(action.actionId);
-    manager.completeAttempt(action.actionId, { attemptNumber: attempt.attemptNumber, status: "failed" });
+    manager.completeAttempt(action.actionId, {
+      attemptNumber: attempt.attemptNumber,
+      status: "failed",
+    });
 
     expect(() =>
-      manager.dispatchAction({ actionId: "action-1", signalId: signal.signalId, actionType: "run-again" }),
+      manager.dispatchAction({
+        actionId: "action-1",
+        signalId: signal.signalId,
+        actionType: "run-again",
+      }),
     ).toThrow(/already registered/);
     expect(manager.getAction("action-1")?.status).toBe("failed");
     expect(manager.getAction("action-1")?.attempts).toHaveLength(1);

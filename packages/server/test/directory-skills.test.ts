@@ -309,7 +309,11 @@ describe("directory skills api", () => {
     expect(res.status).toBe(201);
 
     const onDisk = await fs.readFile(
-      path.join(skillsDir(t.root, projectId, "aliased_skill_agent"), "task-planning-runner", "SKILL.md"),
+      path.join(
+        skillsDir(t.root, projectId, "aliased_skill_agent"),
+        "task-planning-runner",
+        "SKILL.md",
+      ),
       "utf8",
     );
     expect(onDisk).toBe(skillMd("task-planning-runner", "Ordered task implementation planning"));

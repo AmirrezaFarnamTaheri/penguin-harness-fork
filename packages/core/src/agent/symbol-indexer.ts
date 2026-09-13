@@ -5,13 +5,7 @@ export interface SymbolInfo {
 }
 
 export type LexicalTokenType =
-  | "TIDENT"
-  | "TKEYWORD"
-  | "TNUMBER"
-  | "TCHAR"
-  | "TSTRING"
-  | "TEOF"
-  | "TINVALID";
+  "TIDENT" | "TKEYWORD" | "TNUMBER" | "TCHAR" | "TSTRING" | "TEOF" | "TINVALID";
 
 export interface LexicalToken {
   kind: LexicalTokenType;
@@ -113,7 +107,15 @@ export class SymbolIndexer {
     switch (language) {
       case "typescript":
       case "javascript":
-        this.parseTypeScriptOrJavaScript(lines, classes, interfaces, types, functions, imports, exports);
+        this.parseTypeScriptOrJavaScript(
+          lines,
+          classes,
+          interfaces,
+          types,
+          functions,
+          imports,
+          exports,
+        );
         break;
       case "python":
         this.parsePython(lines, classes, functions, imports);
@@ -132,9 +134,7 @@ export class SymbolIndexer {
         break;
     }
 
-    const summaryParts: string[] = [
-      `${language.toUpperCase()} file with ${linesOfCode} LOC.`,
-    ];
+    const summaryParts: string[] = [`${language.toUpperCase()} file with ${linesOfCode} LOC.`];
     if (classes.length > 0) {
       summaryParts.push(`Classes: ${classes.slice(0, 5).join(", ")}.`);
     }
@@ -175,8 +175,16 @@ export class SymbolIndexer {
     }
 
     // 2. Cross-reference: source imports target's exports or vice versa
-    const targetBaseName = target.filePath.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") ?? "";
-    const sourceBaseName = source.filePath.split(/[\\/]/).pop()?.replace(/\.[^/.]+$/, "") ?? "";
+    const targetBaseName =
+      target.filePath
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, "") ?? "";
+    const sourceBaseName =
+      source.filePath
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.[^/.]+$/, "") ?? "";
 
     const targetImportsSource = target.imports.some((imp) => imp.includes(sourceBaseName));
     const sourceImportsTarget = source.imports.some((imp) => imp.includes(targetBaseName));
@@ -195,7 +203,7 @@ export class SymbolIndexer {
 
     // 4. Shared types or interfaces
     const sharedTypes = [...source.interfaces, ...source.types].filter((t) =>
-      [...target.interfaces, ...target.types].includes(t)
+      [...target.interfaces, ...target.types].includes(t),
     );
     if (sharedTypes.length > 0) {
       score += 0.2;
@@ -263,7 +271,7 @@ export class SymbolIndexer {
     types: string[],
     functions: string[],
     imports: string[],
-    exports: string[]
+    exports: string[],
   ): void {
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -293,7 +301,9 @@ export class SymbolIndexer {
       }
 
       // Const/let exported arrow functions
-      const arrowMatch = line.match(/^(?:export\s+)?const\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?\(/);
+      const arrowMatch = line.match(
+        /^(?:export\s+)?const\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?\(/,
+      );
       if (arrowMatch?.[1]) {
         functions.push(arrowMatch[1]);
       }
@@ -305,7 +315,9 @@ export class SymbolIndexer {
       }
 
       // Exports
-      const exportMatch = line.match(/^export\s+(?:const|function|class|interface|type)\s+([A-Za-z0-9_$]+)/);
+      const exportMatch = line.match(
+        /^export\s+(?:const|function|class|interface|type)\s+([A-Za-z0-9_$]+)/,
+      );
       if (exportMatch?.[1]) {
         exports.push(exportMatch[1]);
       }
@@ -316,7 +328,7 @@ export class SymbolIndexer {
     lines: string[],
     classes: string[],
     functions: string[],
-    imports: string[]
+    imports: string[],
   ): void {
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -331,7 +343,9 @@ export class SymbolIndexer {
         functions.push(funcMatch[1]);
       }
 
-      const importMatch = line.match(/^(?:from\s+([A-Za-z0-9_.]+)\s+import|import\s+([A-Za-z0-9_.]+))/);
+      const importMatch = line.match(
+        /^(?:from\s+([A-Za-z0-9_.]+)\s+import|import\s+([A-Za-z0-9_.]+))/,
+      );
       const imp = importMatch?.[1] ?? importMatch?.[2];
       if (imp) {
         imports.push(imp);
@@ -344,7 +358,7 @@ export class SymbolIndexer {
     classes: string[],
     interfaces: string[],
     functions: string[],
-    imports: string[]
+    imports: string[],
   ): void {
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -377,7 +391,7 @@ export class SymbolIndexer {
     interfaces: string[],
     types: string[],
     functions: string[],
-    imports: string[]
+    imports: string[],
   ): void {
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -414,7 +428,7 @@ export class SymbolIndexer {
     classes: string[],
     types: string[],
     functions: string[],
-    imports: string[]
+    imports: string[],
   ): void {
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -452,12 +466,57 @@ export class SymbolIndexer {
   public tokenize(content: string): LexicalToken[] {
     const tokens: LexicalToken[] = [];
     const keywords = new Set([
-      "if", "else", "for", "while", "do", "return", "switch", "case", "default",
-      "break", "continue", "goto", "sizeof", "typeof", "struct", "union", "enum",
-      "typedef", "static", "extern", "const", "volatile", "void", "char", "int",
-      "short", "long", "float", "double", "signed", "unsigned", "bool", "true", "false",
-      "class", "interface", "type", "function", "fn", "let", "var", "pub", "use",
-      "import", "export", "from", "as", "async", "await", "package", "func"
+      "if",
+      "else",
+      "for",
+      "while",
+      "do",
+      "return",
+      "switch",
+      "case",
+      "default",
+      "break",
+      "continue",
+      "goto",
+      "sizeof",
+      "typeof",
+      "struct",
+      "union",
+      "enum",
+      "typedef",
+      "static",
+      "extern",
+      "const",
+      "volatile",
+      "void",
+      "char",
+      "int",
+      "short",
+      "long",
+      "float",
+      "double",
+      "signed",
+      "unsigned",
+      "bool",
+      "true",
+      "false",
+      "class",
+      "interface",
+      "type",
+      "function",
+      "fn",
+      "let",
+      "var",
+      "pub",
+      "use",
+      "import",
+      "export",
+      "from",
+      "as",
+      "async",
+      "await",
+      "package",
+      "func",
     ]);
 
     let i = 0;

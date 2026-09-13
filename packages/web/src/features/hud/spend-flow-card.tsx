@@ -17,7 +17,9 @@ export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
   }, [report.projects]);
 
   return (
-    <div className={`p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xs space-y-4 text-xs ${className}`}>
+    <div
+      className={`p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xs space-y-4 text-xs ${className}`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
         <div>
@@ -25,9 +27,7 @@ export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
               Spend Flow & Cost Attribution
             </h3>
-            <Badge tone="brand">
-              ${report.totalCostUsd.toFixed(2)} USD
-            </Badge>
+            <Badge tone="brand">${report.totalCostUsd.toFixed(2)} USD</Badge>
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-[11px] mt-0.5">
             Active Period: {report.period.label}
@@ -49,7 +49,10 @@ export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
               return (
                 <div key={node.id} className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]" title={node.label}>
+                    <span
+                      className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]"
+                      title={node.label}
+                    >
                       {node.label}
                     </span>
                     <span className="text-gray-500 font-mono">
@@ -80,7 +83,10 @@ export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
               return (
                 <div key={node.id} className="space-y-1">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]" title={node.label}>
+                    <span
+                      className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]"
+                      title={node.label}
+                    >
                       {node.label}
                     </span>
                     <span className="text-gray-500 font-mono">

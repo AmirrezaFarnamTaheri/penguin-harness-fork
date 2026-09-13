@@ -70,12 +70,7 @@ export function formatHandoffPrompt(packet: HandoffPacket): string {
     lines.push(`Task ID: ${packet.taskId}`);
   }
 
-  lines.push(
-    `Objective: ${packet.goal}`,
-    ``,
-    `Context Summary:`,
-    packet.summary,
-  );
+  lines.push(`Objective: ${packet.goal}`, ``, `Context Summary:`, packet.summary);
 
   if (packet.artifacts.length > 0) {
     lines.push(``, `Attached Artifacts:`);

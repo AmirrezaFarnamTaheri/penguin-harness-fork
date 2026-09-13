@@ -24,9 +24,7 @@ describe("CodeGraph encapsulation", () => {
 
     expect(graph.getNode("a")?.name).toBe("A");
     expect(graph.getNode("a")?.exports).toEqual(["alpha"]);
-    expect(graph.getOutgoingEdges("a")).toEqual([
-      { source: "a", target: "b", kind: "imports" },
-    ]);
+    expect(graph.getOutgoingEdges("a")).toEqual([{ source: "a", target: "b", kind: "imports" }]);
   });
 
   it("does not expose mutable internal nodes or edges through public reads", () => {

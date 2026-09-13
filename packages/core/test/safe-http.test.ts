@@ -68,7 +68,9 @@ describe("SafeHttp SSRF Protection", () => {
   describe("validateSafeUrl", () => {
     it("rejects non-http/https protocols", async () => {
       await expect(validateSafeUrl("file:///etc/passwd")).rejects.toThrow("Unsupported protocol");
-      await expect(validateSafeUrl("ftp://ftp.example.com/file")).rejects.toThrow("Unsupported protocol");
+      await expect(validateSafeUrl("ftp://ftp.example.com/file")).rejects.toThrow(
+        "Unsupported protocol",
+      );
       await expect(validateSafeUrl("javascript:alert(1)")).rejects.toThrow("Unsupported protocol");
     });
 

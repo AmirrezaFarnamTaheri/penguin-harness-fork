@@ -15,7 +15,11 @@ import {
 } from "./lib.mjs";
 
 const args = new Set(process.argv.slice(2));
-const valueArg = (prefix) => process.argv.slice(2).find((arg) => arg.startsWith(`${prefix}=`))?.slice(prefix.length + 1);
+const valueArg = (prefix) =>
+  process.argv
+    .slice(2)
+    .find((arg) => arg.startsWith(`${prefix}=`))
+    ?.slice(prefix.length + 1);
 const check = args.has("--check");
 const strictResources = args.has("--strict-resources");
 const jsonOut = valueArg("--json");
@@ -23,8 +27,10 @@ const root = path.resolve(valueArg("--root") ?? DEFAULT_SKILL_ROOT);
 
 const errors = [];
 const warnings = [];
-const addError = (code, message, skill) => errors.push({ code, message, ...(skill ? { skill } : {}) });
-const addWarning = (code, message, skill) => warnings.push({ code, message, ...(skill ? { skill } : {}) });
+const addError = (code, message, skill) =>
+  errors.push({ code, message, ...(skill ? { skill } : {}) });
+const addWarning = (code, message, skill) =>
+  warnings.push({ code, message, ...(skill ? { skill } : {}) });
 
 async function existsAsFileOrDir(file) {
   try {
@@ -51,19 +57,31 @@ const canonicalNames = new Set(dirNames);
 const records = [];
 for (const dirName of dirNames) {
   if (!SKILL_NAME_PATTERN.test(dirName) || dirName.length > 64) {
-    addError("invalid-directory-name", `Directory '${dirName}' is not a canonical lowercase-hyphen skill name <= 64 chars.`, dirName);
+    addError(
+      "invalid-directory-name",
+      `Directory '${dirName}' is not a canonical lowercase-hyphen skill name <= 64 chars.`,
+      dirName,
+    );
   }
   let record;
   try {
     record = await readSkillRecord(root, dirName);
   } catch (error) {
-    addError("invalid-frontmatter", error instanceof Error ? error.message : String(error), dirName);
+    addError(
+      "invalid-frontmatter",
+      error instanceof Error ? error.message : String(error),
+      dirName,
+    );
     continue;
   }
   records.push(record);
   if (record.entrypointType !== "file") {
     if (record.lowercaseEntrypointType === "file") {
-      addError("lowercase-entrypoint", `${dirName} has skill.md but requires canonical SKILL.md.`, dirName);
+      addError(
+        "lowercase-entrypoint",
+        `${dirName} has skill.md but requires canonical SKILL.md.`,
+        dirName,
+      );
     } else {
       addError("missing-entrypoint", `${dirName} has no canonical SKILL.md.`, dirName);
     }
@@ -75,10 +93,18 @@ for (const dirName of dirNames) {
     addError("missing-name", `${dirName}/SKILL.md has no non-empty string name.`, dirName);
   } else {
     if (!SKILL_NAME_PATTERN.test(metadata.name) || metadata.name.length > 64) {
-      addError("invalid-frontmatter-name", `Frontmatter name '${metadata.name}' is not canonical.`, dirName);
+      addError(
+        "invalid-frontmatter-name",
+        `Frontmatter name '${metadata.name}' is not canonical.`,
+        dirName,
+      );
     }
     if (metadata.name !== dirName) {
-      addError("name-directory-mismatch", `Frontmatter name '${metadata.name}' does not match directory '${dirName}'.`, dirName);
+      addError(
+        "name-directory-mismatch",
+        `Frontmatter name '${metadata.name}' does not match directory '${dirName}'.`,
+        dirName,
+      );
     }
   }
   if (typeof metadata.description !== "string" || metadata.description.trim().length === 0) {
@@ -112,10 +138,18 @@ for (const [alias, target] of Object.entries(aliases)) {
     continue;
   }
   if (!canonicalNames.has(resolved.target)) {
-    addError("dangling-alias", `Alias '${alias}' resolves to missing skill '${resolved.target}'.`, alias);
+    addError(
+      "dangling-alias",
+      `Alias '${alias}' resolves to missing skill '${resolved.target}'.`,
+      alias,
+    );
   }
   if (canonicalNames.has(alias)) {
-    addWarning("shadowed-alias", `Alias '${alias}' is also a canonical skill directory; exact-name lookup will shadow the alias.`, alias);
+    addWarning(
+      "shadowed-alias",
+      `Alias '${alias}' is also a canonical skill directory; exact-name lookup will shadow the alias.`,
+      alias,
+    );
   }
 }
 
@@ -123,13 +157,20 @@ const runtimeFile = path.join(REPO_ROOT, "packages", "core", "src", "agent", "sk
 const runtimeSource = await fs.readFile(runtimeFile, "utf8");
 const runtimeAliases = parseRuntimeAliases(runtimeSource);
 if (runtimeAliases === null) {
-  addError("runtime-alias-table-unreadable", "Could not locate DEFAULT_SKILL_ALIASES in skill-engine.ts.");
+  addError(
+    "runtime-alias-table-unreadable",
+    "Could not locate DEFAULT_SKILL_ALIASES in skill-engine.ts.",
+  );
 } else {
   const manifestJson = stableStringify(aliases);
   const runtimeJson = stableStringify(runtimeAliases);
   if (manifestJson !== runtimeJson) {
-    const missingInRuntime = Object.keys(aliases).filter((name) => runtimeAliases[name] !== aliases[name]);
-    const extraInRuntime = Object.keys(runtimeAliases).filter((name) => aliases[name] !== runtimeAliases[name]);
+    const missingInRuntime = Object.keys(aliases).filter(
+      (name) => runtimeAliases[name] !== aliases[name],
+    );
+    const extraInRuntime = Object.keys(runtimeAliases).filter(
+      (name) => aliases[name] !== runtimeAliases[name],
+    );
     addError(
       "alias-table-drift",
       `Runtime aliases and .agents/skills/aliases.json differ. Manifest-only/different: ${missingInRuntime.join(", ") || "none"}; runtime-only/different: ${extraInRuntime.join(", ") || "none"}.`,
@@ -147,7 +188,10 @@ for (const record of records) {
 }
 for (const names of descriptions.values()) {
   if (names.length > 1) {
-    addWarning("duplicate-description", `Skills share the same normalized description: ${names.join(", ")}.`);
+    addWarning(
+      "duplicate-description",
+      `Skills share the same normalized description: ${names.join(", ")}.`,
+    );
   }
 }
 
@@ -162,7 +206,10 @@ for (const name of dirNames) {
 for (const [stem, names] of stems) {
   if (canonicalNames.has(stem)) names.unshift(stem);
   if (names.length > 1) {
-    addWarning("overlap-family", `Potential overlap family '${stem}': ${[...new Set(names)].join(", ")}.`);
+    addWarning(
+      "overlap-family",
+      `Potential overlap family '${stem}': ${[...new Set(names)].join(", ")}.`,
+    );
   }
 }
 
@@ -185,8 +232,12 @@ if (jsonOut) {
   await fs.writeFile(out, stableStringify(report));
 }
 
-console.log(`Skills: ${report.summary.skills}; aliases: ${report.summary.aliases}; errors: ${errors.length}; warnings: ${warnings.length}`);
-for (const item of errors) console.error(`ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
-for (const item of warnings) console.warn(`WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
+console.log(
+  `Skills: ${report.summary.skills}; aliases: ${report.summary.aliases}; errors: ${errors.length}; warnings: ${warnings.length}`,
+);
+for (const item of errors)
+  console.error(`ERROR [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
+for (const item of warnings)
+  console.warn(`WARN  [${item.code}]${item.skill ? ` ${item.skill}:` : ""} ${item.message}`);
 
 if (check && errors.length > 0) process.exitCode = 1;

@@ -35,9 +35,8 @@ export function HudStatusline({
 }: HudStatuslineProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const capacityPct = contextWindow > 0
-    ? Math.min(100, Math.round((tokensUsed / contextWindow) * 100))
-    : 0;
+  const capacityPct =
+    contextWindow > 0 ? Math.min(100, Math.round((tokensUsed / contextWindow) * 100)) : 0;
 
   const isCacheActive = promptCache && promptCache.state === "active";
   const isCacheWarning = promptCache && promptCache.state === "warning";
@@ -100,7 +99,9 @@ export function HudStatusline({
         {activeTasks.length > 0 && (
           <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-mono text-[10px]">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
-            <span>[{activeTasks[0]!.toolName} ({Math.round(activeTasks[0]!.durationMs / 1000)}s)]</span>
+            <span>
+              [{activeTasks[0]!.toolName} ({Math.round(activeTasks[0]!.durationMs / 1000)}s)]
+            </span>
           </div>
         )}
 
@@ -108,7 +109,9 @@ export function HudStatusline({
         {vcs && (
           <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400 font-mono text-[10px]">
             <span className="opacity-70">git:</span>
-            <span className="text-gray-700 dark:text-gray-300 font-semibold">{vcs.branch ?? "main"}</span>
+            <span className="text-gray-700 dark:text-gray-300 font-semibold">
+              {vcs.branch ?? "main"}
+            </span>
             {!vcs.isClean && (
               <span className="text-amber-500 font-bold">
                 {vcs.dirtyFilesCount > 0 ? `*${vcs.dirtyFilesCount}` : ""}

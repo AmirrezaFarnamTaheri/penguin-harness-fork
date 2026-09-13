@@ -32,7 +32,12 @@ interface RegisteredWorktree {
 }
 
 function isErrno(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === code
+  );
 }
 
 function normalizePathForComparison(candidate: string): string {
@@ -116,7 +121,10 @@ export class WorktreeManager {
     }
   }
 
-  private async removeRegistrationIfOwned(cleanAgentId: string, expected: LaneRegistration): Promise<void> {
+  private async removeRegistrationIfOwned(
+    cleanAgentId: string,
+    expected: LaneRegistration,
+  ): Promise<void> {
     const current = await this.readRegistration(cleanAgentId);
     if (
       !current ||
@@ -176,7 +184,9 @@ export class WorktreeManager {
     }
 
     try {
-      await execFileAsync("git", ["worktree", "add", "-b", branch, worktreePath], { cwd: this.repoRoot });
+      await execFileAsync("git", ["worktree", "add", "-b", branch, worktreePath], {
+        cwd: this.repoRoot,
+      });
     } catch (error) {
       try {
         await this.removeRegistrationIfOwned(cleanAgentId, laneRegistration);
@@ -190,7 +200,9 @@ export class WorktreeManager {
 
     // From this point onward the lane is both Git-registered and ownership-registered. If a later
     // metadata read fails, keeping the registration intact makes the lane recoverable/removable.
-    const { stdout: headSha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
+    const { stdout: headSha } = await execFileAsync("git", ["rev-parse", "HEAD"], {
+      cwd: worktreePath,
+    });
 
     return {
       worktreePath,
@@ -215,12 +227,18 @@ export class WorktreeManager {
 
     const registered = await this.listWorktrees();
     if (!(await this.findRegisteredWorktree(resolved, registered))) {
-      throw new Error(`Refusing to remove '${resolved}' because Git does not register it as a worktree`);
+      throw new Error(
+        `Refusing to remove '${resolved}' because Git does not register it as a worktree`,
+      );
     }
 
-    const { stdout: porcelain } = await execFileAsync("git", ["status", "--porcelain"], { cwd: resolved });
+    const { stdout: porcelain } = await execFileAsync("git", ["status", "--porcelain"], {
+      cwd: resolved,
+    });
     if (porcelain.trim().length > 0) {
-      throw new Error(`Refusing to remove dirty worktree '${resolved}'. Commit, stash, or discard changes explicitly first.`);
+      throw new Error(
+        `Refusing to remove dirty worktree '${resolved}'. Commit, stash, or discard changes explicitly first.`,
+      );
     }
 
     await execFileAsync("git", ["worktree", "remove", resolved], { cwd: this.repoRoot });
@@ -233,7 +251,9 @@ export class WorktreeManager {
    */
   async listWorktrees(): Promise<RegisteredWorktree[]> {
     try {
-      const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], { cwd: this.repoRoot });
+      const { stdout } = await execFileAsync("git", ["worktree", "list", "--porcelain"], {
+        cwd: this.repoRoot,
+      });
       const entries: RegisteredWorktree[] = [];
       let currentPath = "";
       let currentHead = "";

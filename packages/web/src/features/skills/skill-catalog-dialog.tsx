@@ -46,15 +46,12 @@ export function SkillCatalogDialog({
 }: SkillCatalogDialogProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSkillName, setSelectedSkillName] = useState<string>(
-    skills[0]?.name ?? ""
-  );
+  const [selectedSkillName, setSelectedSkillName] = useState<string>(skills[0]?.name ?? "");
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
   const filteredSkills = useMemo(() => {
     return skills.filter((s) => {
-      const matchCat =
-        selectedCategory === "all" || s.category === selectedCategory;
+      const matchCat = selectedCategory === "all" || s.category === selectedCategory;
       const q = searchQuery.toLowerCase().trim();
       const matchSearch =
         !q ||
@@ -66,21 +63,14 @@ export function SkillCatalogDialog({
   }, [skills, selectedCategory, searchQuery]);
 
   const activeSkill = useMemo(() => {
-    return (
-      skills.find((s) => s.name === selectedSkillName) ||
-      filteredSkills[0] ||
-      skills[0]
-    );
+    return skills.find((s) => s.name === selectedSkillName) || filteredSkills[0] || skills[0];
   }, [skills, filteredSkills, selectedSkillName]);
 
   const generatedPrompt = useMemo(() => {
     if (!activeSkill) return "";
     let content = activeSkill.content;
     for (const [k, v] of Object.entries(paramValues)) {
-      content = content
-        .replaceAll(`{{${k}}}`, v)
-        .replaceAll(`{${k}}`, v)
-        .replaceAll(`$${k}`, v);
+      content = content.replaceAll(`{{${k}}}`, v).replaceAll(`{${k}}`, v).replaceAll(`$${k}`, v);
     }
     return `=== SKILL: ${activeSkill.name} ===\n${content}\n=== END SKILL: ${activeSkill.name} ===`;
   }, [activeSkill, paramValues]);
@@ -213,10 +203,7 @@ export function SkillCatalogDialog({
                       {activeSkill.parameters.map((p) => (
                         <div key={p.name} className="flex flex-col gap-1">
                           <label className="text-[11px] font-medium text-gray-600 dark:text-gray-400">
-                            {p.name}{" "}
-                            {p.required && (
-                              <RequiredMark />
-                            )}
+                            {p.name} {p.required && <RequiredMark />}
                           </label>
                           <input
                             type="text"
@@ -239,9 +226,7 @@ export function SkillCatalogDialog({
                 {/* Content Body Preview */}
                 <div className="relative flex-1 overflow-y-auto p-4">
                   <div className="flex items-center justify-between pb-2">
-                    <span className="text-xs font-medium text-gray-500">
-                      Instruction Body
-                    </span>
+                    <span className="text-xs font-medium text-gray-500">Instruction Body</span>
                     <CopyButton label="Copy prompt block" text={generatedPrompt} />
                   </div>
                   <pre className="whitespace-pre-wrap rounded-md bg-gray-50 p-3 font-mono text-[11px] leading-relaxed text-gray-800 dark:bg-gray-900 dark:text-gray-200">

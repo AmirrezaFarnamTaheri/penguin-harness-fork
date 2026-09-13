@@ -44,7 +44,10 @@ function Meter({ label, value }: { label: string; value: number | null }) {
         {known ? `${value}%` : "Unknown"}
       </div>
       <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div className="h-full rounded-full bg-cyan-500 transition-all duration-300" style={{ width: `${bounded}%` }} />
+        <div
+          className="h-full rounded-full bg-cyan-500 transition-all duration-300"
+          style={{ width: `${bounded}%` }}
+        />
       </div>
       <div className="mt-1 text-[11px] text-gray-400">
         {known ? "Provider-reported usage" : "No usage telemetry is available for this project."}
@@ -77,8 +80,14 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
 
     Promise.all([
       fetchJson<QuotaPayload>(`/api/projects/${projectId}/gateway/quota`, controller.signal),
-      fetchJson<{ combos: ModelComboView[] }>(`/api/projects/${projectId}/gateway/combos`, controller.signal),
-      fetchJson<{ catalog: unknown }>(`/api/projects/${projectId}/gateway/pricing`, controller.signal),
+      fetchJson<{ combos: ModelComboView[] }>(
+        `/api/projects/${projectId}/gateway/combos`,
+        controller.signal,
+      ),
+      fetchJson<{ catalog: unknown }>(
+        `/api/projects/${projectId}/gateway/pricing`,
+        controller.signal,
+      ),
     ])
       .then(([quotaResult, comboResult, pricingResult]) => {
         setQuota(quotaResult);
@@ -132,28 +141,49 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
         {!loading && !error && tab === "quota" && (
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Meter label="Active Session Usage" value={quota?.activeQuota.sessionUsedPct ?? null} />
-              <Meter label="Weekly Rolling Usage" value={quota?.activeQuota.weeklyUsedPct ?? null} />
+              <Meter
+                label="Active Session Usage"
+                value={quota?.activeQuota.sessionUsedPct ?? null}
+              />
+              <Meter
+                label="Weekly Rolling Usage"
+                value={quota?.activeQuota.weeklyUsedPct ?? null}
+              />
             </div>
             <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Configured models</div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Configured models
+              </div>
               {quota?.models.length ? (
                 <div className="flex flex-col gap-2">
                   {quota.models.map((model) => (
-                    <div key={`${model.provider}:${model.modelId}`} className="flex items-center justify-between gap-3 text-sm">
+                    <div
+                      key={`${model.provider}:${model.modelId}`}
+                      className="flex items-center justify-between gap-3 text-sm"
+                    >
                       <div className="min-w-0">
-                        <span className="font-medium text-gray-800 dark:text-gray-100">{model.provider}</span>
+                        <span className="font-medium text-gray-800 dark:text-gray-100">
+                          {model.provider}
+                        </span>
                         <span className="text-gray-400"> / </span>
-                        <span className="break-all text-gray-600 dark:text-gray-300">{model.modelId}</span>
+                        <span className="break-all text-gray-600 dark:text-gray-300">
+                          {model.modelId}
+                        </span>
                       </div>
                       <span className="shrink-0 text-xs text-gray-500">
-                        {model.isCooling === true ? "Cooling" : model.isCooling === false ? "Ready" : "Status unknown"}
+                        {model.isCooling === true
+                          ? "Cooling"
+                          : model.isCooling === false
+                            ? "Ready"
+                            : "Status unknown"}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">No models are configured for this project.</div>
+                <div className="text-sm text-gray-500">
+                  No models are configured for this project.
+                </div>
               )}
             </div>
             <div className="text-xs text-gray-500">
@@ -171,22 +201,32 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
               </div>
             ) : (
               combos.map((combo) => (
-                <div key={combo.id} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                <div
+                  key={combo.id}
+                  className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-medium text-gray-800 dark:text-gray-100">{combo.name}</div>
-                      {combo.description && <div className="mt-1 text-xs text-gray-500">{combo.description}</div>}
+                      <div className="font-medium text-gray-800 dark:text-gray-100">
+                        {combo.name}
+                      </div>
+                      {combo.description && (
+                        <div className="mt-1 text-xs text-gray-500">{combo.description}</div>
+                      )}
                     </div>
                     <code className="text-[11px] text-gray-400">{combo.id}</code>
                   </div>
                   <ol className="mt-3 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
                     {combo.targets.map((target, index) => (
                       <li key={`${target.provider}:${target.modelId}:${index}`}>
-                        {index + 1}. {target.label ? `${target.label} · ` : ""}{target.provider}/{target.modelId}
+                        {index + 1}. {target.label ? `${target.label} · ` : ""}
+                        {target.provider}/{target.modelId}
                       </li>
                     ))}
                   </ol>
-                  {combo.updatedAt && <div className="mt-2 text-[11px] text-gray-400">Updated {combo.updatedAt}</div>}
+                  {combo.updatedAt && (
+                    <div className="mt-2 text-[11px] text-gray-400">Updated {combo.updatedAt}</div>
+                  )}
                 </div>
               ))
             )}
@@ -196,7 +236,8 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
         {!loading && !error && tab === "pricing" && (
           <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
             <div className="mb-2 text-xs text-gray-500">
-              Server pricing catalog. Values are shown as supplied by the backend; unknown prices are not inferred.
+              Server pricing catalog. Values are shown as supplied by the backend; unknown prices
+              are not inferred.
             </div>
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-gray-50 p-3 text-[11px] text-gray-700 dark:bg-gray-900 dark:text-gray-300">
               {JSON.stringify(pricing, null, 2)}

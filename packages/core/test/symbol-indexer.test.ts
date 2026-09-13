@@ -86,7 +86,7 @@ describe("SymbolIndexer", () => {
         export interface QuotaLimit { resetIn: number; }
         export function checkLimit() {}
         export const activeLimits = [];
-      `
+      `,
     );
 
     const target = indexer.parseContent(
@@ -96,7 +96,7 @@ describe("SymbolIndexer", () => {
         export interface QuotaLimit { resetIn: number; }
         export function checkLimit() {}
         export const activeLimits = [];
-      `
+      `,
     );
 
     const relationship = indexer.findRelationship(src, target);

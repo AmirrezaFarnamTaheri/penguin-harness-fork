@@ -76,7 +76,9 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
     let state: KanbanTaskState | undefined;
     if (rawState) {
       if (!ALLOWED_STATES.includes(rawState as KanbanTaskState)) {
-        throw badRequest(`Invalid state filter '${rawState}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
+        throw badRequest(
+          `Invalid state filter '${rawState}'. Allowed: ${ALLOWED_STATES.join(", ")}`,
+        );
       }
       state = rawState as KanbanTaskState;
     }
@@ -111,7 +113,11 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
 
     let priority: KanbanTaskPriority = "normal";
     if (body.priority !== undefined) {
-      const value = requireString(body, "priority", { minLen: 1, maxLen: 30, label: "priority" }) as KanbanTaskPriority;
+      const value = requireString(body, "priority", {
+        minLen: 1,
+        maxLen: 30,
+        label: "priority",
+      }) as KanbanTaskPriority;
       if (!ALLOWED_PRIORITIES.includes(value)) {
         throw badRequest(`Invalid priority '${value}'. Allowed: ${ALLOWED_PRIORITIES.join(", ")}`);
       }
@@ -120,7 +126,11 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
 
     let state: KanbanTaskState | undefined;
     if (body.state !== undefined) {
-      const value = requireString(body, "state", { minLen: 1, maxLen: 30, label: "state" }) as KanbanTaskState;
+      const value = requireString(body, "state", {
+        minLen: 1,
+        maxLen: 30,
+        label: "state",
+      }) as KanbanTaskState;
       if (!ALLOWED_STATES.includes(value)) {
         throw badRequest(`Invalid state '${value}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
       }
@@ -128,12 +138,21 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
     }
 
     const parentTaskId = typeof body.parentTaskId === "string" ? body.parentTaskId : undefined;
-    const dependencies = Array.isArray(body.dependencies) ? body.dependencies.map(String) : undefined;
+    const dependencies = Array.isArray(body.dependencies)
+      ? body.dependencies.map(String)
+      : undefined;
 
     try {
       const task = await store.update(projectId, (current) => {
         const board = hydrateBoard(projectId, current);
-        const created = board.createTask({ title, description, state, priority, parentTaskId, dependencies });
+        const created = board.createTask({
+          title,
+          description,
+          state,
+          priority,
+          parentTaskId,
+          dependencies,
+        });
         return { value: board.exportState(), result: created };
       });
       return c.json({ task }, 201);
@@ -146,7 +165,11 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
     const projectId = requireValidId(c, "projectId");
     const taskId = requireValidId(c, "taskId");
     const body = await readJson(c);
-    const nextState = requireString(body, "state", { minLen: 1, maxLen: 30, label: "state" }) as KanbanTaskState;
+    const nextState = requireString(body, "state", {
+      minLen: 1,
+      maxLen: 30,
+      label: "state",
+    }) as KanbanTaskState;
     if (!ALLOWED_STATES.includes(nextState)) {
       throw badRequest(`Invalid state '${nextState}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
     }
@@ -188,7 +211,8 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
       typeof body.workerId === "string" && body.workerId.length > 0
         ? body.workerId
         : requireString(body, "assignee", { minLen: 1, maxLen: 100, label: "assignee" });
-    const leaseDurationMs = typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
+    const leaseDurationMs =
+      typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
     const workerPid = typeof body.workerPid === "number" ? body.workerPid : undefined;
 
     try {
@@ -210,7 +234,8 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
     const body = await readJson(c);
     const workerId = requireString(body, "workerId", { minLen: 1, maxLen: 100, label: "workerId" });
     const generation = requireGeneration(body);
-    const leaseDurationMs = typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
+    const leaseDurationMs =
+      typeof body.leaseDurationMs === "number" ? body.leaseDurationMs : undefined;
 
     try {
       const task = await store.update(projectId, (current) => {

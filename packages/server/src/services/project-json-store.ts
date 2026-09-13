@@ -25,7 +25,12 @@ interface LockOwner {
 }
 
 function isErrno(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === code;
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === code
+  );
 }
 
 function delay(ms: number): Promise<void> {
@@ -118,7 +123,9 @@ async function removeLockIfAbandoned(lockPath: string): Promise<boolean> {
   const movedOwner = await readLockOwner(quarantine);
   if (!movedOwner || movedOwner.token !== owner.token) {
     // Preserve the quarantined evidence rather than replacing a potentially new live lock.
-    throw new Error(`Refusing to remove project-state lock '${lockPath}' because ownership changed during stale recovery.`);
+    throw new Error(
+      `Refusing to remove project-state lock '${lockPath}' because ownership changed during stale recovery.`,
+    );
   }
 
   await fs.unlink(quarantine);
@@ -183,7 +190,9 @@ async function withFileLock<R>(targetPath: string, work: () => Promise<R>): Prom
         await fs.rename(lockPath, releasePath);
         const releasedOwner = await readLockOwner(releasePath);
         if (releasedOwner?.token !== owner.token) {
-          throw new Error(`Refusing to release project-state lock '${lockPath}' because ownership changed.`);
+          throw new Error(
+            `Refusing to release project-state lock '${lockPath}' because ownership changed.`,
+          );
         }
         await fs.unlink(releasePath);
       } catch (error) {
@@ -243,7 +252,10 @@ export class ProjectJsonStore<T> {
         });
       });
 
-    const tail = run.then(() => undefined, () => undefined);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
     this.tails.set(filePath, tail);
 
     try {

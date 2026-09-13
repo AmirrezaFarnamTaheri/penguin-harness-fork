@@ -1,8 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import {
-  WorkspaceLeaseManager,
-  normalizeScopePath,
-} from "../src/state/workspace-lease.js";
+import { WorkspaceLeaseManager, normalizeScopePath } from "../src/state/workspace-lease.js";
 
 describe("WorkspaceLeaseManager", () => {
   let manager: WorkspaceLeaseManager;

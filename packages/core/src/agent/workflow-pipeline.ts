@@ -8,12 +8,7 @@
 export type WorkflowNodeKind = "trigger" | "agent" | "condition" | "gate" | "output";
 
 export type WorkflowExecutionStatus =
-  | "pending"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "skipped"
-  | "waiting_gate";
+  "pending" | "running" | "succeeded" | "failed" | "skipped" | "waiting_gate";
 
 export interface WorkflowNode {
   id: string;
@@ -185,9 +180,11 @@ export class WorkflowPipeline {
     const matching = outgoing.filter(
       (candidate) =>
         candidate.conditionValue !== undefined &&
-        (candidate.conditionValue === resolvedValue || String(candidate.conditionValue) === String(resolvedValue)),
+        (candidate.conditionValue === resolvedValue ||
+          String(candidate.conditionValue) === String(resolvedValue)),
     );
-    const selected = matching.length > 0 ? matching : outgoing.filter((edge) => edge.conditionValue === undefined);
+    const selected =
+      matching.length > 0 ? matching : outgoing.filter((edge) => edge.conditionValue === undefined);
     return Array.from(new Set(selected.map((edge) => edge.to)));
   }
 
@@ -198,12 +195,17 @@ export class WorkflowPipeline {
   ): EdgeSettlement {
     const sourceState = run.nodeStates[source.id];
     if (!sourceState) return "inactive";
-    if (sourceState.status === "pending" || sourceState.status === "running" || sourceState.status === "waiting_gate") {
+    if (
+      sourceState.status === "pending" ||
+      sourceState.status === "running" ||
+      sourceState.status === "waiting_gate"
+    ) {
       return "unresolved";
     }
     if (sourceState.status !== "succeeded") return "inactive";
 
-    const selectedTargets = sourceState.selectedTargets ?? this.selectConditionalTargets(run, source);
+    const selectedTargets =
+      sourceState.selectedTargets ?? this.selectConditionalTargets(run, source);
     return selectedTargets.includes(edge.to) ? "active" : "inactive";
   }
 
@@ -216,7 +218,11 @@ export class WorkflowPipeline {
       return this.conditionalEdgeSettlement(run, source, edge);
     }
 
-    if (sourceState.status === "pending" || sourceState.status === "running" || sourceState.status === "waiting_gate") {
+    if (
+      sourceState.status === "pending" ||
+      sourceState.status === "running" ||
+      sourceState.status === "waiting_gate"
+    ) {
       return "unresolved";
     }
     return sourceState.status === "succeeded" ? "active" : "inactive";
@@ -276,7 +282,8 @@ export class WorkflowPipeline {
       .map((state) => state.nodeId);
 
     const unsettled = Object.values(run.nodeStates).some(
-      (state) => state.status === "pending" || state.status === "running" || state.status === "waiting_gate",
+      (state) =>
+        state.status === "pending" || state.status === "running" || state.status === "waiting_gate",
     );
     if (!unsettled && run.status !== "failed") {
       run.status = "completed";
@@ -307,7 +314,9 @@ export class WorkflowPipeline {
   public createRun(initialContext: Record<string, unknown> = {}): WorkflowRunState {
     const validation = this.validateDAG();
     if (!validation.isValid) {
-      throw new Error(`Cannot create run for invalid pipeline '${this.id}': ${validation.errors.join("; ")}`);
+      throw new Error(
+        `Cannot create run for invalid pipeline '${this.id}': ${validation.errors.join("; ")}`,
+      );
     }
 
     const now = Date.now();
@@ -354,7 +363,9 @@ export class WorkflowPipeline {
     const nodeState = run.nodeStates[nodeId];
     const node = this.nodes.get(nodeId);
     if (!nodeState || !node) {
-      throw new Error(`Node '${nodeId}' not found in run '${run.runId}' and its bound pipeline definition`);
+      throw new Error(
+        `Node '${nodeId}' not found in run '${run.runId}' and its bound pipeline definition`,
+      );
     }
     if (nodeState.status !== "running" && nodeState.status !== "waiting_gate") {
       throw new Error(

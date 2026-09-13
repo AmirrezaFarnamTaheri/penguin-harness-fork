@@ -236,11 +236,7 @@ function extractFromBlock(
   }
 }
 
-export function truncateKeepEnds(
-  content: string,
-  maxChars = 12000,
-  indicator?: string,
-): string {
+export function truncateKeepEnds(content: string, maxChars = 12000, indicator?: string): string {
   if (!content || content.length <= maxChars) return content;
 
   const headChars = Math.floor(maxChars * 0.6);
@@ -248,6 +244,8 @@ export function truncateKeepEnds(
   const head = content.slice(0, headChars);
   const tail = content.slice(content.length - tailChars);
   const omittedChars = content.length - maxChars;
-  const marker = indicator ?? `\n\n... [Truncated ${omittedChars.toLocaleString()} characters preserving head & tail] ...\n\n`;
+  const marker =
+    indicator ??
+    `\n\n... [Truncated ${omittedChars.toLocaleString()} characters preserving head & tail] ...\n\n`;
   return `${head}${marker}${tail}`;
 }

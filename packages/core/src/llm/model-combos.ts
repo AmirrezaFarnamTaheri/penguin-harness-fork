@@ -212,7 +212,9 @@ export function slimModelCatalog(
     const models = out[providerId] ?? (out[providerId] = {});
     const rawModels = provider?.models ?? {};
 
-    for (const [modelId, model] of Object.entries<any>(rawModels).sort(([a], [b]) => a.localeCompare(b))) {
+    for (const [modelId, model] of Object.entries<any>(rawModels).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
       const id = baseModelId(modelId);
       if (models[id] !== undefined) continue;
 

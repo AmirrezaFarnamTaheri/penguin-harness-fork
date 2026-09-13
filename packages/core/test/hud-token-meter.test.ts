@@ -131,27 +131,33 @@ describe("hud-token-meter", () => {
       const meter = new TokenMeter();
       const now = 1_000_000;
 
-      meter.record({
-        tsMs: now - 1000,
-        provider: "anthropic",
-        model: "claude-3-7-sonnet",
-        agent: "coder",
-        client: "vscode",
-        input: 100,
-        output: 50,
-        costUsd: 0.002,
-      }, now);
+      meter.record(
+        {
+          tsMs: now - 1000,
+          provider: "anthropic",
+          model: "claude-3-7-sonnet",
+          agent: "coder",
+          client: "vscode",
+          input: 100,
+          output: 50,
+          costUsd: 0.002,
+        },
+        now,
+      );
 
-      meter.record({
-        tsMs: now - 500,
-        provider: "openai",
-        model: "gpt-4o",
-        agent: "reviewer",
-        client: "cli",
-        input: 300,
-        output: 100,
-        costUsd: 0.004,
-      }, now);
+      meter.record(
+        {
+          tsMs: now - 500,
+          provider: "openai",
+          model: "gpt-4o",
+          agent: "reviewer",
+          client: "cli",
+          input: 300,
+          output: 100,
+          costUsd: 0.004,
+        },
+        now,
+      );
 
       const trace = meter.getTrace(5000, now);
       expect(trace.length).toBe(2);
@@ -166,10 +172,13 @@ describe("hud-token-meter", () => {
       const now = 1_000_000;
 
       // 100 output tokens in 1000ms window = 100 tps
-      meter.record({
-        tsMs: now - 500,
-        output: 100,
-      }, now);
+      meter.record(
+        {
+          tsMs: now - 500,
+          output: 100,
+        },
+        now,
+      );
 
       // Remaining 10,000 tokens at 100 tps -> 100 seconds left -> critical (< 300s)
       const proj = meter.projectQuotaBurn(10_000, 1000, now);

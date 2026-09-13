@@ -40,7 +40,7 @@ type: synthesis
 title: Agent System Architecture
 tags: [core, orchestrator]
 ---
-Detailed overview of system components.`
+Detailed overview of system components.`,
     );
 
     wiki.addPage(
@@ -50,7 +50,7 @@ type: concept
 title: 记忆管理系统
 tags: [memory]
 ---
-智能体上下文记忆压缩与检索。`
+智能体上下文记忆压缩与检索。`,
     );
 
     // Title match
@@ -72,23 +72,32 @@ tags: [memory]
 
   it("builds graph, explores neighbors, and finds paths", () => {
     const wiki = new WikiEngine();
-    wiki.addPage("a.md", `---
+    wiki.addPage(
+      "a.md",
+      `---
 type: source
 title: Alpha
 ---
-Links to [[b]].`);
+Links to [[b]].`,
+    );
 
-    wiki.addPage("b.md", `---
+    wiki.addPage(
+      "b.md",
+      `---
 type: concept
 title: Beta
 ---
-Links to [[c]].`);
+Links to [[c]].`,
+    );
 
-    wiki.addPage("c.md", `---
+    wiki.addPage(
+      "c.md",
+      `---
 type: synthesis
 title: Gamma
 ---
-Final node.`);
+Final node.`,
+    );
 
     const neighbors = wiki.getNeighbors("a", { maxHops: 2 });
     const neighborIds = neighbors.map((n) => n.id);
@@ -101,17 +110,23 @@ Final node.`);
 
   it("detects broken links and orphaned nodes with linting", () => {
     const wiki = new WikiEngine();
-    wiki.addPage("page1.md", `---
+    wiki.addPage(
+      "page1.md",
+      `---
 type: concept
 title: Page One
 ---
-Links to [[non-existent-page]].`);
+Links to [[non-existent-page]].`,
+    );
 
-    wiki.addPage("isolated.md", `---
+    wiki.addPage(
+      "isolated.md",
+      `---
 type: entity
 title: Isolated Island
 ---
-No links in or out.`);
+No links in or out.`,
+    );
 
     const report = wiki.lint();
     expect(report.brokenLinks.length).toBe(1);
@@ -122,17 +137,23 @@ No links in or out.`);
 
   it("preserves inbound edges when a target page is deleted so lint detects dangling links", () => {
     const wiki = new WikiEngine();
-    wiki.addPage("source.md", `---
+    wiki.addPage(
+      "source.md",
+      `---
 type: concept
 title: Source Page
 ---
-Referencing [[target]].`);
+Referencing [[target]].`,
+    );
 
-    wiki.addPage("target.md", `---
+    wiki.addPage(
+      "target.md",
+      `---
 type: entity
 title: Target Page
 ---
-I am the target.`);
+I am the target.`,
+    );
 
     // Before deletion, no broken links
     expect(wiki.lint().brokenLinks.length).toBe(0);

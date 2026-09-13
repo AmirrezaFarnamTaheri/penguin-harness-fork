@@ -45,7 +45,7 @@ describe("PromptCatalog", () => {
   it("throws for unregistered profile IDs", () => {
     const catalog = new PromptCatalog();
     expect(() => catalog.assemble("nonexistent_profile")).toThrow(
-      'Prompt profile "nonexistent_profile" is not registered'
+      'Prompt profile "nonexistent_profile" is not registered',
     );
   });
 });

@@ -61,7 +61,7 @@ export class HudSpeedTracker {
 
     let tokensPerSecond = 0;
     if (deltaMs >= MIN_DELTA_MS && deltaTokens > 0) {
-      tokensPerSecond = Math.round(((deltaTokens / deltaMs) * 1000) * 10) / 10;
+      tokensPerSecond = Math.round((deltaTokens / deltaMs) * 1000 * 10) / 10;
     }
 
     return {

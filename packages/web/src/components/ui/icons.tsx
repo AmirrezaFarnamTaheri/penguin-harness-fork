@@ -7,7 +7,6 @@ import type { ButtonHTMLAttributes } from "react";
 import { S } from "../../lib/strings";
 import { AGENT_GROUP_ICON, CALENDAR_ICON } from "./group-list";
 
-
 /** Downward caret on Select / OptionMenu / composer dropdown triggers. Color follows currentColor (callers add text-gray-400). */
 export function ChevronDown({ size = 12, className = "" }: { size?: number; className?: string }) {
   return (

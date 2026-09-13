@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  InferenceProxyPool,
-  parseProxyUrl,
-} from "../src/llm/proxy-pool.js";
+import { InferenceProxyPool, parseProxyUrl } from "../src/llm/proxy-pool.js";
 
 describe("parseProxyUrl", () => {
   it("parses standard http and https proxy urls", () => {

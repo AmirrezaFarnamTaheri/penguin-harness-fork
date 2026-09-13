@@ -27,9 +27,9 @@ async function makeSkill(
 
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) =>
-      fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }),
-    ),
+    roots
+      .splice(0)
+      .map((root) => fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 })),
   );
 });
 
@@ -38,19 +38,13 @@ describe("directory skill resource closure", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-skill-closure-"));
     roots.push(root);
 
-    await makeSkill(
-      root,
-      "complete-skill",
-      "Read `references/api.md` before use.",
-      { "references/api.md": "# API\n" },
-    );
+    await makeSkill(root, "complete-skill", "Read `references/api.md` before use.", {
+      "references/api.md": "# API\n",
+    });
     await makeSkill(root, "missing-skill", "Read `_common/BOUNDARIES.md` before use.");
-    await makeSkill(
-      root,
-      "flattened-pointer-skill",
-      "Read `_common/BOUNDARIES.md` before use.",
-      { _common: "../_common\n" },
-    );
+    await makeSkill(root, "flattened-pointer-skill", "Read `_common/BOUNDARIES.md` before use.", {
+      _common: "../_common\n",
+    });
 
     const discovered = await discoverDirectorySkills(root);
     expect(discovered.map((skill) => skill.name)).toEqual(["complete-skill"]);

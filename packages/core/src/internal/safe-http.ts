@@ -196,7 +196,9 @@ export async function validateSafeUrl(
   }
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`SafeHttp: Unsupported protocol '${parsed.protocol}'. Only http: and https: are allowed.`);
+    throw new Error(
+      `SafeHttp: Unsupported protocol '${parsed.protocol}'. Only http: and https: are allowed.`,
+    );
   }
 
   const hostname = normalizeHostname(parsed.hostname);
@@ -204,7 +206,8 @@ export async function validateSafeUrl(
 
   const allowed = new Set((options.allowedHosts ?? []).map(normalizeHostname));
   const explicitlyAllowed = allowed.has(hostname);
-  const isLocalName = hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".localhost");
+  const isLocalName =
+    hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".localhost");
   if (isLocalName && !options.allowLocalhost && !explicitlyAllowed) {
     throw new Error(`SafeHttp: Access to localhost '${hostname}' is blocked by SSRF policy`);
   }
@@ -221,7 +224,8 @@ export async function validateSafeUrl(
     }
   }
 
-  if (addresses.length === 0) throw new Error(`SafeHttp: DNS lookup returned no addresses for '${hostname}'`);
+  if (addresses.length === 0)
+    throw new Error(`SafeHttp: DNS lookup returned no addresses for '${hostname}'`);
 
   if (!explicitlyAllowed) {
     for (const address of addresses) {
@@ -264,7 +268,8 @@ function headersToNode(headers: Headers, target: URL, body: Buffer | null): Reco
     out[key] = value;
   });
   out.host = target.host;
-  if (body !== null && !headers.has("content-length")) out["content-length"] = String(body.byteLength);
+  if (body !== null && !headers.has("content-length"))
+    out["content-length"] = String(body.byteLength);
   return out;
 }
 
@@ -280,7 +285,10 @@ function stripOriginBoundCredentials(headers: Headers): void {
   ]);
   for (const name of [...headers.keys()]) {
     const lower = name.toLowerCase();
-    if (exact.has(lower) || /(?:^|[-_])(token|secret|credential|api[-_]?key)(?:$|[-_])/.test(lower)) {
+    if (
+      exact.has(lower) ||
+      /(?:^|[-_])(token|secret|credential|api[-_]?key)(?:$|[-_])/.test(lower)
+    ) {
       headers.delete(name);
     }
   }
@@ -355,7 +363,9 @@ function requestBoundAddress(
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         totalBytes += buffer.byteLength;
         if (totalBytes > maxBytes) {
-          const error = new Error(`SafeHttp: Response body exceeded maximum limit of ${maxBytes} bytes`);
+          const error = new Error(
+            `SafeHttp: Response body exceeded maximum limit of ${maxBytes} bytes`,
+          );
           response.destroy(error);
           fail(error);
           return;
@@ -375,15 +385,16 @@ function requestBoundAddress(
       });
     };
 
-    const request = target.protocol === "https:"
-      ? https.request(
-          {
-            ...common,
-            servername: isIP(hostname) === 0 ? hostname : undefined,
-          },
-          onResponse,
-        )
-      : http.request(common, onResponse);
+    const request =
+      target.protocol === "https:"
+        ? https.request(
+            {
+              ...common,
+              servername: isIP(hostname) === 0 ? hostname : undefined,
+            },
+            onResponse,
+          )
+        : http.request(common, onResponse);
 
     request.on("error", fail);
     if (body !== null) request.end(body);
@@ -403,9 +414,12 @@ export async function safeFetch(
   const maxBytes = options.maxBytes ?? 2 * 1024 * 1024;
   const timeoutMs = options.timeoutMs ?? 15000;
   const maxRedirects = options.maxRedirects ?? 3;
-  const userAgent = options.userAgent ?? "PenguinHarness/1.0 (+https://github.com/prismshadow/penguin-harness-fork)";
+  const userAgent =
+    options.userAgent ??
+    "PenguinHarness/1.0 (+https://github.com/prismshadow/penguin-harness-fork)";
 
-  if (init?.signal?.aborted) throw new Error(`SafeHttp: Request aborted before start for '${inputUrl}'`);
+  if (init?.signal?.aborted)
+    throw new Error(`SafeHttp: Request aborted before start for '${inputUrl}'`);
 
   const controller = new AbortController();
   let timedOut = false;
@@ -453,13 +467,18 @@ export async function safeFetch(
 
       if (isRedirectStatus(response.status)) {
         const location = response.headers.get("location");
-        if (!location) throw new Error(`SafeHttp: Redirect response ${response.status} missing Location header`);
-        if (redirectsRemaining <= 0) throw new Error(`SafeHttp: Exceeded maximum redirect limit of ${maxRedirects}`);
+        if (!location)
+          throw new Error(`SafeHttp: Redirect response ${response.status} missing Location header`);
+        if (redirectsRemaining <= 0)
+          throw new Error(`SafeHttp: Exceeded maximum redirect limit of ${maxRedirects}`);
 
         const nextTarget = new URL(location, safeTarget);
         if (nextTarget.origin !== safeTarget.origin) stripOriginBoundCredentials(headers);
 
-        if (response.status === 303 || ((response.status === 301 || response.status === 302) && method === "POST")) {
+        if (
+          response.status === 303 ||
+          ((response.status === 301 || response.status === 302) && method === "POST")
+        ) {
           if (method !== "HEAD") {
             method = "GET";
             body = null;
@@ -484,7 +503,8 @@ export async function safeFetch(
       };
     }
   } catch (error) {
-    if (timedOut) throw new Error(`SafeHttp: Request timed out after ${timeoutMs}ms for '${inputUrl}'`);
+    if (timedOut)
+      throw new Error(`SafeHttp: Request timed out after ${timeoutMs}ms for '${inputUrl}'`);
     if (callerAborted) throw new Error(`SafeHttp: Request aborted by caller for '${inputUrl}'`);
     throw error;
   } finally {

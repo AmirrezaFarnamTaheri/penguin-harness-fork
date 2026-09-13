@@ -279,8 +279,10 @@ export class InferenceProxyPool {
     const candidates = Array.from(this.proxies.values()).filter((entry) => {
       if (this.isDisabled(entry) || entry.status !== "healthy") return false;
       if (criteria?.protocol && entry.protocol !== criteria.protocol) return false;
-      if (criteria?.maxLatencyMs && entry.latencyMs > 0 && entry.latencyMs > criteria.maxLatencyMs) return false;
-      if (criteria?.tags?.length && !criteria.tags.every((tag) => entry.tags.includes(tag))) return false;
+      if (criteria?.maxLatencyMs && entry.latencyMs > 0 && entry.latencyMs > criteria.maxLatencyMs)
+        return false;
+      if (criteria?.tags?.length && !criteria.tags.every((tag) => entry.tags.includes(tag)))
+        return false;
       return true;
     });
 
@@ -333,9 +335,10 @@ export class InferenceProxyPool {
     }
 
     if (latencyMs > 0) {
-      entry.latencyMs = entry.latencyMs === 0
-        ? latencyMs
-        : Math.round(this.emaAlpha * latencyMs + (1 - this.emaAlpha) * entry.latencyMs);
+      entry.latencyMs =
+        entry.latencyMs === 0
+          ? latencyMs
+          : Math.round(this.emaAlpha * latencyMs + (1 - this.emaAlpha) * entry.latencyMs);
     }
   }
 

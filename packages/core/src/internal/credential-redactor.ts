@@ -31,7 +31,8 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "auth_header",
-    pattern: /((?:authorization|proxy-authorization|api-key|x-api-key|x-api-token|x-auth-key|x-auth-token|x-access-token|x-secret-key|client-secret|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?[^\r\n]+/gi,
+    pattern:
+      /((?:authorization|proxy-authorization|api-key|x-api-key|x-api-token|x-auth-key|x-auth-token|x-access-token|x-secret-key|client-secret|x-acs-dingtalk-access-token)\s*:\s*)(?:Basic\s+|Bearer\s+)?[^\r\n]+/gi,
     replace: (_match, header) => `${header}${REDACTED_MARKER}`,
   },
   {
@@ -76,7 +77,8 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "generic_assignment",
-    pattern: /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
+    pattern:
+      /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
     replace: (_match, prefix, quote) => `${prefix}${REDACTED_MARKER}${quote || ""}`,
   },
 ];

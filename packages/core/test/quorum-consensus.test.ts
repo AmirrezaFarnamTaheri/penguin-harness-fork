@@ -14,7 +14,9 @@ describe("QuorumConsensusEngine", () => {
     expect(topic.status).toBe("debating");
     expect(topic.supporters.length).toBe(1);
 
-    expect(() => engine.endorseTopic(topic.topicId, "peer-agent-2", "")).toThrow(/explicit grounds/);
+    expect(() => engine.endorseTopic(topic.topicId, "peer-agent-2", "")).toThrow(
+      /explicit grounds/,
+    );
 
     const settled = engine.endorseTopic(
       topic.topicId,
@@ -47,7 +49,9 @@ describe("QuorumConsensusEngine", () => {
     expect(refuted.status).toBe("refuted");
     expect(refuted.refutedAt).toBeDefined();
 
-    expect(() => engine.endorseTopic(topic.topicId, "dev-3", "valid reason")).toThrow(/Cannot endorse refuted topic/);
+    expect(() => engine.endorseTopic(topic.topicId, "dev-3", "valid reason")).toThrow(
+      /Cannot endorse refuted topic/,
+    );
   });
 
   it("rejects invalid quorum policy values", () => {

@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import type { KanbanTask, KanbanTaskState, KanbanTaskPriority, TriageDraft } from "@prismshadow/penguin-core";
+import type {
+  KanbanTask,
+  KanbanTaskState,
+  KanbanTaskPriority,
+  TriageDraft,
+} from "@prismshadow/penguin-core";
 import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
 
@@ -21,9 +26,18 @@ const COLUMNS: Array<{ key: KanbanTaskState; title: string; color: string }> = [
 ];
 
 const PRIORITY_BADGES: Record<KanbanTaskPriority, { label: string; class: string }> = {
-  urgent: { label: "Urgent", class: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300" },
-  high: { label: "High", class: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300" },
-  normal: { label: "Normal", class: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300" },
+  urgent: {
+    label: "Urgent",
+    class: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
+  },
+  high: {
+    label: "High",
+    class: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
+  },
+  normal: {
+    label: "Normal",
+    class: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
+  },
   low: { label: "Low", class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
 };
 
@@ -50,13 +64,19 @@ export function KanbanBoardView({
         <div className="flex items-center gap-3">
           <div className="p-1.5 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+              />
             </svg>
           </div>
           <div>
             <h2 className="text-base font-semibold leading-none">Multi-Agent Kanban & Pipeline</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {tasks.length} total tasks · {tasks.filter((t) => t.state === "in_progress").length} active
+              {tasks.length} total tasks · {tasks.filter((t) => t.state === "in_progress").length}{" "}
+              active
             </p>
           </div>
         </div>
@@ -83,7 +103,9 @@ export function KanbanBoardView({
           <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
             <span className="font-semibold">{drafts.length} Triage Draft(s) Ready:</span>
             <span>{drafts[0]?.title}</span>
-            <span className="text-amber-600 dark:text-amber-400">({drafts[0]?.suggestedTasks.length} subtasks)</span>
+            <span className="text-amber-600 dark:text-amber-400">
+              ({drafts[0]?.suggestedTasks.length} subtasks)
+            </span>
           </div>
           {onLaunchDraft && drafts[0] && (
             <Button
@@ -109,7 +131,9 @@ export function KanbanBoardView({
                 className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-100/60 dark:bg-gray-900/40 p-3 h-full"
               >
                 {/* Column Header */}
-                <div className={`flex items-center justify-between pb-2 mb-2 border-b-2 ${col.color}`}>
+                <div
+                  className={`flex items-center justify-between pb-2 mb-2 border-b-2 ${col.color}`}
+                >
                   <span className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300">
                     {col.title}
                   </span>
@@ -136,7 +160,9 @@ export function KanbanBoardView({
                           <span className="text-xs font-semibold leading-snug line-clamp-2">
                             {task.title}
                           </span>
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-sm shrink-0 ${pri.class}`}>
+                          <span
+                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-sm shrink-0 ${pri.class}`}
+                          >
                             {pri.label}
                           </span>
                         </div>
@@ -160,7 +186,10 @@ export function KanbanBoardView({
                           </div>
 
                           {task.dependencies.length > 0 && (
-                            <span className="font-mono" title={`${task.dependencies.length} blocking dependencies`}>
+                            <span
+                              className="font-mono"
+                              title={`${task.dependencies.length} blocking dependencies`}
+                            >
                               🔗 {task.dependencies.length}
                             </span>
                           )}

@@ -10,7 +10,12 @@ describe("WorkflowPipeline", () => {
 
     pipeline.addNode({ id: "req", name: "Request", kind: "trigger" });
     pipeline.addNode({ id: "spec", name: "Spec", kind: "agent", agentRole: "product_manager" });
-    pipeline.addNode({ id: "build", name: "Build", kind: "agent", agentRole: "fullstack_engineer" });
+    pipeline.addNode({
+      id: "build",
+      name: "Build",
+      kind: "agent",
+      agentRole: "fullstack_engineer",
+    });
 
     pipeline.addEdge("req", "spec");
     pipeline.addEdge("spec", "build");
@@ -39,7 +44,12 @@ describe("WorkflowPipeline", () => {
       kind: "gate",
       conditionField: "requires_security_review",
     });
-    pipeline.addNode({ id: "audit", name: "Security Audit", kind: "agent", agentRole: "security_auditor" });
+    pipeline.addNode({
+      id: "audit",
+      name: "Security Audit",
+      kind: "agent",
+      agentRole: "security_auditor",
+    });
     pipeline.addNode({ id: "deploy", name: "Deploy to Prod", kind: "output" });
 
     pipeline.addEdge("start", "security_gate");
@@ -61,7 +71,9 @@ describe("WorkflowPipeline", () => {
     expect(run1_step2.currentNodeIds).toContain("audit"); // routed to audit
 
     // Complete audit
-    const run1_step3 = pipeline.completeNode(run1_step2, "audit", { output: { audit_passed: true } });
+    const run1_step3 = pipeline.completeNode(run1_step2, "audit", {
+      output: { audit_passed: true },
+    });
     expect(run1_step3.currentNodeIds).toContain("deploy");
 
     // Complete deploy
@@ -146,6 +158,8 @@ describe("WorkflowPipeline", () => {
 
     const dupPipeline = new WorkflowPipeline({ id: "dup", name: "Dup" });
     dupPipeline.addNode({ id: "same", name: "Same", kind: "trigger" });
-    expect(() => dupPipeline.addNode({ id: "same", name: "Same Again", kind: "agent" })).toThrow(/Duplicate node ID/);
+    expect(() => dupPipeline.addNode({ id: "same", name: "Same Again", kind: "agent" })).toThrow(
+      /Duplicate node ID/,
+    );
   });
 });

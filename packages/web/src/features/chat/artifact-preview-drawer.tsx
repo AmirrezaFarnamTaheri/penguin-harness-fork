@@ -70,7 +70,7 @@ ${content}
 
     return `<!DOCTYPE html><html><body><pre style="padding:16px;">${content.replace(
       /</g,
-      "&lt;"
+      "&lt;",
     )}</pre></body></html>`;
   }, [kind, content, previewTheme]);
 
@@ -121,9 +121,7 @@ ${content}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() =>
-                setPreviewTheme((t) => (t === "light" ? "dark" : "light"))
-              }
+              onClick={() => setPreviewTheme((t) => (t === "light" ? "dark" : "light"))}
               className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title={`Switch to ${previewTheme === "light" ? "dark" : "light"} mode`}
             >

@@ -108,7 +108,9 @@ export function parseSkillFrontmatter(content: string): SkillMetadata | null {
   const shortDescription =
     typeof fields.short_description === "string" ? fields.short_description.trim() : undefined;
   const shortDescriptionZh =
-    typeof fields.short_description_zh === "string" ? fields.short_description_zh.trim() : undefined;
+    typeof fields.short_description_zh === "string"
+      ? fields.short_description_zh.trim()
+      : undefined;
   const rawVersion = typeof fields.version === "string" ? fields.version.trim() : "";
 
   return {
@@ -213,8 +215,12 @@ function stampSkill(
     "---",
     `name: ${yamlScalar(skill.name)}`,
     `description: ${yamlScalar(skill.description)}`,
-    ...(shortDescription !== undefined ? [`short_description: ${yamlScalar(shortDescription)}`] : []),
-    ...(shortDescriptionZh !== undefined ? [`short_description_zh: ${yamlScalar(shortDescriptionZh)}`] : []),
+    ...(shortDescription !== undefined
+      ? [`short_description: ${yamlScalar(shortDescription)}`]
+      : []),
+    ...(shortDescriptionZh !== undefined
+      ? [`short_description_zh: ${yamlScalar(shortDescriptionZh)}`]
+      : []),
     `version: ${yamlScalar(plugin.version)}`,
     "---",
   ].join("\n");
@@ -261,7 +267,8 @@ function readPluginDir(name: string, dir: string): LibraryPlugin {
   const skillsDir = path.join(dir, "skills");
   if (fs.existsSync(skillsDir)) {
     for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-      if (entry.isDirectory()) skills.push(readSkillDir(path.join(skillsDir, entry.name), entry.name));
+      if (entry.isDirectory())
+        skills.push(readSkillDir(path.join(skillsDir, entry.name), entry.name));
     }
     skills.sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -337,7 +344,11 @@ export function librarySkill(
 
 export const PLUGIN_CATEGORIES: PluginCategory[] = [
   { id: "office-productivity", title: "Office Productivity", titleZh: "\u529e\u516c\u6548\u7387" },
-  { id: "software-development", title: "Software Development", titleZh: "\u8f6f\u4ef6\u5f00\u53d1" },
+  {
+    id: "software-development",
+    title: "Software Development",
+    titleZh: "\u8f6f\u4ef6\u5f00\u53d1",
+  },
   { id: "ai-app-development", title: "AI App Development", titleZh: "AI \u5e94\u7528\u5f00\u53d1" },
   { id: "agent-company", title: "Agent Company", titleZh: "Agent \u516c\u53f8" },
 ];
@@ -438,7 +449,10 @@ export interface PipelineFilter {
   name: string;
   stage: PipelineStage;
   priority: number;
-  execute: (message: string, context?: Record<string, unknown>) => Promise<{
+  execute: (
+    message: string,
+    context?: Record<string, unknown>,
+  ) => Promise<{
     handled: boolean;
     output?: string;
     stopPipeline?: boolean;

@@ -153,4 +153,3 @@ describe("code-graph", () => {
     expect(sub.nodes.some((n) => n.id === "remote")).toBe(false);
   });
 });
-

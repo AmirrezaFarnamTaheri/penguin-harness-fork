@@ -26,12 +26,31 @@ export interface SpecialistCapability {
 export const DEFAULT_SPECIALISTS: SpecialistCapability[] = [
   {
     role: "software_architect",
-    keywords: ["architecture", "design", "structure", "system", "c4", "boundary", "scale", "modular"],
+    keywords: [
+      "architecture",
+      "design",
+      "structure",
+      "system",
+      "c4",
+      "boundary",
+      "scale",
+      "modular",
+    ],
     description: "System architecture and component boundaries",
   },
   {
     role: "security_auditor",
-    keywords: ["security", "auth", "oauth", "token", "cve", "vulnerability", "injection", "sanitize", "leak"],
+    keywords: [
+      "security",
+      "auth",
+      "oauth",
+      "token",
+      "cve",
+      "vulnerability",
+      "injection",
+      "sanitize",
+      "leak",
+    ],
     description: "Security review, vulnerability analysis, and hardening",
   },
   {
@@ -41,12 +60,31 @@ export const DEFAULT_SPECIALISTS: SpecialistCapability[] = [
   },
   {
     role: "fullstack_engineer",
-    keywords: ["implement", "code", "feature", "build", "api", "route", "component", "fix", "refactor"],
+    keywords: [
+      "implement",
+      "code",
+      "feature",
+      "build",
+      "api",
+      "route",
+      "component",
+      "fix",
+      "refactor",
+    ],
     description: "Feature development and code modifications",
   },
   {
     role: "technical_writer",
-    keywords: ["docs", "document", "readme", "guide", "tutorial", "explain", "markdown", "changelog"],
+    keywords: [
+      "docs",
+      "document",
+      "readme",
+      "guide",
+      "tutorial",
+      "explain",
+      "markdown",
+      "changelog",
+    ],
     description: "Documentation and technical content authoring",
   },
 ];
@@ -138,7 +176,9 @@ export class QueryPartitioner {
     originalQuery: string,
     results: Array<{ subQueryId: string; role: string; response: string }>,
   ): string {
-    const sections = results.map((result, index) => `### Part ${index + 1}: ${result.role}\n${result.response}`);
+    const sections = results.map(
+      (result, index) => `### Part ${index + 1}: ${result.role}\n${result.response}`,
+    );
     return `# Synthesis: ${originalQuery}\n\n${sections.join("\n\n")}`;
   }
 }

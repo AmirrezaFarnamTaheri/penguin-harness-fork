@@ -47,7 +47,10 @@ function validatePolicy(policy: QuorumPolicy): void {
   if (!Number.isInteger(policy.threshold) || policy.threshold < 1) {
     throw new Error("Quorum threshold must be a positive integer");
   }
-  if (policy.refutationCap !== undefined && (!Number.isInteger(policy.refutationCap) || policy.refutationCap < 1)) {
+  if (
+    policy.refutationCap !== undefined &&
+    (!Number.isInteger(policy.refutationCap) || policy.refutationCap < 1)
+  ) {
     throw new Error("Quorum refutationCap must be a positive integer");
   }
   if (typeof policy.requireGrounded !== "boolean") {
@@ -89,7 +92,8 @@ export class QuorumConsensusEngine {
     if (!topic) throw new Error("Consensus topic cannot be empty");
     if (!proposerId) throw new Error("Consensus proposerId cannot be empty");
 
-    const topicId = input.topicId ?? `topic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const topicId =
+      input.topicId ?? `topic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     if (!topicId.trim()) throw new Error("Consensus topicId cannot be empty");
     if (this.standings.has(topicId)) {
       throw new Error(`Topic with id '${topicId}' already exists`);
@@ -145,7 +149,9 @@ export class QuorumConsensusEngine {
 
     // Check if grounded evidence is required
     if (standing.policy.requireGrounded && (!grounds || !grounds.trim())) {
-      throw new Error(`Endorsement requires explicit grounds/evidence citations under current quorum policy`);
+      throw new Error(
+        `Endorsement requires explicit grounds/evidence citations under current quorum policy`,
+      );
     }
 
     // Prevent duplicate endorsements from the same agent

@@ -3,13 +3,7 @@
  */
 
 export type KanbanTaskState =
-  | "backlog"
-  | "triage"
-  | "in_progress"
-  | "review"
-  | "done"
-  | "archived"
-  | "failed";
+  "backlog" | "triage" | "in_progress" | "review" | "done" | "archived" | "failed";
 
 export type KanbanTaskPriority = "low" | "normal" | "high" | "urgent";
 
@@ -214,7 +208,9 @@ export class KanbanBoard {
 
   public getTask(id: string): KanbanTask | undefined {
     const task = this.tasks.get(id);
-    return task ? { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] } : undefined;
+    return task
+      ? { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] }
+      : undefined;
   }
 
   public listTasks(filter?: {
@@ -229,7 +225,11 @@ export class KanbanBoard {
       if (filter?.assignee !== undefined && task.assignee !== filter.assignee) continue;
       if (filter?.priority && task.priority !== filter.priority) continue;
       if (filter?.parentTaskId !== undefined && task.parentTaskId !== filter.parentTaskId) continue;
-      list.push({ ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] });
+      list.push({
+        ...task,
+        dependencies: [...task.dependencies],
+        childTaskIds: [...task.childTaskIds],
+      });
     }
     return list;
   }
@@ -257,14 +257,21 @@ export class KanbanBoard {
       const hasWorkerId = options?.workerId !== undefined;
       const hasGeneration = options?.generation !== undefined;
       if (hasWorkerId !== hasGeneration) {
-        throw new Error(`Cannot update task '${taskId}': workerId and generation must be supplied together`);
+        throw new Error(
+          `Cannot update task '${taskId}': workerId and generation must be supplied together`,
+        );
       }
-      const requiresLeaseIdentity = Boolean(task.assignee) || (task.leaseGeneration ?? 0) > 0 || hasWorkerId;
+      const requiresLeaseIdentity =
+        Boolean(task.assignee) || (task.leaseGeneration ?? 0) > 0 || hasWorkerId;
       if (requiresLeaseIdentity) {
         if (!options?.workerId || options.generation === undefined) {
           throw new Error(`Cannot update task '${taskId}': an active lease identity is required`);
         }
-        this.assertActiveLease(task, { workerId: options.workerId, generation: options.generation }, "update");
+        this.assertActiveLease(
+          task,
+          { workerId: options.workerId, generation: options.generation },
+          "update",
+        );
       }
 
       if (stateRequiresCompletedDependencies(nextState)) {
@@ -301,12 +308,16 @@ export class KanbanBoard {
   ): KanbanTask {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task with id '${taskId}' not found`);
-    if (task.state === "backlog" || task.state === "triage") this.assertDependenciesComplete(task.dependencies);
+    if (task.state === "backlog" || task.state === "triage")
+      this.assertDependenciesComplete(task.dependencies);
 
     const now = Date.now();
-    const isExpired = task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires <= now;
+    const isExpired =
+      task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires <= now;
     if (task.assignee && task.assignee !== assignee && !isExpired && task.state === "in_progress") {
-      throw new Error(`Task is already claimed by ${task.assignee} until ${new Date(task.claimExpires ?? 0).toISOString()}`);
+      throw new Error(
+        `Task is already claimed by ${task.assignee} until ${new Date(task.claimExpires ?? 0).toISOString()}`,
+      );
     }
 
     const leaseDuration = options?.leaseDurationMs ?? this.defaultLeaseDurationMs;
@@ -490,12 +501,14 @@ export class KanbanBoard {
         const dependencyIndex = Number.parseInt(dependency, 10);
         if (!Number.isNaN(dependencyIndex) && indexToCreatedId.has(dependencyIndex)) {
           const resolvedId = indexToCreatedId.get(dependencyIndex);
-          if (resolvedId && !currentTask.dependencies.includes(resolvedId)) currentTask.dependencies.push(resolvedId);
+          if (resolvedId && !currentTask.dependencies.includes(resolvedId))
+            currentTask.dependencies.push(resolvedId);
         } else {
           const found = childTasks.find(
             (candidate) => candidate.title.toLowerCase() === dependency.toLowerCase(),
           );
-          if (found && !currentTask.dependencies.includes(found.id)) currentTask.dependencies.push(found.id);
+          if (found && !currentTask.dependencies.includes(found.id))
+            currentTask.dependencies.push(found.id);
         }
       }
     });

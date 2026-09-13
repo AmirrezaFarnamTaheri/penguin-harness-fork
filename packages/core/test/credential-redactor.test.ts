@@ -26,7 +26,8 @@ describe("containsCredentials", () => {
 
 describe("redactCredentials", () => {
   it("redacts bearer tokens and authorization headers", () => {
-    const raw = "Sending request with Bearer secretToken9876543210 and Authorization: Basic dXNlcjpwYXNz";
+    const raw =
+      "Sending request with Bearer secretToken9876543210 and Authorization: Basic dXNlcjpwYXNz";
     const redacted = redactCredentials(raw);
     expect(redacted).not.toContain("secretToken9876543210");
     expect(redacted).toContain(`Bearer ${REDACTED_MARKER}`);

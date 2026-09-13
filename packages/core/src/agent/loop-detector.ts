@@ -105,7 +105,9 @@ export class LoopDetector {
 
         if (allSameTool) {
           const allIdenticalInput = recent.every((t) => t.inputHash === first.inputHash);
-          const patternType = allIdenticalInput ? "identical_input_repeat" : "consecutive_same_tool";
+          const patternType = allIdenticalInput
+            ? "identical_input_repeat"
+            : "consecutive_same_tool";
 
           return {
             status: "loop_detected",
@@ -328,7 +330,10 @@ export class ProgressTracker {
   }
 
   public static normalizeFilePath(filename: string): string {
-    return (filename || "").replace(/\\/g, "/").trim().replace(/^\/+|\/+$/g, "");
+    return (filename || "")
+      .replace(/\\/g, "/")
+      .trim()
+      .replace(/^\/+|\/+$/g, "");
   }
 
   /**

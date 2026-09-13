@@ -90,7 +90,10 @@ tags: [debug, root-cause, test-failure]
 ---
 Debug the system systematically.`)!;
 
-    const match1 = scoreSkillRelevance(skill, "We have a systematic-debugging emergency with flaky tests");
+    const match1 = scoreSkillRelevance(
+      skill,
+      "We have a systematic-debugging emergency with flaky tests",
+    );
     expect(match1.score).toBeGreaterThan(0.5);
     expect(match1.matchedKeywords).toContain("systematic-debugging");
 
@@ -114,8 +117,12 @@ Use GitHub APIs.`)!;
 
     expect(scoreSkillRelevance(slack, "automate this repetitive task").score).toBeLessThan(0.2);
     expect(scoreSkillRelevance(github, "automate this repetitive task").score).toBeLessThan(0.2);
-    expect(scoreSkillRelevance(slack, "automate Slack channel membership").score).toBeGreaterThan(0.2);
-    expect(scoreSkillRelevance(github, "update this GitHub pull request").score).toBeGreaterThan(0.2);
+    expect(scoreSkillRelevance(slack, "automate Slack channel membership").score).toBeGreaterThan(
+      0.2,
+    );
+    expect(scoreSkillRelevance(github, "update this GitHub pull request").score).toBeGreaterThan(
+      0.2,
+    );
   });
 
   it("infers broad category from description and tags when category is omitted", () => {
@@ -174,7 +181,9 @@ Deploy container images via registry.`)!;
     expect(resolveSkillAlias("debug")).toBe("root-cause-debugger");
     expect(resolveSkillAlias("auth-patterns")).toBe("nextjs-auth-patterns");
     expect(resolveSkillAlias("unknown-custom-skill")).toBe("unknown-custom-skill");
-    expect(resolveSkillAlias("custom-alias", { "custom-alias": "canonical-target" })).toBe("canonical-target");
+    expect(resolveSkillAlias("custom-alias", { "custom-alias": "canonical-target" })).toBe(
+      "canonical-target",
+    );
   });
 
   it("SkillRegistry retrieves skills by legacy aliases seamlessly", () => {

@@ -267,7 +267,8 @@ async function fallbackDuckDuckGoSearch(
     if (!res.ok) return [];
     const html = await res.text();
     const results: SearchResult[] = [];
-    const titleRe = /<a[^>]+class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const titleRe =
+      /<a[^>]+class="[^"]*result__url[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
     const snippetRe = /<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
     const linkMatches = [...html.matchAll(titleRe)];
     const snippetMatches = [...html.matchAll(snippetRe)];

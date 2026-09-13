@@ -393,7 +393,7 @@ export class WorkspaceLeaseManager {
   private processQueue(): void {
     if (this.waitQueue.length === 0) return;
 
-    for (let i = 0; i < this.waitQueue.length; ) {
+    for (let i = 0; i < this.waitQueue.length;) {
       const item = this.waitQueue[i]!;
       if (this.canGrant(item.normalizedScope, item.request.mode, item.normalizedKeys)) {
         this.waitQueue.splice(i, 1);

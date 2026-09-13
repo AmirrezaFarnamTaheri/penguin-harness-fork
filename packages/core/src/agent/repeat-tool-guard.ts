@@ -122,7 +122,9 @@ export class RepeatToolGuard {
     }
     for (const val of rawThresholds) {
       if (!Number.isInteger(val) || val < 2) {
-        throw new Error(`RepeatToolGuard: invalid threshold ${val} - every threshold must be an integer >= 2`);
+        throw new Error(
+          `RepeatToolGuard: invalid threshold ${val} - every threshold must be an integer >= 2`,
+        );
       }
     }
     if (new Set(rawThresholds).size !== rawThresholds.length) {
@@ -136,7 +138,9 @@ export class RepeatToolGuard {
     this.argumentsPreviewChars = options.argumentsPreviewChars ?? 500;
 
     if (!Number.isInteger(this.argumentsPreviewChars) || this.argumentsPreviewChars < 1) {
-      throw new Error(`RepeatToolGuard: invalid argumentsPreviewChars ${this.argumentsPreviewChars} - must be integer >= 1`);
+      throw new Error(
+        `RepeatToolGuard: invalid argumentsPreviewChars ${this.argumentsPreviewChars} - must be integer >= 1`,
+      );
     }
   }
 
@@ -155,7 +159,11 @@ export class RepeatToolGuard {
    * returns a structured reminder. Returns undefined if no threshold is met or
    * if the tool is not tracked.
    */
-  public observe(agentId: string, toolName: string, toolArguments: unknown): RepeatToolReminder | undefined {
+  public observe(
+    agentId: string,
+    toolName: string,
+    toolArguments: unknown,
+  ): RepeatToolReminder | undefined {
     if (!this.isTracked(toolName)) {
       return undefined;
     }

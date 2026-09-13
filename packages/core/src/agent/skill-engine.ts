@@ -75,17 +75,50 @@ function asString(value: unknown): string | undefined {
 
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
-function inferSkillCategory(name: string, description: string, tags: string[]): SkillMetadataInfo["category"] {
+function inferSkillCategory(
+  name: string,
+  description: string,
+  tags: string[],
+): SkillMetadataInfo["category"] {
   const haystack = `${name.replace(/[-_]/g, " ")} ${description} ${tags.join(" ")}`.toLowerCase();
-  if (/\b(test|testing|qa|quality|verify|verification|debug|debugging|regression|lint|review|audit)\b/.test(haystack)) return "qa";
-  if (/\b(ui|ux|design|figma|visual|typography|brand|branding|css|accessibility)\b/.test(haystack)) return "design";
-  if (/\b(devops|deploy|deployment|ci|cd|pipeline|infra|infrastructure|docker|kubernetes|terraform|observability|monitoring|release)\b/.test(haystack)) return "ops";
-  if (/\b(plan|planning|project|product|prd|roadmap|epic|triage|strategy|management|manager|hiring|finance|budget)\b/.test(haystack)) return "management";
-  if (/\b(science|scientific|biology|bioinformatics|protein|chemistry|chemical|physics|medical|genomics|statistics|statistical)\b/.test(haystack)) return "science";
-  if (/\b(code|coding|software|engineer|engineering|api|backend|frontend|typescript|javascript|python|rust|golang|java|react|nextjs|architecture|security|database|sql)\b/.test(haystack)) return "engineering";
+  if (
+    /\b(test|testing|qa|quality|verify|verification|debug|debugging|regression|lint|review|audit)\b/.test(
+      haystack,
+    )
+  )
+    return "qa";
+  if (/\b(ui|ux|design|figma|visual|typography|brand|branding|css|accessibility)\b/.test(haystack))
+    return "design";
+  if (
+    /\b(devops|deploy|deployment|ci|cd|pipeline|infra|infrastructure|docker|kubernetes|terraform|observability|monitoring|release)\b/.test(
+      haystack,
+    )
+  )
+    return "ops";
+  if (
+    /\b(plan|planning|project|product|prd|roadmap|epic|triage|strategy|management|manager|hiring|finance|budget)\b/.test(
+      haystack,
+    )
+  )
+    return "management";
+  if (
+    /\b(science|scientific|biology|bioinformatics|protein|chemistry|chemical|physics|medical|genomics|statistics|statistical)\b/.test(
+      haystack,
+    )
+  )
+    return "science";
+  if (
+    /\b(code|coding|software|engineer|engineering|api|backend|frontend|typescript|javascript|python|rust|golang|java|react|nextjs|architecture|security|database|sql)\b/.test(
+      haystack,
+    )
+  )
+    return "engineering";
   return "general";
 }
 
@@ -102,7 +135,8 @@ function textTokens(value: string): Set<string> {
 
 function descriptionTokens(value: string): string[] {
   return [...textTokens(value)].filter(
-    (token) => token.length > 3 && !DESCRIPTION_STOP_WORDS.has(token) && !GENERIC_ROUTING_TOKENS.has(token),
+    (token) =>
+      token.length > 3 && !DESCRIPTION_STOP_WORDS.has(token) && !GENERIC_ROUTING_TOKENS.has(token),
   );
 }
 
@@ -124,17 +158,20 @@ export function parseSkillMarkdown(rawContent: string, sourcePath = ""): SkillDe
   const name = asString(fields.name);
   if (!name) return null;
   const description = asString(fields.description) ?? "";
-  const shortDescription = asString(fields["short-description"]) ?? asString(fields.short_description);
+  const shortDescription =
+    asString(fields["short-description"]) ?? asString(fields.short_description);
   const version = asString(fields.version);
   const author = asString(fields.author);
   const tags = asStringArray(fields.tags);
-  const allowedTools = asStringArray(fields.allowed_tools).length > 0
-    ? asStringArray(fields.allowed_tools)
-    : asStringArray(fields.tools);
+  const allowedTools =
+    asStringArray(fields.allowed_tools).length > 0
+      ? asStringArray(fields.allowed_tools)
+      : asStringArray(fields.tools);
 
   const rawCategory = asString(fields.category)?.toLowerCase();
   const category: SkillMetadataInfo["category"] =
-    rawCategory && ["engineering", "design", "qa", "science", "ops", "management", "general"].includes(rawCategory)
+    rawCategory &&
+    ["engineering", "design", "qa", "science", "ops", "management", "general"].includes(rawCategory)
       ? (rawCategory as SkillMetadataInfo["category"])
       : inferSkillCategory(name, description, tags);
 
@@ -187,7 +224,8 @@ export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): Ski
 
   const canonicalName = skill.name.toLowerCase();
   const normalizedName = canonicalName.replace(/[-_]/g, " ");
-  const exactNameMatch = lowerPrompt.includes(canonicalName) || lowerPrompt.includes(normalizedName);
+  const exactNameMatch =
+    lowerPrompt.includes(canonicalName) || lowerPrompt.includes(normalizedName);
   if (exactNameMatch) {
     score += 0.6;
     matchedKeywords.push(skill.name);
@@ -202,7 +240,8 @@ export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): Ski
       matchedKeywords.push(token);
     }
   }
-  if (distinctiveTokens.length > 1 && matchedDistinctive === distinctiveTokens.length) score += 0.12;
+  if (distinctiveTokens.length > 1 && matchedDistinctive === distinctiveTokens.length)
+    score += 0.12;
 
   for (const tag of skill.tags) {
     const value = tag.toLowerCase();
@@ -238,16 +277,28 @@ export function scoreSkillRelevance(skill: SkillDefinition, prompt: string): Ski
     skill,
     score: normalizedScore,
     matchedKeywords: [...new Set(matchedKeywords)],
-    reason: matchedKeywords.length ? `Matched terms: ${[...new Set(matchedKeywords)].join(", ")}` : "No strong term match",
+    reason: matchedKeywords.length
+      ? `Matched terms: ${[...new Set(matchedKeywords)].join(", ")}`
+      : "No strong term match",
   };
 }
 
 export function interpolateVariables(template: string, vars: Record<string, string>): string {
   const token = /\{\{([A-Za-z0-9_.-]+)\}\}|\{([A-Za-z0-9_.-]+)\}|\$([A-Za-z_][A-Za-z0-9_.-]*)\b/g;
-  return template.replace(token, (match, doubleKey: string | undefined, braceKey: string | undefined, dollarKey: string | undefined) => {
-    const key = doubleKey ?? braceKey ?? dollarKey;
-    return key !== undefined && Object.prototype.hasOwnProperty.call(vars, key) ? vars[key]! : match;
-  });
+  return template.replace(
+    token,
+    (
+      match,
+      doubleKey: string | undefined,
+      braceKey: string | undefined,
+      dollarKey: string | undefined,
+    ) => {
+      const key = doubleKey ?? braceKey ?? dollarKey;
+      return key !== undefined && Object.prototype.hasOwnProperty.call(vars, key)
+        ? vars[key]!
+        : match;
+    },
+  );
 }
 
 export function bindSkillVariables(
@@ -285,29 +336,29 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "background-jobs-queue-expert": "background-jobs-queue-bilingual",
   "biome-linter-formatter-expert": "biome-linter-formatter-bilingual",
   "blockchain-web3-expert": "blockchain-web3-bilingual",
-  "browser": "chrome-cdp-browser-control",
+  browser: "chrome-cdp-browser-control",
   "browser-automation-expert": "browser-automation-bilingual",
-  "browsing": "use-browser-mcp-control",
+  browsing: "use-browser-mcp-control",
   "bun-runtime-expert": "bun-runtime-bilingual",
   "chatbot-messaging-expert": "chatbot-messaging-bilingual",
   "cloud-hosting-expert": "cloud-hosting-bilingual",
   "compliance-gdpr-privacy-expert": "compliance-gdpr-privacy-bilingual",
-  "connect": "composio-cli-connect",
+  connect: "composio-cli-connect",
   "connect-apps": "composio-cli-connect",
   "cron-scheduler-expert": "cron-scheduler-bilingual",
-  "customize": "agent-profile-customizer",
+  customize: "agent-profile-customizer",
   "data-pipeline-etl-expert": "data-pipeline-etl-bilingual",
   "data-telemetry-expert": "data-telemetry-bilingual",
   "data-visualization-expert": "data-visualization-bilingual",
   "database-migration-versioning-expert": "database-migration-versioning-bilingual",
   "database-orm-expert": "database-orm-bilingual",
-  "debug": "root-cause-debugger",
-  "delegate": "subagent-delegator",
+  debug: "root-cause-debugger",
+  delegate: "subagent-delegator",
   "desktop-electron-expert": "desktop-electron-bilingual",
-  "diagnose": "performance-diagnostics-loop",
+  diagnose: "performance-diagnostics-loop",
   "documentation-site-expert": "documentation-site-bilingual",
   "domain-driven-design-expert": "domain-driven-design-bilingual",
-  "draft": "legal-clinic-document-drafter",
+  draft: "legal-clinic-document-drafter",
   "e2e-testing-expert": "e2e-testing-bilingual",
   "ecommerce-expert": "ecommerce-bilingual",
   "edge-serverless-db-expert": "edge-serverless-db-bilingual",
@@ -322,16 +373,16 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "global-a11y-i18n-expert": "global-a11y-i18n-bilingual",
   "go-programming-expert": "go-programming-bilingual",
   "graph-rag-knowledge-expert": "graph-rag-knowledge-bilingual",
-  "handoff": "agent-session-handoff",
+  handoff: "agent-session-handoff",
   "headless-cms-expert": "headless-cms-bilingual",
-  "implement": "feature-implementation-runner",
-  "init": "project-init-scaffold",
-  "interview": "socratic-task-interview",
+  implement: "feature-implementation-runner",
+  init: "project-init-scaffold",
+  interview: "socratic-task-interview",
   "journal-entry-prep": "journal-entry",
   "js-backend-expert": "js-backend-bilingual",
   "local-slm-edge-ai-expert": "local-slm-edge-ai-bilingual",
   "logging-error-tracking-expert": "logging-error-tracking-bilingual",
-  "loop": "recurring-prompt-loop",
+  loop: "recurring-prompt-loop",
   "mobile-expo-expert": "mobile-expo-bilingual",
   "mobile-push-notification-expert": "mobile-push-notification-bilingual",
   "modern-css-native-expert": "modern-css-native-bilingual",
@@ -339,38 +390,38 @@ export const DEFAULT_SKILL_ALIASES: Record<string, string> = {
   "nextjs-app-router-expert": "nextjs-app-router-bilingual",
   "payment-gateway-expert": "payment-gateway-bilingual",
   "pdf-document-generation-expert": "pdf-document-generation-bilingual",
-  "plan": "task-planning-runner",
+  plan: "task-planning-runner",
   "prompt-engineering-expert": "prompt-instructions-design",
   "pwa-offline-first-expert": "pwa-offline-first-bilingual",
   "pydantic-ai-expert": "pydantic-ai-bilingual",
   "python-programming-expert": "python-programming-bilingual",
   "realtime-collaboration-expert": "realtime-collaboration-bilingual",
-  "release": "release-process-runner",
-  "review": "diff-correctness-review",
+  release: "release-process-runner",
+  review: "diff-correctness-review",
   "rich-text-editor-expert": "rich-text-editor-bilingual",
   "rust-programming-expert": "rust-programming-bilingual",
-  "screenshot": "window-screenshot-capture",
+  screenshot: "window-screenshot-capture",
   "search-engine-expert": "search-engine-bilingual",
   "secrets-management-best-practices": "aws-secrets-manager-best-practices",
   "seo-audit-expert": "seo-optimization-bilingual",
-  "simplify": "code-simplification-cleaner",
+  simplify: "code-simplification-cleaner",
   "snowflake-expert": "snowflake-platform-engineering",
   "solidjs-expert": "solidjs-bilingual",
   "sse-websocket-streaming-expert": "sse-websocket-streaming-bilingual",
   "state-management-expert": "state-management-bilingual",
-  "summarize": "media-url-summarizer",
+  summarize: "media-url-summarizer",
   "supabase-security-expert": "supabase-security-bilingual",
   "svelte-sveltekit-expert": "svelte-sveltekit-bilingual",
   "svg-animation-motion-expert": "svg-animation-motion-bilingual",
   "synthetic-data-finetuning-expert": "synthetic-data-finetuning-bilingual",
   "tailwind-expert": "tailwind-bilingual",
   "tauri-expert": "tauri-bilingual",
-  "test": "project-test-runner",
+  test: "project-test-runner",
   "typescript-expert": "typescript-bilingual",
   "ui-components-expert": "ui-components-bilingual",
   "vector-db-rag-expert": "vector-db-rag-bilingual",
   "vercel-ai-sdk-expert": "vercel-ai-sdk-bilingual",
-  "verify": "runtime-output-verifier",
+  verify: "runtime-output-verifier",
   "vue-frontend-expert": "vue-frontend-bilingual",
   "wasm-edge-computing-expert": "wasm-edge-computing-bilingual",
   "wordpress-headless-expert": "wordpress-headless-bilingual",
@@ -457,7 +508,12 @@ export class SkillRegistry {
     return this.skills.size;
   }
 
-  public list(filter?: { category?: string; tag?: string; tool?: string; query?: string }): SkillDefinition[] {
+  public list(filter?: {
+    category?: string;
+    tag?: string;
+    tool?: string;
+    query?: string;
+  }): SkillDefinition[] {
     let list = Array.from(this.skills.values());
     if (filter?.category) {
       const category = filter.category.toLowerCase();
@@ -470,7 +526,9 @@ export class SkillRegistry {
     if (filter?.tool) {
       const tool = filter.tool.toLowerCase();
       list = list.filter(
-        (skill) => skill.allowedTools.includes("*") || skill.allowedTools.some((value) => value.toLowerCase() === tool),
+        (skill) =>
+          skill.allowedTools.includes("*") ||
+          skill.allowedTools.some((value) => value.toLowerCase() === tool),
       );
     }
     if (filter?.query) {
@@ -497,7 +555,8 @@ export class SkillRegistry {
       .filter((result) => result.score >= minScore)
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        const specificity = distinctiveNameTokens(b.skill.name).length - distinctiveNameTokens(a.skill.name).length;
+        const specificity =
+          distinctiveNameTokens(b.skill.name).length - distinctiveNameTokens(a.skill.name).length;
         return specificity !== 0 ? specificity : a.skill.name.localeCompare(b.skill.name);
       })
       .slice(0, maxResults);
@@ -525,14 +584,23 @@ export class SkillRegistry {
 }
 
 export function validateAgentName(name: string): { valid: boolean; error?: string } {
-  if (!name || name.trim().length === 0) return { valid: false, error: "Agent name must not be empty" };
+  if (!name || name.trim().length === 0)
+    return { valid: false, error: "Agent name must not be empty" };
   const bytes = new TextEncoder().encode(name);
   if (bytes.length > 64) {
-    return { valid: false, error: `Agent name exceeds maximum length of 64 bytes (got ${bytes.length})` };
+    return {
+      valid: false,
+      error: `Agent name exceeds maximum length of 64 bytes (got ${bytes.length})`,
+    };
   }
-  if (!/^[a-z]/.test(name)) return { valid: false, error: "Agent name must start with a lowercase letter (a-z)" };
+  if (!/^[a-z]/.test(name))
+    return { valid: false, error: "Agent name must start with a lowercase letter (a-z)" };
   if (!/^[a-z0-9_-]+$/.test(name)) {
-    return { valid: false, error: "Agent name can only contain lowercase letters (a-z), digits (0-9), underscores (_), and hyphens (-)" };
+    return {
+      valid: false,
+      error:
+        "Agent name can only contain lowercase letters (a-z), digits (0-9), underscores (_), and hyphens (-)",
+    };
   }
   return { valid: true };
 }
@@ -545,7 +613,9 @@ export interface StrictFunctionDefinitionOptions {
   strict?: boolean;
 }
 
-export function synthesizeFunctionDefinition(options: StrictFunctionDefinitionOptions): Record<string, unknown> {
+export function synthesizeFunctionDefinition(
+  options: StrictFunctionDefinitionOptions,
+): Record<string, unknown> {
   const validation = validateAgentName(options.name);
   if (!validation.valid) throw new Error(`Invalid function definition name: ${validation.error}`);
   return {
@@ -556,7 +626,8 @@ export function synthesizeFunctionDefinition(options: StrictFunctionDefinitionOp
       properties: options.properties ?? {
         prompt: {
           type: "string",
-          description: "The task prompt for this agent, including objective, relevant context, and constraints.",
+          description:
+            "The task prompt for this agent, including objective, relevant context, and constraints.",
           minLength: 1,
         },
       },

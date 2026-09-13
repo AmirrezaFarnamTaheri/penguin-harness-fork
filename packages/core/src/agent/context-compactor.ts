@@ -85,7 +85,7 @@ export class ContextCompactor {
     messages: ConversationMessage[],
     trigger: CompactionTrigger = "auto",
     phase: CompactionPhase = "turn-start",
-    customSummarizer?: (folded: ConversationMessage[]) => Promise<string> | string
+    customSummarizer?: (folded: ConversationMessage[]) => Promise<string> | string,
   ): Promise<{
     compactedMessages: ConversationMessage[];
     anchor: CompactionAnchorData;
@@ -204,10 +204,7 @@ export class ContextCompactor {
   private defaultSummary(messages: ConversationMessage[]): string {
     const lines: string[] = [];
     for (const msg of messages) {
-      const preview = (msg.content || "")
-        .replace(/\s+/g, " ")
-        .slice(0, 120)
-        .trim();
+      const preview = (msg.content || "").replace(/\s+/g, " ").slice(0, 120).trim();
       if (preview.length > 0) lines.push(`- [${msg.role}]: ${preview}`);
     }
     return lines.join("\n");

@@ -89,9 +89,21 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
   // State: Mailbox
   const [mailboxes] = useState<MockMailboxEntry[]>([
     { agentName: "orchestrator", queueDepth: 0, pendingReplies: 0, leaseState: "idle" },
-    { agentName: "coder", queueDepth: 1, pendingReplies: 1, leaseState: "acquired", leaseRemainingSec: 24 },
+    {
+      agentName: "coder",
+      queueDepth: 1,
+      pendingReplies: 1,
+      leaseState: "acquired",
+      leaseRemainingSec: 24,
+    },
     { agentName: "reviewer", queueDepth: 0, pendingReplies: 0, leaseState: "idle" },
-    { agentName: "researcher", queueDepth: 2, pendingReplies: 0, leaseState: "acquired", leaseRemainingSec: 18 },
+    {
+      agentName: "researcher",
+      queueDepth: 2,
+      pendingReplies: 0,
+      leaseState: "acquired",
+      leaseRemainingSec: 18,
+    },
   ]);
 
   const [toAgent, setToAgent] = useState("coder");
@@ -102,7 +114,12 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
   const [consecutiveErrors] = useState(0);
   const [timeSinceLastProgress] = useState(4.2);
   const [currentFile] = useState("packages/core/src/agent/turn-ledger.ts");
-  const [recentTools] = useState(["view_file", "write_to_file", "run_command", "replace_file_content"]);
+  const [recentTools] = useState([
+    "view_file",
+    "write_to_file",
+    "run_command",
+    "replace_file_content",
+  ]);
   const [progressPhase] = useState("Cluster 3 Batch 3 Porting");
   const [filesCompleted] = useState(28);
   const [totalFiles] = useState(40);
@@ -133,11 +150,42 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
 
   // State: Swarm & Handoff Topology (from agent-teams-ai GraphDataPort & aif-handoff)
   const [swarmNodes] = useState<SwarmAgentNode[]>([
-    { id: "orchestrator", role: "orchestrator", status: "active", tasksCompleted: 14, currentTask: "Dispatching batch extraction and verification" },
-    { id: "coder", role: "coder", status: "active", tasksCompleted: 28, currentTask: "Implementing gateway routes and UI controls", handoffTarget: "reviewer" },
-    { id: "reviewer", role: "reviewer", status: "idle", tasksCompleted: 27, currentTask: "Waiting for pull request diff audit" },
-    { id: "researcher", role: "researcher", status: "idle", tasksCompleted: 19, currentTask: "Analyzing upstream source trees" },
-    { id: "tester", role: "tester", status: "idle", tasksCompleted: 22, currentTask: "Standing by for Vitest run" },
+    {
+      id: "orchestrator",
+      role: "orchestrator",
+      status: "active",
+      tasksCompleted: 14,
+      currentTask: "Dispatching batch extraction and verification",
+    },
+    {
+      id: "coder",
+      role: "coder",
+      status: "active",
+      tasksCompleted: 28,
+      currentTask: "Implementing gateway routes and UI controls",
+      handoffTarget: "reviewer",
+    },
+    {
+      id: "reviewer",
+      role: "reviewer",
+      status: "idle",
+      tasksCompleted: 27,
+      currentTask: "Waiting for pull request diff audit",
+    },
+    {
+      id: "researcher",
+      role: "researcher",
+      status: "idle",
+      tasksCompleted: 19,
+      currentTask: "Analyzing upstream source trees",
+    },
+    {
+      id: "tester",
+      role: "tester",
+      status: "idle",
+      tasksCompleted: 22,
+      currentTask: "Standing by for Vitest run",
+    },
   ]);
 
   const [swarmEdges] = useState<SwarmEdge[]>([
@@ -169,7 +217,12 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Agent War Room & Autonomous Cockpit" widthClass="sm:max-w-3xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Agent War Room & Autonomous Cockpit"
+      widthClass="sm:max-w-3xl"
+    >
       <div className="flex flex-col gap-4">
         {/* Navigation Tabs */}
         <div className="flex border-b border-gray-200 dark:border-gray-800 gap-2">
@@ -267,8 +320,8 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                           turn.status === "completed"
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             : turn.status === "running"
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                            : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                              : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
                         }`}
                       >
                         {turn.status}
@@ -314,8 +367,16 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                     </span>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                    <span>Queue Depth: <strong className="text-gray-700 dark:text-gray-200">{mb.queueDepth}</strong></span>
-                    <span>Replies: <strong className="text-gray-700 dark:text-gray-200">{mb.pendingReplies}</strong></span>
+                    <span>
+                      Queue Depth:{" "}
+                      <strong className="text-gray-700 dark:text-gray-200">{mb.queueDepth}</strong>
+                    </span>
+                    <span>
+                      Replies:{" "}
+                      <strong className="text-gray-700 dark:text-gray-200">
+                        {mb.pendingReplies}
+                      </strong>
+                    </span>
                   </div>
                 </div>
               ))}
@@ -361,7 +422,9 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-                <div className="text-[11px] text-gray-500 dark:text-gray-400">Consecutive Errors</div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Consecutive Errors
+                </div>
                 <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
                   {consecutiveErrors} / 10
                 </div>
@@ -385,9 +448,12 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
 
             <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col gap-2">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-gray-700 dark:text-gray-300">Phase: {progressPhase}</span>
+                <span className="font-semibold text-gray-700 dark:text-gray-300">
+                  Phase: {progressPhase}
+                </span>
                 <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                  {filesCompleted} / {totalFiles} ({Math.round((filesCompleted / totalFiles) * 100)}%)
+                  {filesCompleted} / {totalFiles} ({Math.round((filesCompleted / totalFiles) * 100)}
+                  %)
                 </span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
@@ -397,7 +463,10 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                 />
               </div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between mt-1">
-                <span>Active File: <code className="font-mono text-gray-700 dark:text-gray-300">{currentFile}</code></span>
+                <span>
+                  Active File:{" "}
+                  <code className="font-mono text-gray-700 dark:text-gray-300">{currentFile}</code>
+                </span>
                 <span>Est. remaining: ~4 mins</span>
               </div>
             </div>
@@ -425,7 +494,8 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="text-xs text-gray-600 dark:text-gray-400">
-                Dynamic Context Pruning folds earlier conversation turns into structured memory anchors.
+                Dynamic Context Pruning folds earlier conversation turns into structured memory
+                anchors.
               </div>
               <Button size="sm" variant="secondary" onClick={handleManualCompact}>
                 Compact History Now
@@ -434,7 +504,9 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
 
             <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto pr-1">
               {anchors.map((anc) => {
-                const savingsPct = Math.round(((anc.preTokens - anc.postTokens) / anc.preTokens) * 100);
+                const savingsPct = Math.round(
+                  ((anc.preTokens - anc.postTokens) / anc.preTokens) * 100,
+                );
                 return (
                   <div
                     key={anc.anchorId}
@@ -454,11 +526,34 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                       </span>
                     </div>
                     <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                      <span>Pre: <strong className="text-gray-700 dark:text-gray-300">{anc.preTokens.toLocaleString()}</strong> tok</span>
-                      <span>Post: <strong className="text-gray-700 dark:text-gray-300">{anc.postTokens.toLocaleString()}</strong> tok</span>
-                      <span>Folded: <strong className="text-gray-700 dark:text-gray-300">{anc.foldedCount}</strong> turns</span>
-                      <span>Phase: <code className="text-cyan-600 dark:text-cyan-400">{anc.phase}</code></span>
-                      <span>Trigger: <code className="text-gray-600 dark:text-gray-400">{anc.trigger}</code></span>
+                      <span>
+                        Pre:{" "}
+                        <strong className="text-gray-700 dark:text-gray-300">
+                          {anc.preTokens.toLocaleString()}
+                        </strong>{" "}
+                        tok
+                      </span>
+                      <span>
+                        Post:{" "}
+                        <strong className="text-gray-700 dark:text-gray-300">
+                          {anc.postTokens.toLocaleString()}
+                        </strong>{" "}
+                        tok
+                      </span>
+                      <span>
+                        Folded:{" "}
+                        <strong className="text-gray-700 dark:text-gray-300">
+                          {anc.foldedCount}
+                        </strong>{" "}
+                        turns
+                      </span>
+                      <span>
+                        Phase: <code className="text-cyan-600 dark:text-cyan-400">{anc.phase}</code>
+                      </span>
+                      <span>
+                        Trigger:{" "}
+                        <code className="text-gray-600 dark:text-gray-400">{anc.trigger}</code>
+                      </span>
                     </div>
                   </div>
                 );
@@ -495,10 +590,10 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                         node.status === "active"
                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                           : node.status === "handoff"
-                          ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
-                          : node.status === "waiting_approval"
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                          : "bg-gray-100 dark:bg-gray-800 text-gray-500"
+                            ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                            : node.status === "waiting_approval"
+                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                              : "bg-gray-100 dark:bg-gray-800 text-gray-500"
                       }`}
                     >
                       {node.status.toUpperCase()}
@@ -512,7 +607,12 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                   )}
 
                   <div className="flex items-center justify-between text-[11px] text-gray-400 border-t border-gray-100 dark:border-gray-800/80 pt-1.5 mt-0.5">
-                    <span>Tasks Completed: <strong className="text-gray-700 dark:text-gray-200">{node.tasksCompleted}</strong></span>
+                    <span>
+                      Tasks Completed:{" "}
+                      <strong className="text-gray-700 dark:text-gray-200">
+                        {node.tasksCompleted}
+                      </strong>
+                    </span>
                     {node.handoffTarget && (
                       <span className="text-cyan-600 dark:text-cyan-400 font-mono">
                         → Handoff to: {node.handoffTarget}
@@ -534,9 +634,13 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
                     key={idx}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-xs font-mono"
                   >
-                    <span className="font-semibold text-gray-700 dark:text-gray-300">{edge.from}</span>
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      {edge.from}
+                    </span>
                     <span className="text-gray-400">→</span>
-                    <span className="font-semibold text-cyan-600 dark:text-cyan-400">{edge.to}</span>
+                    <span className="font-semibold text-cyan-600 dark:text-cyan-400">
+                      {edge.to}
+                    </span>
                     <span className="text-[10px] px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
                       {edge.kind}
                     </span>

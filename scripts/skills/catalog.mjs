@@ -16,7 +16,11 @@ import {
   stableStringify,
 } from "./lib.mjs";
 
-const valueArg = (prefix) => process.argv.slice(2).find((arg) => arg.startsWith(`${prefix}=`))?.slice(prefix.length + 1);
+const valueArg = (prefix) =>
+  process.argv
+    .slice(2)
+    .find((arg) => arg.startsWith(`${prefix}=`))
+    ?.slice(prefix.length + 1);
 const root = path.resolve(valueArg("--root") ?? DEFAULT_SKILL_ROOT);
 const jsonOut = valueArg("--json");
 const markdownOut = valueArg("--markdown");
@@ -37,7 +41,8 @@ for (const name of await listSkillDirectories(root)) {
     continue;
   }
   if (!record.metadata) continue;
-  const description = typeof record.metadata.description === "string" ? record.metadata.description.trim() : "";
+  const description =
+    typeof record.metadata.description === "string" ? record.metadata.description.trim() : "";
   const tags = Array.isArray(record.metadata.tags)
     ? record.metadata.tags.filter((tag) => typeof tag === "string")
     : [];
@@ -58,8 +63,12 @@ for (const name of await listSkillDirectories(root)) {
 
 const countBy = (key) =>
   Object.fromEntries(
-    [...skills.reduce((map, skill) => map.set(skill[key], (map.get(skill[key]) ?? 0) + 1), new Map())]
-      .sort(([a], [b]) => a.localeCompare(b)),
+    [
+      ...skills.reduce(
+        (map, skill) => map.set(skill[key], (map.get(skill[key]) ?? 0) + 1),
+        new Map(),
+      ),
+    ].sort(([a], [b]) => a.localeCompare(b)),
   );
 
 const bodyGroups = new Map();
@@ -110,8 +119,10 @@ const report = {
       "description evidence",
     ],
     suffixSemantics: {
-      automation: "named external service automation; require the service/product token for natural-language matching",
-      bilingual: "bilingual specialist variant; prefer only when bilingual/localized expertise is relevant",
+      automation:
+        "named external service automation; require the service/product token for natural-language matching",
+      bilingual:
+        "bilingual specialist variant; prefer only when bilingual/localized expertise is relevant",
       patterns: "reference/design-pattern guidance rather than direct execution",
       runner: "execution-oriented workflow",
       review: "inspection/audit workflow",
@@ -160,9 +171,13 @@ const markdown = [
   "",
   "## Ambiguous single-word names",
   "",
-  ambiguousSingleWord.length ? ambiguousSingleWord.map((name) => `- ${name}`).join("\n") : "_None detected._",
+  ambiguousSingleWord.length
+    ? ambiguousSingleWord.map((name) => `- ${name}`).join("\n")
+    : "_None detected._",
   "",
-].flat().join("\n");
+]
+  .flat()
+  .join("\n");
 
 if (markdownOut) {
   const out = path.resolve(markdownOut);

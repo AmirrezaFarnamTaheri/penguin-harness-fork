@@ -9,7 +9,7 @@ import {
 describe("isTruncatedJSON", () => {
   it("returns false for valid complete JSON", () => {
     expect(isTruncatedJSON('{"name": "test", "value": 123}')).toBe(false);
-    expect(isTruncatedJSON('[1, 2, 3]')).toBe(false);
+    expect(isTruncatedJSON("[1, 2, 3]")).toBe(false);
     expect(isTruncatedJSON('"simple string"')).toBe(false);
     expect(isTruncatedJSON("")).toBe(false);
   });

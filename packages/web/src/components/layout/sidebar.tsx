@@ -1166,7 +1166,7 @@ export function Sidebar({
     saveWorkspaceRegistry(currentProjectId, next);
   };
 
-   /**
+  /**
    * New Workspace: register the browsed pick so it surfaces as a group immediately, Sessions
    * or not. An empty registered group is appended and nothing pins or orders it yet, so it
    * lands last — turn to the page that now holds it, or to the page of the group that was
@@ -1575,7 +1575,7 @@ export function Sidebar({
           ),
         );
 
-   /**
+  /**
    * Page entries of the collapsible nav group. Development mode: Agents → Benchmark, driven by
    * the NAV_GROUP_KEYS manifest minus the entries this user's role cannot reach. Company
    * mode: the organization's six pages (COMPANY_NAV_KEYS) — channels are not among them,

@@ -72,7 +72,9 @@ export interface SignalChainManagerOptions {
 }
 
 function isTerminalAction(status: ActionStatus): boolean {
-  return status === "succeeded" || status === "failed" || status === "cancelled" || status === "skipped";
+  return (
+    status === "succeeded" || status === "failed" || status === "cancelled" || status === "skipped"
+  );
 }
 
 export class SignalChainManager {
@@ -104,7 +106,8 @@ export class SignalChainManager {
     payload?: Record<string, unknown>;
     scope?: SignalScope;
   }): SourceNode {
-    const sourceId = input.sourceId ?? `src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const sourceId =
+      input.sourceId ?? `src_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.assertNodeIdAvailable(sourceId);
     const chainId = `chain_${sourceId}`;
 
@@ -164,7 +167,8 @@ export class SignalChainManager {
       throw new Error(`Exceeded maximum causal depth of ${this.maxDepth} (current: ${nextDepth})`);
     }
 
-    const signalId = input.signalId ?? `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const signalId =
+      input.signalId ?? `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.assertNodeIdAvailable(signalId);
     const chain: SignalChainRef = {
       chainId: source.chain.chainId,
@@ -209,7 +213,8 @@ export class SignalChainManager {
       throw new Error("maxAttempts must be a positive integer");
     }
 
-    const actionId = input.actionId ?? `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const actionId =
+      input.actionId ?? `act_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     this.assertNodeIdAvailable(actionId);
     const chain: SignalChainRef = {
       chainId: signal.chain.chainId,
@@ -275,7 +280,7 @@ export class SignalChainManager {
       status: "succeeded" | "failed" | "cancelled" | "skipped";
       output?: Record<string, unknown>;
       error?: string;
-    }
+    },
   ): ActionNode {
     const action = this.actions.get(actionId);
     if (!action) {
@@ -292,7 +297,10 @@ export class SignalChainManager {
     if (action.attempts.length > 1 && result.attemptNumber === undefined) {
       throw new Error(`attemptNumber is required when completing a retried action '${actionId}'`);
     }
-    if (result.attemptNumber !== undefined && result.attemptNumber !== currentAttempt.attemptNumber) {
+    if (
+      result.attemptNumber !== undefined &&
+      result.attemptNumber !== currentAttempt.attemptNumber
+    ) {
       throw new Error(
         `Attempt ${result.attemptNumber} is not active for action '${actionId}' (active: ${currentAttempt.attemptNumber})`,
       );
@@ -348,7 +356,10 @@ export class SignalChainManager {
       }
 
       if ("actionId" in node) {
-        trace.unshift({ ...node, attempts: node.attempts.map((attempt: ExecutionAttempt) => ({ ...attempt })) });
+        trace.unshift({
+          ...node,
+          attempts: node.attempts.map((attempt: ExecutionAttempt) => ({ ...attempt })),
+        });
       } else {
         trace.unshift({ ...node });
       }
@@ -362,7 +373,9 @@ export class SignalChainManager {
 
   public getAction(actionId: string): ActionNode | undefined {
     const action = this.actions.get(actionId);
-    return action ? { ...action, attempts: action.attempts.map((attempt) => ({ ...attempt })) } : undefined;
+    return action
+      ? { ...action, attempts: action.attempts.map((attempt) => ({ ...attempt })) }
+      : undefined;
   }
 
   public listActions(filter?: { status?: ActionStatus; actionType?: string }): ActionNode[] {

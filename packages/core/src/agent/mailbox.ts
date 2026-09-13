@@ -175,7 +175,8 @@ export class MailboxKernel {
     const lease = this.leases.get(name) ?? null;
     const now = Date.now();
 
-    if (lease && lease.leaseState === "acquired" && lease.expiresAt <= now) lease.leaseState = "expired";
+    if (lease && lease.leaseState === "acquired" && lease.expiresAt <= now)
+      lease.leaseState = "expired";
 
     const pendingReplyCount = queue.filter(
       (message) => message.eventType === "reply" || message.eventType === "response",
@@ -269,7 +270,9 @@ export class EventBroker {
     const previous = this.deliveryTails.get(sub) ?? Promise.resolve();
     this.pendingBuffers.set(sub, (this.pendingBuffers.get(sub) ?? 0) + 1);
 
-    const execute = previous.catch(() => undefined).then(() => Promise.resolve().then(() => sub(event)));
+    const execute = previous
+      .catch(() => undefined)
+      .then(() => Promise.resolve().then(() => sub(event)));
     const orderedTail = execute
       .finally(() => {
         const depth = this.pendingBuffers.get(sub) ?? 1;
@@ -278,13 +281,19 @@ export class EventBroker {
       .then(() => undefined);
 
     // Ordering follows the actual callback lifetime, not the caller's observation deadline.
-    this.deliveryTails.set(sub, orderedTail.catch(() => undefined));
+    this.deliveryTails.set(
+      sub,
+      orderedTail.catch(() => undefined),
+    );
 
     if (options.timeoutMs === undefined) return orderedTail;
 
     const deadline = new Promise<void>((_, reject) => {
       const timer = setTimeout(
-        () => reject(new Error(`Event delivery timed out after ${options.timeoutMs}ms on ${event.type}`)),
+        () =>
+          reject(
+            new Error(`Event delivery timed out after ${options.timeoutMs}ms on ${event.type}`),
+          ),
         options.timeoutMs,
       );
       timer.unref?.();
@@ -345,12 +354,16 @@ export class EventBroker {
     });
 
     const results = await Promise.allSettled(deliveries);
-    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    const failures = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
     if (failures.length > 0) {
       const details = failures.map((failure) =>
         failure.reason instanceof Error ? failure.reason.message : String(failure.reason),
       );
-      throw new Error(`Critical event '${type}' failed for ${failures.length} subscriber(s): ${details.join("; ")}`);
+      throw new Error(
+        `Critical event '${type}' failed for ${failures.length} subscriber(s): ${details.join("; ")}`,
+      );
     }
   }
 }

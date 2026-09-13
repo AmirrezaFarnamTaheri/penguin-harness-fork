@@ -21,8 +21,14 @@ describe("RepeatToolGuard", () => {
     });
 
     it("handles arrays while preserving array order and sorting object elements", () => {
-      const arr1 = [{ beta: 1, alpha: 2 }, { delta: 3, gamma: 4 }];
-      const arr2 = [{ alpha: 2, beta: 1 }, { gamma: 4, delta: 3 }];
+      const arr1 = [
+        { beta: 1, alpha: 2 },
+        { delta: 3, gamma: 4 },
+      ];
+      const arr2 = [
+        { alpha: 2, beta: 1 },
+        { gamma: 4, delta: 3 },
+      ];
 
       expect(canonicalizeArguments(arr1)).toBe(canonicalizeArguments(arr2));
     });

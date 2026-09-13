@@ -7,12 +7,7 @@
  */
 
 export type VerificationKind =
-  | "test_suite"
-  | "typecheck"
-  | "file_exists"
-  | "git_status"
-  | "code_review"
-  | "user_approval";
+  "test_suite" | "typecheck" | "file_exists" | "git_status" | "code_review" | "user_approval";
 
 export interface CompletionVerificationItem {
   id: string;
@@ -66,11 +61,7 @@ export class CompletionTracker {
     });
   }
 
-  public recordEvidence(
-    id: string,
-    passed: boolean,
-    evidence: string,
-  ): CompletionVerificationItem {
+  public recordEvidence(id: string, passed: boolean, evidence: string): CompletionVerificationItem {
     const existing = this.items.get(id);
     if (!existing) {
       throw new Error(`Verification requirement "${id}" is not registered`);

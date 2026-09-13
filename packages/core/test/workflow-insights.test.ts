@@ -75,9 +75,7 @@ describe("workflow-insights", () => {
       turns: [
         { timestamp: "2026-09-11T11:00:00Z", assistantCalls: [] },
         {
-          assistantCalls: [
-            { timestamp: "2026-09-11T11:04:00Z", tools: ["replace_file_content"] },
-          ],
+          assistantCalls: [{ timestamp: "2026-09-11T11:04:00Z", tools: ["replace_file_content"] }],
         },
       ],
     };

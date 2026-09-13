@@ -23,7 +23,9 @@ function bumpPatch(version) {
 }
 
 function runtimeBlock(aliases) {
-  const lines = Object.entries(aliases).map(([alias, target]) => `  ${JSON.stringify(alias)}: ${JSON.stringify(target)},`);
+  const lines = Object.entries(aliases).map(
+    ([alias, target]) => `  ${JSON.stringify(alias)}: ${JSON.stringify(target)},`,
+  );
   return `export const DEFAULT_SKILL_ALIASES: Record<string, string> = {\n${lines.join("\n")}\n};`;
 }
 
@@ -53,7 +55,8 @@ const nextManifestText = stableStringify(nextManifest);
 
 const currentRuntime = await fs.readFile(runtimeFile, "utf8");
 const blockPattern = /export const DEFAULT_SKILL_ALIASES: Record<string, string> = \{[\s\S]*?\n\};/;
-if (!blockPattern.test(currentRuntime)) throw new Error(`Could not locate DEFAULT_SKILL_ALIASES in ${runtimeFile}`);
+if (!blockPattern.test(currentRuntime))
+  throw new Error(`Could not locate DEFAULT_SKILL_ALIASES in ${runtimeFile}`);
 const nextRuntime = currentRuntime.replace(blockPattern, runtimeBlock(aliases));
 
 const changedManifest = currentManifestText !== nextManifestText;
@@ -67,7 +70,8 @@ if (!write) {
   if (removed.length > 0) {
     for (const item of removed) console.error(`Dangling alias ${item.alias} -> ${item.target}`);
   }
-  if (changedRuntime) console.error("Runtime DEFAULT_SKILL_ALIASES differs from the declarative alias manifest.");
+  if (changedRuntime)
+    console.error("Runtime DEFAULT_SKILL_ALIASES differs from the declarative alias manifest.");
   process.exitCode = 1;
 } else {
   if (changedManifest) await fs.writeFile(aliasesFile, nextManifestText);

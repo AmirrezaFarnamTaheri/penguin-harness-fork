@@ -35,7 +35,10 @@ function replaceFrontmatterName(raw, oldName, newName) {
   if (!match) throw new Error(`${oldName}: missing frontmatter`);
   const yaml = match[1];
   const replaced = yaml.replace(
-    new RegExp(`^name\\s*:\\s*["']?${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*$`, "m"),
+    new RegExp(
+      `^name\\s*:\\s*["']?${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*$`,
+      "m",
+    ),
     `name: ${newName}`,
   );
   if (replaced === yaml) throw new Error(`${oldName}: could not replace frontmatter name`);
@@ -50,7 +53,8 @@ async function rewriteSkillLocalPaths(dir, oldName, newName) {
       await rewriteSkillLocalPaths(full, oldName, newName);
       continue;
     }
-    if (!entry.isFile() || !/\.(?:md|txt|json|ya?ml|toml|mjs|cjs|js|ts|tsx|sh)$/i.test(entry.name)) continue;
+    if (!entry.isFile() || !/\.(?:md|txt|json|ya?ml|toml|mjs|cjs|js|ts|tsx|sh)$/i.test(entry.name))
+      continue;
     let content;
     try {
       content = await fs.readFile(full, "utf8");
@@ -87,7 +91,9 @@ for (const name of names) {
     normalizeBilingualExperts &&
     name.endsWith("-expert") &&
     typeof metadata.description === "string" &&
-    /(?:\bPanduan\b|\bBahasa Indonesia\b|English and Indonesian|\/\s*Ahli\b)/i.test(metadata.description)
+    /(?:\bPanduan\b|\bBahasa Indonesia\b|English and Indonesian|\/\s*Ahli\b)/i.test(
+      metadata.description,
+    )
   ) {
     target = `${name.slice(0, -"-expert".length)}-bilingual`;
     reason = "description declares English/Indonesian bilingual specialization";
@@ -98,7 +104,9 @@ for (const name of names) {
     throw new Error(`${name}: proposed target '${target}' is not a valid skill name`);
   }
   if (existing.has(target)) {
-    throw new Error(`${name}: proposed target '${target}' already exists; review this overlap manually`);
+    throw new Error(
+      `${name}: proposed target '${target}' already exists; review this overlap manually`,
+    );
   }
   existing.delete(name);
   existing.add(target);
@@ -140,10 +148,14 @@ const nextManifest = {
   aliases,
 };
 await fs.writeFile(DEFAULT_ALIASES_FILE, stableStringify(nextManifest));
-execFileSync(process.execPath, [path.join(REPO_ROOT, "scripts", "skills", "sync-aliases.mjs"), "--write"], {
-  cwd: REPO_ROOT,
-  stdio: "inherit",
-});
+execFileSync(
+  process.execPath,
+  [path.join(REPO_ROOT, "scripts", "skills", "sync-aliases.mjs"), "--write"],
+  {
+    cwd: REPO_ROOT,
+    stdio: "inherit",
+  },
+);
 
 console.log(`Renamed ${plan.length} skill(s):`);
 for (const item of plan) console.log(`- ${item.oldName} -> ${item.newName}: ${item.reason}`);

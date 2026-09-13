@@ -17,13 +17,7 @@ export type CodeNodeKind =
   | "component";
 
 export type CodeEdgeKind =
-  | "contains"
-  | "calls"
-  | "imports"
-  | "exports"
-  | "extends"
-  | "implements"
-  | "references";
+  "contains" | "calls" | "imports" | "exports" | "extends" | "implements" | "references";
 
 export interface CodeGraphNode {
   id: string;
@@ -105,17 +99,15 @@ export class CodeGraph {
 
   public getOutgoingEdges(nodeId: string, kinds?: CodeEdgeKind[]): CodeGraphEdge[] {
     const list = this.outgoing.get(nodeId) ?? [];
-    const selected = !kinds || kinds.length === 0
-      ? list
-      : list.filter((edge) => new Set(kinds).has(edge.kind));
+    const selected =
+      !kinds || kinds.length === 0 ? list : list.filter((edge) => new Set(kinds).has(edge.kind));
     return selected.map(cloneEdge);
   }
 
   public getIncomingEdges(nodeId: string, kinds?: CodeEdgeKind[]): CodeGraphEdge[] {
     const list = this.incoming.get(nodeId) ?? [];
-    const selected = !kinds || kinds.length === 0
-      ? list
-      : list.filter((edge) => new Set(kinds).has(edge.kind));
+    const selected =
+      !kinds || kinds.length === 0 ? list : list.filter((edge) => new Set(kinds).has(edge.kind));
     return selected.map(cloneEdge);
   }
 
@@ -213,11 +205,12 @@ export class CodeGraph {
       const depthB = bestDepth.get(b.id) ?? Number.POSITIVE_INFINITY;
       return depthA - depthB || a.id.localeCompare(b.id);
     });
-    const orderedEdges = [...impactedEdges.values()].sort((a, b) =>
-      a.source.localeCompare(b.source) ||
-      a.target.localeCompare(b.target) ||
-      a.kind.localeCompare(b.kind) ||
-      (a.line ?? 0) - (b.line ?? 0),
+    const orderedEdges = [...impactedEdges.values()].sort(
+      (a, b) =>
+        a.source.localeCompare(b.source) ||
+        a.target.localeCompare(b.target) ||
+        a.kind.localeCompare(b.kind) ||
+        (a.line ?? 0) - (b.line ?? 0),
     );
 
     return { nodes: orderedNodes, edges: orderedEdges };

@@ -134,14 +134,14 @@ export class FileContextTracker {
     if (hasMonopoly) {
       for (const dom of dominatingFiles) {
         recommendations.push(
-          `File '${dom.filePath}' occupies ${dom.percentageOfContext}% of prompt context (${dom.estimatedTokens} tokens). Consider replacing full file content with symbol summary or diff.`
+          `File '${dom.filePath}' occupies ${dom.percentageOfContext}% of prompt context (${dom.estimatedTokens} tokens). Consider replacing full file content with symbol summary or diff.`,
         );
       }
     }
 
     if (capacityUsedPct > 75) {
       recommendations.push(
-        `Context window is ${Math.round(capacityUsedPct)}% full. Compaction or memory anchor creation is advised.`
+        `Context window is ${Math.round(capacityUsedPct)}% full. Compaction or memory anchor creation is advised.`,
       );
     }
 

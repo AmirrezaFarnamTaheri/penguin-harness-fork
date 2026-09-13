@@ -33,7 +33,8 @@ const ALLOWED_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
 
 function decodeCombos(raw: string): ModelCombo[] {
   const parsed: unknown = JSON.parse(raw);
-  if (!Array.isArray(parsed)) throw new Error("Gateway combo persistence file must contain a JSON array.");
+  if (!Array.isArray(parsed))
+    throw new Error("Gateway combo persistence file must contain a JSON array.");
   return parsed as ModelCombo[];
 }
 
@@ -64,7 +65,13 @@ export function isSafeSegment(segment: string): boolean {
   if (!segment || segment.length === 0 || segment.length > 128) return false;
   if (segment === "." || segment === "..") return false;
   if (/[\x00-\x1F\x7F\\?#]/.test(segment)) return false;
-  if (segment.includes("..") || segment.includes("/") || segment.includes("%2f") || segment.includes("%2F")) return false;
+  if (
+    segment.includes("..") ||
+    segment.includes("/") ||
+    segment.includes("%2f") ||
+    segment.includes("%2F")
+  )
+    return false;
   return /^[a-zA-Z0-9_\-\.:@]+$/.test(segment);
 }
 
@@ -114,12 +121,23 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       if (!Number.isInteger(maxRetries) || (maxRetries as number) < 0) {
         throw badRequest(`targets[${index}].maxRetries must be a non-negative integer.`);
       }
-      if (timeoutMs !== undefined && (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+      if (
+        timeoutMs !== undefined &&
+        (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
+      ) {
         throw badRequest(`targets[${index}].timeoutMs must be a positive finite number.`);
       }
       return {
-        provider: requireString(target, "provider", { minLen: 1, maxLen: 64, label: `targets[${index}].provider` }),
-        modelId: requireString(target, "modelId", { minLen: 1, maxLen: 200, label: `targets[${index}].modelId` }),
+        provider: requireString(target, "provider", {
+          minLen: 1,
+          maxLen: 64,
+          label: `targets[${index}].provider`,
+        }),
+        modelId: requireString(target, "modelId", {
+          minLen: 1,
+          maxLen: 200,
+          label: `targets[${index}].modelId`,
+        }),
         label: typeof target.label === "string" ? target.label : undefined,
         maxRetries: maxRetries as number,
         timeoutMs: timeoutMs as number | undefined,
@@ -128,7 +146,10 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
 
     const fallbackTriggers: FallbackTrigger[] = Array.isArray(body.fallbackTriggers)
       ? body.fallbackTriggers.map((value, index) => {
-          if (typeof value !== "string" || !ALLOWED_FALLBACK_TRIGGERS.includes(value as FallbackTrigger)) {
+          if (
+            typeof value !== "string" ||
+            !ALLOWED_FALLBACK_TRIGGERS.includes(value as FallbackTrigger)
+          ) {
             throw badRequest(`fallbackTriggers[${index}] is not a supported fallback reason.`);
           }
           return value as FallbackTrigger;
@@ -223,7 +244,9 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     const body = await readJson(c);
     const model = requireString(body, "model", { minLen: 1, maxLen: 256, label: "model" });
     if (!isSafeResourceName(model)) {
-      throw badRequest(`Invalid model resource name: "${model}". Prohibited characters or path traversal pattern.`);
+      throw badRequest(
+        `Invalid model resource name: "${model}". Prohibited characters or path traversal pattern.`,
+      );
     }
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       throw badRequest("messages must be a non-empty array of chat message objects.");
@@ -231,7 +254,8 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json(
       {
         error: {
-          message: "Direct chat completion gateway endpoint is not supported in this runtime; use session execution.",
+          message:
+            "Direct chat completion gateway endpoint is not supported in this runtime; use session execution.",
           type: "not_implemented",
           code: 501,
         },
@@ -244,7 +268,11 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-    const approvalId = requireString(body, "approvalId", { minLen: 1, maxLen: 128, label: "approvalId" });
+    const approvalId = requireString(body, "approvalId", {
+      minLen: 1,
+      maxLen: 128,
+      label: "approvalId",
+    });
     const action = requireString(body, "action", { minLen: 1, maxLen: 32, label: "action" });
     if (action !== "approve" && action !== "reject") {
       throw badRequest('action must be either "approve" or "reject".');
@@ -254,7 +282,10 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     let toolCallId: string;
     if (typeof body.sessionId === "string" && body.sessionId.length > 0) {
       sessionId = body.sessionId;
-      toolCallId = typeof body.toolCallId === "string" && body.toolCallId.length > 0 ? body.toolCallId : approvalId;
+      toolCallId =
+        typeof body.toolCallId === "string" && body.toolCallId.length > 0
+          ? body.toolCallId
+          : approvalId;
     } else if (approvalId.includes(":")) {
       const separator = approvalId.indexOf(":");
       sessionId = approvalId.slice(0, separator);
@@ -263,7 +294,9 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       throw notFound("Approval does not exist or is not accessible in this project.");
     }
     if (!sessionId || !toolCallId || sessionId.length > 128 || toolCallId.length > 128) {
-      throw badRequest("sessionId and toolCallId must be non-empty identifiers no longer than 128 characters.");
+      throw badRequest(
+        "sessionId and toolCallId must be non-empty identifiers no longer than 128 characters.",
+      );
     }
 
     const session = deps.sessionsRepo.findById(sessionId);

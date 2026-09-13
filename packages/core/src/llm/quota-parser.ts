@@ -105,11 +105,12 @@ function extractCode(input: unknown): number | string | undefined {
 }
 
 export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
-  const text = typeof input === "string"
-    ? input
-    : input instanceof Error
-      ? `${input.name}: ${input.message}`
-      : JSON.stringify(input ?? "");
+  const text =
+    typeof input === "string"
+      ? input
+      : input instanceof Error
+        ? `${input.name}: ${input.message}`
+        : JSON.stringify(input ?? "");
   const code = extractCode(input);
   const isAuth = AUTH_PATTERNS.some((pattern) => pattern.test(text));
   const isQuota = QUOTA_PATTERNS.some((pattern) => pattern.test(text));

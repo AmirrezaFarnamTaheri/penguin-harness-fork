@@ -582,7 +582,10 @@ export class WeightedKeyRotator {
 
     for (const item of keys) {
       const keyStr = typeof item === "string" ? item.trim() : item.key.trim();
-      const weight = typeof item === "object" && typeof item.weight === "number" ? Math.max(1, item.weight) : 100;
+      const weight =
+        typeof item === "object" && typeof item.weight === "number"
+          ? Math.max(1, item.weight)
+          : 100;
       if (keyStr.length > 0) {
         this.keys.push({
           key: keyStr,
@@ -635,7 +638,10 @@ export class WeightedKeyRotator {
     if (available.length === 0) {
       const nonFailed = this.workingKeys;
       if (nonFailed.length === 0) return undefined;
-      return nonFailed.reduce((min, k) => (k.cooldownUntil < min.cooldownUntil ? k : min), nonFailed[0]!).key;
+      return nonFailed.reduce(
+        (min, k) => (k.cooldownUntil < min.cooldownUntil ? k : min),
+        nonFailed[0]!,
+      ).key;
     }
 
     if (available.length === 1) {

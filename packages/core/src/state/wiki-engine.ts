@@ -145,14 +145,17 @@ export class WikiEngine {
 
     const typeStr = String(metadata.type ?? "unknown").toLowerCase();
     const type: WikiNodeType =
-      typeStr === "source" || typeStr === "entity" || typeStr === "concept" || typeStr === "synthesis"
+      typeStr === "source" ||
+      typeStr === "entity" ||
+      typeStr === "concept" ||
+      typeStr === "synthesis"
         ? typeStr
         : "unknown";
 
     const title =
       typeof metadata.title === "string" && metadata.title.trim()
         ? metadata.title.trim()
-        : normalizedId.split("/").pop() ?? normalizedId;
+        : (normalizedId.split("/").pop() ?? normalizedId);
 
     const tags = Array.isArray(metadata.tags)
       ? metadata.tags.map(String)
@@ -260,7 +263,10 @@ export class WikiEngine {
     };
   }
 
-  public search(query: string, options?: { maxResults?: number; minScore?: number }): WikiSearchMatch[] {
+  public search(
+    query: string,
+    options?: { maxResults?: number; minScore?: number },
+  ): WikiSearchMatch[] {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
@@ -361,14 +367,12 @@ export class WikiEngine {
       }
     }
 
-    return results
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxResults);
+    return results.sort((a, b) => b.score - a.score).slice(0, maxResults);
   }
 
   public getNeighbors(
     nodeId: string,
-    options?: { maxHops?: number; minConfidence?: number; bidirectional?: boolean }
+    options?: { maxHops?: number; minConfidence?: number; bidirectional?: boolean },
   ): WikiNode[] {
     const rootId = this.normalizeId(nodeId);
     if (!this.nodes.has(rootId)) return [];

@@ -1,11 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 
-export type TurnStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "interrupted"
-  | "failed";
+export type TurnStatus = "queued" | "running" | "completed" | "interrupted" | "failed";
 
 export function isTerminalStatus(status: TurnStatus): boolean {
   return status === "completed" || status === "interrupted" || status === "failed";
@@ -152,7 +147,7 @@ export class TurnLedger {
     payload?: unknown,
     newStatus?: TurnStatus,
     itemId?: string,
-    attemptId?: string
+    attemptId?: string,
   ): Envelope {
     if (!this.activeTurnId) {
       throw new Error("Cannot append event when no turn is active");

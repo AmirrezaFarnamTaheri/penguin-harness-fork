@@ -55,7 +55,8 @@ export function spendProjectIdentity(project: { projectId: string; projectPath?:
   label: string;
 } {
   const raw = (project.projectPath ?? "").trim().replace(/\\/g, "/");
-  const looksAbs = raw.startsWith("/") || /^[a-zA-Z]:\//.test(raw) || (raw.includes("/") && !raw.startsWith("-"));
+  const looksAbs =
+    raw.startsWith("/") || /^[a-zA-Z]:\//.test(raw) || (raw.includes("/") && !raw.startsWith("-"));
   if (looksAbs && raw) {
     const trimmed = raw.replace(/\/+$/, "");
     const parts = trimmed.split("/").filter(Boolean);
@@ -121,9 +122,7 @@ export function assignDistinguishingProjectLabels(
     let label = base;
     for (let n = 2; n <= parts.length; n++) {
       label = parts.slice(-n).join("/");
-      const clash = collisions.some(
-        (other) => pathParts(other.id).slice(-n).join("/") === label,
-      );
+      const clash = collisions.some((other) => pathParts(other.id).slice(-n).join("/") === label);
       if (!clash) break;
     }
     node.label = label;

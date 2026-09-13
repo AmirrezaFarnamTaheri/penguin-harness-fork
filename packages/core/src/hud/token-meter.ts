@@ -160,7 +160,7 @@ export class TokenMeter {
    * Record a new token usage event.
    */
   record(input: UsageEventInput, now?: number): UsageEvent {
-    const tsMs = input.tsMs ?? (now ?? Date.now());
+    const tsMs = input.tsMs ?? now ?? Date.now();
     const effectiveNow = now ?? tsMs;
     const event: UsageEvent = {
       tsMs,
@@ -262,17 +262,20 @@ export class TokenMeter {
   getTrace(windowMs: number, now: number = Date.now()): TraceBucket[] {
     const effectiveWindow = Math.max(MIN_MEASURABLE_WINDOW_MS, windowMs);
     const cutoff = now - effectiveWindow;
-    const groups = new Map<string, {
-      client?: string;
-      agent?: string;
-      model?: string;
-      provider?: string;
-      totalTokens: number;
-      inputTokens: number;
-      outputTokens: number;
-      messages: number;
-      costUsd: number;
-    }>();
+    const groups = new Map<
+      string,
+      {
+        client?: string;
+        agent?: string;
+        model?: string;
+        provider?: string;
+        totalTokens: number;
+        inputTokens: number;
+        outputTokens: number;
+        messages: number;
+        costUsd: number;
+      }
+    >();
 
     for (let i = this.events.length - 1; i >= 0; i--) {
       const ev = this.events[i]!;
@@ -313,7 +316,8 @@ export class TokenMeter {
     const results: TraceBucket[] = [];
 
     for (const [key, b] of groups.entries()) {
-      const tokensPerMinute = seconds > 0 ? Math.round(((b.outputTokens * 60) / seconds) * 10) / 10 : 0;
+      const tokensPerMinute =
+        seconds > 0 ? Math.round(((b.outputTokens * 60) / seconds) * 10) / 10 : 0;
       results.push({
         key,
         client: b.client,
@@ -393,17 +397,20 @@ export class TokenMeter {
    */
   foldDaily(customEvents?: UsageEvent[]): DailyContribution[] {
     const list = customEvents ?? this.events;
-    const days = new Map<string, {
-      inputTokens: number;
-      outputTokens: number;
-      reasoningTokens: number;
-      cacheReadTokens: number;
-      cacheWriteTokens: number;
-      totalTokens: number;
-      costUsd: number;
-      messageCount: number;
-      modelBreakdown: Record<string, number>;
-    }>();
+    const days = new Map<
+      string,
+      {
+        inputTokens: number;
+        outputTokens: number;
+        reasoningTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+        totalTokens: number;
+        costUsd: number;
+        messageCount: number;
+        modelBreakdown: Record<string, number>;
+      }
+    >();
 
     for (const ev of list) {
       const date = formatUtcDate(ev.tsMs);

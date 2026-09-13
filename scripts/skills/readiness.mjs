@@ -12,7 +12,11 @@ import {
   stableStringify,
 } from "./lib.mjs";
 
-const valueArg = (prefix) => process.argv.slice(2).find((arg) => arg.startsWith(`${prefix}=`))?.slice(prefix.length + 1);
+const valueArg = (prefix) =>
+  process.argv
+    .slice(2)
+    .find((arg) => arg.startsWith(`${prefix}=`))
+    ?.slice(prefix.length + 1);
 const root = path.resolve(valueArg("--root") ?? DEFAULT_SKILL_ROOT);
 const jsonOut = valueArg("--json");
 const markdownOut = valueArg("--markdown");
@@ -21,12 +25,17 @@ const EXTERNAL_RUNTIME_PATTERNS = [
   ["mcp", /\bMCP\b|mcp__[A-Za-z0-9_]+/],
   ["connector", /\bconnector\b|\bComposio\b|\bRube\b|\bMaton\b/i],
   ["browser-runtime", /\bPlaywright MCP\b|\bChrome DevTools Protocol\b|\bCDP\b|\buse_browser\b/i],
-  ["external-cli", /\brequires?\s+(?:the\s+)?[A-Za-z0-9_.-]+\s+CLI\b|\binstall\s+(?:the\s+)?[A-Za-z0-9_.-]+\s+CLI\b/i],
+  [
+    "external-cli",
+    /\brequires?\s+(?:the\s+)?[A-Za-z0-9_.-]+\s+CLI\b|\binstall\s+(?:the\s+)?[A-Za-z0-9_.-]+\s+CLI\b/i,
+  ],
   ["environment", /\b(?:environment variable|API key|access token|credentials?)\b/i],
 ];
 
-const REFERENCE_ONLY_PATTERN = /\b(?:catalog(?:ue)? entry|reference[- ]only|install the upstream bundle|upstream bundle)\b/i;
-const EXECUTABLE_PATTERN = /(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm;
+const REFERENCE_ONLY_PATTERN =
+  /\b(?:catalog(?:ue)? entry|reference[- ]only|install the upstream bundle|upstream bundle)\b/i;
+const EXECUTABLE_PATTERN =
+  /(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm;
 
 async function concreteMissing(record) {
   const missing = [];
@@ -73,7 +82,8 @@ for (const name of await listSkillDirectories(root)) {
     continue;
   }
 
-  const description = typeof record.metadata.description === "string" ? record.metadata.description : "";
+  const description =
+    typeof record.metadata.description === "string" ? record.metadata.description : "";
   const tags = Array.isArray(record.metadata.tags)
     ? record.metadata.tags.filter((tag) => typeof tag === "string")
     : [];
@@ -94,7 +104,8 @@ for (const name of await listSkillDirectories(root)) {
     reason = `${missingResources.length} referenced local resource(s) are absent.`;
   } else if (referenceOnly) {
     status = "reference-only";
-    reason = "Instructions identify this package as reference/catalogue material rather than a self-contained implementation.";
+    reason =
+      "Instructions identify this package as reference/catalogue material rather than a self-contained implementation.";
   } else if (externalRequirements.length > 0) {
     status = "requires-external-runtime";
     reason = `Requires external runtime/setup: ${externalRequirements.join(", ")}.`;
@@ -117,8 +128,9 @@ const groupedGaps = [...gapIndex.entries()]
   .sort((a, b) => b.count - a.count || a.resource.localeCompare(b.resource));
 
 const statusCounts = Object.fromEntries(
-  [...rows.reduce((map, row) => map.set(row.status, (map.get(row.status) ?? 0) + 1), new Map())]
-    .sort(([a], [b]) => a.localeCompare(b)),
+  [
+    ...rows.reduce((map, row) => map.set(row.status, (map.get(row.status) ?? 0) + 1), new Map()),
+  ].sort(([a], [b]) => a.localeCompare(b)),
 );
 
 const report = {
@@ -128,7 +140,8 @@ const report = {
     skills: rows.length,
     statuses: statusCounts,
     missingResourceKinds: groupedGaps.length,
-    skillsWithMissingResources: rows.filter((row) => row.status === "incomplete-local-resources").length,
+    skillsWithMissingResources: rows.filter((row) => row.status === "incomplete-local-resources")
+      .length,
   },
   groupedGaps,
   skills: rows.sort((a, b) => a.name.localeCompare(b.name)),
@@ -154,10 +167,17 @@ const markdown = [
   "## Most common missing concrete resources",
   "",
   ...(groupedGaps.length
-    ? groupedGaps.slice(0, 100).map((gap) => `- ${gap.resource}: ${gap.count} skill(s) — ${gap.skills.slice(0, 10).join(", ")}${gap.skills.length > 10 ? ", …" : ""}`)
+    ? groupedGaps
+        .slice(0, 100)
+        .map(
+          (gap) =>
+            `- ${gap.resource}: ${gap.count} skill(s) — ${gap.skills.slice(0, 10).join(", ")}${gap.skills.length > 10 ? ", …" : ""}`,
+        )
     : ["_None detected._"]),
   "",
-].flat().join("\n");
+]
+  .flat()
+  .join("\n");
 
 if (markdownOut) {
   const out = path.resolve(markdownOut);

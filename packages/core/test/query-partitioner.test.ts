@@ -5,10 +5,20 @@ describe("QueryPartitioner", () => {
   it("classifies specialist intent based on keywords", () => {
     const partitioner = new QueryPartitioner();
 
-    expect(partitioner.classifyIntent("Review system architecture and module boundaries")).toBe("software_architect");
-    expect(partitioner.classifyIntent("Audit authentication endpoint for OAuth token leak vulnerabilities")).toBe("security_auditor");
-    expect(partitioner.classifyIntent("Write comprehensive unit tests with vitest coverage")).toBe("qa_test_engineer");
-    expect(partitioner.classifyIntent("Update the user guide and API README")).toBe("technical_writer");
+    expect(partitioner.classifyIntent("Review system architecture and module boundaries")).toBe(
+      "software_architect",
+    );
+    expect(
+      partitioner.classifyIntent(
+        "Audit authentication endpoint for OAuth token leak vulnerabilities",
+      ),
+    ).toBe("security_auditor");
+    expect(partitioner.classifyIntent("Write comprehensive unit tests with vitest coverage")).toBe(
+      "qa_test_engineer",
+    );
+    expect(partitioner.classifyIntent("Update the user guide and API README")).toBe(
+      "technical_writer",
+    );
   });
 
   it("partitions multi-part queries into sub-queries and aggregates answers", () => {

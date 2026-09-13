@@ -11,10 +11,23 @@ export interface QuorumConsensusCardProps {
 }
 
 const STATUS_BADGES: Record<string, { label: string; class: string }> = {
-  settled: { label: "Ratified & Settled", class: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300" },
-  debating: { label: "Quorum Debating", class: "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300" },
-  proposed: { label: "Proposed", class: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300" },
-  refuted: { label: "Refuted & Blocked", class: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300" },
+  settled: {
+    label: "Ratified & Settled",
+    class:
+      "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300",
+  },
+  debating: {
+    label: "Quorum Debating",
+    class: "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300",
+  },
+  proposed: {
+    label: "Proposed",
+    class: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300",
+  },
+  refuted: {
+    label: "Refuted & Blocked",
+    class: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300",
+  },
 };
 
 export function QuorumConsensusCard({
@@ -47,7 +60,9 @@ export function QuorumConsensusCard({
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusBadge.class}`}>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusBadge.class}`}
+            >
               {statusBadge.label}
             </span>
             <span className="text-gray-400 font-mono text-[10px]">
@@ -74,7 +89,9 @@ export function QuorumConsensusCard({
             className="flex flex-col gap-0.5 rounded-md bg-gray-50 dark:bg-gray-800/60 p-2 border border-gray-200/60 dark:border-gray-800"
           >
             <div className="flex items-center justify-between text-[10px] font-mono text-gray-500 dark:text-gray-400">
-              <span className="font-semibold text-blue-600 dark:text-blue-400">✓ {sup.agentId}</span>
+              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                ✓ {sup.agentId}
+              </span>
               <span>{new Date(sup.timestamp).toLocaleTimeString()}</span>
             </div>
             {sup.grounds && (

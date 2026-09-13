@@ -65,8 +65,8 @@ export function TaskWatchdogIndicator({
               state === "healthy"
                 ? "animate-pulse bg-emerald-500"
                 : state === "warning"
-                ? "bg-amber-500"
-                : "bg-red-500"
+                  ? "bg-amber-500"
+                  : "bg-red-500"
             }`}
           />
           <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
@@ -139,7 +139,8 @@ export function TaskWatchdogIndicator({
       {/* Last Action Footer */}
       {lastAction && (
         <div className="truncate border-t border-gray-100 pt-1.5 text-[10px] text-gray-400 dark:border-gray-800/60 dark:text-gray-500">
-          Last action: <span className="font-mono text-gray-600 dark:text-gray-300">{lastAction}</span>
+          Last action:{" "}
+          <span className="font-mono text-gray-600 dark:text-gray-300">{lastAction}</span>
         </div>
       )}
     </div>

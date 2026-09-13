@@ -5,7 +5,11 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseSkillFrontmatter, PLUGIN_NAME_PATTERN, resolveSkillAlias } from "@prismshadow/penguin-core";
+import {
+  parseSkillFrontmatter,
+  PLUGIN_NAME_PATTERN,
+  resolveSkillAlias,
+} from "@prismshadow/penguin-core";
 import type { SkillMetadata } from "@prismshadow/penguin-core";
 import { HttpError } from "../http/errors.js";
 import {
@@ -86,10 +90,14 @@ function extractLocalReferences(markdown: string): string[] {
   };
 
   for (const match of markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) add(match[1]!);
-  for (const match of markdown.matchAll(/`((?:scripts|references|assets|_common|_templates)\/[^`\s]+)`/g)) {
+  for (const match of markdown.matchAll(
+    /`((?:scripts|references|assets|_common|_templates)\/[^`\s]+)`/g,
+  )) {
     add(match[1]!);
   }
-  for (const match of markdown.matchAll(/(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm)) {
+  for (const match of markdown.matchAll(
+    /(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm,
+  )) {
     add(match[1]!);
   }
   return [...refs].sort((a, b) => a.localeCompare(b));
@@ -107,7 +115,8 @@ async function hasCompleteLocalResourceClosure(dir: string, content: string): Pr
         typeof error === "object" &&
         error !== null &&
         "code" in error &&
-        ((error as { code?: string }).code === "ENOENT" || (error as { code?: string }).code === "ENOTDIR")
+        ((error as { code?: string }).code === "ENOENT" ||
+          (error as { code?: string }).code === "ENOTDIR")
       ) {
         return false;
       }

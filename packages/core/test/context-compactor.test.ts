@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  ContextCompactor,
-  type ConversationMessage,
-} from "../src/agent/context-compactor.js";
+import { ContextCompactor, type ConversationMessage } from "../src/agent/context-compactor.js";
 
 describe("ContextCompactor", () => {
   it("skips compaction when conversation is too short to fold", async () => {
@@ -25,27 +22,31 @@ describe("ContextCompactor", () => {
       { role: "system", content: "System prompt" },
       {
         role: "user",
-        content: (
-          "Step 1: research codebase extensively across packages/core, packages/server, and packages/web to find all occurrences of quota, model combos, and billing limits. "
-        ).repeat(4),
+        content:
+          "Step 1: research codebase extensively across packages/core, packages/server, and packages/web to find all occurrences of quota, model combos, and billing limits. ".repeat(
+            4,
+          ),
       },
       {
         role: "assistant",
-        content: (
-          "Investigated 50 files across packages. Identified quota-parser.ts in core, gateway.ts in server routes, and quota-badge.tsx in web. Ready for next step. "
-        ).repeat(4),
+        content:
+          "Investigated 50 files across packages. Identified quota-parser.ts in core, gateway.ts in server routes, and quota-badge.tsx in web. Ready for next step. ".repeat(
+            4,
+          ),
       },
       {
         role: "user",
-        content: (
-          "Step 2: edit file A to integrate the unified model combos, error classifications, and quota resets with full test coverage. "
-        ).repeat(4),
+        content:
+          "Step 2: edit file A to integrate the unified model combos, error classifications, and quota resets with full test coverage. ".repeat(
+            4,
+          ),
       },
       {
         role: "assistant",
-        content: (
-          "File A edited successfully with full TypeScript typings, comprehensive error boundaries, and unit tests covering all edge cases. "
-        ).repeat(4),
+        content:
+          "File A edited successfully with full TypeScript typings, comprehensive error boundaries, and unit tests covering all edge cases. ".repeat(
+            4,
+          ),
       },
       { role: "user", content: "Step 3: run tests" },
       { role: "assistant", content: "All tests passing" },

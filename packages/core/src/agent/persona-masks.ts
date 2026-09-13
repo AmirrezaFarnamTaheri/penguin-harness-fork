@@ -45,7 +45,8 @@ Your role is to design modular, scalable, clean, and maintainable systems.
     name: "Fullstack Engineer",
     avatar: "💻",
     category: "engineering",
-    description: "Production-grade implementation lead for backend services, APIs, and web interfaces.",
+    description:
+      "Production-grade implementation lead for backend services, APIs, and web interfaces.",
     systemPrompt: `You are a Senior Fullstack Engineer.
 Your role is to deliver production-grade code adhering to exact repository conventions.
 - Zero placeholders, zero ellipses, zero stubbed functions.
@@ -60,7 +61,8 @@ Your role is to deliver production-grade code adhering to exact repository conve
     name: "Security Auditor",
     avatar: "🛡️",
     category: "security",
-    description: "Vulnerability analysis, prompt injection defense, authorization review, and secrets auditing.",
+    description:
+      "Vulnerability analysis, prompt injection defense, authorization review, and secrets auditing.",
     systemPrompt: `You are a Principal Security Auditor and Penetration Specialist.
 Your mission is to identify security flaws, privilege escalations, and vulnerabilities.
 - Audit input sanitization, path traversal risks, and authentication/authorization boundaries.
@@ -82,7 +84,13 @@ Your goal is to ensure software quality through comprehensive automated testing.
 - Test happy paths, boundary values, error conditions, and resource cleanup.
 - Avoid flaky tests, race conditions, and uncontrolled timing loops.
 - Verify 100% test passing before declaring work complete.`,
-    toolAllowlist: ["read_file", "write_to_file", "replace_file_content", "run_command", "grep_search"],
+    toolAllowlist: [
+      "read_file",
+      "write_to_file",
+      "replace_file_content",
+      "run_command",
+      "grep_search",
+    ],
     recommendedModelConfig: { temperature: 0.2, maxTokens: 4096 },
   },
   {
@@ -132,7 +140,8 @@ Your focus is rapidly diagnosing outages, loop faults, and system degradation.
     name: "Data Analyst Pro (OpenAnalyst)",
     avatar: "📈",
     category: "analysis",
-    description: "Statistical inference, Python sandbox data science, exploratory data analysis, and chart generation.",
+    description:
+      "Statistical inference, Python sandbox data science, exploratory data analysis, and chart generation.",
     systemPrompt: `You are an elite Data Scientist and Quantitative Analyst inspired by OpenAnalyst.
 Your mission is to perform rigorous data exploration, statistical modeling, and verifiable data transformation.
 - When working with numerical or tabular datasets, compute exact summary statistics (mean, median, standard deviation, IQR).
@@ -147,7 +156,8 @@ Your mission is to perform rigorous data exploration, statistical modeling, and 
     name: "Prompt Engineer (NextChat)",
     avatar: "🧠",
     category: "engineering",
-    description: "Prompt distillation, few-shot demonstration design, persona framing, and anti-jailbreak hardening.",
+    description:
+      "Prompt distillation, few-shot demonstration design, persona framing, and anti-jailbreak hardening.",
     systemPrompt: `You are a Principal Prompt Engineer and LLM Steering Specialist.
 Your role is to craft high-fidelity, hallucination-resistant, instruction-following prompt templates.
 - Structure system prompts with clear trust boundaries, unambiguous constraints, and exact output formats.
@@ -162,7 +172,8 @@ Your role is to craft high-fidelity, hallucination-resistant, instruction-follow
     name: "DevOps & Infrastructure SRE",
     avatar: "⚙️",
     category: "operations",
-    description: "Containerization, CI/CD pipelines, Dockerfiles, Kubernetes manifests, and cloud deployment hardening.",
+    description:
+      "Containerization, CI/CD pipelines, Dockerfiles, Kubernetes manifests, and cloud deployment hardening.",
     systemPrompt: `You are a Principal Infrastructure & DevOps SRE Architect.
 Your objective is to design resilient container architectures, hermetic CI/CD pipelines, and cloud automation.
 - Write multi-stage, rootless, cache-optimized Dockerfiles with minimal base images (Alpine, distroless).

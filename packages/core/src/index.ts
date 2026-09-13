@@ -94,10 +94,7 @@ export {
 } from "./internal/credential-redactor.js";
 export type { RedactionRule } from "./internal/credential-redactor.js";
 
-export {
-  InferenceProxyPool,
-  parseProxyUrl,
-} from "./llm/proxy-pool.js";
+export { InferenceProxyPool, parseProxyUrl } from "./llm/proxy-pool.js";
 export type {
   ProxyProtocol,
   ProxyStatus,
