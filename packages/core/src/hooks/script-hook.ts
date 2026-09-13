@@ -120,6 +120,9 @@ export async function runHookScript(
       terminate("aborted");
     };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
+    // Abort events are not replayed to listeners registered after the signal flips. Recheck
+    // after registration to close the spawn-to-listener race without leaving a hook running.
+    if (opts.signal?.aborted) onAbort();
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     child.on("error", (err) => fail(err.message));
