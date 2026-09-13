@@ -56,51 +56,67 @@ export interface ConceptExplanation {
   connectedFiles: string[];
 }
 
+function cloneNode(node: CodeGraphNode): CodeGraphNode {
+  return {
+    ...node,
+    exports: node.exports ? [...node.exports] : undefined,
+    imports: node.imports ? [...node.imports] : undefined,
+  };
+}
+
+function cloneEdge(edge: CodeGraphEdge): CodeGraphEdge {
+  return { ...edge };
+}
+
 export class CodeGraph {
   private readonly nodes = new Map<string, CodeGraphNode>();
   private readonly outgoing = new Map<string, CodeGraphEdge[]>();
   private readonly incoming = new Map<string, CodeGraphEdge[]>();
 
   public addNode(node: CodeGraphNode): void {
-    this.nodes.set(node.id, node);
+    this.nodes.set(node.id, cloneNode(node));
   }
 
   public getNode(id: string): CodeGraphNode | undefined {
-    return this.nodes.get(id);
+    const node = this.nodes.get(id);
+    return node ? cloneNode(node) : undefined;
   }
 
   public getAllNodes(): CodeGraphNode[] {
-    return Array.from(this.nodes.values());
+    return Array.from(this.nodes.values(), cloneNode);
   }
 
   public addEdge(edge: CodeGraphEdge): void {
-    let outList = this.outgoing.get(edge.source);
+    const stored = cloneEdge(edge);
+    let outList = this.outgoing.get(stored.source);
     if (!outList) {
       outList = [];
-      this.outgoing.set(edge.source, outList);
+      this.outgoing.set(stored.source, outList);
     }
-    outList.push(edge);
+    outList.push(stored);
 
-    let inList = this.incoming.get(edge.target);
+    let inList = this.incoming.get(stored.target);
     if (!inList) {
       inList = [];
-      this.incoming.set(edge.target, inList);
+      this.incoming.set(stored.target, inList);
     }
-    inList.push(edge);
+    inList.push(stored);
   }
 
   public getOutgoingEdges(nodeId: string, kinds?: CodeEdgeKind[]): CodeGraphEdge[] {
     const list = this.outgoing.get(nodeId) ?? [];
-    if (!kinds || kinds.length === 0) return list;
-    const filterSet = new Set(kinds);
-    return list.filter((e) => filterSet.has(e.kind));
+    const selected = !kinds || kinds.length === 0
+      ? list
+      : list.filter((edge) => new Set(kinds).has(edge.kind));
+    return selected.map(cloneEdge);
   }
 
   public getIncomingEdges(nodeId: string, kinds?: CodeEdgeKind[]): CodeGraphEdge[] {
     const list = this.incoming.get(nodeId) ?? [];
-    if (!kinds || kinds.length === 0) return list;
-    const filterSet = new Set(kinds);
-    return list.filter((e) => filterSet.has(e.kind));
+    const selected = !kinds || kinds.length === 0
+      ? list
+      : list.filter((edge) => new Set(kinds).has(edge.kind));
+    return selected.map(cloneEdge);
   }
 
   /**
@@ -268,13 +284,15 @@ export class CodeGraph {
     const q = term.toLowerCase().trim();
     if (!q) return [];
 
-    return Array.from(this.nodes.values()).filter((n) => {
-      return (
-        n.name.toLowerCase().includes(q) ||
-        n.filePath.toLowerCase().includes(q) ||
-        (n.exports && n.exports.some((e) => e.toLowerCase().includes(q)))
-      );
-    });
+    return Array.from(this.nodes.values())
+      .filter((node) => {
+        return (
+          node.name.toLowerCase().includes(q) ||
+          node.filePath.toLowerCase().includes(q) ||
+          (node.exports && node.exports.some((entry) => entry.toLowerCase().includes(q)))
+        );
+      })
+      .map(cloneNode);
   }
 
   /**
@@ -316,7 +334,7 @@ export class CodeGraph {
       const outDegree = this.outgoing.get(node.id)?.length ?? 0;
       const totalDegree = inDegree + outDegree;
       if (totalDegree >= minDegree) {
-        results.push({ node, degree: totalDegree });
+        results.push({ node: cloneNode(node), degree: totalDegree });
       }
     }
     return results.sort((a, b) => b.degree - a.degree);
@@ -384,8 +402,8 @@ export class CodeGraph {
 
     const result: CodeGraphNode[] = [];
     for (const id of articulationPoints) {
-      const n = this.getNode(id);
-      if (n) result.push(n);
+      const node = this.getNode(id);
+      if (node) result.push(node);
     }
     return result;
   }
@@ -443,9 +461,9 @@ export class CodeGraph {
     }
 
     return {
-      nodes: Array.from(subNodes.values()),
-      edges: Array.from(subEdges.values()),
-      roots,
+      nodes: Array.from(subNodes.values(), cloneNode),
+      edges: Array.from(subEdges.values(), cloneEdge),
+      roots: [...roots],
     };
   }
 
