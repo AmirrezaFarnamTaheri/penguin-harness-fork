@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -136,5 +136,24 @@ test("Docker publishing is canonical-only and honors the reusable push input", (
     dockerWorkflow,
     /push: \$\{\{ steps\.publish-policy\.outputs\.publish == 'true' \}\}/,
     "the build must use the resolved publish policy instead of the inherited caller event",
+  );
+});
+
+test("release.yml is the only workflow allowed to publish npm packages", () => {
+  const workflowsDir = new URL("../.github/workflows/", import.meta.url);
+  const publishers = readdirSync(workflowsDir)
+    .filter((name) => /\.ya?ml$/.test(name))
+    .filter((name) => {
+      const text = readFileSync(new URL(name, workflowsDir), "utf8");
+      const executable = text
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
+      return /^\s*(?:-\s+run:\s*)?(?:npm|pnpm)\b[^\n]*\bpublish\b/m.test(executable);
+    });
+  assert.deepEqual(
+    publishers,
+    ["release.yml"],
+    "npm publication must have one hardened owner; duplicate release-trigger publishers bypass OIDC/preflight policy and can race the canonical release",
   );
 });
