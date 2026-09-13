@@ -90,11 +90,12 @@ describe("SafeHttp SSRF Protection", () => {
       expect(res.url.hostname).toBe("127.0.0.1");
     });
 
-    it("honors allowedHosts whitelist", async () => {
-      const res = await validateSafeUrl("http://internal-vault.corp/api", {
-        allowedHosts: ["internal-vault.corp"],
+    it("honors an explicit allowedHosts exception without skipping address validation", async () => {
+      const res = await validateSafeUrl("http://127.0.0.1:8080/api", {
+        allowedHosts: ["127.0.0.1"],
       });
-      expect(res.resolvedIp).toBe("internal-vault.corp");
+      expect(res.url.hostname).toBe("127.0.0.1");
+      expect(res.resolvedIp).toBe("127.0.0.1");
     });
   });
 });
