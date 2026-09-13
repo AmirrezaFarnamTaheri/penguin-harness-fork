@@ -116,20 +116,25 @@ test("canonical release desktop builds cannot silently downgrade required signin
   }
 });
 
-test("fork Docker workflows build without authenticating to the upstream registry", () => {
+test("Docker publishing is canonical-only and honors the reusable push input", () => {
   assert.match(
     dockerWorkflow,
-    /PUBLISH_IMAGE: \$\{\{ github\.repository == 'Prism-Shadow\/penguin-harness' && \(github\.event_name == 'push' \|\| inputs\.push\) && 'true' \|\| 'false' \}\}/,
-    "only the canonical repository may publish the upstream Docker image",
+    /- name: Resolve publish policy[\s\S]*?id: publish-policy[\s\S]*?REPOSITORY: \$\{\{ github\.repository \}\}[\s\S]*?REQUEST_PUSH: \$\{\{ inputs\.push && 'true' \|\| 'false' \}\}[\s\S]*?if \[\[ "\$REPOSITORY" == "Prism-Shadow\/penguin-harness" \]\]; then[\s\S]*?if \[\[ "\$REQUEST_PUSH" == "true" \|\| \( -z "\$TAG" && "\$EVENT_NAME" == "push" && "\$REF" == "refs\/heads\/main" \) \]\]; then[\s\S]*?echo "publish=\$publish" >> "\$GITHUB_OUTPUT"/,
+    "Docker publication must require the canonical repository and either an explicit request or a direct main push",
+  );
+  assert.doesNotMatch(
+    dockerWorkflow,
+    /github\.event_name == 'push' \|\| inputs\.push/,
+    "an inherited push event must not override push: false on a reusable workflow call",
   );
   assert.match(
     dockerWorkflow,
-    /- uses: docker\/login-action@v3\n\s+if: env\.PUBLISH_IMAGE == 'true'/,
-    "fork runs must skip Docker Hub login when upstream credentials are unavailable",
+    /- uses: docker\/login-action@v3\n\s+if: steps\.publish-policy\.outputs\.publish == 'true'/,
+    "fork and build-only runs must skip Docker Hub login",
   );
   assert.match(
     dockerWorkflow,
-    /push: \$\{\{ env\.PUBLISH_IMAGE == 'true' \}\}/,
-    "fork runs must still build while keeping registry mutation disabled",
+    /push: \$\{\{ steps\.publish-policy\.outputs\.publish == 'true' \}\}/,
+    "the build must use the resolved publish policy instead of the inherited caller event",
   );
 });
