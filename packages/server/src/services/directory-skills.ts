@@ -58,6 +58,65 @@ function isSafeSkillFilePath(rel: string): boolean {
   );
 }
 
+function stripAnchorAndQuery(value: string): string {
+  return value.split("#", 1)[0]!.split("?", 1)[0]!;
+}
+
+function isConcreteLocalReference(value: string): boolean {
+  // Placeholders, globs and illustrative pseudo-paths are documentation examples rather than
+  // resource-closure claims. Keep this in sync with scripts/skills/lib.mjs.
+  if (/[<>{}*\[\]]/.test(value) || value.includes("...")) return false;
+  if (value.endsWith("/")) return false;
+  return true;
+}
+
+/**
+ * Extract concrete package-local paths that the Skill explicitly tells the runtime/agent to use.
+ * This intentionally mirrors the repository skill-integrity auditor so a package cannot be
+ * reported as incomplete yet still be offered for installation by the server.
+ */
+function extractLocalReferences(markdown: string): string[] {
+  const refs = new Set<string>();
+  const add = (raw: string) => {
+    const value = stripAnchorAndQuery(raw.trim().replace(/^['"<]|['">]$/g, ""));
+    if (!value || /^(?:https?:|mailto:|data:|asset:|#)/i.test(value)) return;
+    if (value.startsWith("/") || value.startsWith("~")) return;
+    if (!isConcreteLocalReference(value) || !isSafeSkillFilePath(value)) return;
+    if (/^(?:scripts|references|assets|_common|_templates)\//.test(value)) refs.add(value);
+  };
+
+  for (const match of markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g)) add(match[1]!);
+  for (const match of markdown.matchAll(/`((?:scripts|references|assets|_common|_templates)\/[^`\s]+)`/g)) {
+    add(match[1]!);
+  }
+  for (const match of markdown.matchAll(/(?:^|\s)(?:node|python3?|bash|sh)\s+((?:scripts|references|assets)\/[^\s'"`;]+)/gm)) {
+    add(match[1]!);
+  }
+  return [...refs].sort((a, b) => a.localeCompare(b));
+}
+
+async function hasCompleteLocalResourceClosure(dir: string, content: string): Promise<boolean> {
+  for (const rel of extractLocalReferences(content)) {
+    try {
+      const stat = await fs.lstat(path.join(dir, rel));
+      // Auxiliary collection deliberately ignores symlinks and other special files, so accepting
+      // one here would advertise a resource that disappears during installation.
+      if (!stat.isFile() && !stat.isDirectory()) return false;
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        ((error as { code?: string }).code === "ENOENT" || (error as { code?: string }).code === "ENOTDIR")
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+  return true;
+}
+
 function decodeUtf8Strict(data: Uint8Array, label: string): string {
   let text: string;
   try {
@@ -131,6 +190,7 @@ async function readSkillEntry(
   if (content === undefined) return null;
   const metadata = parseSkillFrontmatter(content);
   if (!metadata) return null;
+  if (!(await hasCompleteLocalResourceClosure(abs, content))) return null;
   const icon = await readSkillFile(path.join(abs, "icon.svg"));
   return {
     ...metadata,
