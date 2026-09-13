@@ -83,9 +83,25 @@ export class WorktreeManager {
     }
   }
 
+  private async removeRegistrationIfOwned(cleanAgentId: string, expected: LaneRegistration): Promise<void> {
+    const current = await this.readRegistration(cleanAgentId);
+    if (
+      !current ||
+      current.worktreePath !== expected.worktreePath ||
+      current.branch !== expected.branch ||
+      current.agentId !== expected.agentId ||
+      current.createdAt !== expected.createdAt
+    ) {
+      return;
+    }
+    await fs.unlink(this.registrationPath(cleanAgentId));
+  }
+
   /**
    * Creates an isolated worktree for an autonomous subagent lane.
    * Existing lanes are never force-removed: callers must explicitly resolve a conflict first.
+   * Ownership is reserved before invoking Git, so a bookkeeping failure cannot leave a real but
+   * unmanageable worktree behind.
    */
   async createWorktree(agentId: string, branchName?: string): Promise<AgentWorktree> {
     const cleanAgentId = agentId.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -112,8 +128,6 @@ export class WorktreeManager {
       throw new Error(`Git already has a worktree registered at '${worktreePath}'`);
     }
 
-    await execFileAsync("git", ["worktree", "add", "-b", branch, worktreePath], { cwd: this.repoRoot });
-
     const createdAt = Date.now();
     const laneRegistration: LaneRegistration = { worktreePath, branch, agentId, createdAt };
     try {
@@ -123,13 +137,26 @@ export class WorktreeManager {
         { encoding: "utf-8", flag: "wx" },
       );
     } catch (error) {
-      // Do not destroy a successfully-created worktree when bookkeeping fails. Leaving it intact
-      // is safer than guessing whether another actor has already begun using it.
       throw new Error(
-        `Created worktree '${worktreePath}' but could not persist its ownership registration: ${String(error)}`,
+        `Could not reserve ownership for managed lane '${cleanAgentId}': ${String(error)}`,
       );
     }
 
+    try {
+      await execFileAsync("git", ["worktree", "add", "-b", branch, worktreePath], { cwd: this.repoRoot });
+    } catch (error) {
+      try {
+        await this.removeRegistrationIfOwned(cleanAgentId, laneRegistration);
+      } catch (cleanupError) {
+        throw new Error(
+          `Git failed to create worktree '${worktreePath}' and its ownership reservation could not be rolled back: ${String(error)}; cleanup: ${String(cleanupError)}`,
+        );
+      }
+      throw error;
+    }
+
+    // From this point onward the lane is both Git-registered and ownership-registered. If a later
+    // metadata read fails, keeping the registration intact makes the lane recoverable/removable.
     const { stdout: headSha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
 
     return {
@@ -164,7 +191,7 @@ export class WorktreeManager {
     }
 
     await execFileAsync("git", ["worktree", "remove", resolved], { cwd: this.repoRoot });
-    await fs.unlink(this.registrationPath(cleanAgentId));
+    await this.removeRegistrationIfOwned(cleanAgentId, registration);
     await execFileAsync("git", ["worktree", "prune"], { cwd: this.repoRoot });
   }
 
