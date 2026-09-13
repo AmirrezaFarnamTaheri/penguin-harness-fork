@@ -301,11 +301,20 @@ jobs:
       - name: Preflight the packed tree's inputs
         run: node packages/desktop/scripts/preflight.mjs
 
+      # All signing decisions below are runtime shell decisions, because the production
+      # policy above is written through GITHUB_ENV. GitHub expression `env.*` values are not
+      # used here: they would retain the workflow-level value and could diverge from the
+      # fail-closed policy selected earlier in the job.
       - name: Build packages
+        shell: bash
         env:
-          EVSIGN_REQUIRE: ${{ runner.os == 'Windows' && env.REQUIRE_WINDOWS_SIGNING == 'true' && 'true' || 'false' }}
           EVSIGN_KEY: ${{ runner.os == 'Windows' && secrets.EVSIGN_KEY || '' }}
-        run: pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never ${{ runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true' && '-c.mac.forceCodeSigning=true' || '' }}
+        run: |
+          signing_args=()
+          if [[ "$RUNNER_OS" == "macOS" && "$REQUIRE_MACOS_SIGNING" == "true" ]]; then
+            signing_args+=("-c.mac.forceCodeSigning=true")
+          fi
+          pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never "${signing_args[@]}"
 
       - name: Verify Windows signing and update metadata
         if: runner.os == 'Windows'
@@ -438,9 +447,14 @@ jobs:
           exit 0
 
       - name: Notarize and staple macOS DMGs
-        if: runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
+          if [[ "$REQUIRE_MACOS_SIGNING" != "true" ]]; then
+            echo "macOS signing is not required for this dry-run; skipping notarization."
+            exit 0
+          fi
+
           set -euo pipefail
 
           shopt -s nullglob
@@ -467,9 +481,14 @@ jobs:
           done
 
       - name: Clean macOS update metadata
-        if: runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
+          if [[ "$REQUIRE_MACOS_SIGNING" != "true" ]]; then
+            echo "macOS signing is not required for this dry-run; keeping generated metadata unchanged."
+            exit 0
+          fi
+
           set -euo pipefail
 
           metadata="packages/desktop/out/latest-mac.yml"
@@ -538,9 +557,14 @@ jobs:
           NODE
 
       - name: Verify macOS signing and notarization
-        if: runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
+          if [[ "$REQUIRE_MACOS_SIGNING" != "true" ]]; then
+            echo "macOS signing is not required for this dry-run; skipping signature verification."
+            exit 0
+          fi
+
           set -euo pipefail
 
           # Same line as the Windows verify step: a missing artifact or a code signature that
