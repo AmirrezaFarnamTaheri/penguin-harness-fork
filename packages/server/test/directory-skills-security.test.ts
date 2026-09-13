@@ -27,34 +27,36 @@ describe("directory skill containment", () => {
   it.skipIf(process.platform === "win32")(
     "does not follow a skill source root outside the selected directory",
     async () => {
-    const selected = await tempDir("penguin-dirskills-selected-");
-    const outside = await tempDir("penguin-dirskills-outside-");
-    const outsideSkills = path.join(outside, "skills");
-    await fs.mkdir(path.join(outsideSkills, "escaped"), { recursive: true });
-    await fs.writeFile(path.join(outsideSkills, "escaped", "SKILL.md"), skillMd("escaped"));
+      const selected = await tempDir("penguin-dirskills-selected-");
+      const outside = await tempDir("penguin-dirskills-outside-");
+      const outsideSkills = path.join(outside, "skills");
+      await fs.mkdir(path.join(outsideSkills, "escaped"), { recursive: true });
+      await fs.writeFile(path.join(outsideSkills, "escaped", "SKILL.md"), skillMd("escaped"));
 
-    await fs.mkdir(path.join(selected, ".agents"), { recursive: true });
-    await fs.symlink(outsideSkills, path.join(selected, ".agents", "skills"));
+      await fs.mkdir(path.join(selected, ".agents"), { recursive: true });
+      await fs.symlink(outsideSkills, path.join(selected, ".agents", "skills"));
 
-    await expect(discoverDirectorySkills(selected)).resolves.toEqual([]);
-  });
+      await expect(discoverDirectorySkills(selected)).resolves.toEqual([]);
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "rejects local references that traverse an intermediate symlink",
     async () => {
-    const selected = await tempDir("penguin-dirskills-selected-");
-    const outside = await tempDir("penguin-dirskills-outside-");
-    const skill = path.join(selected, ".agents", "skills", "escaped-ref");
-    await fs.mkdir(skill, { recursive: true });
-    await fs.writeFile(path.join(outside, "secret.md"), "outside secret\n");
-    await fs.symlink(outside, path.join(skill, "references"));
-    await fs.writeFile(
-      path.join(skill, "SKILL.md"),
-      skillMd("escaped-ref", "Read [the local reference](references/secret.md)."),
-    );
+      const selected = await tempDir("penguin-dirskills-selected-");
+      const outside = await tempDir("penguin-dirskills-outside-");
+      const skill = path.join(selected, ".agents", "skills", "escaped-ref");
+      await fs.mkdir(skill, { recursive: true });
+      await fs.writeFile(path.join(outside, "secret.md"), "outside secret\n");
+      await fs.symlink(outside, path.join(skill, "references"));
+      await fs.writeFile(
+        path.join(skill, "SKILL.md"),
+        skillMd("escaped-ref", "Read [the local reference](references/secret.md)."),
+      );
 
-    await expect(discoverDirectorySkills(selected)).resolves.toEqual([]);
-  });
+      await expect(discoverDirectorySkills(selected)).resolves.toEqual([]);
+    },
+  );
 
   it("still accepts ordinary package-local referenced resources", async () => {
     const selected = await tempDir("penguin-dirskills-selected-");

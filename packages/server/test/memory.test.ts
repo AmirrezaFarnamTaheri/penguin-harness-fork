@@ -137,24 +137,29 @@ describe("memory api", () => {
   it.skipIf(process.platform === "win32")(
     "neither lists nor follows a symlinked topic file",
     async () => {
-    const outside = path.join(t.root, "outside-secret.txt");
-    await fs.writeFile(outside, "secret", "utf8");
-    await fs.symlink(outside, path.join(wsDir, "leak.md"));
-    const list = (await (await owner.get(filesPath())).json()) as MemoryFilesResponse;
-    expect(list.files.map((f) => f.name)).not.toContain("leak.md");
-    // Direct addressing must not follow the link either.
-    expect((await owner.get(`${filesPath()}/leak.md`)).status).toBe(404);
-  });
+      const outside = path.join(t.root, "outside-secret.txt");
+      await fs.writeFile(outside, "secret", "utf8");
+      await fs.symlink(outside, path.join(wsDir, "leak.md"));
+      const list = (await (await owner.get(filesPath())).json()) as MemoryFilesResponse;
+      expect(list.files.map((f) => f.name)).not.toContain("leak.md");
+      // Direct addressing must not follow the link either.
+      expect((await owner.get(`${filesPath()}/leak.md`)).status).toBe(404);
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "404s a scope directory smuggled in as a symlink",
     async () => {
-    const outside = path.join(t.root, "outside-dir");
-    await fs.mkdir(outside, { recursive: true });
-    await fs.writeFile(path.join(outside, "loot.md"), "---\nname: l\n---\nx\n", "utf8");
-    await fs.symlink(outside, memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"));
-    expect((await owner.get(filesPath("evil-12345678"))).status).toBe(404);
-  });
+      const outside = path.join(t.root, "outside-dir");
+      await fs.mkdir(outside, { recursive: true });
+      await fs.writeFile(path.join(outside, "loot.md"), "---\nname: l\n---\nx\n", "utf8");
+      await fs.symlink(
+        outside,
+        memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"),
+      );
+      expect((await owner.get(filesPath("evil-12345678"))).status).toBe(404);
+    },
+  );
 
   it("lists the user scope of an Agent that predates Memory, creating it on demand", async () => {
     // A Workspace directory comes from a Session, but the user scope belongs to the Agent.
@@ -626,22 +631,25 @@ describe("memory scope export/import", () => {
     );
   });
 
-  it.skipIf(process.platform === "win32")("replaces a symlink standing at a memory's name instead of writing through it", async () => {
-    const outside = path.join(t.root, "outside-secret.md");
-    await fs.writeFile(outside, "secret\n", "utf8");
-    await fs.symlink(outside, path.join(wsDir, "leak.md"));
+  it.skipIf(process.platform === "win32")(
+    "replaces a symlink standing at a memory's name instead of writing through it",
+    async () => {
+      const outside = path.join(t.root, "outside-secret.md");
+      await fs.writeFile(outside, "secret\n", "utf8");
+      await fs.symlink(outside, path.join(wsDir, "leak.md"));
 
-    const res = await runImport(document([topic("leak.md", "imported body")]), {
-      mode: "overwrite",
-      confirm: true,
-    });
-    expect(res.status).toBe(200);
-    // The link is gone, the memory is a real file inside the scope, and the file it pointed at
-    // never saw the write.
-    expect((await fs.lstat(path.join(wsDir, "leak.md"))).isSymbolicLink()).toBe(false);
-    expect(await fs.readFile(path.join(wsDir, "leak.md"), "utf8")).toContain("imported body");
-    expect(await fs.readFile(outside, "utf8")).toBe("secret\n");
-  });
+      const res = await runImport(document([topic("leak.md", "imported body")]), {
+        mode: "overwrite",
+        confirm: true,
+      });
+      expect(res.status).toBe(200);
+      // The link is gone, the memory is a real file inside the scope, and the file it pointed at
+      // never saw the write.
+      expect((await fs.lstat(path.join(wsDir, "leak.md"))).isSymbolicLink()).toBe(false);
+      expect(await fs.readFile(path.join(wsDir, "leak.md"), "utf8")).toContain("imported body");
+      expect(await fs.readFile(outside, "utf8")).toBe("secret\n");
+    },
+  );
 
   it("leaves no temporary file behind in the scope directory", async () => {
     expect((await runImport(document([topic("a.md", "x")]))).status).toBe(200);
@@ -657,11 +665,14 @@ describe("memory scope export/import", () => {
     if (process.platform !== "win32") {
       const outside = path.join(t.root, "outside-dir");
       await fs.mkdir(outside, { recursive: true });
-      await fs.symlink(outside, memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"));
-      expect((await owner.get(exportPath("evil-12345678"))).status).toBe(404);
-      expect((await runImport(document([topic("a.md", "x")]), { key: "evil-12345678" })).status).toBe(
-        404,
+      await fs.symlink(
+        outside,
+        memoryScopeDir(t.root, projectId, "default_agent", "evil-12345678"),
       );
+      expect((await owner.get(exportPath("evil-12345678"))).status).toBe(404);
+      expect(
+        (await runImport(document([topic("a.md", "x")]), { key: "evil-12345678" })).status,
+      ).toBe(404);
       expect(await fs.readdir(outside)).toEqual([]);
     }
   });

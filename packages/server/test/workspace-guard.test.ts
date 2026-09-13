@@ -36,13 +36,16 @@ describe("workspace-guard", () => {
     await expect(guard(outside)).resolves.toBe(await fs.realpath(outside));
   });
 
-  it.skipIf(process.platform === "win32")("symlinks resolve to their realpath before returning", async () => {
-    const outside = path.join(root, "linked");
-    await fs.mkdir(outside, { recursive: true });
-    const link = path.join(projectA, "escape");
-    await fs.symlink(outside, link, "dir");
-    await expect(guard(link)).resolves.toBe(await fs.realpath(outside));
-  });
+  it.skipIf(process.platform === "win32")(
+    "symlinks resolve to their realpath before returning",
+    async () => {
+      const outside = path.join(root, "linked");
+      await fs.mkdir(outside, { recursive: true });
+      const link = path.join(projectA, "escape");
+      await fs.symlink(outside, link, "dir");
+      await expect(guard(link)).resolves.toBe(await fs.realpath(outside));
+    },
+  );
 
   it("a nonexistent path → 400 workspace_not_found", async () => {
     const err = await guard(path.join(projectA, "ghost")).catch((e: unknown) => e);
