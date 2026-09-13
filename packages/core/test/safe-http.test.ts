@@ -69,6 +69,15 @@ describe("SafeHttp SSRF Protection", () => {
       }
     });
 
+    it("blocks private IPv4 embedded through NAT64 without blocking public WKP destinations", () => {
+      expect(isPrivateOrReservedIPv6("64:ff9b::7f00:1")).toBe(true);
+      expect(isPrivateOrReservedIPv6("64:ff9b::a00:1")).toBe(true);
+      expect(isPrivateOrReservedIPv6("64:ff9b::a9fe:a9fe")).toBe(true);
+      expect(isPrivateOrReservedIPv6("64:ff9b::808:808")).toBe(false);
+      // RFC 8215's 64:ff9b:1::/48 is local-use and must never be treated as public.
+      expect(isPrivateOrReservedIPv6("64:ff9b:1::808:808")).toBe(true);
+    });
+
     it("allows public IPv6 addresses", () => {
       expect(isPrivateOrReservedIPv6("2606:4700:4700::1111")).toBe(false);
       expect(isPrivateOrReservedIPv6("2001:4860:4860::8888")).toBe(false);
@@ -88,6 +97,12 @@ describe("SafeHttp SSRF Protection", () => {
       expect(isSafeIpAddress("::ffff:127.0.0.1", true)).toBe(true);
       expect(isSafeIpAddress("::7f00:1", false)).toBe(false);
       expect(isSafeIpAddress("::7f00:1", true)).toBe(true);
+    });
+
+    it("does not let allowLocalhost turn NAT64-translated loopback into an allowed target", () => {
+      expect(isSafeIpAddress("64:ff9b::7f00:1", false)).toBe(false);
+      expect(isSafeIpAddress("64:ff9b::7f00:1", true)).toBe(false);
+      expect(isSafeIpAddress("64:ff9b::808:808", false)).toBe(true);
     });
   });
 
