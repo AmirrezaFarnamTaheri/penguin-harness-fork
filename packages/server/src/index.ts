@@ -29,7 +29,14 @@ import { PluginHost } from "./plugin/host.js";
 import { loadPlugins } from "./plugin/loader.js";
 import { attachTerminalWebSocket } from "./terminal/ws.js";
 import { loopbackHostRoles } from "./services/preview-token.js";
-import { acquireServerLock, liveServerLock, releaseServerLock } from "./lock.js";
+import {
+  acquireServerInstanceClaim,
+  acquireServerLock,
+  liveServerLock,
+  releaseServerLock,
+  type ServerInstanceClaim,
+  type ServerLock,
+} from "./lock.js";
 import { shellPortOf, wireShellUpdatePort } from "./services/desktop-update-port.js";
 
 /**
@@ -66,6 +73,8 @@ class PenguinServer {
 
   /** Assigned by readConfig(); every later step reads it. */
   private config!: ServerConfig;
+  /** Held from ensureSoleInstance() until shutdown; the actual atomic root ownership guard. */
+  private instanceClaim: ServerInstanceClaim | null = null;
   /** Assigned by loadPlugins(); published to the platform tree by buildDeps(). */
   private plugins!: PluginHost;
   /** Assigned by buildDeps(); the merged runtime + business view (see app.ts). */
@@ -101,20 +110,44 @@ class PenguinServer {
     this.config = resolveServerConfig();
   }
 
+  private exitAlreadyRunning(existing: ServerLock | null): never {
+    if (existing) {
+      console.error(
+        `Another PenguinHarness server is already running on this data root (pid ${existing.pid}).`,
+      );
+      console.error(`Existing instance: http://localhost:${existing.port}/`);
+    } else {
+      console.error("Another PenguinHarness server is already starting on this data root.");
+    }
+    process.exit(EXIT_ALREADY_RUNNING);
+  }
+
   /**
-   * Single instance per data root: web.db is single-writer and the scheduler must not run
-   * twice, so refuse to start when a live server already owns this root — BEFORE opening
-   * the database. The CLI and the desktop shell pre-check the same lock for a friendlier
-   * path (open / attach to the existing instance); this is the in-process backstop.
+   * Single instance per data root: acquire the atomic process-lifetime root claim BEFORE plugins,
+   * migrations, scheduler construction, or any other mutable startup work. `server.lock` remains
+   * the human/CLI discovery record once a listener exists; it is not the exclusion primitive.
+   *
+   * The initial live-lock check preserves the friendly attach URL. The claim then closes the
+   * check-then-start race: two PORT=0 processes cannot both pass discovery and initialize web.db.
+   * A second live-lock check after claiming protects an upgrade overlap with an older running
+   * build that predates the process-lifetime claim.
    */
   async ensureSoleInstance(): Promise<void> {
     const existing = await liveServerLock(this.config.root);
-    if (existing === null) return;
-    console.error(
-      `Another PenguinHarness server is already running on this data root (pid ${existing.pid}).`,
-    );
-    console.error(`Existing instance: http://localhost:${existing.port}/`);
-    process.exit(EXIT_ALREADY_RUNNING);
+    if (existing !== null) this.exitAlreadyRunning(existing);
+
+    const claim = acquireServerInstanceClaim(this.config.root);
+    if (claim === null) {
+      this.exitAlreadyRunning(await liveServerLock(this.config.root));
+    }
+    this.instanceClaim = claim;
+
+    const racedExisting = await liveServerLock(this.config.root);
+    if (racedExisting !== null && racedExisting.pid !== process.pid) {
+      claim.release();
+      this.instanceClaim = null;
+      this.exitAlreadyRunning(racedExisting);
+    }
   }
 
   /**
@@ -293,8 +326,8 @@ class PenguinServer {
     // port 0 and fail to load. deps.config is this same object, so both route call sites
     // (me.ts, sessions.ts) observe the update.
     this.config.port = port;
-    // The root exists by now (openDatabase created it), and the pre-start check found no
-    // live owner — record ourselves as this root's server.
+    // Root ownership was claimed atomically before mutable startup work; publish the discoverable
+    // pid/port record only now that the listener is real.
     acquireServerLock(this.config.root, {
       pid: process.pid,
       port,
@@ -407,9 +440,11 @@ class PenguinServer {
     }, 1000).unref();
   }
 
-  /** Removes the instance lock and port file (best-effort; runs on both exit paths). */
+  /** Removes the published discovery record, then releases atomic root ownership and port file. */
   private cleanupInstanceFiles(): void {
     releaseServerLock(this.config.root);
+    this.instanceClaim?.release();
+    this.instanceClaim = null;
     if (this.config.portFile === null) return;
     try {
       fs.rmSync(this.config.portFile, { force: true });
