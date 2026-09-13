@@ -1,12 +1,13 @@
 /**
- * Server instance lock: read/acquire/release round-trip, stale detection (dead pid,
- * dead port), and the live path against a real loopback listener.
+ * Server instance coordination: published discovery-lock round-trip/liveness plus the atomic
+ * process-lifetime claim that prevents two server startups from sharing one data root.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  acquireServerInstanceClaim,
   acquireServerLock,
   isServerLockAlive,
   liveServerLock,
@@ -56,6 +57,8 @@ describe("server lock", () => {
     expect(readServerLock(root)).toBeNull();
     fs.writeFileSync(serverLockPath(root), JSON.stringify({ pid: "x", port: 1 }));
     expect(readServerLock(root)).toBeNull();
+    fs.writeFileSync(serverLockPath(root), JSON.stringify({ pid: process.pid, port: 0 }));
+    expect(readServerLock(root)).toBeNull();
 
     acquireServerLock(root, { pid: process.pid, port: 12345, startedAt: "2026-01-01T00:00:00Z" });
     expect(readServerLock(root)).toEqual({
@@ -63,6 +66,18 @@ describe("server lock", () => {
       port: 12345,
       startedAt: "2026-01-01T00:00:00Z",
     });
+  });
+
+  it("atomically admits only one process-lifetime claim per data root", async () => {
+    const root = await tempRoot();
+    const first = acquireServerInstanceClaim(root);
+    expect(first).not.toBeNull();
+    expect(acquireServerInstanceClaim(root)).toBeNull();
+
+    first!.release();
+    const next = acquireServerInstanceClaim(root);
+    expect(next).not.toBeNull();
+    next!.release();
   });
 
   it("treats a dead pid as stale even if the port is live", async () => {
