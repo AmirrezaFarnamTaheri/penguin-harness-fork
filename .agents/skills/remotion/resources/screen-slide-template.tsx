@@ -1,5 +1,4 @@
-import {AbsoluteFill, spring, useCurrentFrame, useVideoConfig} from 'remotion';
-import {Img} from 'remotion';
+import {AbsoluteFill, Img, spring, useCurrentFrame, useVideoConfig} from 'remotion';
 
 interface ScreenSlideProps {
   imageSrc: string;
