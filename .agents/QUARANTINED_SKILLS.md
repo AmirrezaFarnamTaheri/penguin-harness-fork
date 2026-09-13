@@ -1,0 +1,159 @@
+# Quarantined imported skills
+
+These imported skill directories were removed from the active `.agents/skills` inventory because the Skill Integrity readiness scan found concrete local resources referenced by their `SKILL.md` that were not shipped with the package. Active directory import deliberately rejects such incomplete dependency closures.
+
+Source snapshot before quarantine: `ec3927e0a2c11ac507fa8775eb6b0839e86c52d6`.
+
+A quarantined skill may return only after its complete permitted dependency closure is restored (or its instructions are corrected to the resources actually shipped), provenance/license requirements are satisfied, and strict resource auditing passes. Do not restore an entry merely to increase the skill count.
+
+## Agent-skills archetype family (77)
+
+All of these referenced one or more absent `_common/*` / `_templates/*` resources.
+
+- `agent-skills-artisan`
+- `agent-skills-atelier`
+- `agent-skills-attest`
+- `agent-skills-beacon`
+- `agent-skills-breach`
+- `agent-skills-builder`
+- `agent-skills-canvas`
+- `agent-skills-cast`
+- `agent-skills-chain`
+- `agent-skills-chisel`
+- `agent-skills-compass`
+- `agent-skills-crypt`
+- `agent-skills-cue`
+- `agent-skills-echo`
+- `agent-skills-experiment`
+- `agent-skills-field`
+- `agent-skills-flow`
+- `agent-skills-forge`
+- `agent-skills-frame`
+- `agent-skills-funnel`
+- `agent-skills-gauge`
+- `agent-skills-gear`
+- `agent-skills-grove`
+- `agent-skills-growth`
+- `agent-skills-guardian`
+- `agent-skills-hone`
+- `agent-skills-ink`
+- `agent-skills-judge`
+- `agent-skills-ledger`
+- `agent-skills-lens`
+- `agent-skills-magi`
+- `agent-skills-matrix`
+- `agent-skills-mend`
+- `agent-skills-muse`
+- `agent-skills-native`
+- `agent-skills-nexus`
+- `agent-skills-omen`
+- `agent-skills-oracle`
+- `agent-skills-palette`
+- `agent-skills-pdm`
+- `agent-skills-port`
+- `agent-skills-probe`
+- `agent-skills-prose`
+- `agent-skills-prune`
+- `agent-skills-pulse`
+- `agent-skills-quill`
+- `agent-skills-radar`
+- `agent-skills-rally`
+- `agent-skills-rank`
+- `agent-skills-ripple`
+- `agent-skills-saga`
+- `agent-skills-scaffold`
+- `agent-skills-schema`
+- `agent-skills-scout`
+- `agent-skills-scribe`
+- `agent-skills-seek`
+- `agent-skills-sentinel`
+- `agent-skills-sherpa`
+- `agent-skills-shift`
+- `agent-skills-siege`
+- `agent-skills-sigil`
+- `agent-skills-spark`
+- `agent-skills-stage`
+- `agent-skills-stream`
+- `agent-skills-sweep`
+- `agent-skills-trace`
+- `agent-skills-trail`
+- `agent-skills-triage`
+- `agent-skills-tuner`
+- `agent-skills-vector`
+- `agent-skills-vigil`
+- `agent-skills-vision`
+- `agent-skills-vitrine`
+- `agent-skills-voice`
+- `agent-skills-void`
+- `agent-skills-voyager`
+- `agent-skills-zen`
+
+## Other incomplete imported skills (67)
+
+- `agents-sdk`
+- `anti-slop`
+- `brand`
+- `brand-and-visual-design`
+- `citation-management`
+- `claim-chart`
+- `clinical-decision-support`
+- `clinical-reports`
+- `codebase-migrate`
+- `cold-start-interview`
+- `competitive-landscape`
+- `cost-optimization`
+- `cw-gates`
+- `cw-slice`
+- `datadog-logs`
+- `deadlines`
+- `deploy-pipeline`
+- `deployment-pipeline-design`
+- `design-system`
+- `distributed-tracing`
+- `flights-search`
+- `github-actions-templates`
+- `gitlab-ci-patterns`
+- `grafana-dashboards`
+- `hybrid-cloud-networking`
+- `hypothesis-generation`
+- `imap-smtp-email`
+- `issue-triage`
+- `k8s-security-policies`
+- `latex-posters`
+- `market-sizing-analysis`
+- `markitdown`
+- `multi-cloud-architecture`
+- `opencodex-proxy-controller`
+- `peer-review`
+- `penguin-harness-manual-test`
+- `plugin-discovery`
+- `ppt-template-creator`
+- `pptx-posters`
+- `pr-review-ci-fix`
+- `prepare-release`
+- `prometheus-configuration`
+- `publish-desktop`
+- `qlik-load-script`
+- `related-skills-surfacer`
+- `research-lookup`
+- `scholar-evaluation`
+- `scientific-critical-thinking`
+- `scientific-schematics`
+- `scientific-slides`
+- `scientific-writing`
+- `secrets-management`
+- `sentry-triage`
+- `skill-creator`
+- `skill-development`
+- `slides`
+- `slo-implementation`
+- `startup-financial-modeling`
+- `startup-metrics-framework`
+- `supervisor-review-queue`
+- `tabular-review`
+- `team-composition-analysis`
+- `terraform-module-library`
+- `torch-geometric`
+- `treatment-plans`
+- `twenty-create-app`
+- `venue-templates`
