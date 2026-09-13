@@ -50,10 +50,6 @@ concurrency:
 
 env:
   IMAGE_NAME: hiyouga/penguinharness
-  # Only the canonical repository owns the Docker Hub namespace and its credentials. A fork
-  # still exercises the complete build on pushes/dispatches, but must never fail because those
-  # upstream secrets are intentionally unavailable or attempt to publish into upstream.
-  PUBLISH_IMAGE: ${{ github.repository == 'Prism-Shadow/penguin-harness' && (github.event_name == 'push' || inputs.push) && 'true' || 'false' }}
 
 jobs:
   # Build once and put the container through the contract the docs promise. Only amd64: this
@@ -202,6 +198,28 @@ jobs:
         with:
           ref: ${{ inputs.tag || '' }}
 
+      # A reusable workflow inherits its caller's event name, so `github.event_name == 'push'`
+      # does not distinguish a direct main push from a release workflow that was itself triggered
+      # by a push. Decide once from the repository, requested push flag, tag and ref, then expose a
+      # step output: unlike GITHUB_ENV, step outputs are safe to consume in later `if:` expressions.
+      - name: Resolve publish policy
+        id: publish-policy
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REQUEST_PUSH: ${{ inputs.push && 'true' || 'false' }}
+          TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          publish=false
+          if [[ "$REPOSITORY" == "Prism-Shadow/penguin-harness" ]]; then
+            if [[ "$REQUEST_PUSH" == "true" || ( -z "$TAG" && "$EVENT_NAME" == "push" && "$REF" == "refs/heads/main" ) ]]; then
+              publish=true
+            fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
       # Two tag policies, one tag each.
       #
       # A push to main publishes `latest` and nothing else on the canonical repository: `latest`
@@ -242,7 +260,7 @@ jobs:
       # Only the canonical repository is allowed to authenticate to and mutate the upstream
       # Docker Hub namespace. Forks intentionally skip this step and still execute the build.
       - uses: docker/login-action@v3
-        if: env.PUBLISH_IMAGE == 'true'
+        if: steps.publish-policy.outputs.publish == 'true'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -262,7 +280,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ env.PUBLISH_IMAGE == 'true' }}
+          push: ${{ steps.publish-policy.outputs.publish == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
