@@ -11,12 +11,9 @@
 # with EVSign when release.yml calls this workflow with require_windows_signing=true.
 # Standalone dry-runs can still build unsigned artifacts when signing secrets are absent.
 #
-# A push to a `release/**` branch runs the same signed matrix on its own: signing depends on
-# the hosted runner image as much as on this repository, and CI never exercises it, so a
-# release branch proves its installers before the tag is cut. (0.2.10 was tagged on a green
-# CI and lost its macOS installers to a keychain change in the runner image two days old;
-# the code shipped again as 0.2.11.) Signing is required on that path, as it is for a
-# release, and the version stamp stays at the dev version — the tag's own run stamps it.
+# On the canonical repository, release tags and `release/**` branches always require
+# signing even if a caller accidentally passes false. Forks may still exercise the full
+# packaging path unsigned when their signing environments are intentionally absent.
 name: Desktop packages
 
 on:
@@ -76,11 +73,11 @@ on:
         default: false
 
 env:
-  # Whether signing is required, decided once for every event: release.yml and a dispatch
-  # say so through the inputs. Defaults to false so release builds and push events can succeed
-  # unsigned when signing secrets are absent.
-  REQUIRE_MACOS_SIGNING: ${{ inputs.require_macos_signing && 'true' || 'false' }}
-  REQUIRE_WINDOWS_SIGNING: ${{ inputs.require_windows_signing && 'true' || 'false' }}
+  # Explicit callers can require signing. In addition, production release contexts on the
+  # canonical repository are fail-closed even if a caller regresses its inputs to false.
+  # Forks retain unsigned dry-runs because they do not own the production signing secrets.
+  REQUIRE_MACOS_SIGNING: ${{ (inputs.require_macos_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
+  REQUIRE_WINDOWS_SIGNING: ${{ (inputs.require_windows_signing || (github.repository == 'Prism-Shadow/penguin-harness' && (inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref_name, 'release/')))) && 'true' || 'false' }}
   # Keep in sync with release.yml (its header comment is the source of truth; duplicated
   # here because reusable workflows do not inherit the caller's env).
   MINGIT_VERSION: 2.55.0.3
@@ -177,8 +174,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [[ "$REQUIRE_MACOS_SIGNING" != "true" || -z "${CSC_LINK:-}" ]]; then
-            echo "macOS signing not required or credentials not configured; building unsigned."
+          if [[ "$REQUIRE_MACOS_SIGNING" != "true" ]]; then
+            echo "macOS signing not required for this dry-run; building unsigned."
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -236,8 +233,11 @@ jobs:
           $ErrorActionPreference = "Stop"
 
           if ([string]::IsNullOrWhiteSpace($env:EVSIGN_KEY)) {
+            if ($env:REQUIRE_WINDOWS_SIGNING -eq "true") {
+              Write-Error "Missing EVSIGN_KEY secret required for Windows release signing."
+            }
             "EVSIGN_REQUIRE=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-            Write-Host "EVSIGN_KEY is not configured; Windows artifacts will remain unsigned."
+            Write-Host "EVSIGN_KEY is not configured; unsigned Windows artifacts are allowed for this dry-run."
             exit 0
           }
 
@@ -287,9 +287,9 @@ jobs:
 
       - name: Build packages
         env:
-          EVSIGN_REQUIRE: ${{ runner.os == 'Windows' && env.REQUIRE_WINDOWS_SIGNING == 'true' && secrets.EVSIGN_KEY != '' && 'true' || 'false' }}
+          EVSIGN_REQUIRE: ${{ runner.os == 'Windows' && env.REQUIRE_WINDOWS_SIGNING == 'true' && 'true' || 'false' }}
           EVSIGN_KEY: ${{ runner.os == 'Windows' && secrets.EVSIGN_KEY || '' }}
-        run: pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never ${{ runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true' && secrets.CSC_LINK != '' && '-c.mac.forceCodeSigning=true' || '' }}
+        run: pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never ${{ runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true' && '-c.mac.forceCodeSigning=true' || '' }}
 
       - name: Verify Windows signing and update metadata
         if: runner.os == 'Windows'
@@ -340,11 +340,9 @@ jobs:
             Write-Host "  signer: $subject"
             Write-Host "  issuer: $issuer"
 
-            if ($sig.Status -eq "NotSigned") {
-              if ($env:REQUIRE_WINDOWS_SIGNING -ne "true" -or [string]::IsNullOrWhiteSpace($env:EVSIGN_KEY)) {
-                Write-Host "  $path is unsigned; allowed because EVSIGN_KEY is not configured."
-                continue
-              }
+            if ($sig.Status -eq "NotSigned" -and $env:REQUIRE_WINDOWS_SIGNING -ne "true") {
+              Write-Host "  $path is unsigned; allowed for this dry-run."
+              continue
             }
 
             if ($sig.Status -ne "Valid") {
