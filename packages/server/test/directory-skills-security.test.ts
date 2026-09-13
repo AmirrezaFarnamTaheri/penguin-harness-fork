@@ -17,9 +17,9 @@ async function tempDir(prefix: string): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(
-    scratch.splice(0).map((dir) =>
-      fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
-    ),
+    scratch
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })),
   );
 });
 
