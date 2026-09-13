@@ -386,8 +386,6 @@ export class OrganizationService {
       };
       return inDay(e.nextFireAt) || inDay(e.lastFiredAt);
     });
-    // The overview opens even when the all-hands channel's file is missing or unreadable (a
-    // hand edit): it then reports no recent messages instead of refusing the page.
     const allHands = await this.deps.store.readChannel(org.dir, DEFAULT_CHANNEL_ID);
     const recent =
       allHands?.parsed.ok === true
@@ -414,22 +412,6 @@ export class OrganizationService {
     };
   }
 
-  /**
-   * The overview's inbox — what a person is waited on or told about, read from the same
-   * files `detail` already loaded:
-   *
-   * - `mentions`: the all-hands messages of the window `recentMessages` reads (the
-   *   organization's current day) that name the caller or `all`, newest first.
-   * - `blockedTickets`: every ticket carrying a `Blocked` reason, whoever it waits on —
-   *   uncapped, because a blocked ticket is work nobody is doing.
-   * - `doneTickets`: tickets in `done` that closed in the current budget period, `closedAt`
-   *   taken from the last progress line that moved them there. A ticket whose file was moved
-   *   by hand has no such line and no closing time to test, so it is listed with `closedAt`
-   *   absent rather than hidden.
-   *
-   * Newest first everywhere; ticket ids start with the filing date, so ordering by id
-   * descending is ordering by age.
-   */
   private inbox(
     spend: OrgSpend,
     items: readonly OrgTicketItem[],
@@ -450,7 +432,6 @@ export class OrganizationService {
     }
     const inPeriod = (iso: string): boolean => {
       const ms = Date.parse(iso);
-      // An unparsable stamp is a hand-edited line, not evidence the ticket closed elsewhen.
       return Number.isNaN(ms) || (ms >= spend.range.fromMs && ms < spend.range.toMs);
     };
     const doneTickets = items
@@ -469,7 +450,6 @@ export class OrganizationService {
     };
   }
 
-  /** Mentions waiting for a person, summed over every channel they belong to. */
   private async pendingMentions(org: LoadedOrg, userId: string): Promise<number> {
     const me = userPrincipal(userId);
     let mentions = 0;
@@ -493,12 +473,6 @@ export class OrganizationService {
       }));
   }
 
-  /**
-   * Creates an organization as one whole: directory and files, the CEO Agent (with the
-   * company and orchestration plugins and an employee brief), then the initialization work
-   * run on the CEO's desk. Any failure removes what was written; a taken CEO id is a 409
-   * before anything is touched.
-   */
   async create(
     projectId: string,
     req: OrganizationCreateRequest,
@@ -527,8 +501,6 @@ export class OrganizationService {
     if (req.model !== undefined) await this.validateModel(projectId, req.model);
     const workspace =
       req.workspace !== undefined ? await this.requireWorkspaceDir(req.workspace) : undefined;
-    // The mission decides the working language unless the request names one: a company given
-    // a Chinese mission writes in Chinese, without anyone having to ask for it.
     const language = req.language ?? detectLanguage(mission);
     const config: OrgConfig = {
       name,
@@ -557,7 +529,6 @@ export class OrganizationService {
             duties:
               "Turn the mission into tickets, hire, partition the shared workspace, review tickets, report to the board",
             workspace: ".",
-            // Compared on the cumulative line, so this one number is the whole company's cap.
             budget: req.ceoBudget ?? DEFAULT_CEO_BUDGET,
           },
         ],
@@ -609,7 +580,6 @@ export class OrganizationService {
   ): Promise<OrganizationSettings> {
     return this.scheduler.withLock(projectId, orgId, async () => {
       const org = await this.requireOrg(projectId, orgId);
-      // A broken config is rewritten whole from the request over the defaults loadOrg filled in.
       const next: OrgConfig = { ...org.config };
       if (req.name !== undefined) {
         if (req.name.trim() === "") throw badRequest("name must not be empty.");
@@ -640,10 +610,6 @@ export class OrganizationService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Employees, desks, handbook
-  // ---------------------------------------------------------------------------
-
   async chart(projectId: string, orgId: string): Promise<OrgChartResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const { tickets } = await listTickets(this.deps, org);
@@ -657,9 +623,6 @@ export class OrganizationService {
     const shared = sharedWorkspace(org);
     for (const e of org.chart.employees) {
       const exists = await this.deps.agents.exists(org.projectId, e.agentId);
-      // A relative sub-directory that is not there yet is not a broken entry: it is created
-      // when the employee is first put to work. Only a spec that leaves the shared workspace,
-      // or an absolute directory nobody created, makes the entry unusable.
       const workspace = this.deps.store.workspaceTarget(shared, e.workspace);
       const absentAbsolute =
         workspace !== null &&
@@ -724,12 +687,6 @@ export class OrganizationService {
       );
   }
 
-  /**
-   * The workspace spec to store for an employee, with its directory ready: `./hr`, `hr/` and
-   * `hr` all become `hr`, a relative partition is created under the shared workspace, and an
-   * absolute path must already exist because it is a directory of the user's, not ours to
-   * make. A spec that climbs out of the shared workspace is refused outright.
-   */
   private async requireEmployeeWorkspace(
     org: LoadedOrg,
     spec: string | undefined,
@@ -753,7 +710,6 @@ export class OrganizationService {
     return normalized;
   }
 
-  /** Writes a chart after re-validating it through the parser: the API never persists what a hand edit would be refused for. */
   private async writeChart(org: LoadedOrg, employees: OrgEmployee[]): Promise<void> {
     const raw = serializeOrgChart({ employees });
     const parsed = parseOrgChart(raw, org.orgId);
@@ -776,9 +732,6 @@ export class OrganizationService {
         );
       }
       if (req.model !== undefined) await this.validateModel(projectId, req.model);
-      // Before the Agent and the chart entry: the partition an employee is hired into exists
-      // from the moment the employee does, and a spec that leaves the shared workspace is
-      // refused rather than written and found broken on the first trigger.
       const workspace = await this.requireEmployeeWorkspace(org, req.workspace);
       let agentId: string;
       if (req.newAgent !== undefined) {
@@ -864,8 +817,6 @@ export class OrganizationService {
         ...current,
         ...(req.title !== undefined ? { title: req.title.trim() } : {}),
         ...(req.reportsTo !== undefined ? { reportsTo: req.reportsTo } : {}),
-        // A reassigned partition is created here, so the desk the next reconcile renews has
-        // its directory waiting for it.
         ...(req.workspace !== undefined
           ? { workspace: await this.requireEmployeeWorkspace(org, req.workspace) }
           : {}),
@@ -889,7 +840,6 @@ export class OrganizationService {
     return item;
   }
 
-  /** Removes the employee from the tree (subordinates move up to its manager); the Agent and its sessions stay. */
   async leave(projectId: string, orgId: string, agentId: string): Promise<void> {
     await this.scheduler.withLock(projectId, orgId, async () => {
       const org = await this.requireValidOrg(projectId, orgId);
@@ -908,14 +858,11 @@ export class OrganizationService {
         delete org.desks[agentId];
         await this.deps.store.writeDesks(org.dir, org.desks);
       }
-      // Nothing will sweep for this employee again, so its queued ticket changes go with it.
       this.deps.cache.deleteDeskNotices(projectId, orgId, agentId);
       for (const f of await this.deps.store.listCalendar(org.dir)) {
         if (f.agentId === agentId)
           await this.deps.store.deleteCalendarEvent(org.dir, agentId, f.name);
       }
-      // A departed employee is nobody's channel member any more: the files say who is in a
-      // channel, and a principal that is no longer an employee would be counted and listed.
       for (const file of await this.deps.store.listChannels(org.dir)) {
         if (!file.parsed.ok || file.parsed.value.everyone === true) continue;
         const members = file.parsed.value.members ?? [];
@@ -961,7 +908,6 @@ export class OrganizationService {
     await this.deps.store.writeHandbook(org.dir, content);
   }
 
-  /** The handbook directory is the company's knowledge base; the index is listed first. */
   async handbookFiles(projectId: string, orgId: string): Promise<OrgHandbookFilesResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const files = await this.deps.store.listHandbookFiles(org.dir);
@@ -999,7 +945,6 @@ export class OrganizationService {
     return { path: rel, content };
   }
 
-  /** The index stays: it is what every trigger tells the employee to read. */
   async deleteHandbookFile(projectId: string, orgId: string, rel: string): Promise<void> {
     requireHandbookPath(rel);
     if (rel === "README.md")
@@ -1013,10 +958,6 @@ export class OrganizationService {
       throw new HttpError(404, "handbook_file_not_found", `${rel} is not in the handbook.`);
     await this.deps.store.deleteHandbookFile(org.dir, rel);
   }
-
-  // ---------------------------------------------------------------------------
-  // Calendar
-  // ---------------------------------------------------------------------------
 
   private async calendarItems(org: LoadedOrg, spend: OrgSpend): Promise<OrgCalendarResponse> {
     const files = await this.deps.store.listCalendar(org.dir);
@@ -1114,8 +1055,6 @@ export class OrganizationService {
         "calendar_event_not_found",
         `Calendar event does not exist: ${agentId}/${name}`,
       );
-    // Advisory, computed over the whole calendar after the write: the rota is a property of
-    // the organization, not of the one event, and the write is never refused for it.
     const warnings = rotaWarnings(list.events, item, this.now(), org.config.timezone);
     return { ...item, ...(warnings.length > 0 ? { warnings } : {}) };
   }
@@ -1139,11 +1078,6 @@ export class OrganizationService {
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Tickets
-  // ---------------------------------------------------------------------------
-
-  /** `known` is every ticket id in the same listing: a `Parent` naming none is flagged invalid. */
   private ticketItem(t: LoadedTicket, spend: OrgSpend, known: ReadonlySet<string>): OrgTicketItem {
     const d = t.doc;
     const running = d.sessions.some((s) => this.deps.runner.statusOf(s) !== "idle");
@@ -1242,11 +1176,6 @@ export class OrganizationService {
     return raw.trim();
   }
 
-  /**
-   * `initiator`: who the ticket is filed as when it is not the caller. A bare Agent id or
-   * `agent:<id>` has to be an employee and `user:<id>` a Project member — a ticket filed in
-   * the name of somebody the organization does not have is a ticket nobody can be notified about.
-   */
   private requireInitiator(org: LoadedOrg, raw: string): string {
     const value = raw.trim();
     const parsed = parsePrincipal(value);
@@ -1260,24 +1189,10 @@ export class OrganizationService {
     );
   }
 
-  /**
-   * The `Notify` list a ticket gets when the filer named none: an employee initiator is told
-   * at its desk, so it defaults to itself; a person is not, because one @-mention per closed
-   * ticket is a badge nobody asked for — a person who wants to be told lists itself.
-   */
   private defaultNotify(initiator: string): string[] {
     return principalAgentId(initiator) !== null ? [initiator] : [];
   }
 
-  /**
-   * Books the calling session as a contributing session of the ticket. A write that claims
-   * work — a progress line, an edit of the body, the move into `review` — from inside one of
-   * this organization's sessions puts that session on the `Sessions` header, so its cost is
-   * split onto the ticket: a desk that did the work at its own table is at least paid for out
-   * of the ticket's budget. Management writes (accepting, closing, blocking, unblocking) book
-   * nothing — a CEO's desk that accepts twenty tickets has not worked on twenty tickets.
-   * Mutates `doc`; returns the session booked, or null when there was none to book.
-   */
   private bookSession(
     org: LoadedOrg,
     actor: Actor,
@@ -1291,7 +1206,6 @@ export class OrganizationService {
     return { sessionId, agentId };
   }
 
-  /** The cache twin of `bookSession`: the projection a write outside a reconcile would not refresh. */
   private cacheBookedSession(
     org: LoadedOrg,
     ticketId: string,
@@ -1359,7 +1273,6 @@ export class OrganizationService {
         extraHeaders: [],
         extraSections: [],
       };
-      // Baseline the notice state with no owner, so an owner set at creation is noticed as an assignment.
       this.deps.cache.upsertTicketState({
         projectId,
         orgId,
@@ -1475,7 +1388,6 @@ export class OrganizationService {
           actor.sessionId,
         ),
       );
-      // Handing work in is a claim of work; accepting, closing and rejecting are decisions.
       const booked = status === "review" ? this.bookSession(org, actor, d) : null;
       await this.deps.store.moveTicket(org.dir, ticketId, from, status, d);
       this.cacheBookedSession(org, ticketId, booked);
@@ -1583,15 +1495,6 @@ export class OrganizationService {
     return this.ticket(projectId, orgId, ticketId);
   }
 
-  /**
-   * Opens a ticket session. Who may open one is the ticket's own rule: a person may open a
-   * session for any ticket, naming the employee with `agentId`; an employee may open one
-   * only for a ticket it owns. A desk that wants a colleague's ticket worked assigns it and
-   * lets that desk pick it up in its next sweep — an assignment is how work moves between
-   * employees, and a session opened around it leaves the owner with work it never saw. The
-   * owner may still pass `agentId` to enlist a colleague on its OWN ticket, which is how a
-   * request for help in a channel is answered.
-   */
   async startTicket(
     projectId: string,
     orgId: string,
@@ -1669,11 +1572,6 @@ export class OrganizationService {
     return this.ticket(projectId, orgId, ticketId);
   }
 
-  // ---------------------------------------------------------------------------
-  // Channels
-  // ---------------------------------------------------------------------------
-
-  /** Who is asking: an employee when the call came from one of its sessions, else the signed-in person. */
   private caller(
     org: LoadedOrg,
     actor: Actor,
@@ -1683,7 +1581,6 @@ export class OrganizationService {
     return { principal, agentId, userId: agentId === null ? actor.userId : null };
   }
 
-  /** The Project's people: its owner and its members, the `user:` half of the all-hands channel. */
   private projectUserIds(org: LoadedOrg): string[] {
     const project = this.deps.projects.findById(org.projectId);
     const out: string[] = [];
@@ -1696,7 +1593,6 @@ export class OrganizationService {
     return out;
   }
 
-  /** A channel's membership as principals: the all-hands channel resolves to everyone, the rest to their list. */
   private channelMemberPrincipals(org: LoadedOrg, cfg: ChannelConfig): string[] {
     if (cfg.everyone !== true) return cfg.members ?? [];
     return [
@@ -1705,11 +1601,6 @@ export class OrganizationService {
     ];
   }
 
-  /**
-   * The channel's config, or 404. An unparsable `channel.toml` is skipped everywhere else,
-   * so it is not there to be read or written either; the reason travels in the message
-   * rather than in a second error code.
-   */
   private async requireChannel(org: LoadedOrg, channelId: string): Promise<ChannelConfig> {
     if (!isChannelId(channelId)) throw channelNotFound(channelId);
     const file = await this.deps.store.readChannel(org.dir, channelId);
@@ -1724,7 +1615,6 @@ export class OrganizationService {
     return file.parsed.value;
   }
 
-  /** The last message's time, plus the caller's unread counts when the caller is a person. */
   private async channelActivity(
     org: LoadedOrg,
     channelId: string,
@@ -1739,7 +1629,6 @@ export class OrganizationService {
         break;
       }
     }
-    // Read cursors belong to people; an employee reads its channel through its trigger.
     if (userId === null) return { unread: 0, mentionsMe: 0, lastMessageAt };
     const lastReadId = this.deps.cache.readCursor(org.projectId, org.orgId, channelId, userId);
     const me = userPrincipal(userId);
@@ -1804,7 +1693,6 @@ export class OrganizationService {
     };
   }
 
-  /** People are the board and see every channel; an employee sees the channels it belongs to. */
   async channels(projectId: string, orgId: string, actor: Actor): Promise<OrgChannelsResponse> {
     const org = await this.requireOrg(projectId, orgId);
     const caller = this.caller(org, actor);
@@ -1825,7 +1713,6 @@ export class OrganizationService {
     return { channels };
   }
 
-  /** A new channel holds exactly its creator; everyone else arrives by invitation (people may also join). */
   async createChannel(
     projectId: string,
     orgId: string,
@@ -1878,7 +1765,6 @@ export class OrganizationService {
     return this.channelDetail(org, channelId, cfg, caller);
   }
 
-  /** People read every channel; an employee only the ones it belongs to. */
   private requireReadAccess(
     org: LoadedOrg,
     channelId: string,
@@ -1910,7 +1796,6 @@ export class OrganizationService {
           throw notAMember(channelId, caller.principal, "Only people archive a channel.");
         }
       }
-      // Everything but lifting the archive itself is refused while the channel is archived.
       if (cfg.archived && req.archived !== false) throw channelArchived(channelId);
       const renaming = req.name !== undefined || req.purpose !== undefined;
       if (renaming && !members.includes(caller.principal)) {
@@ -1923,8 +1808,6 @@ export class OrganizationService {
       }
       if (req.purpose !== undefined) next.purpose = req.purpose.trim();
       const archiveChanged = req.archived !== undefined && req.archived !== cfg.archived;
-      // The notice is written before the flag: an archived channel is skipped by the scan,
-      // so a line written after it would wait for the unarchive to reach the event stream.
       if (archiveChanged) {
         await appendChannelMessage(
           this.deps,
@@ -1941,7 +1824,6 @@ export class OrganizationService {
     return item;
   }
 
-  /** `agent:<id>` must be an employee and `user:<id>` a Project member — nobody else can be in a channel. */
   private requireChannelPrincipal(org: LoadedOrg, raw: string): string {
     const parsed = parsePrincipal(raw);
     if (parsed?.kind === "agent" && org.byId.has(parsed.id)) return agentPrincipal(parsed.id);
@@ -1955,7 +1837,6 @@ export class OrganizationService {
     );
   }
 
-  /** Any member invites; a person may also join by itself, an employee may not. */
   async addChannelMember(
     projectId: string,
     orgId: string,
@@ -1999,7 +1880,6 @@ export class OrganizationService {
     return detail;
   }
 
-  /** A member removes itself; a person may remove anyone. Removing a non-member changes nothing. */
   async removeChannelMember(
     projectId: string,
     orgId: string,
@@ -2043,10 +1923,6 @@ export class OrganizationService {
     });
     await this.scheduler.reconcile(projectId, orgId);
   }
-
-  // ---------------------------------------------------------------------------
-  // Channel messages
-  // ---------------------------------------------------------------------------
 
   async channelMessages(
     projectId: string,
@@ -2094,7 +1970,6 @@ export class OrganizationService {
     };
   }
 
-  /** Resolves `@` tokens: employees first, then Project members; the writer disambiguates with a prefix. */
   private resolveMentions(org: LoadedOrg, text: string): string[] {
     const users = new Set(this.projectUserIds(org));
     const out: string[] = [];
@@ -2150,7 +2025,6 @@ export class OrganizationService {
       const members = this.channelMemberPrincipals(org, cfg);
       if (!members.includes(sender)) throw notAMember(channelId, sender);
       const mentions = this.resolveMentions(org, text);
-      // `@all` is the channel's own membership, so only named principals can be outsiders.
       const outsiders = mentions.filter((m) => m !== "all" && !members.includes(m));
       if (outsiders.length > 0) {
         throw new HttpError(
@@ -2185,10 +2059,6 @@ export class OrganizationService {
     if (current === null || upTo > current)
       this.deps.cache.setReadCursor(projectId, orgId, channelId, userId, upTo);
   }
-
-  // ---------------------------------------------------------------------------
-  // Finance and sessions
-  // ---------------------------------------------------------------------------
 
   async finance(projectId: string, orgId: string, period?: string): Promise<OrgFinanceResponse> {
     const org = await this.requireOrg(projectId, orgId);
@@ -2285,10 +2155,6 @@ export class OrganizationService {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Texts
-// ---------------------------------------------------------------------------
-
 function requireHandbookPath(rel: string): void {
   if (!isHandbookFilePath(rel))
     throw new HttpError(
@@ -2298,16 +2164,9 @@ function requireHandbookPath(rel: string): void {
     );
 }
 
-/** How many rows one inbox list carries: a page, the same cap the overview renders. */
 const INBOX_PAGE = 20;
-
-/** A progress line `moveTicket` writes when a ticket lands in `done`, reason or not. */
 const MOVED_TO_DONE = /^moved \S+ → done(?::|$)/;
 
-/**
- * The time a ticket last moved into `done`, from its progress log. Null when the log has no
- * such line, which is what a ticket moved by editing its file looks like.
- */
 function lastClosedAt(doc: TicketDoc): string | null {
   for (let i = doc.progress.length - 1; i >= 0; i -= 1) {
     const entry = parseProgressLine(doc.progress[i]!);
@@ -2316,24 +2175,10 @@ function lastClosedAt(doc: TicketDoc): string | null {
   return null;
 }
 
-/**
- * Appended to the prompt on the one retry an unusable answer buys. The first ask already
- * describes the format; a model that answered with prose anyway is told, in one sentence, that
- * the answer IS the identifier — which is the instruction such a model complies with.
- */
 const SEMANTIC_ID_RETRY_RULE =
   "Answer with the identifier only — ASCII lowercase letters, digits and underscores, nothing else.";
-
-/** How much of a failed proposal's detail reaches the log and the errors panel. */
 const ID_SUGGEST_FAILURE_MAX = 300;
 
-/**
- * The prompt behind a model-backed semantic id: the model translates a display name into
- * one snake_case English identifier — the semantic core only, since `sanitizeSuggestedId`
- * puts the kind's prefix (`co_` / `ch_`) in front of whatever comes back. Examples in both
- * scripts, the taken ids named so the answer does not collide, and no room for prose;
- * anything that does not survive the sanitizer falls back to the ASCII slug.
- */
 function semanticIdPrompt(req: SemanticIdSuggestRequest): string {
   const taken = (req.taken ?? []).join(", ");
   return [
@@ -2348,7 +2193,6 @@ function semanticIdPrompt(req: SemanticIdSuggestRequest): string {
   ].join(" ");
 }
 
-/** The AGENTS.md written for an Agent created as an employee: who it is in this organization and where the handbook is. */
 export function employeeBrief(input: {
   orgId: string;
   name: string;
@@ -2359,6 +2203,18 @@ export function employeeBrief(input: {
   language: OrgLanguage;
   duties?: string;
 }): string {
+  if (input.language === "zh") {
+    return `# 员工简介
+
+你是 \`${input.agentId}\`，组织 **${input.name}**（\`${input.orgId}\`）的 ${input.title}，向${input.reportsTo === null ? "董事会" : ` \`${input.reportsTo}\``}汇报。
+
+使命：${input.mission}
+${input.duties !== undefined ? `\n职责：${input.duties}\n` : ""}
+本组织使用中文工作：频道消息、工单、手册文档和报告均使用中文；命令、文件名、ID 和字段名保持 ASCII。
+
+组织目录是 \`<app_data_dir>/organizations/${input.orgId}/\`。每次工作运行开始时，先阅读 \`handbook/README.md\`（手册索引；该目录是公司的知识库），然后遵循 \`company-employee\` 技能；当你的职位对应 CEO、HR 或财务时，分别使用 \`company-ceo\`、\`company-hr\` 或 \`company-finance\`。在会话中，\`penguin org\` 命令已从环境中获知你的组织、Project、Agent 和 session。
+`;
+  }
   return `# Employee brief
 
 You are \`${input.agentId}\`, ${input.title} of the organization **${input.name}** (\`${input.orgId}\`), reporting to ${input.reportsTo === null ? "the board" : `\`${input.reportsTo}\``}.
@@ -2371,10 +2227,23 @@ Your organization directory is \`<app_data_dir>/organizations/${input.orgId}/\`.
 `;
 }
 
-/** The body of the CEO's initialization work run, in the organization's working language. */
 function initBody(org: LoadedOrg): string {
   const board = userPrincipal(org.config.createdBy);
   const ceo = ceoAgentId(org.orgId);
+  if (orgLanguage(org.config) === "zh") {
+    return [
+      `使命：${org.config.mission}`,
+      "",
+      "你是一个全新组织的 CEO，这是初始化运行。重要事项由董事会决定；你负责提出方案。请按以下顺序执行：",
+      `1. 阅读手册。然后在全员频道向董事会（${board}）发送且只发送一份方案——\`penguin org channel send -m "@${board} …"\`——说明你对使命的理解、准备建立的工作流和首批工单、计划招聘的角色（先 HR 和财务）及其预算和模型，以及共享工作区的划分方式。最后明确提出需要董事会回答的问题，然后结束本次运行：在董事会回复前，不要招聘、排期或创建工单。`,
+      `2. 董事会的回答会以提及或本对话中的消息到达。确认后，先招聘 HR 和财务——\`penguin org hire --new-agent ${org.orgId}_hr --title HR --reports-to ${ceo} --duties "…"\`，并以同样方式创建 \`${org.orgId}_finance\`——然后招聘已确认的其他角色。`,
+      "3. 按确认方案划分共享工作区：为员工分配子目录（`penguin org employee set <agent_id> --workspace <sub-directory>`）；分配相对路径时会创建对应子目录。",
+      "4. 将你自己、HR 和财务加入日历（`penguin org calendar add …`），作为错峰轮值而不是同时广播：你每天 09:00，HR 每三天 10:00，财务每周 16:00（使用组织时区和带偏移量的 ISO 时间；不要使用 `--start-at now`），之后每个新员工使用不同的小时。",
+      "5. 将已确认的工单创建在 `proposed`（`penguin org ticket create …`）：为项目级目标创建一个父工单，并为每个工作流创建子工单。接受工单进入 `in_progress` 时分配负责人（`penguin org ticket assign <id> --owner agent:<employee>`）；该员工的工位会在下一次扫描时接手并自行启动工单会话。只有工单负责人可以启动其会话，因此你自己负责的工单使用 `penguin org ticket start <id>`；工位只负责调度和跟踪，不替工单执行工作。",
+      "6. 为每个工作流创建一个频道（`penguin org channel create ch_<stream> --name …`），并邀请负责人（`penguin org channel invite ch_<stream> agent:<agent_id>`），避免各工作流的讨论淹没全员频道。",
+      `7. 在全员频道向董事会汇报，提及 @${board}，并说明下一项需要董事会决定的事项（如有）。`,
+    ].join("\n");
+  }
   return [
     `Mission: ${org.config.mission}`,
     "",
@@ -2389,7 +2258,6 @@ function initBody(org: LoadedOrg): string {
   ].join("\n");
 }
 
-/** Next scheduled fire time, as the schedules route computes it. */
 function calendarNextFireAt(
   def: ScheduleDefinition,
   state: {
