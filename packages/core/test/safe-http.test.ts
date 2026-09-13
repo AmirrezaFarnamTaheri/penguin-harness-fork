@@ -50,6 +50,25 @@ describe("SafeHttp SSRF Protection", () => {
       expect(isPrivateOrReservedIPv6("ff02::1")).toBe(true);
     });
 
+    it("classifies equivalent embedded IPv4 spellings by the embedded address", () => {
+      const loopbackForms = [
+        "::ffff:127.0.0.1",
+        "::ffff:7f00:1",
+        "0:0:0:0:0:ffff:7f00:1",
+        "::127.0.0.1",
+        "::7f00:1",
+        "2002:7f00:1::",
+      ];
+      for (const address of loopbackForms) {
+        expect(isPrivateOrReservedIPv6(address), address).toBe(true);
+      }
+
+      const publicForms = ["::ffff:8.8.8.8", "::ffff:808:808", "2002:808:808::"];
+      for (const address of publicForms) {
+        expect(isPrivateOrReservedIPv6(address), address).toBe(false);
+      }
+    });
+
     it("allows public IPv6 addresses", () => {
       expect(isPrivateOrReservedIPv6("2606:4700:4700::1111")).toBe(false);
       expect(isPrivateOrReservedIPv6("2001:4860:4860::8888")).toBe(false);
@@ -62,6 +81,13 @@ describe("SafeHttp SSRF Protection", () => {
       expect(isSafeIpAddress("127.0.0.1", true)).toBe(true);
       expect(isSafeIpAddress("10.0.0.1", true)).toBe(false); // 10.x still blocked even if localhost allowed
       expect(isSafeIpAddress("8.8.8.8", false)).toBe(true);
+    });
+
+    it("applies localhost policy consistently to mapped and compatible IPv6 loopback", () => {
+      expect(isSafeIpAddress("::ffff:127.0.0.1", false)).toBe(false);
+      expect(isSafeIpAddress("::ffff:127.0.0.1", true)).toBe(true);
+      expect(isSafeIpAddress("::7f00:1", false)).toBe(false);
+      expect(isSafeIpAddress("::7f00:1", true)).toBe(true);
     });
   });
 
