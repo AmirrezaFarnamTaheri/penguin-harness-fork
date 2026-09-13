@@ -177,7 +177,10 @@ export async function pathType(abs) {
     if (stat.isSymbolicLink()) return "symlink";
     return "other";
   } catch (error) {
-    if (error && error.code === "ENOENT") return "missing";
+    // ENOTDIR occurs when a path component that documentation expects to be a
+    // directory is actually a flattened pointer/plain file. From the caller's
+    // perspective the requested resource is unresolved, just like ENOENT.
+    if (error && (error.code === "ENOENT" || error.code === "ENOTDIR")) return "missing";
     throw error;
   }
 }
