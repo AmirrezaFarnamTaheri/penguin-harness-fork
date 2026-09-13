@@ -60,7 +60,7 @@ import { EventRow } from "./trace-event-row";
  * Badge text for a round card, or null when the round is not a compaction turn.
  *
  * Reuses the chat stream's mode-aware row title rather than a Trace-local string, so the two
- * surfaces cannot drift apart: a `discard` round reads 清空 / "Clear" here exactly as it does
+ * surfaces cannot drift apart: a `discard` round reads "Clear" here exactly as it does
  * in the conversation, because it drops the old context instead of compacting it.
  *
  * `compaction` stays the sole gate — a round analyzed before the server carried the mode has

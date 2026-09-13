@@ -89,7 +89,7 @@ penguin org create --org-id co_plugin_marketplace \
 Creation writes the organization's files, creates the CEO Agent, opens its desk session and starts an **initialization run** on it. That run has already posted one proposal in the all-hands channel — the CEO's reading of the mission, the streams and first tickets it intends to file, the roles it wants to hire with their budgets, and how it will split the shared workspace — and then stopped, waiting for the board. Tell the user, in their language, exactly that:
 
 - the organization was created and only the CEO exists;
-- switch to company mode with the **开发 | 公司** (Development | Company) control at the top of the sidebar, then pick the organization;
+- switch to company mode with the **Development | Company** control at the top of the sidebar, then pick the organization;
 - the CEO's proposal is waiting in the all-hands channel and **nothing else happens until the board answers it** — an answer in that channel that `@`-mentions the CEO wakes its desk;
 - the CEO hires, partitions the workspace, schedules the calendar and files the tickets itself once it has that answer.
 

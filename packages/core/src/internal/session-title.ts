@@ -68,7 +68,7 @@ export interface SessionTitleResult {
 /**
  * Assembles the title-generation Prompt (exported for host/test assertion use). It is an
  * instruction *about* a piece of text, never a conversational turn: spliced in as one, a short
- * opener like `你好` gets answered rather than titled, and the model's reply is what lands in
+ * opener like `hello` gets answered rather than titled, and the model's reply is what lands in
  * the session list. The material is therefore fenced in `<conversation>` and declared to be
  * data — which also stops it from smuggling instructions into a request that runs with no
  * system prompt of its own — the demand comes **after** the material, and the Prompt ends on a
@@ -243,7 +243,7 @@ export async function generateTitleWithLLM(
 }
 
 /**
- * Drops a `Title:` / `标题：` label the model restated before its answer, along with whatever it
+ * Drops a `Title:` label the model restated before its answer, along with whatever it
  * decorated the label with. The Prompt ends on a bare `Title:` lead-in, so a model that writes
  * the label out again would otherwise put it in the session list — but the rule exists only
  * because of that lead-in, which is why it sits here and not in `sanitizeTitle`, whose other
@@ -255,7 +255,7 @@ export async function generateTitleWithLLM(
 function dropRestatedLabel(raw: string): string {
   return stripConversationMarkers(raw)
     .replace(LEADING_DECORATION_RE, "")
-    .replace(/^(?:title|标题)\s*[:：]\s*/i, "");
+    .replace(/^(?:title|\u6807\u9898)\s*[:\uFF1A]\s*/i, "");
 }
 
 function isAssistantText(msg: OmniMessage): msg is OmniMessage<TextPayload> {

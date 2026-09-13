@@ -54,7 +54,7 @@ export function WorkspaceSelect({
   /** Trigger style: the draft page's pill (default), or a dialog form control (see the header comment). */
   variant?: "pill" | "form";
   /**
-   * Caller-rendered trigger (the sidebar's 新建工作区 header button): replaces the pill
+   * Caller-rendered trigger (the sidebar's "New Workspace" header button): replaces the pill
    * and switches the panel to the shared body portal — the sidebar's scroller would
    * clip an in-flow panel. The same browse menu, byte for byte.
    */

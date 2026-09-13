@@ -1,0 +1,15 @@
+diff -rN -U0 --ignore-trailing-space a/agent-md-refactor/README.md b/agent-md-refactor/README.md
+--- a/agent-md-refactor/README.md	2000-01-01 00:00:00.000000000 +0000
++++ b/agent-md-refactor/README.md	2000-01-01 00:00:00.000000000 +0000
+@@ -3 +3 @@
+-A Claude Code skill that transforms bloated agent instruction files into clean, organized documentation using progressive disclosure principles.
++A skill that transforms bloated agent instruction files into clean, organized documentation using progressive disclosure principles.
+@@ -106 +106 @@
+-Claude: I'll analyze your CLAUDE.md file and refactor it using progressive
++Kilo: I'll analyze your CLAUDE.md file and refactor it using progressive
+@@ -115 +115 @@
+-Claude: I'll review your AGENTS.md and organize it into focused, linked files...
++Kilo: I'll review your AGENTS.md and organize it into focused, linked files...
+@@ -123 +123 @@
+-Claude: I'll apply the 5-phase refactoring process to clean up your
++Kilo: I'll apply the 5-phase refactoring process to clean up your

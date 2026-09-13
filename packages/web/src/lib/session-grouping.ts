@@ -510,8 +510,8 @@ export function isOrgSession(row: OrgSessionMarks): boolean {
  * Sessions are driven by its scheduler rather than by the user, which is a fact about the
  * Session and not about the shell around it — so neither company mode being switched off (the
  * admin's master switch or the user's own) nor the organization being deleted turns one back
- * into a conversation of this list. They are listed as themselves in company mode's 工位 /
- * 工单会话 groups, and stay reachable by their own url and through the Trace page regardless.
+ * into a conversation of this list. They are listed as themselves in company mode's Workstations /
+ * Ticket Sessions groups, and stay reachable by their own url and through the Trace page regardless.
  *
  * The second half is not waste: the server's totals count those rows, so the group headers
  * and the "show the rest" arithmetic have to subtract them (countsWithoutOrgSessions).

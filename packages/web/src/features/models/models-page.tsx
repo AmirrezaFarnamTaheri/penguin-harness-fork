@@ -2706,7 +2706,7 @@ function ModelDialog({
    * detects it FIRST and continues with whatever comes back: asking the endpoint is more
    * reliable than guessing, so it is worth the round-trip.
    *
-   * A probe that finds nothing no longer blocks (per maintainer: 默认都走兼容类型). The save
+   * A probe that finds nothing no longer blocks (per maintainer: default to compatible type). The save
    * goes through on the compatible client, with a toast saying that is what happened —
    * detection is an accuracy improvement, not a gate, and refusing to save left the user
    * stuck on an endpoint that simply cannot be probed. Nothing unstartable is written

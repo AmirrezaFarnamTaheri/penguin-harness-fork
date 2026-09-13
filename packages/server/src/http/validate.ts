@@ -14,6 +14,10 @@ export function badRequest(message: string): HttpError {
   return new HttpError(400, "bad_request", message);
 }
 
+export function notFound(message: string): HttpError {
+  return new HttpError(404, "not_found", message);
+}
+
 /**
  * Get a path parameter (under sub-route mounting, hono infers string | undefined; the
  * route guarantees presence at runtime — treat a defensive missing value as 404).

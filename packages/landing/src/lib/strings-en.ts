@@ -42,7 +42,7 @@ export const en: Strings = {
 
   lang: {
     label: "Language",
-    zh: "中文",
+    zh: "Chinese",
     en: "English",
     system: "System",
   },

@@ -1,6 +1,6 @@
 /**
  * Manually-added Workspaces of the sidebar (pure decisions, unit tested): the header's
- * 新建工作区 button lets the user browse to a directory, and the picked path must show
+ * "New Workspace" button lets the user browse to a directory, and the picked path must show
  * up as a workspace group IMMEDIATELY — even with zero Sessions. There is no Workspace
  * entity on the server (groups are otherwise derived purely from Session paths), so the
  * picked paths persist frontend-side per Project (`penguin.…` key naming, injectable
@@ -8,11 +8,11 @@
  * empty groups.
  *
  * An entry is `{ path, alias? }`: the alias is a display name set via the group's
- * 重命名工作区 (it replaces the basename as the group label — for session-backed groups
+ * Rename Workspace (it replaces the basename as the group label — for session-backed groups
  * too — while the full path stays in the tooltip; an empty alias reverts to the
  * basename). Loads stay tolerant of the branch's earlier string-only stored shape.
  *
- * Lifecycle: an entry stays until 删除工作区 unregisters it (sidebar-only — disk and
+ * Lifecycle: an entry stays until Delete Workspace unregisters it (sidebar-only — disk and
  * Sessions are never touched; with Sessions present the group simply persists as
  * session-derived). Once Sessions exist the entry mostly dedups away at merge, but it
  * still carries the alias and keeps the group visible after those Sessions are gone.
@@ -23,7 +23,7 @@ import type { WorkspaceGroup } from "./session-grouping";
 /** One registered Workspace: the normalized path, plus an optional display alias. */
 export interface WorkspaceEntry {
   path: string;
-  /** Display name overriding the path basename (set via 重命名工作区; absent = basename). */
+  /** Display name overriding the path basename (set via Rename Workspace; absent = basename). */
   alias?: string;
 }
 
@@ -147,7 +147,7 @@ export function setWorkspaceAlias(
   );
 }
 
-/** 删除工作区: drops the registry entry (sidebar-only — disk and Sessions are untouched). Same-reference fast exit when the path isn't registered. */
+/** Delete Workspace: drops the registry entry (sidebar-only — disk and Sessions are untouched). Same-reference fast exit when the path isn't registered. */
 export function unregisterWorkspace(
   entries: readonly WorkspaceEntry[],
   path: string,
@@ -165,7 +165,7 @@ export function unregisterWorkspace(
  *
  * The empty groups sort AFTER the session-derived ones (in registration order, newest
  * first). They hold no conversations, and the list renders behind a 10-group display
- * cap: fronting them would push every group with real chats behind 更多分组 as soon as
+ * cap: fronting them would push every group with real chats behind "more groups" as soon as
  * a handful of Workspaces were registered. The sidebar widens the cap when it registers
  * one, so a just-added Workspace is still revealed immediately.
  */

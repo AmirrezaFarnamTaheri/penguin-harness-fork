@@ -73,7 +73,7 @@ export function ChannelComposer({
   // 2px short and the box would scroll against itself from the very first one.
   //
   // The resting height is not set here: `min-h-10` on the box and `h-10` on the button are the
-  // same 2.5rem, so an empty or single-line draft sits exactly as tall as 发送 at every font
+  // same 2.5rem, so an empty or single-line draft sits exactly as tall as Send at every font
   // scale, and `min-height` outranks the height written below. The row is `items-end`, so the
   // button stays welded to the box's bottom edge as the box grows.
   useLayoutEffect(() => {

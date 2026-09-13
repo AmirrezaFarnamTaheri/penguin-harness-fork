@@ -5,9 +5,9 @@
  *   - the write is optimistic (an insecure context or denied permission must not leave the
  *     control stuck), matching the clipboard convention used across the chat views;
  *   - the feedback is ALWAYS shown AT THE BUTTON, and it is the icon alone: copy swaps to
- *     the check for COPIED_MS and the tooltip flips to "已复制" (#312 — no transient
- *     "已复制" text is rendered, and the feedback never replaces an unrelated label/title
- *     elsewhere). A control that keeps a visible text label (e.g. "复制 Prompt") keeps it
+ *     the check for COPIED_MS and the tooltip flips to "Copied" (#312 — no transient
+ *     "Copied" text is rendered, and the feedback never replaces an unrelated label/title
+ *     elsewhere). A control that keeps a visible text label (e.g. "Copy Prompt") keeps it
  *     unchanged and swaps only its glyph — see CopyCheckGlyph + useCopied;
  *   - the icon swap is silent, so every copy affordance also renders a CopiedStatus live
  *     region beside itself — that is the screen-reader half of the same feedback.
@@ -102,7 +102,7 @@ export function CopyButton({
 }: {
   /** The string to copy, or a getter for content computed at click time (e.g. a formatted stats line). */
   text: string | (() => string);
-  /** Accessible name / idle tooltip for the copy action (the tooltip flips to "已复制" while copied). */
+  /** Accessible name / idle tooltip for the copy action (the tooltip flips to "Copied" while copied). */
   label: string;
   /** Overrides the compact default look (e.g. the reply row's fixed-size button). */
   className?: string;

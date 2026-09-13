@@ -3,7 +3,7 @@
  *
  * No Node/React/SDK dependencies (arktype is the one library, for context
  * schemas) so both the server platform and the web platform run the same
- * code. See the architecture proposal ("可热更新、可分发的 Agent Harness").
+ * code. See the architecture proposal ("Hot-reloadable, distributable Agent Harness").
  */
 export type { Json, JsonObject } from "./json.js";
 export { isJsonObject } from "./json.js";
@@ -67,3 +67,10 @@ export type { Opaque, Slot } from "./markers.js";
 export { Interface } from "./markers.js";
 export { dataExtends } from "./data.js";
 export type { TypeTable } from "./data.js";
+export { AcpConnection } from "./acp.js";
+export type {
+  JsonRpcRequest,
+  JsonRpcNotification,
+  JsonRpcResponse,
+  JsonRpcMessage,
+} from "./acp.js";

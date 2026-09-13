@@ -21,7 +21,7 @@
  *   - **unit boundaries** — the safe cut points described above (banner-only prompts and
  *     goal-round re-sends included: they start Tasks in the reducer);
  *   - **outline turns** — the subset that opens an entry in the Web's conversation
- *     outline (`第 N 轮` numbering). Machine-only prompts (handoff / model-switch
+ *     outline (`Round N` numbering). Machine-only prompts (handoff / model-switch
  *     blocks), goal rounds past 1, steering chips and compaction injections do NOT open
  *     entries, and consecutive user messages of one send merge into one entry — the
  *     count must match buildOutline exactly, or a paginated outline would mis-number.

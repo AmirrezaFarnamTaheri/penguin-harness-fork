@@ -1,21 +1,18 @@
 /**
- * Root-level server instance lock (`<root>/server.lock`).
+ * Root-level server instance coordination.
  *
- * web.db is single-process / single-writer (see db/database.ts), and two servers on one
- * data root would also double-run the schedule scheduler — so a data root admits one
- * server at a time. The lock records {pid, port, startedAt}; liveness requires BOTH the
- * pid to be alive AND the recorded port to accept a TCP connection, because either signal
- * alone false-positives (pids get recycled, ports get taken by unrelated processes). A
- * lock that fails the liveness check is stale and is simply overwritten by the next
- * server.
+ * `server.lock` is the published discovery record for an already-listening server. The actual
+ * single-instance guarantee is a process-lifetime SQLite write transaction on a separate tiny
+ * database in the same data root: unlike a check-then-write lock file, BEGIN IMMEDIATE is an
+ * atomic cross-process claim and the OS releases it automatically if the owner crashes.
  *
- * Published as `@prismshadow/penguin-server/lock` (side-effect-free) so the CLI and the
- * desktop shell can pre-check a root without importing the package entry, which starts
- * listening.
+ * Published as `@prismshadow/penguin-server/lock` (side-effect-free) so the CLI and the desktop
+ * shell can pre-check a root without importing the package entry, which starts listening.
  */
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 
 export interface ServerLock {
   pid: number;
@@ -23,11 +20,23 @@ export interface ServerLock {
   startedAt: string;
 }
 
+export interface ServerInstanceClaim {
+  release(): void;
+}
+
 /** TCP probe budget: loopback either connects immediately or the port is dead. */
 const PROBE_TIMEOUT_MS = 500;
+/** A competing startup should fail promptly instead of sitting behind a live process. */
+const CLAIM_BUSY_TIMEOUT_MS = 250;
+const CLAIM_DB_NAME = ".server-instance.sqlite";
+const sqlite = process.getBuiltinModule("node:sqlite");
 
 export function serverLockPath(root: string): string {
   return path.join(root, "server.lock");
+}
+
+function serverClaimDbPath(root: string): string {
+  return path.join(root, CLAIM_DB_NAME);
 }
 
 /**
@@ -43,8 +52,11 @@ export function parseServerLock(raw: string): ServerLock | null {
     if (
       typeof parsed.pid !== "number" ||
       !Number.isInteger(parsed.pid) ||
+      parsed.pid <= 0 ||
       typeof parsed.port !== "number" ||
-      !Number.isInteger(parsed.port)
+      !Number.isInteger(parsed.port) ||
+      parsed.port <= 0 ||
+      parsed.port > 65_535
     ) {
       return null;
     }
@@ -54,7 +66,7 @@ export function parseServerLock(raw: string): ServerLock | null {
   }
 }
 
-/** Reads the lock file; a missing or malformed file reads as "no lock". */
+/** Reads the published lock file; a missing or malformed file reads as "no lock". */
 export function readServerLock(root: string): ServerLock | null {
   try {
     return parseServerLock(fs.readFileSync(serverLockPath(root), "utf8"));
@@ -88,19 +100,58 @@ function portAccepts(port: number): Promise<boolean> {
   });
 }
 
-/** True when the lock's process is alive AND its port accepts connections. */
+/** True when the published lock's process is alive AND its port accepts connections. */
 export async function isServerLockAlive(lock: ServerLock): Promise<boolean> {
   return pidAlive(lock.pid) && (await portAccepts(lock.port));
 }
 
-/** Convenience for pre-checks: the live lock on this root, or null (absent or stale). */
+/** Convenience for pre-checks: the live published lock on this root, or null. */
 export async function liveServerLock(root: string): Promise<ServerLock | null> {
   const lock = readServerLock(root);
   if (!lock) return null;
   return (await isServerLockAlive(lock)) ? lock : null;
 }
 
-/** Writes the lock atomically (tmp + rename; the parent directory must already exist). */
+function isBusyError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /database is (?:locked|busy)/i.test(message);
+}
+
+/**
+ * Atomically claims the right to start/run one server for a data root.
+ *
+ * The returned claim must be retained for the whole server lifetime. A second process cannot
+ * acquire BEGIN IMMEDIATE on the same tiny database while this transaction is open. No PID or
+ * stale-file reclamation protocol is needed: SQLite/OS file locks disappear when the connection
+ * or process dies. `null` means another process currently owns (or is starting on) this root.
+ */
+export function acquireServerInstanceClaim(root: string): ServerInstanceClaim | null {
+  fs.mkdirSync(root, { recursive: true });
+  const db: DatabaseSync = new sqlite.DatabaseSync(serverClaimDbPath(root));
+  db.exec(`PRAGMA busy_timeout = ${CLAIM_BUSY_TIMEOUT_MS};`);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+  } catch (error) {
+    db.close();
+    if (isBusyError(error)) return null;
+    throw error;
+  }
+
+  let released = false;
+  return {
+    release(): void {
+      if (released) return;
+      released = true;
+      try {
+        db.exec("ROLLBACK");
+      } finally {
+        db.close();
+      }
+    },
+  };
+}
+
+/** Writes the discovery lock atomically once the server is actually listening. */
 export function acquireServerLock(root: string, lock: ServerLock): void {
   const target = serverLockPath(root);
   const tmp = `${target}.${process.pid}.tmp`;
@@ -108,12 +159,12 @@ export function acquireServerLock(root: string, lock: ServerLock): void {
   fs.renameSync(tmp, target);
 }
 
-/** Removes the lock if it is still ours (best-effort; never throws on shutdown paths). */
+/** Removes the published lock if it is still ours (best-effort; never throws on shutdown paths). */
 export function releaseServerLock(root: string): void {
   try {
     const lock = readServerLock(root);
     if (lock && lock.pid === process.pid) fs.rmSync(serverLockPath(root));
   } catch {
-    // Best-effort: a stale leftover is overwritten by the next server anyway.
+    // Best-effort: the next server publishes a fresh discovery record after claiming the root.
   }
 }

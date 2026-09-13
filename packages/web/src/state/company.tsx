@@ -136,7 +136,7 @@ interface CompanyStoreState {
   /** Desk and ticket Sessions per organization of the current Project, keyed by org key. */
   orgSessions: ReadonlyMap<string, OrgSessionsResponse>;
   /**
-   * The open organization's chart — the sidebar's 工位 group is one row per EMPLOYEE, and
+   * The open organization's chart — the sidebar's Workstation group is one row per EMPLOYEE, and
    * this is the only listing that holds employees whose desk has never been opened. Null
    * before the first read of the organization now open.
    */
@@ -350,7 +350,7 @@ export function createCompanyStore() {
     },
 
     /**
-     * Re-reads the open organization's chart (the 工位 group's roster). A response for an
+     * Re-reads the open organization's chart (the Workstation group's roster). A response for an
      * organization the shell has since left is dropped, and a failure leaves whatever the
      * group already shows: the roster changes only when someone hires or offboards, so a
      * stale list is a better answer than an empty one.
@@ -539,7 +539,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     void store.getState().reloadChannels(open.projectId, open.orgId);
   }, [store, serverEnabled, currentOrgKey, messageVersion]);
 
-  // The open organization's roster: the sidebar's 工位 group has a row per employee, desk or
+  // The open organization's roster: the sidebar's Workstation group has a row per employee, desk or
   // no desk. Re-read when the organization changes and when a run or a personnel change
   // (both bump `orgs`) says the chart moved.
   useEffect(() => {
@@ -551,7 +551,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   // In company mode the shell always has a current organization: the one its sidebar names.
   // The organization routes announce it, but a desk or ticket conversation lives at
   // `/chat/:sessionId` — reload there and no route ever would, which used to leave the
-  // channel list on a skeleton and the 工位 group without its roster. The organization last
+  // channel list on a skeleton and the Workstation group without its roster. The organization last
   // opened is exactly what the sidebar is already showing, so the shell adopts it.
   const { workMode, personalEnabled, lastOrgKey } = state;
   useEffect(() => {

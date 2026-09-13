@@ -1,0 +1,12 @@
+diff -rN -U0 --ignore-trailing-space a/internal-comms/SKILL.md b/internal-comms/SKILL.md
+--- a/internal-comms/SKILL.md	2000-01-01 00:00:00.000000000 +0000
++++ b/internal-comms/SKILL.md	2000-01-01 00:00:00.000000000 +0000
+@@ -5,4 +5,4 @@
+-  using the formats that my company likes to use. Claude should use this skill
+-  whenever asked to write some sort of internal communications (status reports,
+-  leadership updates, 3P updates, company newsletters, FAQs, incident reports,
+-  project updates, etc.).
++  using the formats that my company likes to use. The agent should use this
++  skill whenever asked to write some sort of internal communications (status
++  reports, leadership updates, 3P updates, company newsletters, FAQs, incident
++  reports, project updates, etc.).

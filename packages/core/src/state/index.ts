@@ -17,3 +17,7 @@ export * from "./agent-state.js";
 export * from "./agent-vault.js";
 export * from "./memory.js";
 export * from "./example-benchmark.js";
+export * from "./file-tracker.js";
+export * from "./wiki-engine.js";
+export * from "./file-context-tracker.js";
+export * from "./workspace-lease.js";

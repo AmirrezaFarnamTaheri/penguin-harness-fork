@@ -1,5 +1,5 @@
 /**
- * Language menu: 中文 / English / follow system, persisted via the locale context.
+ * Language menu: Chinese / English / follow system, persisted via the locale context.
  * A small dropdown (globe + current label); closes on outside click or selection.
  * Scroll position across the locale remount is preserved by LocaleScope.
  */

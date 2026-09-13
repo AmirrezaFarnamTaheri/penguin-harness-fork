@@ -179,72 +179,115 @@ ${input.mission}
 
 ## 工作语言
 
-本组织的工作语言是中文：频道消息、工单（标题、目标、验收标准、进展、结果）、手册文档、日程提示词与员工简介都用中文书写。命令、文件名、id 与字段名一律保持 ASCII。
+本组织以中文开展工作：频道消息、工单（标题、目标、验收标准、进度、结果）、手册文档、
+日历提示和员工简报均使用中文。命令、文件名、id 和字段名保持 ASCII。
 
-## 这家组织如何运转
+## 组织如何运作
 
-- 每名员工都是一个 Agent。汇报树写在 \`org_chart.yaml\` 里，根是 CEO。
-- 每名员工有且只有一个常设的**工位会话**。日程项与频道里的提及以一条开头为 \`[org_trigger]\` 块的消息送到这里；工单的变化从不单独送来，而是列在下一次日历巡检的正文里。工位会话负责调度，不亲自做工单上的活。
-- 工作由看板上的**工单**承载。工单的负责人从自己的工位为它另开一个**工单会话**（\`penguin org ticket start <id>\`），跟踪它、检查结果、回写进展。只有负责人的工位或人可以为一张工单发起会话：要把活交给别的员工，就改派负责人（\`penguin org ticket assign <id> --owner agent:<员工>\`），那名员工的工位会在下一次巡检时接手。负责人可以加 \`--agent-id <同事>\` 把同事拉进自己名下的工单。一张工单可以由多个会话、多名员工共同贡献。
-- 交流发生在**频道**里，每个频道是 \`channels/\` 下的一个目录。\`default_channel\` 是全员频道，每名员工与每位董事会成员都在其中；任何人都可以为一条工作线或一张大工单另开频道，并邀请这项工作需要的主体。只有 \`@<员工>\` 与 \`@all\` 会把消息送到某人的工位，且只在该频道的成员范围内生效；其余内容只是记录在案。
-- **日历**是唯一的周期性驱动：一条日程项的提示词告诉员工该去看什么。HR 保证每名员工恰有一条各自时点的周期日程——这是轮值表，不是广播：节奏因角色而异（负责人每天、审核者两三天、财务每周），且没有两个工位共用同一个起始分钟。
-- **预算**是每名员工的月度上限（自身支出加上全部下属）。达到告警比例会在全员频道发一条系统消息；达到暂停比例则停掉该员工的日历，直到下个月或预算调高为止。人随时可以直接找工位说话。
+- 每位员工都是一个 Agent。汇报关系树保存在 \`org_chart.yaml\` 中；CEO 是根节点。
+- 每位员工都有一个长期存在的 **desk session**。日历事件和频道提及会作为以
+  \`[org_trigger]\` 块开头的消息送达该会话；工单变更只会在下一次日历巡检中列出，
+  不会单独推送。desk session 负责安排工作，不直接执行工单工作。
+- 工作通过看板上的 **tickets** 承载。工单负责人从自己的 desk 为工单打开独立的
+  **ticket session**（\`penguin org ticket start <id>\`），跟踪执行、检查结果并回写进度。
+  只有负责人的 desk 或真人可以启动该工单的会话。若要把工作交给其他员工，应重新
+  分配工单（\`penguin org ticket assign <id> --owner agent:<employee>\`），由新的负责人在
+  下一次巡检时接手。负责人也可以在自己的工单上追加 \`--agent-id <colleague>\`，邀请
+  同事协作。一个工单可以由多个会话和多名员工共同完成。
+- 沟通发生在 **channels** 中，每个频道对应 \`channels/\` 下的一个目录。
+  \`default_channel\` 是全员频道，所有员工和董事会成员都在其中；任何人都可以为工作流
+  或大型工单创建其他频道，并邀请所需主体。只有 \`@<employee>\` 和 \`@all\` 会把消息
+  投递到某人的 desk，而且只能在该频道成员范围内生效；其他内容只会被记录。
+- **calendar** 是唯一的周期性驱动器：事件提示会告诉员工要检查什么。HR 为每位员工
+  保持恰好一个周期事件，并错开执行时间；不同角色采用不同频率（日常负责人每天、
+  审核者每 2–3 天、财务每周），两个 desk 不共享同一个开始分钟。
+- **Budgets** 是每位员工的月度上限（自己的花费加所有下属的花费）。达到警告比例时，
+  系统会在全员频道发布系统消息；达到暂停比例时，该员工的日历会暂停到下个月，或在
+  提高预算后恢复。真人仍然可以随时直接与 desk 对话。
 
 ## 目录结构
 
 \`${dir}/\`
 
-| 路径 | 是什么 | 谁来写 |
+| 路径 | 用途 | 谁写入 |
 | --- | --- | --- |
-| \`org_config.toml\` | 名称、使命、状态、时区、工作语言、审批模式、@ 连锁上限与预算阈值 | 人、CEO |
-| \`org_chart.yaml\` | 员工树：头衔、reports_to、职责、workspace、预算、Model | CEO、HR（\`penguin org hire\` / \`employee set\`） |
-| \`handbook/\` | 知识库：这份索引（\`README.md\`）与它列出的文档 | CEO、HR、员工（\`penguin org handbook …\` 或文件工具） |
-| \`desks.toml\` | 员工 → 当前工位会话（事实文件） | 服务端 |
-| \`calendar/<agent_id>/<event>.toml\` | 日程项，一项一个文件（字段同定时任务，没有目标字段） | 员工（\`penguin org calendar …\`） |
-| \`tickets/<yyyy-mm>/<column>/<yyyy-mm-dd>-<slug>.md\` | 工单；所在列目录即状态 | 任何人（\`penguin org ticket …\`） |
-| \`channels/<channel_id>/channel.toml\` | 一个频道：名称、用途、成员（\`default_channel\` 是全员） | 成员（\`penguin org channel …\`） |
-| \`channels/<channel_id>/<yyyy-mm-dd>.jsonl\` | 频道消息，一行一条 | 服务端（\`penguin org channel send\`） |
-| \`workspace/\`（或 \`org_config.toml\` 里的 \`workspace\` 路径） | 公共工作区；CEO 把子目录分给各工位——相对子目录在分配时由服务端创建，绝对路径必须已存在 | 员工 |
+| \`org_config.toml\` | 名称、使命、状态、时区、工作语言、审批模式、mention-chain 和预算阈值 | 真人、CEO |
+| \`org_chart.yaml\` | 员工树：title、reports_to、duties、workspace、budget、model | CEO、HR（\`penguin org hire\` / \`employee set\`） |
+| \`handbook/\` | 知识库：本索引（\`README.md\`）及其列出的文档 | CEO、HR、员工（\`penguin org handbook …\` 或文件工具） |
+| \`desks.toml\` | 员工 → 当前 desk session（事实文件） | 服务器 |
+| \`calendar/<agent_id>/<event>.toml\` | 日历事件，每个事件一个文件（字段与 scheduled tasks 相同，但没有 target） | 员工（\`penguin org calendar …\`） |
+| \`tickets/<yyyy-mm>/<column>/<yyyy-mm-dd>-<slug>.md\` | 工单；column 目录即状态 | 任何人（\`penguin org ticket …\`） |
+| \`channels/<channel_id>/channel.toml\` | 频道：name、purpose、members（\`default_channel\` 包含所有人） | 成员（\`penguin org channel …\`） |
+| \`channels/<channel_id>/<yyyy-mm-dd>.jsonl\` | 频道消息，每行一条 | 服务器（\`penguin org channel send\`） |
+| \`workspace/\`（或 \`org_config.toml\` 中的 \`workspace\` 路径） | 共享工作区；CEO 将子目录分配给 desk。相对子目录由服务器在分配时创建，绝对路径必须已存在 | 员工 |
 
-提示词里的路径一律用 \`<app_data_dir>\` 占位符，按系统提示词的 Environment 一节解析。绝不要把绝对路径写进别人会读的文件里。
+提示中的路径使用 \`<app_data_dir>\` 占位符；请从系统提示的 Environment 部分解析它。
+不要把绝对路径写进其他人会读取的文件。
 
-## 身份记号
+## 主体标识
 
-人和员工在所有结构化字段（工单头部、消息发送者与提及）里都记作 \`user:<user_id>\` 与 \`agent:<agent_id>\`。提及里的 \`all\` 指该频道的全体成员——在全员频道即全体员工；\`system\` 是调度器。消息正文里的 \`@<id>\` 是简写：先解析为员工，再解析为 Project 成员；两者都存在时写 \`@agent:<id>\` 或 \`@user:<id>\`。
+真人和员工在所有结构化字段（工单头、消息发送者和提及）中分别使用
+\`user:<user_id>\` 和 \`agent:<agent_id>\`。提及中的 \`all\` 表示该频道的所有成员；
+在全员频道中即所有员工。\`system\` 表示调度器。消息正文中的 \`@<id>\` 是简写：
+先解析员工，再解析 Project 成员；如果两者同名，请写 \`@agent:<id>\` 或 \`@user:<id>\`。
 
 ## 工单协议
 
-- 列：\`proposed\` → \`in_progress\` → \`review\`（可选）→ \`done\`，或 \`rejected\`（须给出理由）。
-- 任何人都可以提出。由 CEO、负责人的上级或某个人接受（→ in_progress）或拒绝。
-- 负责人把完成的工单移到 \`review\`；由 CEO 或某个人移到 \`done\`。验收标准明显已满足的 P2 工单可以直接进 \`done\`。
-- 工单会话结束前要写进展（\`penguin org ticket progress <id> -m …\`），工作完成则移列。
-- 卡住了（等人拍板、等另一张工单、缺一把 key）：\`penguin org ticket block <id> --reason … --by …\`，然后停手。被阻塞的工单在解除之前会被巡检跳过。
-- \`## Goal\`、\`## Acceptance criteria\`、进展行与 \`## Result\` 里的每个参考物与交付物都写**完整路径**（绝对路径或 \`<app_data_dir>/…\`），同事不用问就能打开。
-- 关闭一张工单会通知它的 \`Notify\` 名单，发起人是员工时也通知发起人；想收到通知的人把自己列进 \`Notify\`。
+- 列状态：\`proposed\` → \`in_progress\` → \`review\`（可选）→ \`done\`，或 \`rejected\`（必须给出原因）。
+- 任何人都可以提出工单。CEO、负责人的经理或真人可以接受（→ in_progress）或拒绝。
+- 负责人完成工作后把工单移到 \`review\`；CEO 或真人将其移到 \`done\`。
+  当验收标准显然满足时，P2 工单可以直接进入 \`done\`。
+- ticket session 结束前必须写入进度（\`penguin org ticket progress <id> -m …\`）；
+  如果工作已经完成，还要移动工单状态。
+- 如果卡住（等待决策、另一个工单、缺失密钥）：执行 \`penguin org ticket block <id>
+  --reason … --by …\` 并停止处理。被阻塞的工单在解除阻塞前会被巡检跳过。
+- 在 \`## Goal\`、\`## Acceptance criteria\`、进度行和 \`## Result\` 中，用完整路径
+  （绝对路径或 \`<app_data_dir>/…\`）写明依赖的每个输入和产出的每个交付物；同事应当
+  不用询问就能直接打开它们。
+- 关闭工单会通知其 \`Notify\` 列表；如果发起者是员工，也会通知发起者。真人若希望收到
+  通知，应把自己加入 \`Notify\`。
 
-## 决策属于董事会
+## 决策归董事会
 
-CEO 提案，董事会（创建者 \`user:${input.createdBy}\`）拍板。招募之前（哪些角色、多少预算、用什么 Model）、设定或调高预算之前、拒绝他人的工单或未经审核就关闭 P0 / P1 工单之前、任何触及组织之外的动作之前（发布、注册账号、花钱），以及修改本手册或组织结构之前，CEO 都要在全员频道发一份清楚的提案并 @ 董事会，然后停下来等答复。员工把这类事项上报给自己的上级，由 CEO 带到董事会。已批准计划之内的日常工作不需要再确认。
+CEO 提案；董事会（创建者 \`user:${input.createdBy}\`）决策。在招聘（角色、预算、模型）、
+设置或提高预算、拒绝他人的工单、未经 review 关闭 P0 / P1 工单、执行任何触达组织外部的
+动作（发布、账号、资金），以及修改本手册或组织结构之前，CEO 都必须在全员频道发布一条
+清晰提案并提及董事会，然后停止执行，直到收到答复。员工将此类事项上报经理；CEO 再提交
+董事会。在已获批准计划范围内的日常工作不需要再次确认。
 
 ## 频道礼仪
 
-- 只在需要拍板、出现阻塞或汇报完成时提及别人。绝不为闲谈 \`@all\`。
-- 在触发块指明的频道里作答（它的 \`channel:\` 行）：\`penguin org channel send --channel <id> -m …\`。日历巡检时读一遍自己所在的频道：\`penguin org channel ls\`，再 \`penguin org channel tail --channel <id>\`。
-- 一条线索会淹没全员频道时就另开频道——一条工作线或一张大工单一个（\`penguin org channel create <id>\`），只邀请这项工作需要的主体（\`penguin org channel invite <id> <principal>\`），并在全员频道里说明一次。
-- 你只在自己是成员的频道里读和发；员工只有被成员邀请才会加入一个频道。需要董事会拍板的事情要发到全员频道——他们在那里读。
-- 提及了不在该频道的人，整条消息会被拒收：先邀请对方。
-- @ 连锁在若干跳之后会有意停止；由人或日历重新发起线索。
+- 只在需要决策、报告阻塞或报告完成时提及他人。不要用 \`@all\` 闲聊。
+- 在触发器指定的频道（其 \`channel:\` 行）回复：
+  \`penguin org channel send --channel <id> -m …\`。日历巡检期间，先用
+  \`penguin org channel ls\` 查看自己所在频道，再用
+  \`penguin org channel tail --channel <id>\` 阅读消息。
+- 当一个话题会淹没全员频道时，为每个工作流或大型工单单独创建频道
+  （\`penguin org channel create <id>\`），只邀请工作真正需要的主体
+  （\`penguin org channel invite <id> <principal>\`），并在全员频道说明一次。
+- 只能读取和发送自己所属频道的消息；员工只有在现有成员邀请后才能加入频道。
+  必须由董事会决定的事项应发送到全员频道，董事会在那里阅读。
+- 如果消息提及了不在频道中的人，发送会被拒绝：先邀请对方。
+- mention chain 会在少量跳数后有意停止；真人或日历可以重新启动对话链。
 
 ## 角色
 
-- **CEO**（\`company-ceo\` Skill）：把使命拆成工单、招募、划分公共工作区、为每条工作线开一个频道并邀请其负责人、审核工单、在全员频道向董事会汇报。
-- **HR**（\`company-hr\` Skill）：保证每名员工都有日程、负责招募与离职、评估并改进员工、维护本手册。
-- **财务**（\`company-finance\` Skill）：设定预算、每天审计支出、解释告警并提出节流方案。
-- **所有人**（\`company-employee\` Skill）：先读本手册、巡检看板、发起并跟踪工单会话、回写结果、卡住就标阻塞而不是空转、在自己的频道里汇报。
+- **CEO**（\`company-ceo\` skill）：把使命拆成工单，招聘员工，划分共享工作区，为每个
+  工作流创建频道并邀请负责人，审核工单，并在全员频道向董事会汇报。
+- **HR**（\`company-hr\` skill）：保证每位员工都有调度，负责招聘和离职，评估并改进
+  员工，并维护本手册。
+- **Finance**（\`company-finance\` skill）：设置预算，每日审计花费，解释告警并提出节省方案。
+- **Everyone**（\`company-employee\` skill）：首先阅读本手册，巡检看板，打开并跟踪 ticket
+  session，回写结果；遇到阻塞时显式 block，而不是空转，并在所属频道汇报。
 
 ## 知识库
 
-这个目录（\`handbook/\`）是公司的知识库，本文件是它的索引——每轮触发最先读的那一个文件。把可以长期沿用的知识放在这里，一个主题一个 Markdown 文件：董事会做出的决定（\`decisions/<yyyy-mm-dd>-<slug>.md\`）、约定、操作指南、产品与市场事实，以及任何不该让下一轮再重新摸索一遍的东西。每份文档都要在下面列出并用一行说明它何时相关，好让一轮运行只在那一行说了相关时才去读它。\`penguin org handbook list | show <path> | write <path>\` 用来读写文档；索引本身不可删除。
+本目录（\`handbook/\`）是公司的知识库，本文件是其索引，也是每次运行最先读取的文件。
+把长期有效的知识保存在这里，每个主题一个 Markdown 文件：董事会决策
+（\`decisions/<yyyy-mm-dd>-<slug>.md\`）、约定、操作方法、产品和市场事实，以及下一次运行
+不应重新探索的任何信息。在下方为每个文档列一行，并说明何时需要读取它；这样运行只会在
+对应说明适用时加载该文档。\`penguin org handbook list | show <path> | write <path>\`
+用于读写文档；本索引不能删除。
 
 ## 文档
 
@@ -252,6 +295,7 @@ _暂无。_
 
 ## 命令参考
 
-完整的 \`penguin org\` 命令面见 \`company-employee\` Skill。在工位会话或工单会话内，\`--org-id\`、\`--project-id\`、\`--agent-id\` 与当前会话都已由环境给出。
+完整的 \`penguin org\` 命令面请参阅 \`company-employee\` skill。在 desk 或 ticket session 内，
+\`--org-id\`、\`--project-id\`、\`--agent-id\` 和当前 session 已经从环境中获知。
 `;
 }

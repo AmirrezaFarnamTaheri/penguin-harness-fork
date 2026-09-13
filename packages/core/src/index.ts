@@ -35,6 +35,9 @@ export * from "./environment/index.js";
 export * from "./trace/index.js";
 export * from "./hooks/index.js";
 export * from "./plugins/index.js";
+export * from "./hud/index.js";
+export * from "./agent/index.js";
+export * from "./environment/worktrees.js";
 
 // Runtime entry points
 export { ContextEngine, reconnectDelayMs } from "./engine/context-engine.js";
@@ -73,6 +76,44 @@ export { modelVisiblePath } from "./internal/model-visible-path.js";
 // same way.
 export { atomicWriteFile } from "./internal/atomic-write.js";
 export type { AtomicWriteOptions } from "./internal/atomic-write.js";
+// SSRF-safe HTTP client and URL validator for web fetch and tool execution.
+export {
+  safeFetch,
+  validateSafeUrl,
+  isPrivateOrReservedIPv4,
+  isPrivateOrReservedIPv6,
+  isSafeIpAddress,
+} from "./internal/safe-http.js";
+export type { SafeHttpOptions, SafeHttpResponse } from "./internal/safe-http.js";
+export {
+  redactCredentials,
+  containsCredentials,
+  redactObject,
+  REDACTED_MARKER,
+  CREDENTIAL_RULES,
+} from "./internal/credential-redactor.js";
+export type { RedactionRule } from "./internal/credential-redactor.js";
+
+export { InferenceProxyPool, parseProxyUrl } from "./llm/proxy-pool.js";
+export type {
+  ProxyProtocol,
+  ProxyStatus,
+  RotationStrategy,
+  ProxyAuth,
+  ProxyEntry,
+  ProxyInput,
+  ProxyPoolOptions,
+  ProxySelectionCriteria,
+  ProxyPoolStats,
+} from "./llm/proxy-pool.js";
+export {
+  isTruncatedJSON,
+  repairTruncatedJSON,
+  scavengeToolCalls,
+  truncateKeepEnds,
+} from "./llm/tool-call-repair.js";
+export type { ScavengedToolCall } from "./llm/tool-call-repair.js";
+
 // `metaMaxTokens` is the output cap every out-of-band meta request shares — a small budget,
 // tightened by the entry's pinned per-model cap. Exported so a host running its own one-off
 // requests on a Project's model sizes them the way the SDK sizes its own.

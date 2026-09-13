@@ -205,7 +205,7 @@ export const en: Strings = {
     terminalTheme: "Terminal theme",
     terminalThemeInfo: "Colors of the terminal panel; follows the app theme by default.",
     followAppTheme: "App",
-    langZh: "中文",
+    langZh: "Chinese",
     langEn: "English",
     fontSize: "Font size",
     fontSizeInfo: "Overall interface font size.",
@@ -1405,7 +1405,7 @@ export const en: Strings = {
     /** The human schedule line under a task's name (schedule-describe.ts). */
     human: {
       everyDay: (time: string): string => `Every day at ${time}`,
-      /** `weekday` is the locale's short weekday name (周一 / Monday). */
+      /** `weekday` is the locale's short weekday name (e.g. Monday). */
       everyWeek: (weekday: string, time: string): string => `Every ${weekday} at ${time}`,
       everyDays: (n: number, time: string): string => `Every ${n} days at ${time}`,
       everyHours: (n: number): string => (n === 1 ? "Every hour" : `Every ${n} hours`),
@@ -1415,7 +1415,7 @@ export const en: Strings = {
       next: (when: string): string => `Next: ${when}`,
       today: (time: string): string => `today ${time}`,
       tomorrow: (time: string): string => `tomorrow ${time}`,
-      /** `monthDay` is formatMonthDay's output (9 月 3 日 / Sep 3). */
+      /** `monthDay` is formatMonthDay's output (e.g. Sep 3). */
       onDate: (monthDay: string, time: string): string => `${monthDay}, ${time}`,
       onDateWithYear: (year: number, monthDay: string, time: string): string =>
         `${monthDay}, ${year}, ${time}`,
@@ -2276,6 +2276,7 @@ Scenarios:
       read_file: "read",
       write_file: "write",
       edit_file: "edit",
+      web_search: "search",
       exec_command: "exec",
       input_command: "follow",
       run_subagent: "subagent",
@@ -3216,7 +3217,7 @@ Scenarios:
     languageInfo:
       "The language the organization works in: its handbook, the employee briefs, the CEO's initialization session and every desk's output are written in it; it is detected from the mission when the organization is created.",
     languages: {
-      zh: "中文",
+      zh: "Chinese",
       en: "English",
     },
     approvalMode: "Approval mode",

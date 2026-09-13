@@ -1,6 +1,6 @@
 ---
 name: atlas
-description: Use when the user wants pictures of the spec tree — draw the atlas, 画规格图, give node X a diagram, 给这个仓库画架构图, diagram this subtree. Chooses the nodes worth a picture, draws each one's diagram.json with spex diagram scaffold and check until it passes, and commits them with a report of what was drawn and what was skipped.
+description: Use when the user wants pictures of the spec tree — draw the atlas, draw spec diagrams, give node X a diagram, diagram this repo architecture, diagram this subtree. Chooses the nodes worth a picture, draws each one's diagram.json with spex diagram scaffold and check until it passes, and commits them with a report of what was drawn and what was skipped.
 ---
 
 # atlas

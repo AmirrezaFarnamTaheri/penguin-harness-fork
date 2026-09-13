@@ -550,3 +550,166 @@ export class KeyRotatorRegistry {
     return rotator.allocateSubagentRotator(strategy);
   }
 }
+
+/**
+ * Weighted credential status incorporating weight scoring, dynamic concurrency dampening,
+ * and adaptive error penalties, derived from CLIProxyAPI credentialweight algorithm.
+ */
+export interface WeightedKeyStatus extends KeyStatus {
+  weight: number;
+  consecutiveSuccesses: number;
+  consecutiveFailures: number;
+}
+
+export interface WeightedKeyRotatorOptions extends ApiKeyRotatorOptions {
+  decayStep?: number;
+  boostStep?: number;
+}
+
+export class WeightedKeyRotator {
+  private readonly keys: WeightedKeyStatus[] = [];
+  private readonly cooldownMs: number;
+  private readonly decayStep: number;
+  private readonly boostStep: number;
+
+  constructor(
+    keys: Array<string | { key: string; weight?: number }>,
+    opts: WeightedKeyRotatorOptions = {},
+  ) {
+    this.cooldownMs = opts.cooldownMs ?? opts.rateLimitCooldownMs ?? 60_000;
+    this.decayStep = opts.decayStep ?? 20;
+    this.boostStep = opts.boostStep ?? 5;
+
+    for (const item of keys) {
+      const keyStr = typeof item === "string" ? item.trim() : item.key.trim();
+      const weight =
+        typeof item === "object" && typeof item.weight === "number"
+          ? Math.max(1, item.weight)
+          : 100;
+      if (keyStr.length > 0) {
+        this.keys.push({
+          key: keyStr,
+          weight,
+          isFailed: false,
+          cooldownUntil: 0,
+          successCount: 0,
+          failureCount: 0,
+          activeLeases: 0,
+          consecutiveSuccesses: 0,
+          consecutiveFailures: 0,
+        });
+      }
+    }
+  }
+
+  get totalKeys(): number {
+    return this.keys.length;
+  }
+
+  get workingKeys(): WeightedKeyStatus[] {
+    return this.keys.filter((k) => !k.isFailed);
+  }
+
+  /**
+   * Computes dynamic operational score:
+   * (baseWeight + boost - penalties) / (1 + activeLeases * 2)
+   */
+  public computeScore(keyStatus: WeightedKeyStatus, now: number = Date.now()): number {
+    if (keyStatus.isFailed) return 0;
+    if (keyStatus.cooldownUntil > now) return 0;
+
+    const dynamicWeight = Math.max(
+      1,
+      keyStatus.weight +
+        keyStatus.consecutiveSuccesses * this.boostStep -
+        keyStatus.consecutiveFailures * this.decayStep,
+    );
+    const concurrencyPenalty = 1 + (keyStatus.activeLeases ?? 0) * 2;
+    return dynamicWeight / concurrencyPenalty;
+  }
+
+  /**
+   * Selects an optimal key using weighted probability distribution.
+   */
+  public selectKey(now: number = Date.now()): string | undefined {
+    if (this.keys.length === 0) return undefined;
+
+    const available = this.keys.filter((k) => !k.isFailed && k.cooldownUntil <= now);
+    if (available.length === 0) {
+      const nonFailed = this.workingKeys;
+      if (nonFailed.length === 0) return undefined;
+      return nonFailed.reduce(
+        (min, k) => (k.cooldownUntil < min.cooldownUntil ? k : min),
+        nonFailed[0]!,
+      ).key;
+    }
+
+    if (available.length === 1) {
+      const selected = available[0]!;
+      selected.lastUsedAt = now;
+      return selected.key;
+    }
+
+    const scores = available.map((k) => this.computeScore(k, now));
+    const totalScore = scores.reduce((sum, s) => sum + s, 0);
+
+    if (totalScore <= 0) {
+      const selected = available[0]!;
+      selected.lastUsedAt = now;
+      return selected.key;
+    }
+
+    let rand = Math.random() * totalScore;
+    for (let i = 0; i < available.length; i++) {
+      rand -= scores[i]!;
+      if (rand <= 0) {
+        const selected = available[i]!;
+        selected.lastUsedAt = now;
+        return selected.key;
+      }
+    }
+
+    const fallback = available[available.length - 1]!;
+    fallback.lastUsedAt = now;
+    return fallback.key;
+  }
+
+  public recordSuccess(key: string): void {
+    const found = this.keys.find((k) => k.key === key);
+    if (!found) return;
+    found.successCount++;
+    found.consecutiveSuccesses++;
+    found.consecutiveFailures = 0;
+    found.cooldownUntil = 0;
+  }
+
+  public recordFailure(key: string, isPermanent = false, cooldownMs?: number): void {
+    const found = this.keys.find((k) => k.key === key);
+    if (!found) return;
+    found.failureCount++;
+    found.consecutiveFailures++;
+    found.consecutiveSuccesses = 0;
+    if (isPermanent) {
+      found.isFailed = true;
+    } else {
+      found.cooldownUntil = Date.now() + (cooldownMs ?? this.cooldownMs);
+    }
+  }
+
+  public acquireLease(key: string): boolean {
+    const found = this.keys.find((k) => k.key === key);
+    if (!found || found.isFailed) return false;
+    found.activeLeases = (found.activeLeases ?? 0) + 1;
+    return true;
+  }
+
+  public releaseLease(key: string): void {
+    const found = this.keys.find((k) => k.key === key);
+    if (!found) return;
+    found.activeLeases = Math.max(0, (found.activeLeases ?? 0) - 1);
+  }
+
+  public getStatuses(): WeightedKeyStatus[] {
+    return this.keys.map((k) => ({ ...k }));
+  }
+}

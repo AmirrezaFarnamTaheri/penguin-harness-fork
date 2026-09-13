@@ -45,7 +45,7 @@ function localYmd(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/** 周一 / Monday: the short form in Chinese already carries the "week" character the sentence needs. */
+/** Monday: the short form in Chinese already carries the "week" character the sentence needs. */
 function weekdayName(d: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
     weekday: locale === "zh" ? "short" : "long",

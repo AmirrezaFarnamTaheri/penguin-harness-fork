@@ -1,6 +1,6 @@
 /**
  * Collapse state of the sidebar's page-nav group (pure decisions, unit tested): the
- * 智能体 → 评估中心 run of entries collapses as one group behind a nav-row-wide chevron
+ * Agents → Benchmark run of entries collapses as one group behind a nav-row-wide chevron
  * button under the group's last entry (arrow up = collapse; collapsed, the button
  * stays — arrow down — as the way back). The pinned "New chat" block above is NOT
  * part of the group — it stays visible in both states (the manifest below simply never

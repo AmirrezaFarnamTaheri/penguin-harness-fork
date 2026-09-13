@@ -2267,6 +2267,7 @@ Benchmark：
       read_file: "读取",
       write_file: "写入",
       edit_file: "编辑",
+      web_search: "搜索",
       exec_command: "执行命令",
       input_command: "跟进命令",
       run_subagent: "子智能体",

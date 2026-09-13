@@ -163,7 +163,7 @@ function StatChip({ icon, value, label }: { icon: string; value: ReactNode; labe
 /**
  * Session id row in the details card: the id is selectable mono text (styled like the other
  * sections' values) with the shared CopyButton beside it. The copy feedback is the button's
- * icon swapping to the check (#312, no "已复制" text) — the "Session id" label above never
+ * icon swapping to the check (#312, no "Copied" text) — the "Session id" label above never
  * changes.
  */
 function SessionIdRow({ sessionId }: { sessionId: string }) {

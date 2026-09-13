@@ -14,10 +14,9 @@ pattern-matching a neighbouring entry.
   and values stay English in both files so one `grep` covers the tree.
 - Omit an inapplicable field entirely. Placeholders are what stop `grep -rl 'Breaking:'
   changelog/` from being an exact query.
-- `Breaking` present ⇒ a `## Compatibility` / `## 兼容性` section stating what breaks and the
+- `Breaking` present ⇒ a `## Compatibility` section stating what breaks and the
   migration step.
-- Section headings are translated, not carried across: `## Details` → `## 细节`, `## Compatibility`
-  → `## 兼容性`, bespoke ones naturally, in the same order and count. An English heading in the
+- Section headings are translated, not carried across: `## Details`, `## Compatibility`, bespoke ones naturally, in the same order and count. An English heading in the
   `.zh.md` is the most common way the pair stops mirroring.
 
 ## Rules that are easy to break

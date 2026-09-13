@@ -1,0 +1,1641 @@
+{
+  "target_project": "penguin-harness-fork",
+  "source_root": "D:\\GitHub\\penguin port",
+  "compendium_path": "D:\\GitHub\\penguin-harness-fork\\PenguinHarness_Master_Porting_Compendium.md",
+  "total_projects_discovered": 163,
+  "batches_completed": 11,
+  "current_batch": 11,
+  "last_updated": "2026-09-12T06:15:00.000Z",
+  "projects": {
+    "8cc-master.zip": {
+      "project_id": 1,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 4 & 7 (AST & Symbol Indexing)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/symbol-indexer.ts",
+      "exclusion_reason": ""
+    },
+    "9router-master.zip": {
+      "project_id": 2,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 1 (LLM Gateway & Quota Router)",
+      "priority": "P1",
+      "target_file": "packages/core/src/llm/model-combos.ts",
+      "exclusion_reason": ""
+    },
+    "Agent-Reach-main.zip": {
+      "project_id": 3,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 4 (Agent Skills & External Reach)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "agent-skills-main.zip": {
+      "project_id": 4,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 4 (Agent Skills Ecosystem)",
+      "priority": "P0",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "agent-teams-ai-main.zip": {
+      "project_id": 5,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 7 & 3 (Swarm Visualization)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/agent/agent-cockpit.tsx",
+      "exclusion_reason": ""
+    },
+    "agentgateway-main.zip": {
+      "project_id": 6,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 1 (LLM Gateway & Security)",
+      "priority": "P0",
+      "target_file": "packages/server/src/http/routes/gateway.ts",
+      "exclusion_reason": ""
+    },
+    "agents-main (1).zip": {
+      "project_id": 7,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 1,
+      "phase": "Phase 4 (Instruction Systems)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": "Exact duplicate of agents-main.zip"
+    },
+    "agents-main.zip": {
+      "project_id": 8,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 4 (Instruction Systems)",
+      "priority": "P2",
+      "target_file": "packages/core/src/plugins/",
+      "exclusion_reason": ""
+    },
+    "agy-bridge-main.zip": {
+      "project_id": 9,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 1 (Quota Intelligence)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/quota-parser.ts",
+      "exclusion_reason": ""
+    },
+    "agy2api-main.zip": {
+      "project_id": 10,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 1 (API Gateway Routes)",
+      "priority": "P2",
+      "target_file": "packages/server/src/http/routes/gateway.ts",
+      "exclusion_reason": ""
+    },
+    "AIClient2API-main.zip": {
+      "project_id": 11,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 1 (LLM Gateway Adapters)",
+      "priority": "P1",
+      "target_file": "packages/core/src/llm/",
+      "exclusion_reason": ""
+    },
+    "aif-handoff-main (1).zip": {
+      "project_id": 12,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 1,
+      "phase": "Phase 6 (Task Watchdog)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/task-watchdog.ts",
+      "exclusion_reason": "Exact duplicate of aif-handoff-main.zip"
+    },
+    "aif-handoff-main.zip": {
+      "project_id": 13,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 1,
+      "phase": "Phase 6 (Task Watchdog & Review Gate)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/task-watchdog.ts",
+      "exclusion_reason": ""
+    },
+    "aisw-main.zip": {
+      "project_id": 14,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 1 (CLI Hot-Switching)",
+      "priority": "P2",
+      "target_file": "packages/core/src/llm/key-rotator.ts",
+      "exclusion_reason": ""
+    },
+    "all-api-hub-main.zip": {
+      "project_id": 15,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 1,
+      "phase": "Phase 1 & 5 (Pricing Catalog & UI)",
+      "priority": "P2",
+      "target_file": "packages/core/src/llm/pricing-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "anda-main.zip": {
+      "project_id": 16,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 3 (Agent Core Primitives)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/skill-engine.ts",
+      "exclusion_reason": ""
+    },
+    "Antigravity-Manager-main.zip": {
+      "project_id": 17,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 1 & 5 (Account Pool & Gateway GUI)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/gateway/gateway-dialog.tsx",
+      "exclusion_reason": ""
+    },
+    "antigravity-panel-main.zip": {
+      "project_id": 18,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 2,
+      "phase": "Phase 2 (HUD & Telemetry)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/hud/",
+      "exclusion_reason": ""
+    },
+    "antigravity-plugin-cc-main.zip": {
+      "project_id": 19,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 2,
+      "phase": "Phase 4 & 6 (Plugin Bridges)",
+      "priority": "P2",
+      "target_file": "packages/core/src/plugins/",
+      "exclusion_reason": ""
+    },
+    "antigravity-quota-monitor-main.zip": {
+      "project_id": 20,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 1 & 5 (Web UI Quota Badge)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/gateway/quota-badge.tsx",
+      "exclusion_reason": ""
+    },
+    "AntigravityManager-main.zip": {
+      "project_id": 21,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 2,
+      "phase": "Phase 1 & 5 (Desktop V1)",
+      "priority": "P3",
+      "target_file": "packages/web/src/features/gateway/gateway-dialog.tsx",
+      "exclusion_reason": ""
+    },
+    "archify-main.zip": {
+      "project_id": 22,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 4 & 7 (Architecture & Skills)",
+      "priority": "P1",
+      "target_file": ".agents/skills/archify",
+      "exclusion_reason": ""
+    },
+    "AstrBot-master.zip": {
+      "project_id": 23,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 2,
+      "phase": "Phase 3 & 4 (Plugins & Pipeline Filters)",
+      "priority": "P2",
+      "target_file": "packages/core/src/plugins/",
+      "exclusion_reason": ""
+    },
+    "awesome-codex-skills-master.zip": {
+      "project_id": 24,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 4 (Agent Skills Ecosystem)",
+      "priority": "P0",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "awesome-deepseek-agent-main.zip": {
+      "project_id": 25,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 2,
+      "phase": "Phase 4 (Prompt Catalog)",
+      "priority": "P3",
+      "target_file": "packages/core/src/agent/prompt-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "awesome-free-llm-apis-main.zip": {
+      "project_id": 26,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 2,
+      "phase": "Phase 1 (Provider Presets)",
+      "priority": "P2",
+      "target_file": "packages/core/src/llm/pricing-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "Awesome-Scientific-Skills-main.zip": {
+      "project_id": 27,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 4 (Scientific Domain Skills)",
+      "priority": "P1",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "cc-connect-main.zip": {
+      "project_id": 28,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 1 & 3 (Cross-Agent Bridge)",
+      "priority": "P1",
+      "target_file": "packages/server/src/http/routes/agent.ts",
+      "exclusion_reason": ""
+    },
+    "cc-haha-main.zip": {
+      "project_id": 29,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 2,
+      "phase": "Phase 4 & 1 (IM Gateways & Webhooks)",
+      "priority": "P1",
+      "target_file": "packages/server/src/http/routes/gateway.ts",
+      "exclusion_reason": ""
+    },
+    "cc-switch-cli-main.zip": {
+      "project_id": 30,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 2,
+      "phase": "Phase 1 & 5 (CLI Switcher & GUI)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/gateway/gateway-dialog.tsx",
+      "exclusion_reason": ""
+    },
+    "cc-switch-main.zip": {
+      "project_id": 31,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 3,
+      "phase": "Phase 5 (Desktop Cockpit & Sessions)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/sessions/session-manager.tsx",
+      "exclusion_reason": ""
+    },
+    "ccpm-main.zip": {
+      "project_id": 32,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 4 (Instruction Systems & Project Management)",
+      "priority": "P1",
+      "target_file": ".agents/skills/ccpm/",
+      "exclusion_reason": ""
+    },
+    "cherry-studio-main.zip": {
+      "project_id": 33,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 1 & 2 (LLM Gateway & Streaming)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/pricing-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "claude_codex_bridge-main.zip": {
+      "project_id": 34,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 3 (Agent Mailbox Bureau)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/mailbox.ts",
+      "exclusion_reason": ""
+    },
+    "claude-hud-main.zip": {
+      "project_id": 35,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 2 (Speed Tracker HUD)",
+      "priority": "P1",
+      "target_file": "packages/core/src/hud/speed-tracker.ts",
+      "exclusion_reason": ""
+    },
+    "claude-prism-main.zip": {
+      "project_id": 36,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 5 (Desktop Cockpit & Telemetry)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/agent/agent-cockpit.tsx",
+      "exclusion_reason": ""
+    },
+    "claurst-main.zip": {
+      "project_id": 37,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 2 (ACP Wire Protocol & Kernel)",
+      "priority": "P0",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "Cli-Proxy-API-Management-Center-main.zip": {
+      "project_id": 38,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 3,
+      "phase": "Phase 5 (Gateway Management UI)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/gateway/gateway-dialog.tsx",
+      "exclusion_reason": ""
+    },
+    "cline-main.zip": {
+      "project_id": 39,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 3 & 6 (Checkpoints & MCP Execution)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "CLIProxyAPI-main (1).zip": {
+      "project_id": 40,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 3,
+      "phase": "Phase 1 (Key Rotation)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/key-rotator.ts",
+      "exclusion_reason": "Exact duplicate of CLIProxyAPI-main.zip"
+    },
+    "CLIProxyAPI-main (2).zip": {
+      "project_id": 41,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 3,
+      "phase": "Phase 1 (Key Rotation)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/key-rotator.ts",
+      "exclusion_reason": "Exact duplicate of CLIProxyAPI-main.zip"
+    },
+    "CLIProxyAPI-main.zip": {
+      "project_id": 42,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 1 (Key Rotation & Credential Weight)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/key-rotator.ts",
+      "exclusion_reason": ""
+    },
+    "cockpit-tools-main.zip": {
+      "project_id": 43,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 5 (Desktop Cockpit & Sidecars)",
+      "priority": "P1",
+      "target_file": "packages/server/src/services/",
+      "exclusion_reason": ""
+    },
+    "cocode-main.zip": {
+      "project_id": 44,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 2 & 3 (Host Supervisor & JSON-RPC)",
+      "priority": "P0",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "codebuddy-main.zip": {
+      "project_id": 45,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 3,
+      "phase": "Phase 4 (DevOps Skills Ecosystem)",
+      "priority": "P1",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "codeburn-main.zip": {
+      "project_id": 46,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 6 (Validation & Testing)",
+      "priority": "P1",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "codegraph-main.zip": {
+      "project_id": 47,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 7 (Code Intelligence)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/code-graph.ts",
+      "exclusion_reason": ""
+    },
+    "CodeKanban-master.zip": {
+      "project_id": 48,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 4,
+      "phase": "Phase 4 (State & Kanban)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/kanban.ts",
+      "exclusion_reason": ""
+    },
+    "Codewhale-main.zip": {
+      "project_id": 49,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 1 (Kernel & Concurrency)",
+      "priority": "P1",
+      "target_file": "packages/core/src/internal/command-policy.ts",
+      "exclusion_reason": ""
+    },
+    "codex-main.zip": {
+      "project_id": 50,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 1 (Kernel & JSON-RPC)",
+      "priority": "P0",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "codex-plugin-cc-main.zip": {
+      "project_id": 51,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 4,
+      "phase": "Phase 2 (Hooks & Plugins)",
+      "priority": "P1",
+      "target_file": "packages/core/src/plugin/",
+      "exclusion_reason": ""
+    },
+    "CodexBar-main.zip": {
+      "project_id": 52,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 4,
+      "phase": "Phase 5 (Telemetry & Spend Flow)",
+      "priority": "P1",
+      "target_file": "packages/core/src/hud/spend-flow.ts",
+      "exclusion_reason": ""
+    },
+    "confess-crush-main.zip": {
+      "project_id": 53,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 4,
+      "phase": "Phase 5 (TUI & UI)",
+      "priority": "P2",
+      "target_file": "packages/web/src/",
+      "exclusion_reason": ""
+    },
+    "config-master.zip": {
+      "project_id": 54,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 4,
+      "phase": "Infrastructure / CI",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "OpenWrt firmware build workflows, unrelated to agent harnesses"
+    },
+    "crush-main.zip": {
+      "project_id": 55,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 1 & Phase 5 (CLI & State)",
+      "priority": "P1",
+      "target_file": "packages/core/src/state/file-tracker.ts",
+      "exclusion_reason": ""
+    },
+    "dashi-ppt-skill-main.zip": {
+      "project_id": 56,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 4,
+      "phase": "Phase 2 (Skills & Artifacts)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/skill-engine.ts",
+      "exclusion_reason": ""
+    },
+    "deepcode-cli-main.zip": {
+      "project_id": 57,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 1 (Kernel & Process Management)",
+      "priority": "P0",
+      "target_file": "packages/core/src/omnimessage/reasoning-normalizer.ts",
+      "exclusion_reason": ""
+    },
+    "DeepCode-main.zip": {
+      "project_id": 58,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 4,
+      "phase": "Phase 3 (Agentic Intelligence)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "deepseek-harness-master.zip": {
+      "project_id": 59,
+      "status": "complete",
+      "classification": "CRITICAL",
+      "batch": 4,
+      "phase": "Phase 1, 2, 3 (Agent Guard & Subprocess)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/repeat-tool-guard.ts",
+      "exclusion_reason": ""
+    },
+    "deepseek-harness-tui-main.zip": {
+      "project_id": 60,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 4,
+      "phase": "Phase 5 (TUI & Turn Ledger)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/turn-ledger.ts",
+      "exclusion_reason": ""
+    },
+    "DeepSeek-Reasonix-main-v2.zip": {
+      "project_id": 61,
+      "status": "complete",
+      "classification": "CRITICAL",
+      "batch": 5,
+      "phase": "Phase 1 & 3 (Kernel & Workspace Lease)",
+      "priority": "P0",
+      "target_file": "packages/core/src/state/workspace-lease.ts",
+      "exclusion_reason": ""
+    },
+    "desktop-cc-gui-main.zip": {
+      "project_id": 62,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 5,
+      "phase": "Phase 2 & 5 (Plugin SDK & UI)",
+      "priority": "P1",
+      "target_file": "packages/core/src/plugin/",
+      "exclusion_reason": ""
+    },
+    "dust-main.zip": {
+      "project_id": 63,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 4 & 7 (Knowledge & Connectors)",
+      "priority": "P1",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "effective-html-main.zip": {
+      "project_id": 64,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 2 & 5 (Artifacts & Previews)",
+      "priority": "P1",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "Freebuff2API-main.zip": {
+      "project_id": 65,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 1 (LLM Gateway & Token Pooling)",
+      "priority": "P1",
+      "target_file": "packages/server/src/http/routes/gateway.ts",
+      "exclusion_reason": ""
+    },
+    "gpt-load-main.zip": {
+      "project_id": 66,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 5,
+      "phase": "Phase 1 (Gateway & Balancing)",
+      "priority": "P1",
+      "target_file": "packages/core/src/llm/pricing-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "graphify-8.zip": {
+      "project_id": 67,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 5,
+      "phase": "Phase 7 (Code Intelligence & Graph)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/code-graph.ts",
+      "exclusion_reason": ""
+    },
+    "guizang-ppt-skill-main.zip": {
+      "project_id": 68,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 5,
+      "phase": "Phase 2 (Skills & Presentation)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "harness-for-agy-main.zip": {
+      "project_id": 69,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 3 & 4 (Personas & Scaffolding)",
+      "priority": "P1",
+      "target_file": "packages/core/src/state/builtin-agents.ts",
+      "exclusion_reason": ""
+    },
+    "herdr-master.zip": {
+      "project_id": 70,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 5,
+      "phase": "Phase 1 & 5 (PTY & Multiplexer)",
+      "priority": "P1",
+      "target_file": "packages/core/src/environment/tools/command/",
+      "exclusion_reason": ""
+    },
+    "hermes-agent-main.zip": {
+      "project_id": 71,
+      "status": "complete",
+      "classification": "CRITICAL",
+      "batch": 5,
+      "phase": "Phase 1, 3, 6 (Verification & ACP)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/completion-tracker.ts",
+      "exclusion_reason": ""
+    },
+    "hermes-paperclip-adapter-main.zip": {
+      "project_id": 72,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 3 (Multi-Agent Swarm)",
+      "priority": "P1",
+      "target_file": "packages/core/src/environment/tools/subagent/",
+      "exclusion_reason": ""
+    },
+    "hermes-studio-main.zip": {
+      "project_id": 73,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 5 (UI & Studio)",
+      "priority": "P2",
+      "target_file": "packages/web/src/",
+      "exclusion_reason": ""
+    },
+    "hermes-war-room-master.zip": {
+      "project_id": 74,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 5,
+      "phase": "Phase 3, 4, 5 (Swarm Topology & Kanban)",
+      "priority": "P0",
+      "target_file": "packages/web/src/features/agent/agent-cockpit.tsx",
+      "exclusion_reason": ""
+    },
+    "hoppscotch-main.zip": {
+      "project_id": 75,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 5,
+      "phase": "Phase 6 (Validation & Testing)",
+      "priority": "P2",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "html-anything-main.zip": {
+      "project_id": 76,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 5 (Dynamic Artifact Previews)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/artifacts/",
+      "exclusion_reason": ""
+    },
+    "html-ppt-skill-main.zip": {
+      "project_id": 77,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 2 (Agent Presentation Skills)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "kandev-main.zip": {
+      "project_id": 78,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 5 (Developer Workbench UI)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/",
+      "exclusion_reason": ""
+    },
+    "kasetto-main.zip": {
+      "project_id": 79,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 2 & 4 (Skill & Instruction Lockfile)",
+      "priority": "P1",
+      "target_file": "packages/core/src/plugin/",
+      "exclusion_reason": ""
+    },
+    "kilo-marketplace-main (1).zip": {
+      "project_id": 80,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 2 (Marketplace Catalog)",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "Exact SHA256 duplicate of kilo-marketplace-main.zip (081)"
+    },
+    "kilo-marketplace-main.zip": {
+      "project_id": 81,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 2 (Marketplace Catalog)",
+      "priority": "P2",
+      "target_file": "packages/server/src/http/routes/marketplace.ts",
+      "exclusion_reason": ""
+    },
+    "langcli-main.zip": {
+      "project_id": 82,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 1 & 5 (CLI Token Streaming)",
+      "priority": "P2",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "llm-wiki-agent-main.zip": {
+      "project_id": 83,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 4 & 7 (Autonomous Knowledge Graph)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/code-graph.ts",
+      "exclusion_reason": ""
+    },
+    "lobehub-canary.zip": {
+      "project_id": 84,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 5 (Multimodal Chat & Tool Previews)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/agent/",
+      "exclusion_reason": ""
+    },
+    "Martty-main.zip": {
+      "project_id": 85,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 5 (ACP TUI Terminal Client)",
+      "priority": "P1",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "moon-bridge-main (1).zip": {
+      "project_id": 86,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 1 & 7 (Search Candidate Bridge)",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "Exact SHA256 duplicate of moon-bridge-main.zip (087)"
+    },
+    "moon-bridge-main.zip": {
+      "project_id": 87,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 1 & 7 (Search Candidate Bridge)",
+      "priority": "P2",
+      "target_file": "packages/core/src/tools/search.ts",
+      "exclusion_reason": ""
+    },
+    "n2n-dev.zip": {
+      "project_id": 88,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Infrastructure (Non-Harness)",
+      "priority": "P3",
+      "target_file": "",
+      "exclusion_reason": "Non-harness Layer 2 peer-to-peer VPN networking utility"
+    },
+    "nanobot-main (1).zip": {
+      "project_id": 89,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 1 & 3 (SSRF Safe HTTP Client)",
+      "priority": "P0",
+      "target_file": "packages/core/src/internal/safe-http.ts",
+      "exclusion_reason": ""
+    },
+    "nanobot-main.zip": {
+      "project_id": 90,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 6,
+      "phase": "Phase 1 & 3 (Autonomous Agent Daemon)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "nanobot-webui-main.zip": {
+      "project_id": 91,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 5 (Web UI & Monitoring)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/agent/",
+      "exclusion_reason": ""
+    },
+    "NextChat-main.zip": {
+      "project_id": 92,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 3 (Persona Masks & Roles)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/persona-masks.ts",
+      "exclusion_reason": ""
+    },
+    "notebooklm-py-main.zip": {
+      "project_id": 93,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 4 & 7 (Knowledge Ingestion)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "oh-my-cli-main.zip": {
+      "project_id": 94,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 & 5 (CLI Token Streaming)",
+      "priority": "P2",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "oh-my-codex-main.zip": {
+      "project_id": 95,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 & 3 (Multi-Agent Leases & Mailbox)",
+      "priority": "P0",
+      "target_file": "packages/core/src/agent/mailbox.ts",
+      "exclusion_reason": ""
+    },
+    "oh-my-opencode-slim-master (1).zip": {
+      "project_id": 96,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 4 & 7 (AST & Content Scraper)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/symbol-indexer.ts",
+      "exclusion_reason": ""
+    },
+    "oh-my-opencode-slim-master.zip": {
+      "project_id": 97,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 4 & 7 (AST & Content Scraper)",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "Superseded by more recent snapshot in archive 096"
+    },
+    "oh-my-pi-main (1).zip": {
+      "project_id": 98,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 & 5 (Multimodal Speech Pipeline)",
+      "priority": "P2",
+      "target_file": "packages/core/src/internal/",
+      "exclusion_reason": ""
+    },
+    "one-api-main.zip": {
+      "project_id": 99,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 (LLM Gateway & Channel Balancing)",
+      "priority": "P1",
+      "target_file": "packages/core/src/llm/pricing-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "open-design-main.zip": {
+      "project_id": 100,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 5 (Design System Tokens)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/",
+      "exclusion_reason": ""
+    },
+    "open-pencil-master.zip": {
+      "project_id": 101,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 5 (Interactive Canvas & Whiteboard)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/artifacts/",
+      "exclusion_reason": ""
+    },
+    "OpenAnalyst-main.zip": {
+      "project_id": 102,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 3 & 4 (Data Analyst Agent & Python Sandbox)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/persona-masks.ts",
+      "exclusion_reason": ""
+    },
+    "opencode-bar-main.zip": {
+      "project_id": 103,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 5 (System Tray & Menubar Telemetry)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/hud/",
+      "exclusion_reason": ""
+    },
+    "opencode-dev.zip": {
+      "project_id": 104,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 & 6 (DevTools & Profiling)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "OpenCode-Unlimited-ProxyPool-main.zip": {
+      "project_id": 105,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 7,
+      "phase": "Phase 1 (Inference Proxy Pool)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/proxy-pool.ts",
+      "exclusion_reason": ""
+    },
+    "opencodex-main.zip": {
+      "project_id": 106,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 5 (Runtime & Protocol)",
+      "priority": "P1",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "opencompany-main.zip": {
+      "project_id": 107,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 3 (Corporate Multi-Agent)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "opendesign-main (1).zip": {
+      "project_id": 108,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 5 (Design Token Pipeline)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "opendesign-main.zip": {
+      "project_id": 109,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 2 & 5 (Design Skills)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "openfang-main.zip": {
+      "project_id": 110,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 3 (Agent Security & OS)",
+      "priority": "P1",
+      "target_file": "packages/core/src/state/",
+      "exclusion_reason": ""
+    },
+    "openinterpreter-main (1).zip": {
+      "project_id": 111,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 6 (Computer Control & Sandbox)",
+      "priority": "P1",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "openinterpreter-main.zip": {
+      "project_id": 112,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 6 (Computer Control & Sandbox)",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "Superseded by more recent snapshot in archive 111"
+    },
+    "package-x64 (1).zip": {
+      "project_id": 113,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Binary Installer (Non-Harness)",
+      "priority": "P3",
+      "target_file": "",
+      "exclusion_reason": "Non-harness Windows installer MSIX and portable binary executable"
+    },
+    "Pake-main.zip": {
+      "project_id": 114,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 5 (Native Desktop Bundling)",
+      "priority": "P2",
+      "target_file": "packages/core/src/environment/tools/",
+      "exclusion_reason": ""
+    },
+    "pi_agent_rust-main.zip": {
+      "project_id": 115,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 3 (High-Perf Agent Kernel)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "pi-main (1).zip": {
+      "project_id": 116,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 5 (Pi Agent Runtime)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "pi-main.zip": {
+      "project_id": 117,
+      "status": "excluded",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 5 (Pi Agent Runtime)",
+      "priority": "P2",
+      "target_file": "",
+      "exclusion_reason": "Superseded by more recent snapshot in archive 116"
+    },
+    "pi-reasonix-main.zip": {
+      "project_id": 118,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 1 & 3 (Tool Repair & Dual-End Truncation)",
+      "priority": "P0",
+      "target_file": "packages/core/src/llm/tool-call-repair.ts",
+      "exclusion_reason": ""
+    },
+    "plinth-main.zip": {
+      "project_id": 119,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 3 & 4 (Engineering Agent Personas)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/persona-masks.ts",
+      "exclusion_reason": ""
+    },
+    "portal-ai-plugins-main.zip": {
+      "project_id": 120,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 8,
+      "phase": "Phase 2 & 4 (Plugin Marketplace)",
+      "priority": "P2",
+      "target_file": "packages/core/src/plugin/",
+      "exclusion_reason": ""
+    },
+    "prompt-to-production-main.zip": {
+      "project_id": 121,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 4 (Prompt Testing & Evals)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/prompt-catalog.ts",
+      "exclusion_reason": ""
+    },
+    "prompts-main.zip": {
+      "project_id": 122,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 3 & 4 (Workflows & Rules)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "quotio-master.zip": {
+      "project_id": 123,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 5 (Native macOS Telemetry)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/hud/",
+      "exclusion_reason": ""
+    },
+    "Qwen-Agent-main.zip": {
+      "project_id": 124,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 3 & 6 (Multi-Agent & Browser)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "qwen-code-examples-main.zip": {
+      "project_id": 125,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 2 & 5 (SDK Applications)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "qwen-code-main.zip": {
+      "project_id": 126,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 1 & 3 (ACP Bridge & Log Redaction)",
+      "priority": "P0",
+      "target_file": "packages/core/src/internal/credential-redactor.ts",
+      "exclusion_reason": ""
+    },
+    "reasonix-desktop-main.zip": {
+      "project_id": 127,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 5 (Desktop Reasoning Visualizer)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/agent/",
+      "exclusion_reason": ""
+    },
+    "reasonix-memory-sync-main.zip": {
+      "project_id": 128,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 4 & 7 (Distributed Memory)",
+      "priority": "P2",
+      "target_file": "packages/core/src/state/memory.ts",
+      "exclusion_reason": ""
+    },
+    "reasonix-skill-powers-main.zip": {
+      "project_id": 129,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 2 (Reasoning Loop Plugins)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/repeat-tool-guard.ts",
+      "exclusion_reason": ""
+    },
+    "rig-main.zip": {
+      "project_id": 130,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 1 & 7 (Modular Agent Framework)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "science-skills-main.zip": {
+      "project_id": 131,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 4 & 7 (Scientific Literature)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "skills-manager-main.zip": {
+      "project_id": 132,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 2 & 5 (Skill Manager GUI)",
+      "priority": "P2",
+      "target_file": "packages/core/src/plugin/",
+      "exclusion_reason": ""
+    },
+    "stitch-skills-main.zip": {
+      "project_id": 133,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 2 (UI Stitch Skills)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "superdesign-main.zip": {
+      "project_id": 134,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 5 (Design Generation)",
+      "priority": "P2",
+      "target_file": "packages/web/src/features/",
+      "exclusion_reason": ""
+    },
+    "superpowers-reasonix-main.zip": {
+      "project_id": 135,
+      "status": "complete",
+      "classification": "PENDING",
+      "batch": 9,
+      "phase": "Phase 2 & 6 (Workflow Hardening)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "system_prompts_leaks-main.zip": {
+      "project_id": 136,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 4 & 7 (Prompt Library)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/persona-masks.ts",
+      "exclusion_reason": ""
+    },
+    "teaql-agent-kit-main.zip": {
+      "project_id": 137,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 10,
+      "phase": "Phase 2 & 3 (Schema & Agent Workspaces)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "tinyagents-main.zip": {
+      "project_id": 138,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 1 & 3 (Lightweight Agents)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "tinyconnectors-main.zip": {
+      "project_id": 139,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 1 & 7 (Protocol Connectors)",
+      "priority": "P2",
+      "target_file": "packages/core/src/llm/",
+      "exclusion_reason": ""
+    },
+    "tinyhivemind-main.zip": {
+      "project_id": 140,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 3 (Swarm Coordination)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    },
+    "tinymcp-main.zip": {
+      "project_id": 141,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 2 (MCP Implementation)",
+      "priority": "P2",
+      "target_file": "packages/core/src/kernel/acp.ts",
+      "exclusion_reason": ""
+    },
+    "tinymemory-main.zip": {
+      "project_id": 142,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 4 & 7 (Embedded Memory)",
+      "priority": "P2",
+      "target_file": "packages/core/src/state/memory.ts",
+      "exclusion_reason": ""
+    },
+    "token-monitor-main.zip": {
+      "project_id": 143,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 5 (Token Monitoring)",
+      "priority": "P2",
+      "target_file": "packages/core/src/hud/token-meter.ts",
+      "exclusion_reason": ""
+    },
+    "token-tracker-main.zip": {
+      "project_id": 144,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 5 (Terminal Token Telemetry)",
+      "priority": "P2",
+      "target_file": "packages/core/src/hud/token-meter.ts",
+      "exclusion_reason": ""
+    },
+    "TokenBar-main.zip": {
+      "project_id": 145,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 10,
+      "phase": "Phase 5 (Native macOS Telemetry & Velocity)",
+      "priority": "P0",
+      "target_file": "packages/core/src/hud/token-meter.ts",
+      "exclusion_reason": ""
+    },
+    "tokentap-main.zip": {
+      "project_id": 146,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 10,
+      "phase": "Phase 5 (Token Interception Tap)",
+      "priority": "P2",
+      "target_file": "packages/core/src/internal/safe-http.ts",
+      "exclusion_reason": ""
+    },
+    "tokentelemetry-main.zip": {
+      "project_id": 147,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 5 & 7 (Enterprise Telemetry)",
+      "priority": "P2",
+      "target_file": "packages/core/src/hud/",
+      "exclusion_reason": ""
+    },
+    "TokenTracker-main.zip": {
+      "project_id": 148,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 10,
+      "phase": "Phase 5 (Session Analytics Dashboard)",
+      "priority": "P2",
+      "target_file": "packages/core/src/hud/spend-flow.ts",
+      "exclusion_reason": ""
+    },
+    "tokscale-main.zip": {
+      "project_id": 149,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 10,
+      "phase": "Phase 5 & 7 (High-Performance Aggregator)",
+      "priority": "P0",
+      "target_file": "packages/core/src/hud/token-meter.ts",
+      "exclusion_reason": ""
+    },
+    "twenty-main.zip": {
+      "project_id": 150,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 10,
+      "phase": "Enterprise App & Agent Rules",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "U-Pool-main.zip": {
+      "project_id": 151,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 11,
+      "phase": "Phase 1 (LLM Gateway & Key Pool Rotation)",
+      "priority": "P1",
+      "target_file": "packages/web/src/features/gateway/gateway-dialog.tsx",
+      "exclusion_reason": ""
+    },
+    "ui-main.zip": {
+      "project_id": 152,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 11,
+      "phase": "Phase 5 (UI Design Systems & Components)",
+      "priority": "P2",
+      "target_file": "packages/web/src/components/ui/",
+      "exclusion_reason": ""
+    },
+    "ui-ux-pro-max-skill-main.zip": {
+      "project_id": 153,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 11,
+      "phase": "Phase 4 (UI/UX Design Intelligence Skills)",
+      "priority": "P1",
+      "target_file": ".agents/skills/ui-ux-pro-max/",
+      "exclusion_reason": ""
+    },
+    "vibe-check-master.zip": {
+      "project_id": 154,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 11,
+      "phase": "Phase 6 (Safety & Quality Verification)",
+      "priority": "P2",
+      "target_file": "packages/core/test/",
+      "exclusion_reason": ""
+    },
+    "vibe-kanban-main.zip": {
+      "project_id": 155,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 11,
+      "phase": "Phase 3 & 7 (Kanban Task Orchestration & MCP)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/kanban.ts",
+      "exclusion_reason": ""
+    },
+    "vibe-master (1).zip": {
+      "project_id": 156,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 11,
+      "phase": "Excluded",
+      "priority": "P3",
+      "target_file": "",
+      "exclusion_reason": "Duplicate of web-app-demo backend"
+    },
+    "vibe-master.zip": {
+      "project_id": 157,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 11,
+      "phase": "Phase 4 & 7 (AST Codemods & Symbol Indexing)",
+      "priority": "P2",
+      "target_file": "packages/core/src/agent/symbol-indexer.ts",
+      "exclusion_reason": ""
+    },
+    "vibekit-main.zip": {
+      "project_id": 158,
+      "status": "complete",
+      "classification": "LOW",
+      "batch": 11,
+      "phase": "Phase 5 (Documentation & Template Systems)",
+      "priority": "P2",
+      "target_file": "packages/web/",
+      "exclusion_reason": ""
+    },
+    "vibes-plug-main.zip": {
+      "project_id": 159,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 11,
+      "phase": "Phase 4 (Specialized AI Agent Skills)",
+      "priority": "P1",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "wigolo-main (1).zip": {
+      "project_id": 160,
+      "status": "excluded",
+      "classification": "EXCLUDED",
+      "batch": 11,
+      "phase": "Excluded",
+      "priority": "P3",
+      "target_file": "",
+      "exclusion_reason": "Exact duplicate of wigolo-main.zip"
+    },
+    "wigolo-main.zip": {
+      "project_id": 161,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 11,
+      "phase": "Phase 4 (Web Crawling & Search Agent Skills)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "workbuddyskills-main.zip": {
+      "project_id": 162,
+      "status": "complete",
+      "classification": "MEDIUM",
+      "batch": 11,
+      "phase": "Phase 4 (Workflow & Connector Skills)",
+      "priority": "P2",
+      "target_file": ".agents/skills/",
+      "exclusion_reason": ""
+    },
+    "xberg-main.zip": {
+      "project_id": 163,
+      "status": "complete",
+      "classification": "HIGH",
+      "batch": 11,
+      "phase": "Phase 7 (Document Intelligence & MCP Integration)",
+      "priority": "P1",
+      "target_file": "packages/core/src/agent/",
+      "exclusion_reason": ""
+    }
+  }
+}

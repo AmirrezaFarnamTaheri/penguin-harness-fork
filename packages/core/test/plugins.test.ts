@@ -218,9 +218,9 @@ describe("lookups", () => {
 });
 
 describe("parseSkillFrontmatter", () => {
-  it("parses name/description/version and the optional short descriptions; values may contain colons", () => {
+  it("parses name/description/version and the optional short descriptions; quoted values may contain colons", () => {
     const meta = parseSkillFrontmatter(
-      "---\nname: x\ndescription: a: b\nshort_description: s\nshort_description_zh: 中\nversion: 2026.08.29.3\n---\nbody",
+      '---\nname: x\ndescription: "a: b"\nshort_description: s\nshort_description_zh: 中\nversion: 2026.08.29.3\n---\nbody',
     );
     expect(meta).toEqual({
       name: "x",

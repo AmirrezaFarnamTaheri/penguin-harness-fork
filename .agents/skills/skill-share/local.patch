@@ -1,0 +1,12 @@
+diff -rN -U0 --ignore-trailing-space a/skill-share/SKILL.md b/skill-share/SKILL.md
+--- a/skill-share/SKILL.md	2000-01-01 00:00:00.000000000 +0000
++++ b/skill-share/SKILL.md	2000-01-01 00:00:00.000000000 +0000
+@@ -4 +4 @@
+-  A skill that creates new Claude skills and automatically shares them on Slack
++  A skill that creates new agent skills and automatically shares them on Slack
+@@ -18 +18 @@
+-- **Create new Claude skills** with proper structure and metadata
++- **Create new agent skills** with proper structure and metadata
+@@ -68 +68 @@
+-When you ask Claude to create a skill called "pdf-analyzer":
++When you ask Kilo to create a skill called "pdf-analyzer":

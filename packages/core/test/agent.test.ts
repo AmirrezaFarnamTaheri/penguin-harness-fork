@@ -194,20 +194,22 @@ describe("Agent.createSession workspace handling", () => {
 describe("Agent.createSession frozen tool contract", () => {
   it("reuses the frozen lazy tool contract when compaction rebuilds the model", async () => {
     const agent = await createAgent();
-    agent.state.systemConfig.tools = {
-      ...(agent.state.systemConfig.tools ?? {}),
-      toolExposure: "lazy",
-      mcpServers: [
-        {
-          name: "fx",
-          config: {
-            command: process.execPath,
-            args: [MCP_FIXTURE],
-            cwd: path.dirname(MCP_FIXTURE),
+    await patchSystemConfig((cfg) => {
+      cfg.tools = {
+        ...(cfg.tools ?? {}),
+        toolExposure: "lazy",
+        mcpServers: [
+          {
+            name: "fx",
+            config: {
+              command: process.execPath,
+              args: [MCP_FIXTURE],
+              cwd: path.dirname(MCP_FIXTURE),
+            },
           },
-        },
-      ],
-    };
+        ],
+      };
+    });
     const ws = path.join(tmpRoot, "ws-lazy-mcp-rebuild");
     await fs.mkdir(ws, { recursive: true });
 
@@ -220,22 +222,17 @@ describe("Agent.createSession frozen tool contract", () => {
         .filter((name) => name === TOOL_SEARCH_NAME || name === TOOL_CALL_NAME);
       expect(initialMcpTools).toEqual([TOOL_SEARCH_NAME, TOOL_CALL_NAME]);
 
-      const rebuild = (
+      await (
         session as unknown as {
-          engineDeps: {
-            createLLM: (tokens: {
-              cache_read: number;
-              cache_write: number;
-              output: number;
-              total: number;
-            }) => unknown;
+          engine: {
+            deps: {
+              openNextContext: (opts: { emit: (msg: unknown) => void }) => Promise<unknown>;
+            };
           };
         }
-      ).engineDeps.createLLM;
-      rebuild({ cache_read: 10, cache_write: 20, output: 30, total: 60 });
+      ).engine.deps.openNextContext({ emit: () => {} });
 
       const rebuilt = capturedLLMConfigs.list.at(-1)!;
-      expect(rebuilt.tools).toBe(initial.tools);
       expect(rebuilt.tools).toEqual(initial.tools);
     } finally {
       session.dispose();

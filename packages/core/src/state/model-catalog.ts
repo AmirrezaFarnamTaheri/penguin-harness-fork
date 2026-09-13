@@ -1276,7 +1276,7 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
   // rest carry neither, so for them list price and billed rate coincide.
   //
   // A running promotion usually also shows up without a credential: the catalog API opens
-  // such a model's `description` with a bracketed 限时 ("limited-time") tag, so the same
+  // such a model's `description` with a bracketed "limited-time" tag, so the same
   // anonymous request the context windows come from is a cheap first check on whether one is
   // still live. It is neither exhaustive nor authoritative on the rate — the rates above are
   // the ones the seller confirmed. --

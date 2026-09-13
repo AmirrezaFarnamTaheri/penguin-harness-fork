@@ -1,0 +1,40 @@
+name: Skill Integrity
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: skill-integrity-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - name: Verify normalized imported skill metadata
+        run: pnpm skills:normalize:check
+      - name: Verify canonical naming policies
+        run: pnpm skills:names:check
+      - name: Verify declarative and runtime aliases are synchronized
+        run: pnpm skills:aliases:check
+      - name: Validate skill identities, metadata, resource closure and aliases
+        run: pnpm skills:check -- --strict-resources --json=artifacts/skill-audit.json
+      - name: Build taxonomy and overlap report
+        if: always()
+        run: pnpm skills:catalog
+      - name: Build readiness and resource-gap report
+        if: always()
+        run: pnpm skills:readiness
+      - name: Upload skill audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skill-integrity-report
+          if-no-files-found: warn
+          path: artifacts/skill-*.json
+          retention-days: 14

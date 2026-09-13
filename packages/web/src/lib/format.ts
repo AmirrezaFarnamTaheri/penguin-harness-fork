@@ -191,9 +191,7 @@ const EN_MONTHS = [
 
 /**
  * `yyyy-mm-dd` (or a full ISO timestamp — only the date part is read) → localized
- * month + day, no year: en `Jul 26`, zh `7 月 26 日` (the version footer's "last
- * updated" date, product-specified wording — the zh form keeps the CJK/numeral
- * spacing the owner asked for, which `Intl` would drop). The fields are read
+ * month + day, no year: en `Jul 26`, zh `7 月 26 日`. The fields are read
  * straight from the string rather than via `new Date()` + local-zone formatting:
  * the input is a UTC calendar date (core's stamped BUILD_DATE, a release's
  * publish timestamp), and round-tripping it through the viewer's timezone would
@@ -206,12 +204,12 @@ export function formatMonthDay(iso: string, locale: "zh" | "en"): string {
   const month = Number(m[1]);
   const day = Number(m[2]);
   if (month < 1 || month > 12 || day < 1 || day > 31) return iso;
-  return locale === "en" ? `${EN_MONTHS[month - 1]} ${day}` : `${month} 月 ${day} 日`;
+  return locale === "zh" ? `${month} 月 ${day} 日` : `${EN_MONTHS[month - 1]} ${day}`;
 }
 
 /**
  * Millisecond timestamp → human-readable message time: en `Jul 2, 2:58 PM` /
- * zh `7月2日 14:58`; returns an empty string for an invalid value.
+ * zh format; returns an empty string for an invalid value.
  *
  * Follows the UI language instead of hardcoding English: date formatting is
  * a localization concern, and `Jul 2` would look jarring in a Chinese UI.
@@ -236,44 +234,43 @@ function startOfDayMs(d: Date): number {
 
 /**
  * ISO timestamp → relative days (used by the Agents card's "last modified"):
- * same day → "今天/today", one day back → "昨天/yesterday", earlier → local
- * calendar-day difference as "n 天前 / n days ago"; a future time (clock
- * skew) falls back to the absolute time, and parse failures return the
- * input unchanged.
+ * same day → localized "today", one day back → localized "yesterday", earlier →
+ * local calendar-day difference; a future time (clock skew) falls back to the
+ * absolute time, and parse failures return the input unchanged.
  */
 export function formatRelativeDays(iso: string, locale: "zh" | "en"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const days = Math.round((startOfDayMs(new Date()) - startOfDayMs(d)) / 86_400_000);
   if (days < 0) return formatDateTime(iso);
-  if (days === 0) return locale === "en" ? "today" : "今天";
-  if (days === 1) return locale === "en" ? "yesterday" : "昨天";
-  return locale === "en" ? `${days} days ago` : `${days} 天前`;
+  if (days === 0) return locale === "zh" ? "今天" : "today";
+  if (days === 1) return locale === "zh" ? "昨天" : "yesterday";
+  return locale === "zh" ? `${days} 天前` : `${days} days ago`;
 }
 
 /**
- * ISO timestamp → semantic update time (skill card metadata): zh "今天更新/
- * 昨天更新/n 天前更新", en "updated today/yesterday/n days ago"; a future
- * time (clock skew) falls back to the date itself, and parse failures
- * return the input unchanged (without the "updated" wording).
+ * ISO timestamp → semantic update time (skill card metadata):
+ * localized "updated today/yesterday/n days ago"; a future time (clock skew)
+ * falls back to the date itself, and parse failures return the input unchanged
+ * (without the "updated" wording).
  */
 export function formatRelativeDate(iso: string, locale: "zh" | "en"): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const days = Math.round((startOfDayMs(new Date()) - startOfDayMs(d)) / 86_400_000);
   if (days < 0) return iso;
-  if (days === 0) return locale === "en" ? "updated today" : "今天更新";
-  if (days === 1) return locale === "en" ? "updated yesterday" : "昨天更新";
-  return locale === "en" ? `updated ${days} days ago` : `${days} 天前更新`;
+  if (days === 0) return locale === "zh" ? "今天更新" : "updated today";
+  if (days === 1) return locale === "zh" ? "昨天更新" : "updated yesterday";
+  return locale === "zh" ? `${days} 天前更新` : `updated ${days} days ago`;
 }
 
 /**
  * ISO timestamp → compact "how long ago from now" for narrow rows (the sidebar's
- * per-conversation time): under a minute zh 「刚刚」 / en "now", then minute / hour /
- * day steps — zh keeps the dictionary wording (`5 分钟前`), en stays ultra-short
- * (`5m`, `3h`, `2d`) per the CLI-style abbreviation register. A week or older — or a
- * future time (clock skew) — falls back to the absolute month-day (formatMonthDay);
- * an unparsable value yields "" so callers hide the slot rather than show garbage.
+ * per-conversation time): Chinese uses natural localized phrases; English stays
+ * ultra-short (`5m`, `3h`, `2d`) per the CLI-style abbreviation register. A week
+ * or older — or a future time (clock skew) — falls back to the absolute month-day
+ * (formatMonthDay); an unparsable value yields "" so callers hide the slot rather
+ * than show garbage.
  */
 export function formatRelativeShort(iso: string, locale: "zh" | "en"): string {
   const d = new Date(iso);
@@ -281,12 +278,12 @@ export function formatRelativeShort(iso: string, locale: "zh" | "en"): string {
   const diffMs = Date.now() - d.getTime();
   if (diffMs < 0) return formatMonthDay(iso, locale);
   const min = Math.floor(diffMs / 60_000);
-  if (min < 1) return locale === "en" ? "now" : "刚刚";
-  if (min < 60) return locale === "en" ? `${min}m` : `${min} 分钟前`;
+  if (min < 1) return locale === "zh" ? "刚刚" : "now";
+  if (min < 60) return locale === "zh" ? `${min} 分钟前` : `${min}m`;
   const hours = Math.floor(min / 60);
-  if (hours < 24) return locale === "en" ? `${hours}h` : `${hours} 小时前`;
+  if (hours < 24) return locale === "zh" ? `${hours} 小时前` : `${hours}h`;
   const days = Math.floor(hours / 24);
-  if (days < 7) return locale === "en" ? `${days}d` : `${days} 天前`;
+  if (days < 7) return locale === "zh" ? `${days} 天前` : `${days}d`;
   return formatMonthDay(iso, locale);
 }
 

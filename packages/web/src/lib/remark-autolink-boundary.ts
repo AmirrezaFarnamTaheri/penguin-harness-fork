@@ -2,7 +2,7 @@
  * Ends a bare URL at the last ASCII character.
  *
  * GFM's autolink-literal extension ends a bare URL at whitespace, then trims a short list of
- * trailing ASCII punctuation. Neither rule sees CJK: `见 https://penguin.ooo，然后继续` is not
+ * trailing ASCII punctuation. Neither rule sees CJK: `see https://penguin.ooo, then continue` (with CJK punctuation) is not
  * whitespace-separated after the host, so the comma and the clause after it are swallowed into the
  * href, which then 404s, and the sentence loses its punctuation to link styling. English is
  * unaffected — `see https://penguin.ooo, then` already trims correctly — so this only ever fires on
@@ -11,7 +11,7 @@
  * A URL is ASCII by RFC 3986; anything outside it belongs percent-encoded. So the boundary is the
  * last ASCII character, and a trailing non-ASCII run is handed back to the paragraph as text.
  *
- * The trade this makes: a URL carrying *unencoded* CJK in its path — `…/wiki/中文` pasted raw
+ * The trade this makes: a URL carrying *unencoded* non-ASCII in its path — `…/wiki/path` pasted raw
  * rather than percent-encoded — is trimmed at the last ASCII character. That form is invalid per
  * the RFC and browsers only accept it by encoding it for you; the same link pasted in its encoded
  * form is untouched. Explicit `[text](url)` links are never touched at all.

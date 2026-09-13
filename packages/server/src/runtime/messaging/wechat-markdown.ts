@@ -21,7 +21,7 @@
  *     five literal `#`. The text becomes an ordinary paragraph, which is what a heading too
  *     deep to show was already going to look like.
  *   - **Emphasis around CJK.** `*text*` needs the marker to sit against a word boundary, and
- *     CJK text has none, so `*中文*` renders as asterisks around Chinese. Latin emphasis is
+ *     CJK text has none, so `*text*` renders as asterisks around Chinese. Latin emphasis is
  *     kept because it does render; a CJK run loses the markers and keeps the words. This is
  *     why emphasis is decided per node rather than once.
  *   - **Images.** The client has no inline image in a text message, and `![alt](url)` shows
@@ -65,7 +65,8 @@ const INLINE_SPECIALS = /[\\`*_~[\]]/g;
  * doc), and the test is on the whole run rather than its edges because the client's rule is
  * about word boundaries, which such a run has nowhere.
  */
-const CJK = /[⺀-〿぀-ヿ㐀-䶿一-鿿가-힯豈-﫿＀-￯]/;
+const CJK =
+  /[\u2E80-\u2FFF\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/;
 
 function esc(text: string): string {
   return text.replace(INLINE_SPECIALS, (ch) => `\\${ch}`);

@@ -12,7 +12,7 @@
  *
  * The card (`packages/web/src/features/chat/message-files-card.tsx`) reads inline-code
  * spans only, and that was this module's first rule too. It does not survive contact with
- * a chat: a model that writes "已经把图表保存为 chart.png" or "Saved it at
+ * a chat: a model that writes "I have saved the chart as chart.png" or "Saved it at
  * /ws/out/chart.png" names the file perfectly clearly and matched nothing, so the feature
  * produced nothing at all for most real replies. The card can afford the strict rule
  * because it decorates Markdown that is already rendered — a path it misses is simply not

@@ -173,7 +173,7 @@ export function orderWithinPinPartitions<T>(
 /**
  * The full row-ordering pipeline of one group's active list:
  *
- * 1. recency — newest `recencyOf` first (the Session's `lastActiveAt`: 「最近更新」 means
+ * 1. recency — newest `recencyOf` first (the Session's `lastActiveAt`: "Recently updated" means
  *    last ACTIVITY, not creation), ties broken by key descending to match the store's
  *    stable tiebreaker. Applied in both modes: it IS the recent mode's order, and in
  *    manual mode it is the order rows not yet in the stored sequence arrive in.

@@ -53,7 +53,7 @@ const INVISIBLE_CHAR = /\p{C}/u;
  * True when a character must not reach a file name. ASCII keeps the long-standing whitelist:
  * a space or a shell metacharacter inside a path the model is about to paste into a command is
  * a footgun, so anything outside `[A-Za-z0-9._-]` still becomes `-` down there. Above ASCII the
- * rule inverts — the character is kept as typed, so `报告.pdf` reaches the model as `报告.pdf`
+ * rule inverts — the character is kept as typed, so `report.pdf` reaches the model as `report.pdf`
  * instead of collapsing to an anonymous `file.pdf` (CJK, accents and emoji are all harmless to
  * a shell). The exception is Unicode category C: invisible controls, and the bidi overrides
  * that let a name render as something it is not.
@@ -214,7 +214,7 @@ export function assertAttachmentBudget(
 
 /**
  * Map a submitted name onto a name that is safe on disk **and** still recognizably the user's
- * own: `报告 2026.pdf` becomes `报告-2026.pdf` (see unsafeNameChar — the words survive, only the
+ * own: `report 2026.pdf` becomes `report-2026.pdf` (see unsafeNameChar — the words survive, only the
  * shell-hostile ASCII is replaced), so the model reads a meaningful path and a person looking
  * at the message recognizes what they attached.
  *

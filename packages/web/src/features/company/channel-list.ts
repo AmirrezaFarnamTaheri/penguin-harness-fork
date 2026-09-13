@@ -6,7 +6,7 @@
  *
  * The all-hands channel is `default_channel` — created with the organization, holding every
  * employee and every Project member implicitly. Its stored name is never displayed: the list,
- * the header and every reference to it render the localized 全员频道 / "All hands" label
+ * the header and every reference to it render the localized "All hands" label
  * instead, so one organization reads the same in both languages whatever its files say.
  */
 import type { OrgChannelItem, OrgChannelMember } from "@prismshadow/penguin-server/api";

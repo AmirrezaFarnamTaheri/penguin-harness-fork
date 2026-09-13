@@ -46,3 +46,8 @@ packages/landing/.blog-assets/
 packages/server/src/ifaces.json
 # rendered by scripts/iface-page.mjs (pnpm ifaces:page); CI publishes it
 dist-ifaces/
+/_port_staging
+.cocoindex_code/
+.statamcp/
+.serena/
+.data/
