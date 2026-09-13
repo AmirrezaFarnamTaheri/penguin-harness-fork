@@ -435,16 +435,20 @@ class PenguinServer {
     });
     // Fallback: a long-lived SSE connection may block the close callback, so force exit after 1s.
     setTimeout(() => {
-      this.cleanupInstanceFiles();
+      // Keep the atomic claim until process death on this forced path. Releasing it first would
+      // let a replacement server enter while this process still owns open resources.
+      this.cleanupInstanceFiles(false);
       process.exit(exitCode);
     }, 1000).unref();
   }
 
-  /** Removes the published discovery record, then releases atomic root ownership and port file. */
-  private cleanupInstanceFiles(): void {
+  /** Removes the published record/port file, then optionally releases atomic root ownership. */
+  private cleanupInstanceFiles(releaseClaim = true): void {
     releaseServerLock(this.config.root);
-    this.instanceClaim?.release();
-    this.instanceClaim = null;
+    if (releaseClaim) {
+      this.instanceClaim?.release();
+      this.instanceClaim = null;
+    }
     if (this.config.portFile === null) return;
     try {
       fs.rmSync(this.config.portFile, { force: true });
