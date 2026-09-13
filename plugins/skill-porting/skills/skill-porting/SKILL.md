@@ -7,6 +7,10 @@ description: Port externally sourced skills into Penguin safely by pinning the s
 
 Use this workflow to port a skill from a Git repository, marketplace, archive, or local directory into Penguin's installed-skill layout.
 
+## Before you start
+
+If the request only names this skill or asks generically to port a skill without identifying the source, ask for the source repository/archive/directory and the intended target capability first. Do not download, execute, or install unknown skill code until the source and intended workflow are clear enough to review.
+
 ## Safety and provenance are blocking gates
 
 1. Resolve the exact source and prefer a commit SHA or immutable release tag.
