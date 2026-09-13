@@ -40,7 +40,7 @@ function executableRefs(raw) {
   return [...raw.matchAll(EXECUTABLE_PATTERN)].map((match) => match[1]).filter(Boolean);
 }
 
-function externalRequirements(raw) {
+function detectExternalRequirements(raw) {
   return EXTERNAL_RUNTIME_PATTERNS.filter(([, matcher]) => matcher.test(raw)).map(([name]) => name);
 }
 
@@ -84,7 +84,7 @@ for (const name of await listSkillDirectories(root)) {
     gapIndex.set(rel, bucket);
   }
   const executableReferences = executableRefs(record.raw);
-  const externalRequirements = externalRequirements(record.raw);
+  const externalRequirements = detectExternalRequirements(record.raw);
   const referenceOnly = REFERENCE_ONLY_PATTERN.test(`${description}\n${record.body}`);
 
   let status = "ready";
