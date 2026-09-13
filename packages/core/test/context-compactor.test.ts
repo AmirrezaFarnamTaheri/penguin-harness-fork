@@ -72,7 +72,7 @@ describe("ContextCompactor", () => {
     expect(lastTwo[1]!.content).toBe("All tests passing");
   });
 
-  it("supports custom summarizers", async () => {
+  it("supports custom summarizers when their output reduces context", async () => {
     const compactor = new ContextCompactor({ keepRecentTurns: 1 });
     const messages: ConversationMessage[] = [
       { role: "user", content: "Turn 1" },
@@ -83,9 +83,7 @@ describe("ContextCompactor", () => {
       { role: "assistant", content: "Resp 3" },
     ];
 
-    const customSummarizer = async (folded: ConversationMessage[]) => {
-      return `Custom synthesized summary of ${folded.length} messages`;
-    };
+    const customSummarizer = async (_folded: ConversationMessage[]) => "S";
 
     const { compactedMessages, anchor } = await compactor.compact(
       messages,
@@ -95,7 +93,7 @@ describe("ContextCompactor", () => {
     );
 
     expect(anchor.status).toBe("done");
-    expect(anchor.summary).toContain("Custom synthesized summary of 4 messages");
-    expect(compactedMessages[0]!.content).toContain("Custom synthesized summary");
+    expect(anchor.summary).toBe("S");
+    expect(compactedMessages[0]!.content).toContain("S");
   });
 });
