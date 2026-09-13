@@ -1,0 +1,20 @@
+name: Format diagnostic
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - name: Print Prettier rewrite
+        run: |
+          pnpm exec prettier .github/workflows/desktop-build.yml --write
+          git diff -- .github/workflows/desktop-build.yml
+          git diff --quiet -- .github/workflows/desktop-build.yml && exit 0
+          exit 1
