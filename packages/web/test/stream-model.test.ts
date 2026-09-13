@@ -4,6 +4,18 @@
  * approval/abort/compaction events, Task segmentation and stats triggering.
  */
 import { describe, expect, it } from "vitest";
+
+it("a failed request updates spend without overwriting context occupancy", () => {
+  const m = createStreamModel();
+  pushMessage(m, userText("go"));
+  const counts = { cache_read: 0, cache_write: 20, output: 5, total: 25 };
+  pushMessage(m, tokenUsage(counts, counts));
+  pushMessage(m, requestEnd("retryable", { usage: counts }));
+  expect(m.stats.contextNow).toBe(25);
+  expect(m.stats.sessionTotal).toBe(50);
+  expect(m.stats.taskTokens).toBe(50);
+  expect(m.stats.taskOutput).toBe(10);
+});
 import {
   abortEvent,
   approvalDecision,

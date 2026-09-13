@@ -1,0 +1,221 @@
+{
+  "target_project": "penguin-harness-fork",
+  "source_root": "D:/Github/HPort",
+  "compendium_path": "D:/github/penguin-harness-fork/PenguinHarness_Master_Porting_Compendium.md",
+  "total_projects_discovered": 21,
+  "batches_completed": 0,
+  "current_batch": 1,
+  "last_updated": "2026-09-12T06:18:42.808Z",
+  "projects": {
+    "AI-Researcher-main.zip": {
+      "project_id": 164,
+      "name": "AI-Researcher-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "AnyGraph-main.zip": {
+      "project_id": 165,
+      "name": "AnyGraph-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "AnyTool-main.zip": {
+      "project_id": 166,
+      "name": "AnyTool-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "Auto-Deep-Research-main.zip": {
+      "project_id": 167,
+      "name": "Auto-Deep-Research-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "CLI-Anything-main.zip": {
+      "project_id": 168,
+      "name": "CLI-Anything-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "DeepCode-main.zip": {
+      "project_id": 169,
+      "name": "DeepCode-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "DeepTutor-main.zip": {
+      "project_id": 170,
+      "name": "DeepTutor-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "DiffGraph-main.zip": {
+      "project_id": 171,
+      "name": "DiffGraph-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "FastAgent-main.zip": {
+      "project_id": 172,
+      "name": "FastAgent-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "FastCode-main.zip": {
+      "project_id": 173,
+      "name": "FastCode-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "HELIX-main.zip": {
+      "project_id": 174,
+      "name": "HELIX-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 1,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "LightRAG-main.zip": {
+      "project_id": 175,
+      "name": "LightRAG-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "LightReasoner-main.zip": {
+      "project_id": 176,
+      "name": "LightReasoner-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "MGP-main.zip": {
+      "project_id": 177,
+      "name": "MGP-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "MiniRAG-main.zip": {
+      "project_id": 178,
+      "name": "MiniRAG-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "nanobot-main.zip": {
+      "project_id": 179,
+      "name": "nanobot-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "OpenGraph-main.zip": {
+      "project_id": 180,
+      "name": "OpenGraph-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "OpenHarness-main.zip": {
+      "project_id": 181,
+      "name": "OpenHarness-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "OpenSpace-main.zip": {
+      "project_id": 182,
+      "name": "OpenSpace-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "RAG-Anything-main.zip": {
+      "project_id": 183,
+      "name": "RAG-Anything-main",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    },
+    "visual-review-1.zip": {
+      "project_id": 184,
+      "name": "visual-review-1",
+      "status": "pending",
+      "classification": "TBD",
+      "batch": 2,
+      "priority": "TBD",
+      "target_file": "",
+      "exclusion_reason": ""
+    }
+  }
+}

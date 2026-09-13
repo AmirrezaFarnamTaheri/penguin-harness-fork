@@ -42,7 +42,7 @@ export class UsageRecorder {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  /** Consume one outgoing message; messages other than session_meta / token_usage are a no-op. */
+  /** Record model attribution, completed usage, and failed request outcomes. */
   async record(ctx: UsageContext, msg: OmniMessage): Promise<void> {
     if (isSessionMeta(msg) && msg.origin && msg.origin.length > 0) {
       const originSessionId = msg.origin[msg.origin.length - 1]!;
@@ -62,6 +62,7 @@ export class UsageRecorder {
     const payload = msg.payload as {
       type?: string;
       request?: { cache_read: number; cache_write: number; output: number; total: number };
+      usage?: { cache_read: number; cache_write: number; output: number; total: number };
       status?: string;
     };
 
@@ -100,15 +101,15 @@ export class UsageRecorder {
       return;
     }
     // A failed request (request_end and not completed, usually with no token_usage):
-    // persist 0 tokens + status, feeding the "model success rate" stat; a successful
+    // persist reported consumption (zero when unknown) + status; a successful
     // request is already counted once via the token_usage branch above, not repeated here.
     if (payload.type === "request_end" && payload.status && payload.status !== "completed") {
       this.usage.insert({
         ...base,
-        cacheRead: 0,
-        cacheWrite: 0,
-        output: 0,
-        total: 0,
+        cacheRead: payload.usage?.cache_read ?? 0,
+        cacheWrite: payload.usage?.cache_write ?? 0,
+        output: payload.usage?.output ?? 0,
+        total: payload.usage?.total ?? 0,
         status: payload.status,
       });
     }

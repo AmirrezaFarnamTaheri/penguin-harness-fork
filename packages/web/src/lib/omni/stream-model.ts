@@ -79,6 +79,7 @@ import {
   endTask,
   resetTaskCounters,
   trackMainUsage,
+  trackFailedUsage,
   trackSubagentUsage,
 } from "./task-stats";
 import type { TaskStats, TaskStatsTracker } from "./task-stats";
@@ -1745,6 +1746,7 @@ function handleEvent(model: StreamModel, p: EventPayload, tsMs?: number, nowMs?:
       return;
     }
     case "request_end": {
+      if (p.status !== "completed" && p.usage) trackFailedUsage(model.stats, p.usage);
       // A retryable end: the engine retries carrying the content already
       // produced, rendering a retry hint (with the attempt number); the terminal
       // statuses aren't rendered (Request duration is covered by Trace performance
@@ -1978,6 +1980,14 @@ function routeNested(model: StreamModel, msg: OmniMessage, nowMs: number): void 
   // Sub-session token_usage: the request delta counts toward this level's stats (at any depth, same convention as the CLI).
   if (isEventMessage(msg) && msg.payload.type === "token_usage") {
     trackSubagentUsage(model.stats, msg.payload as TokenUsagePayload);
+  }
+  if (
+    isEventMessage(msg) &&
+    msg.payload.type === "request_end" &&
+    msg.payload.status !== "completed" &&
+    msg.payload.usage
+  ) {
+    trackFailedUsage(model.stats, msg.payload.usage, true);
   }
   touchTask(model, msg.timestamp);
 

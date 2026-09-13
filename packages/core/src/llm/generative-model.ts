@@ -1414,7 +1414,8 @@ export class GenerativeModel implements LLMInterface {
       // Interrupted/errored: close any opened streaming segments and backfill the complete message, producing no token_usage.
       const reason: StopReason = outcome.status === "completed" ? "retryable" : outcome.status;
       for (const msg of translator.finishInterrupted(reason)) yield msg;
-      return outcome;
+      const usage = translator.getRequestTokens();
+      return usage.total > 0 ? { ...outcome, usage } : outcome;
     }
 
     // Normal completion: backfill stop + the complete model_msg, and produce token_usage.

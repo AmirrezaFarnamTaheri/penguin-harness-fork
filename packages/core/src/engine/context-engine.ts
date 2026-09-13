@@ -1223,6 +1223,7 @@ export class ContextEngine {
                     RETRY_STATUSES,
                   );
             const stopEvt = requestEnd(outcome.status, {
+              ...(outcome.usage !== undefined ? { usage: outcome.usage } : {}),
               ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
               ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
               // The authoritative attempt ordinal (1-based, within this retry run): the
@@ -1854,19 +1855,19 @@ export class ContextEngine {
           this.compactionMaxReconnects,
           RETRY_STATUSES,
         );
-        await this.write(
-          requestEnd(res.value.status, {
-            ...(res.value.errorMessage !== undefined
-              ? { errorMessage: res.value.errorMessage }
-              : {}),
-            // Same stamping rule as the turn loop; for compaction the ordinal counts every
-            // retry kind (transport and unusable-summary alike share one budget).
-            ...(res.value.status !== "completed" || reconnectsSoFar > 0
-              ? { attempt: reconnectsSoFar + 1 }
-              : {}),
-            ...(retryInMs !== undefined ? { retryInMs } : {}),
-          }),
-        );
+        const end = requestEnd(res.value.status, {
+          ...(res.value.usage !== undefined ? { usage: res.value.usage } : {}),
+          ...(res.value.errorMessage !== undefined ? { errorMessage: res.value.errorMessage } : {}),
+          // Same stamping rule as the turn loop; for compaction the ordinal counts every
+          // retry kind (transport and unusable-summary alike share one budget).
+          ...(res.value.status !== "completed" || reconnectsSoFar > 0
+            ? { attempt: reconnectsSoFar + 1 }
+            : {}),
+          ...(retryInMs !== undefined ? { retryInMs } : {}),
+        });
+        await this.write(end);
+        // Surface measured failed consumption through the existing compaction usage path.
+        if (res.value.usage !== undefined && res.value.status !== "completed") usage = end;
         return {
           status: res.value.status,
           text,

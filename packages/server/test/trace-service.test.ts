@@ -373,6 +373,34 @@ describe("trace-service", () => {
     expect(t.llmMs).toBe(2000 + 2000);
   });
 
+  it("adds failed retry consumption without replacing the successful context snapshot", async () => {
+    await writeTraceFile(root, P, A, "2026-07-05", S, 1, [
+      sessionMeta(metaPayload()),
+      requestBegin(),
+      requestEnd("retryable", { usage: buckets(10, 20, 30) }),
+      requestBegin(),
+      tokenUsage(counts(600), buckets(100, 200, 300)),
+      requestEnd("completed"),
+    ]);
+    const analysis = await service.analyze(P, A, S, 1);
+    expect(analysis.tasks).toHaveLength(1);
+    expect(analysis.tasks[0]!.tokens).toEqual({ cacheRead: 110, cacheWrite: 220, output: 330 });
+    expect(analysis.tasks[0]!.context).toEqual({ cacheRead: 100, cacheWrite: 200, output: 300 });
+    const priced = makeTraceHarness(root, {
+      lookupPricing: async () => ({
+        peak: { cacheRead: 1, cacheWrite: 2, output: 4 },
+        offPeak: { cacheRead: 1, cacheWrite: 2, output: 4 },
+      }),
+    });
+    try {
+      const billed = await priced.service.analyze(P, A, S, 1);
+      expect(billed.tasks[0]!.cost).toBeCloseTo((110 + 220 * 2 + 330 * 4) / 1e6, 12);
+      expect(billed.cost).toBeCloseTo(billed.tasks[0]!.cost!, 12);
+    } finally {
+      priced.close();
+    }
+  });
+
   it("human approval waits don't count toward LLM generation time (the TPS denominator)", async () => {
     // core does `await approve(tc)` inside the streaming loop: until approval
     // returns, the next chunk isn't consumed and request_end can't fire, so the

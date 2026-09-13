@@ -55,7 +55,7 @@ import { ConfirmModal, useSaveConfirm } from "../../components/ui/confirm-modal"
 import { SkeletonList } from "../../components/ui/skeleton";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { Md } from "../chat/md";
-import { useAiBridge } from "../ai-create";
+import { useAiBridge } from "../ai-create/ai-bridge";
 import { buildMemoryAddPrompt, buildMemoryEditPrompt } from "./memory-chat-prompts";
 import {
   MemoryDocumentError,

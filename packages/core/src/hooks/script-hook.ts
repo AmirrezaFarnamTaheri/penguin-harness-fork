@@ -58,11 +58,16 @@ export async function runHookScript(
   input: unknown,
   opts: RunHookScriptOptions = {},
 ): Promise<unknown> {
+  if (opts.signal?.aborted) throw new Error("aborted");
+  const serializedInput = `${JSON.stringify(input)}\n`;
+  if (opts.signal?.aborted) throw new Error("aborted");
   const timeoutMs = (opts.timeoutS ?? DEFAULT_HOOK_TIMEOUT_S) * 1000;
   return new Promise<unknown>((resolve, reject) => {
     const child = spawn(process.execPath, [script], {
       cwd: opts.cwd ?? path.dirname(script),
       stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
+      windowsHide: true,
       // In the desktop app process.execPath is the Electron binary: without this flag the
       // spawn boots a whole Electron app (GPU process and all) instead of running the
       // script, and dies on machines where that fails. A plain Node execPath ignores it.
@@ -71,6 +76,7 @@ export async function runHookScript(
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let interruption: string | undefined;
     const finish = (fn: () => void): void => {
       if (settled) return;
       settled = true;
@@ -79,19 +85,51 @@ export async function runHookScript(
       fn();
     };
     const fail = (message: string): void => finish(() => reject(new Error(message)));
+    const terminate = (message: string): void => {
+      if (interruption !== undefined || settled) return;
+      interruption = message;
+      if (child.exitCode !== null || child.signalCode !== null) {
+        // An exited parent cannot own a Windows taskkill tree any longer. A detached
+        // descendant may retain inherited pipes; close our ends to preserve the deadline.
+        child.stdin.destroy();
+        child.stdout.destroy();
+        child.stderr.destroy();
+        return;
+      }
+      if (process.platform === "win32" && child.pid !== undefined) {
+        const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        killer.on("error", () => child.kill("SIGKILL"));
+        killer.on("exit", (code) => {
+          if (code !== 0) child.kill("SIGKILL");
+        });
+      } else if (child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          child.kill("SIGKILL");
+        }
+      }
+    };
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      fail(`timed out after ${timeoutMs / 1000}s`);
+      terminate(`timed out after ${timeoutMs / 1000}s`);
     }, timeoutMs);
     const onAbort = (): void => {
-      child.kill("SIGKILL");
-      fail("aborted");
+      terminate("aborted");
     };
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
     child.on("error", (err) => fail(err.message));
     child.on("close", (code) => {
+      // Killing is asynchronous. Wait for close before the caller can remove the hook's
+      // working directory or start its replacement (Windows keeps the cwd locked).
+      if (interruption !== undefined) {
+        fail(interruption);
+        return;
+      }
       if (code !== 0) {
         const tail = stderr.trim().slice(-STDERR_TAIL);
         fail(`exit ${code}${tail ? `: ${tail}` : ""}`);
@@ -112,7 +150,7 @@ export async function runHookScript(
     child.stdin.on("error", () => {
       // A script that exits without reading stdin closes the pipe; the exit code says the rest.
     });
-    child.stdin.end(`${JSON.stringify(input)}\n`);
+    child.stdin.end(serializedInput);
   });
 }
 

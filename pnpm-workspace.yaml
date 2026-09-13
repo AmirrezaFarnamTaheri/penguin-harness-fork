@@ -19,6 +19,11 @@ overrides:
   # nanoid < 3.3.17 high (custom generators can loop indefinitely on size 0); only
   # 3.x copies exist here (transitive). Remove once no dependent resolves < 3.3.17.
   nanoid: "^3.3.17"
+  # Security fixes for transitive parsers. Keep the existing major/minor API lines;
+  # remove these floors when their parent dependencies require patched versions.
+  "qs@^6": "^6.16.0"
+  "@xmldom/xmldom@^0.8": "^0.8.15"
+  "js-yaml@^4": "^4.3.2"
 injectWorkspacePackages: true
 syncInjectedDepsAfterScripts:
   - build

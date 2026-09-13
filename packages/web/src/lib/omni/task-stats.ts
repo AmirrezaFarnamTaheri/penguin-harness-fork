@@ -32,7 +32,7 @@
  *
  * Pure logic module, no React dependency; driven by stream-model.ts.
  */
-import type { TokenUsagePayload } from "@prismshadow/penguin-core/omnimessage";
+import type { TokenCounts, TokenUsagePayload } from "@prismshadow/penguin-core/omnimessage";
 import { computeTps, formatTps, humanizeTokens } from "../format";
 
 /** Token three buckets (cached input / uncached input / output). */
@@ -81,8 +81,10 @@ export interface TaskStatsTracker {
   contextStale: boolean;
   /** Context at the last stats row produced (delta baseline). */
   contextAtLastStats: number;
-  /** session.total from the main session's most recent token_usage. */
+  /** Latest completed main-session cumulative usage plus reported failed consumption. */
   sessionTotal: number;
+  /** Failed-attempt usage is separate from the completed session series. */
+  failedSessionTokens: number;
   /** Session-level cumulative of subagent request.total (persists across Tasks). */
   subagentTotal: number;
   /** This Task's cumulative parent + subagent Request total (the stats row's Token delta). */
@@ -143,6 +145,7 @@ export function createTaskStatsTracker(): TaskStatsTracker {
     contextStale: false,
     contextAtLastStats: 0,
     sessionTotal: 0,
+    failedSessionTokens: 0,
     subagentTotal: 0,
     taskTokens: 0,
     taskCacheRead: 0,
@@ -215,6 +218,7 @@ export function seedPriorStats(
     apiMs: number;
     toolMs: number;
     sessionTokens: number;
+    failedSessionTokens?: number;
     contextTokens: number;
   },
 ): void {
@@ -225,6 +229,7 @@ export function seedPriorStats(
   t.sessionLlmMs = prior.apiMs;
   t.sessionToolMs = prior.toolMs;
   t.sessionTotal = prior.sessionTokens;
+  t.failedSessionTokens = prior.failedSessionTokens ?? 0;
   t.contextNow = prior.contextTokens;
   // The first in-window stats row's context delta measures against the pre-window
   // occupancy, not against zero.
@@ -240,10 +245,9 @@ function addBuckets(t: TaskStatsTracker, p: TokenUsagePayload): void {
 
 /** Main-session token_usage: normal requests count toward this Task; compaction requests are held pending (attribution undetermined, see pendingCompactionTokens). */
 export function trackMainUsage(t: TaskStatsTracker, p: TokenUsagePayload): void {
-  // The session cumulative always tracks the provider's session.total (including compaction, so
-  // nothing is missed at the session level; total session cost is reconciled separately
-  // server-side from the session total, unaffected by this).
-  t.sessionTotal = p.session.total;
+  // Completed usage replaces its own cumulative baseline; failed consumption persists
+  // separately, including compaction. Neither series measures current context occupancy.
+  t.sessionTotal = p.session.total + t.failedSessionTokens;
   if (t.compactionActive) {
     // Compaction usage is held pending: whether it belongs to this round depends on whether a
     // normal Request follows in this round (mid-round → belongs; after round end → doesn't).
@@ -297,7 +301,30 @@ export function addLlmDuration(t: TaskStatsTracker, ms: number): void {
   if (ms > 0) t.taskLlmMs += ms;
 }
 
-/** Subagent (with origin) token_usage: request delta counts toward this Task and the Session-level subagent cumulative. */
+/** Failed attempt consumption contributes to spending, independently of committed context. */
+export function trackFailedUsage(t: TaskStatsTracker, request: TokenCounts, nested = false): void {
+  if (nested) {
+    trackSubagentUsage(t, { type: "token_usage", request, session: request });
+    return;
+  }
+  t.failedSessionTokens += request.total;
+  t.sessionTotal += request.total;
+  if (t.compactionActive) {
+    t.pendingCompactionTokens += request.total;
+    t.pendingCompactionCacheRead += request.cache_read;
+    t.pendingCompactionCacheWrite += request.cache_write;
+    t.pendingCompactionOutput += request.output;
+    return;
+  }
+  t.taskTokens += request.total;
+  t.taskCacheRead += request.cache_read;
+  t.taskCacheWrite += request.cache_write;
+  t.taskOutput += request.output;
+  t.taskMainOutput += request.output;
+  t.hasUsage = true;
+}
+
+/** Subagent request deltas count toward this Task and the session's subagent cumulative. */
 export function trackSubagentUsage(t: TaskStatsTracker, p: TokenUsagePayload): void {
   t.taskTokens += p.request.total;
   addBuckets(t, p);

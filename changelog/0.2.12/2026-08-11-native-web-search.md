@@ -1,5 +1,11 @@
 # Native web search and web-access roadmap
 
+- **Date:** 2026-08-11
+- **Type:** feature
+- **Scope:** `core`, `tooling`
+
+[中文版](2026-08-11-native-web-search.zh.md)
+
 PenguinHarness now ships a native `web_search` tool backed by SearXNG. It sends a bounded search
 request to a host-configured endpoint and returns normalized titles, HTTP(S) URLs, snippets, and
 publication dates. Search output is explicitly labeled as untrusted external content. The model can

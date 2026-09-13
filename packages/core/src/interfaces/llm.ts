@@ -8,7 +8,13 @@
  *
  * Docs: packages/docs/content/interfaces.{zh,en}.md (site path /docs/interfaces).
  */
-import type { ErrorCode, OmniMessage, StopReason, ToolDefinition } from "../omnimessage/types.js";
+import type {
+  ErrorCode,
+  OmniMessage,
+  StopReason,
+  TokenCounts,
+  ToolDefinition,
+} from "../omnimessage/types.js";
 import type { ThinkingLevelName } from "./shared.js";
 // Concrete class, used only as a type annotation (type-only import; no runtime dependency, no circular reference).
 import type { ToolCallIdAllocator } from "../llm/tool-call-ids.js";
@@ -112,6 +118,8 @@ export interface GenerativeModelParameters {
  */
 export interface LLMOutcome {
   status: StopReason;
+  /** Provider-reported consumption of an uncommitted attempt; absent when unknown. */
+  usage?: TokenCounts;
   /**
    * Classified cause (the omnimessage ErrorCode vocabulary): present on every
    * non-completed failure outcome. Carried onto the `request_end` event as `error_code`,

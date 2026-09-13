@@ -188,13 +188,18 @@ describe("web_search (native SearXNG provider)", () => {
   });
 
   it("reports HTTP/JSON/schema failures with actionable SearXNG diagnostics", async () => {
+    const forbiddenFetch = vi.fn<WebSearchFetch>(
+      async () => new Response("forbidden", { status: 403 }),
+    );
     const forbidden = await run(
       { query: "x" },
-      { fetch: async () => new Response("forbidden", { status: 403 }) },
+      { endpoint: "https://search.example.test", fetch: forbiddenFetch },
     );
     expect(forbidden.result?.stopReason).toBe("fatal");
     expect(forbidden.text).toContain("HTTP 403");
     expect(forbidden.text).toContain("search.formats");
+    expect(forbiddenFetch).toHaveBeenCalledTimes(1);
+    expect(String(forbiddenFetch.mock.calls[0]![0])).toContain("search.example.test");
 
     const malformed = await run(
       { query: "x" },

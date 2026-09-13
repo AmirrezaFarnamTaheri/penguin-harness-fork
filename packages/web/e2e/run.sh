@@ -48,4 +48,4 @@ done
 
 echo "== run playwright =="
 cd "$ROOT/packages/web"
-npx playwright test -c "$HERE/playwright.config.mjs"
+npx playwright test -c "$HERE/playwright.config.mjs" "$@"

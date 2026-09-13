@@ -25,12 +25,17 @@
  * 60dvh visible height.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import { CloseButton } from "./icons";
 import { usePrefersReducedMotion } from "./use-reduced-motion";
 import { SPRING_DEFAULT, SPRING_MOMENTUM, createSpringDriver } from "../../lib/spring";
 import type { SpringDriver } from "../../lib/spring";
 import { nearestSnap, project, rubberband } from "../../lib/sheet-physics";
+import { FOCUSABLE_SELECTOR, nextFocusIndex } from "./modal";
 
 export type SheetSnap = "half" | "full";
 
@@ -157,19 +162,36 @@ export function Sheet({ open, snap, onSnapChange, onClose, title, children }: Sh
   useEffect(() => {
     if (!mounted || !open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mounted, open, onClose]);
 
-  // Focus restoration: return to the element that had focus before opening, after closing.
+  // Move focus into the modal sheet and restore the opener after its closing animation unmounts.
   useEffect(() => {
     if (!mounted) return;
     restoreFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = panelRef.current;
+    if (panel && !panel.contains(document.activeElement))
+      (panel.querySelector<HTMLElement>(FOCUSABLE_SELECTOR) ?? panel).focus();
     return () => restoreFocusRef.current?.focus();
   }, [mounted]);
+
+  const onPanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Tab" || event.defaultPrevented) return;
+    const panel = panelRef.current;
+    if (!panel?.contains(document.activeElement)) return;
+    event.preventDefault();
+    const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
+    if (items.length === 0) {
+      panel.focus();
+      return;
+    }
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    items[nextFocusIndex(items.length, at, event.shiftKey)]?.focus();
+  };
 
   // Viewport change (rotation/soft keyboard): re-measure height and snap directly to the current snap point, no animation.
   useEffect(() => {
@@ -261,7 +283,7 @@ export function Sheet({ open, snap, onSnapChange, onClose, title, children }: Sh
 
   if (!mounted) return null;
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-50">
       <div
         ref={scrimRef}
         className={`absolute inset-0 bg-black/45 ${reduced ? "anim-fade" : ""}`}
@@ -270,6 +292,11 @@ export function Sheet({ open, snap, onSnapChange, onClose, title, children }: Sh
       />
       <div
         ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        onKeyDown={onPanelKeyDown}
         className={`absolute inset-x-0 bottom-0 flex h-[92dvh] flex-col overflow-hidden rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 ${
           reduced ? "anim-fade" : ""
         }`}

@@ -181,6 +181,124 @@ describe("script hooks", () => {
     await expect(runHookScript(garbage, {})).rejects.toThrow(/stdout is not JSON/);
     const hang = await write("hang.mjs", "setInterval(() => {}, 1000);\n");
     await expect(runHookScript(hang, {}, { timeoutS: 0.2 })).rejects.toThrow(/timed out/);
+    // The promise must not reject until the killed process releases its working directory.
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not start a hook when its signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      runHookScript(path.join(dir, "must-not-start.mjs"), {}, { signal: controller.signal }),
+    ).rejects.toThrow(/^aborted$/);
+  });
+
+  it("aborting a hook also closes descendants that inherit its output pipes", async () => {
+    const script = await write(
+      "descendant.mjs",
+      'import { spawn } from "node:child_process";\n' +
+        'import { writeFileSync } from "node:fs";\n' +
+        'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "inherit" });\n' +
+        'writeFileSync("child.pid", String(child.pid));\n' +
+        "setInterval(() => {}, 1000);\n",
+    );
+    const controller = new AbortController();
+    const result = runHookScript(script, {}, { signal: controller.signal, timeoutS: 15 }).catch(
+      (error: unknown) => error,
+    );
+    try {
+      await expect
+        .poll(() => fs.readFile(path.join(dir, "child.pid"), "utf8"), {
+          timeout: 10_000,
+        })
+        .toMatch(/^\d+$/);
+      controller.abort();
+      expect(await result).toMatchObject({ message: "aborted" });
+      // Inherited pipes cannot close while the descendant is still holding them.
+      await fs.rm(dir, { recursive: true, force: true });
+    } finally {
+      controller.abort();
+      await result;
+    }
+  });
+
+  it("rejects unserializable input before starting a hook", async () => {
+    const script = await write("must-not-run.mjs", "setInterval(() => {}, 1000);\n");
+    const input: { self?: unknown } = {};
+    input.self = input;
+    await expect(runHookScript(script, input)).rejects.toThrow(/circular/i);
+    // An accidentally spawned hook would still hold this directory open on Windows.
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("aborts after the hook exits while a detached descendant retains its pipes", async () => {
+    const script = await write(
+      "exited-parent.mjs",
+      'import { spawn } from "node:child_process";\n' +
+        'import { writeFileSync } from "node:fs";\n' +
+        'const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { detached: true, stdio: "inherit", windowsHide: true });\n' +
+        'writeFileSync("processes.json", JSON.stringify({ parent: process.pid, child: child.pid }));\n' +
+        "process.exit(0);\n",
+    );
+    const controller = new AbortController();
+    let outcome: unknown;
+    const result = runHookScript(script, {}, { signal: controller.signal, timeoutS: 15 })
+      .catch((error: unknown) => error)
+      .then((value: unknown) => {
+        outcome = value;
+        return value;
+      });
+    let childPid: number | undefined;
+    const alive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    try {
+      let pids: { parent: number; child: number } | undefined;
+      await expect
+        .poll(
+          async () => {
+            pids = JSON.parse(await fs.readFile(path.join(dir, "processes.json"), "utf8"));
+            childPid = pids!.child;
+            return alive(pids!.parent);
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(false);
+      controller.abort();
+      await expect.poll(() => outcome, { timeout: 5000 }).toMatchObject({ message: "aborted" });
+    } finally {
+      controller.abort();
+      // Detached descendants are outside the hook's process group. This test owns and
+      // explicitly reaps its child; closing inherited pipes does not promise to kill it.
+      if (childPid !== undefined && alive(childPid)) process.kill(childPid, "SIGKILL");
+      await result;
+      if (childPid !== undefined)
+        await expect.poll(() => alive(childPid!), { timeout: 5000 }).toBe(false);
+      // This detached fixture is killed directly, outside runHookScript's close handling.
+      // Windows may release its cwd lock after the process handle reports termination.
+      await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  });
+
+  it("honors an abort raised while serializing input", async () => {
+    const controller = new AbortController();
+    await expect(
+      runHookScript(
+        path.join(dir, "must-not-start.mjs"),
+        {
+          toJSON() {
+            controller.abort();
+            return {};
+          },
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow(/^aborted$/);
   });
 
   it("parseStopHookResult keeps the contract's fields only, and scalars only in output", () => {

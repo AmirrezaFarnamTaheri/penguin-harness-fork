@@ -94,14 +94,17 @@ describe("directory skills api", () => {
     expect(res.skills[0]).not.toHaveProperty("content");
   });
 
-  it("offers each Skill once when .claude is a symlink to .agents", async () => {
-    await writeSkill(".agents/skills", "alpha");
-    await writeSkill(".agents/skills", "gamma");
-    await fs.symlink(path.join(dir, ".agents"), path.join(dir, ".claude"));
-    const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
-    expect(res.skills.map((s) => s.name)).toEqual(["alpha", "gamma"]);
-    expect(res.skills.every((s) => s.source === ".agents/skills")).toBe(true);
-  });
+  it.skipIf(process.platform === "win32")(
+    "offers each Skill once when .claude is a symlink to .agents",
+    async () => {
+      await writeSkill(".agents/skills", "alpha");
+      await writeSkill(".agents/skills", "gamma");
+      await fs.symlink(path.join(dir, ".agents"), path.join(dir, ".claude"));
+      const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
+      expect(res.skills.map((s) => s.name)).toEqual(["alpha", "gamma"]);
+      expect(res.skills.every((s) => s.source === ".agents/skills")).toBe(true);
+    },
+  );
 
   it("lets .agents win when both layouts carry the same name as real directories", async () => {
     await writeSkill(".agents/skills", "dup", { description: "from agents" });
@@ -122,50 +125,55 @@ describe("directory skills api", () => {
     // A name the installer would reject.
     await fs.mkdir(path.join(dir, ".agents/skills/bad name"), { recursive: true });
     await fs.writeFile(path.join(dir, ".agents/skills/bad name/SKILL.md"), skillMd("bad name"));
-    // A symlinked Skill directory: how a tree outside the layout would otherwise be read.
-    const outside = path.join(dir, "outside-skill");
-    await fs.mkdir(outside, { recursive: true });
-    await fs.writeFile(path.join(outside, "SKILL.md"), skillMd("linked"));
-    await fs.symlink(outside, path.join(dir, ".agents/skills/linked"));
+    if (process.platform !== "win32") {
+      // A symlinked Skill directory: how a tree outside the layout would otherwise be read.
+      const outside = path.join(dir, "outside-skill");
+      await fs.mkdir(outside, { recursive: true });
+      await fs.writeFile(path.join(outside, "SKILL.md"), skillMd("linked"));
+      await fs.symlink(outside, path.join(dir, ".agents/skills/linked"));
+    }
 
     const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
     expect(res.skills.map((s) => s.name)).toEqual(["real"]);
   });
 
-  it("does not follow a symlinked SKILL.md or icon.svg out of the Skill directory", async () => {
-    const secret = path.join(dir, "outside", "id_rsa");
-    await fs.mkdir(path.dirname(secret), { recursive: true });
-    await fs.writeFile(secret, "-----BEGIN PRIVATE KEY-----\nSECRET\n");
+  it.skipIf(process.platform === "win32")(
+    "does not follow a symlinked SKILL.md or icon.svg out of the Skill directory",
+    async () => {
+      const secret = path.join(dir, "outside", "id_rsa");
+      await fs.mkdir(path.dirname(secret), { recursive: true });
+      await fs.writeFile(secret, "-----BEGIN PRIVATE KEY-----\nSECRET\n");
 
-    // A real Skill whose icon.svg is a link to that file: the Skill is still offered, without an
-    // icon — the link's target never reaches the response, nor the Agent it would be installed on.
-    await writeSkill(".agents/skills", "linked-icon");
-    await fs.rm(path.join(dir, ".agents/skills/linked-icon/icon.svg"), { force: true });
-    await fs.symlink(secret, path.join(dir, ".agents/skills/linked-icon/icon.svg"));
-    // A Skill whose SKILL.md is itself a link is not a Skill at all.
-    const outsideMd = path.join(dir, "outside", "SKILL.md");
-    await fs.writeFile(outsideMd, skillMd("linked-md"));
-    await fs.mkdir(path.join(dir, ".agents/skills/linked-md"), { recursive: true });
-    await fs.symlink(outsideMd, path.join(dir, ".agents/skills/linked-md/SKILL.md"));
+      // A real Skill whose icon.svg is a link to that file: the Skill is still offered, without an
+      // icon — the link's target never reaches the response, nor the Agent it would be installed on.
+      await writeSkill(".agents/skills", "linked-icon");
+      await fs.rm(path.join(dir, ".agents/skills/linked-icon/icon.svg"), { force: true });
+      await fs.symlink(secret, path.join(dir, ".agents/skills/linked-icon/icon.svg"));
+      // A Skill whose SKILL.md is itself a link is not a Skill at all.
+      const outsideMd = path.join(dir, "outside", "SKILL.md");
+      await fs.writeFile(outsideMd, skillMd("linked-md"));
+      await fs.mkdir(path.join(dir, ".agents/skills/linked-md"), { recursive: true });
+      await fs.symlink(outsideMd, path.join(dir, ".agents/skills/linked-md/SKILL.md"));
 
-    const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
-    expect(res.skills.map((s) => s.name)).toEqual(["linked-icon"]);
-    expect(res.skills[0]).not.toHaveProperty("icon");
-    expect(JSON.stringify(res)).not.toContain("SECRET");
+      const res = (await (await owner.get(listUrl(dir))).json()) as DirectorySkillsResponse;
+      expect(res.skills.map((s) => s.name)).toEqual(["linked-icon"]);
+      expect(res.skills[0]).not.toHaveProperty("icon");
+      expect(JSON.stringify(res)).not.toContain("SECRET");
 
-    const created = await owner.post(`/api/projects/${projectId}/agents`, {
-      agentId: "no_link_agent",
-      skillsDirectory: dir,
-      directorySkills: ["linked-icon"],
-    });
-    expect(created.status).toBe(201);
-    await expect(
-      fs.readFile(
-        path.join(skillsDir(t.root, projectId, "no_link_agent"), "linked-icon", "icon.svg"),
-        "utf8",
-      ),
-    ).rejects.toThrow();
-  });
+      const created = await owner.post(`/api/projects/${projectId}/agents`, {
+        agentId: "no_link_agent",
+        skillsDirectory: dir,
+        directorySkills: ["linked-icon"],
+      });
+      expect(created.status).toBe(201);
+      await expect(
+        fs.readFile(
+          path.join(skillsDir(t.root, projectId, "no_link_agent"), "linked-icon", "icon.svg"),
+          "utf8",
+        ),
+      ).rejects.toThrow();
+    },
+  );
 
   it("passes over a Skill that busts the size caps instead of hiding the whole directory", async () => {
     await writeSkill(".agents/skills", "small");

@@ -20,6 +20,7 @@ import {
   liveSessionElapsedMs,
   resetTaskCounters,
   trackMainUsage,
+  trackFailedUsage,
   trackSubagentUsage,
 } from "../src/lib/omni/task-stats";
 
@@ -30,6 +31,30 @@ function usage(requestTotal: number, sessionTotal: number): TokenUsagePayload {
     request: { cache_read: 0, cache_write: 0, output: 0, total: requestTotal },
   };
 }
+
+it("counts failed consumption across retries and reloads without changing context", () => {
+  const t = createTaskStatsTracker();
+  trackMainUsage(t, usage(100, 100));
+  trackFailedUsage(t, { cache_read: 0, cache_write: 20, output: 5, total: 25 });
+  expect(t.contextNow).toBe(100);
+  expect(t.sessionTotal).toBe(125);
+  trackMainUsage(t, usage(120, 220));
+  expect(t.sessionTotal).toBe(245);
+  expect(t.taskTokens).toBe(245);
+  expect(t.contextNow).toBe(120);
+  const loaded = createTaskStatsTracker();
+  seedPriorStats(loaded, {
+    subagentTokens: 0,
+    elapsedMs: 0,
+    apiMs: 0,
+    toolMs: 0,
+    sessionTokens: 245,
+    failedSessionTokens: 25,
+    contextTokens: 120,
+  });
+  trackMainUsage(loaded, usage(10, 230));
+  expect(loaded.sessionTotal).toBe(255);
+});
 
 /** Three-bucket request (session uses its total): builds a token_usage with specific cache/output figures. */
 function req(cr: number, cw: number, o: number): TokenUsagePayload {

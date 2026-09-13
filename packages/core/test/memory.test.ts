@@ -80,11 +80,14 @@ describe("workspace key", () => {
     expect(workspaceMemoryKeyForRealPath("/srv/项目")).toMatch(/^workspace-[0-9a-f]{8}$/);
   });
 
-  it("resolves symlinks, so two routes to one directory share a key", async () => {
-    const link = path.join(root, "link-to-app");
-    await fs.symlink(workspace, link, "dir");
-    expect(await workspaceMemoryKey(link)).toBe(await workspaceMemoryKey(workspace));
-  });
+  it.skipIf(process.platform === "win32")(
+    "resolves symlinks, so two routes to one directory share a key",
+    async () => {
+      const link = path.join(root, "link-to-app");
+      await fs.symlink(workspace, link, "dir");
+      expect(await workspaceMemoryKey(link)).toBe(await workspaceMemoryKey(workspace));
+    },
+  );
 
   it("keeps a stable key for a directory that no longer exists (realpath fails)", async () => {
     const gone = path.join(root, "deleted");

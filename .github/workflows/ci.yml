@@ -41,6 +41,9 @@ jobs:
       - name: Lint (oxlint)
         run: pnpm lint
 
+      - name: Release publishing regression tests
+        run: node --test scripts/test-release-publishing.test.mjs
+
       # A workflow that does not parse produces a run with zero jobs and no annotation
       # anywhere useful -- the failure this very file shipped once, over a double-quoted
       # string in a ${{ }} expression, where only single quotes are legal. Cheap to catch.

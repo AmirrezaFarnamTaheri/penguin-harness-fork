@@ -913,6 +913,25 @@ describe("StreamRenderer — nested (origin-tagged) subagent messages", () => {
     expect(stripAnsi(text())).toBe("[tool-p7] exec_command <- $ pwd\n");
   });
 
+  it("retains failed parent and child consumption after successful usage updates", () => {
+    const { stream, text } = collector();
+    const r = new StreamRenderer(stream, t);
+    const failed = requestEnd("retryable", {
+      usage: { cache_read: 0, cache_write: 800, output: 200, total: 1000 },
+    });
+    r.handle(failed);
+    r.handle(withOrigin(failed, hop));
+    r.handle(usage(3000, 3000));
+    r.handle(requestEnd("completed"));
+    r.endTask(1000);
+    expect(stripAnsi(text())).toContain("+5k");
+    r.handle(usage(1000, 4000));
+    r.endTask(1000);
+    const last = stripAnsi(text()).trim().split("\n").at(-1)!;
+    expect(last).toContain("6k");
+    expect(last).toContain("+1k");
+  });
+
   it("adds nested token_usage request totals to the task delta and the session total", () => {
     const { stream, text } = collector();
     const r = new StreamRenderer(stream, t);

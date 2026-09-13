@@ -45,7 +45,7 @@ import {
 import type { OmniMessage } from "@prismshadow/penguin-core";
 
 /** Bump when any counting/boundary rule changes: cached page_stats records with an older version are recomputed. */
-export const CACHE_VERSION = 4;
+export const CACHE_VERSION = 5;
 
 /** Cumulative totals at a point in the trace (all values are "before this point"). */
 export interface WindowPriorStats {
@@ -67,8 +67,10 @@ export interface WindowPriorStats {
    * `apiMs` when a tool runs on while the model decodes; the two never partition `elapsedMs`.
    */
   toolMs: number;
-  /** The last main-session token_usage `session.total` seen before this point (0 = none). */
+  /** Completed main-session cumulative usage plus reported failed consumption before this point. */
   sessionTokens: number;
+  /** Failed-attempt component retained separately when later completed totals replace the baseline. */
+  failedSessionTokens?: number;
   /** The last main-session NON-compaction token_usage `request.total` before this point (context occupancy basis). */
   contextTokens: number;
 }
@@ -437,6 +439,13 @@ export async function scanMessages(
         continue;
       }
       if (t === "request_end") {
+        const usage = p.usage as { total?: number } | undefined;
+        if (p.status !== "completed" && typeof usage?.total === "number") {
+          state.totals.failedSessionTokens = (state.totals.failedSessionTokens ?? 0) + usage.total;
+          state.totals.sessionTokens += usage.total;
+          if (state.compactionActive) state.task.pendingCompactionUsage = true;
+          else state.task.sawUsage = true;
+        }
         // Pair with request_begin for this Task's API time, deducting the approval wait that
         // falls inside the span (core awaits approval inside the streaming loop). Settled
         // before the compaction guard below so a compaction Request still clears the pairing;
@@ -474,7 +483,8 @@ export async function scanMessages(
         const session = p.session as { total?: number } | undefined;
         // The session cumulative tracks the provider even during compaction
         // (task-stats trackMainUsage does the same).
-        if (typeof session?.total === "number") state.totals.sessionTokens = session.total;
+        if (typeof session?.total === "number")
+          state.totals.sessionTokens = session.total + (state.totals.failedSessionTokens ?? 0);
         if (state.compactionActive) {
           state.task.pendingCompactionUsage = true;
         } else {

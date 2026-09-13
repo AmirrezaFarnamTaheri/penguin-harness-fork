@@ -76,13 +76,8 @@ import { SkillPickList } from "../skills/skill-pick-list";
 import type { PickableItem } from "../skills/skill-pick-list";
 import { addSkillNames, removeSkillNames, toggleSkillName } from "../skills/skill-selection";
 import { ICON_SIZE } from "../../lib/icon-scale";
-import {
-  AiCreatePanel,
-  CreateButtons,
-  composeAiPrompt,
-  pickDefaultAgent,
-  useAiBridge,
-} from "../ai-create";
+import { AiCreatePanel, CreateButtons, composeAiPrompt, pickDefaultAgent } from "../ai-create";
+import { useAiBridge } from "../ai-create/ai-bridge";
 
 /** Built-in Agent shipped with every Project (default_agent only; the server also rejects deletion, so no delete entry point is shown here). */
 const BUILTIN_AGENT_IDS = new Set(["default_agent"]);

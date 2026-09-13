@@ -208,7 +208,8 @@ export const logout = () => apiFetch<void>("/api/auth/logout", { method: "POST",
  */
 export const getInstall = () => apiFetch<InstallResponse>("/api/install");
 
-export const getMe = () => apiFetch<MeResponse>("/api/me");
+export const getMe = (options: { handleUnauthorized?: boolean } = {}) =>
+  apiFetch<MeResponse>("/api/me", options);
 
 export const changePassword = (body: PasswordChangeRequest) =>
   apiFetch<void>("/api/me/password", { method: "PUT", body });

@@ -25,13 +25,15 @@
  * the root stacking context, and this component may also be used inside a Modal
  * form, where z-40 would get covered by the overlay.
  */
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { errorClass, sizeClass, sizeTextClass } from "./input";
 import type { ControlSize } from "./input";
 import { Field, controlBase, menuRowClass } from "./field";
 import { CheckIcon, ChevronDown } from "./icons";
 import { usePortalPanel } from "./use-portal-panel";
+import { nextEnabledOptionIndex } from "./select";
 
 export interface OptionMenuChoice<T extends string> {
   value: T;
@@ -87,6 +89,8 @@ export function OptionMenu<T extends string>({
   "aria-label"?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const { triggerRef, panelRef, position } = usePortalPanel({
     open,
     onClose: () => setOpen(false),
@@ -96,6 +100,61 @@ export function OptionMenu<T extends string>({
   });
   const current = value != null ? options.find((o) => o.value === value) : undefined;
   const errorId = useId();
+  const listboxId = useId();
+  const enabled = options.map(() => true);
+  const selectedIndex = options.findIndex((option) => option.value === value);
+
+  const openAt = (index: number) => {
+    if (index < 0 || index >= options.length) return;
+    setActiveIndex(index);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (open && position && activeIndex >= 0) optionRefs.current[activeIndex]?.focus();
+  }, [open, position, activeIndex]);
+
+  useEffect(() => {
+    if (!open && activeIndex >= 0 && document.activeElement === document.body)
+      triggerRef.current?.focus();
+  }, [open, activeIndex, triggerRef]);
+
+  const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    openAt(selectedIndex >= 0 ? selectedIndex : event.key === "ArrowDown" ? 0 : options.length - 1);
+  };
+
+  const onOptionKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    switch (event.key) {
+      case "Tab":
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      case "ArrowDown":
+        next = nextEnabledOptionIndex(enabled, index, 1);
+        break;
+      case "ArrowUp":
+        next = nextEnabledOptionIndex(enabled, index, -1);
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = options.length - 1;
+        break;
+      case "Escape":
+        event.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    if (next >= 0) setActiveIndex(next);
+  };
 
   const control = (
     <>
@@ -105,10 +164,12 @@ export function OptionMenu<T extends string>({
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? setOpen(false) : openAt(selectedIndex >= 0 ? selectedIndex : 0))}
+        onKeyDown={onTriggerKeyDown}
         className={
           `flex items-center gap-2 ${controlBase} ${sizeClass[size]} ${error ? errorClass : ""}` +
           (fullWidth ? " w-full justify-between" : "")
@@ -124,6 +185,7 @@ export function OptionMenu<T extends string>({
         createPortal(
           <div
             ref={panelRef}
+            id={listboxId}
             role="listbox"
             style={{
               position: "fixed",
@@ -134,12 +196,17 @@ export function OptionMenu<T extends string>({
             }}
             className="anim-pop z-[60] max-h-[70vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
           >
-            {options.map((opt) => (
+            {options.map((opt, i) => (
               <button
+                ref={(node) => {
+                  optionRefs.current[i] = node;
+                }}
                 key={opt.value}
                 type="button"
                 role="option"
                 aria-selected={opt.value === value}
+                tabIndex={i === activeIndex ? 0 : -1}
+                onKeyDown={(event) => onOptionKeyDown(event, i)}
                 onClick={() => {
                   onChange(opt.value);
                   setOpen(false);

@@ -449,7 +449,15 @@ export class TraceService {
     for (const msg of raw) {
       const ms = Date.parse(msg.timestamp);
       if (Number.isFinite(ms) && (maxTsMs === null || ms > maxTsMs)) maxTsMs = ms;
-      const p = msg.payload as { type?: string; request?: { total?: number } };
+      const p = msg.payload as {
+        type?: string;
+        request?: { total?: number };
+        status?: string;
+        usage?: { total?: number };
+      };
+      if (msg.type === "event_msg" && p.type === "request_end" && p.status !== "completed") {
+        requestTokens += typeof p.usage?.total === "number" ? p.usage.total : 0;
+      }
       if (msg.type === "event_msg" && p.type === "token_usage") {
         requestTokens += typeof p.request?.total === "number" ? p.request.total : 0;
         continue;
@@ -1125,6 +1133,31 @@ export class TraceService {
           }
         } else if (p.type === "request_end") {
           const status = typeof p.status === "string" ? p.status : undefined;
+          const failedUsage = p.usage as
+            { cache_read: number; cache_write: number; output: number } | undefined;
+          if (!hasOrigin && status !== "completed" && failedUsage) {
+            const t = ensureTask(taskIndex);
+            const buckets = {
+              cacheRead: failedUsage.cache_read,
+              cacheWrite: failedUsage.cache_write,
+              output: failedUsage.output,
+            };
+            t.tokens.cacheRead += buckets.cacheRead;
+            t.tokens.cacheWrite += buckets.cacheWrite;
+            t.tokens.output += buckets.output;
+            if (pricing !== null)
+              t.cost =
+                (t.cost ?? 0) +
+                requestCostUsd(
+                  buckets,
+                  ratesAt(
+                    pricing.rates,
+                    pricing.provider,
+                    pricing.modelId,
+                    new Date(msg.timestamp),
+                  ),
+                );
+          }
           // A status core reconnects on within the same run (context-engine's retry
           // loop) leaves the resent Request in **the same user turn**: it must
           // continue the turn, otherwise a single blip would split that turn's

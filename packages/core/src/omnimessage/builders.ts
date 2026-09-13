@@ -298,6 +298,7 @@ export function requestEnd(
     errorMessage?: string;
     attempt?: number;
     retryInMs?: number;
+    usage?: TokenCounts;
   } = {},
 ): OmniMessage<RequestEndPayload> {
   return event({
@@ -307,6 +308,7 @@ export function requestEnd(
     ...(retry.errorMessage !== undefined ? { error_message: retry.errorMessage } : {}),
     ...(retry.attempt !== undefined ? { attempt: retry.attempt } : {}),
     ...(retry.retryInMs !== undefined ? { retry_in_ms: retry.retryInMs } : {}),
+    ...(retry.usage !== undefined ? { usage: retry.usage } : {}),
   });
 }
 

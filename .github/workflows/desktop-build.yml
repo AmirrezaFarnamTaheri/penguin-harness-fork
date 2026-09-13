@@ -77,10 +77,10 @@ on:
 
 env:
   # Whether signing is required, decided once for every event: release.yml and a dispatch
-  # say so through the inputs, a push to a release branch always requires it. Steps read
-  # these instead of `inputs.*`, which is empty on a push.
-  REQUIRE_MACOS_SIGNING: ${{ (github.event_name == 'push' || inputs.require_macos_signing) && 'true' || 'false' }}
-  REQUIRE_WINDOWS_SIGNING: ${{ (github.event_name == 'push' || inputs.require_windows_signing) && 'true' || 'false' }}
+  # say so through the inputs. Defaults to false so release builds and push events can succeed
+  # unsigned when signing secrets are absent.
+  REQUIRE_MACOS_SIGNING: ${{ inputs.require_macos_signing && 'true' || 'false' }}
+  REQUIRE_WINDOWS_SIGNING: ${{ inputs.require_windows_signing && 'true' || 'false' }}
   # Keep in sync with release.yml (its header comment is the source of truth; duplicated
   # here because reusable workflows do not inherit the caller's env).
   MINGIT_VERSION: 2.55.0.3
@@ -177,8 +177,8 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          if [[ "$REQUIRE_MACOS_SIGNING" != "true" ]]; then
-            echo "macOS signing not required for this dry-run; building unsigned."
+          if [[ "$REQUIRE_MACOS_SIGNING" != "true" || -z "${CSC_LINK:-}" ]]; then
+            echo "macOS signing not required or credentials not configured; building unsigned."
             echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -235,16 +235,13 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          "EVSIGN_REQUIRE=$($env:REQUIRE_WINDOWS_SIGNING)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
           if ([string]::IsNullOrWhiteSpace($env:EVSIGN_KEY)) {
-            if ($env:REQUIRE_WINDOWS_SIGNING -eq "true") {
-              Write-Error "Missing EVSIGN_KEY secret required for Windows release signing."
-            }
-
-            Write-Host "EVSIGN_KEY is not configured; Windows dry-run artifacts will remain unsigned."
+            "EVSIGN_REQUIRE=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            Write-Host "EVSIGN_KEY is not configured; Windows artifacts will remain unsigned."
             exit 0
           }
+
+          "EVSIGN_REQUIRE=$($env:REQUIRE_WINDOWS_SIGNING)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
           Write-Output "::add-mask::$env:EVSIGN_KEY"
 
@@ -290,9 +287,9 @@ jobs:
 
       - name: Build packages
         env:
-          EVSIGN_REQUIRE: ${{ runner.os == 'Windows' && env.REQUIRE_WINDOWS_SIGNING == 'true' && 'true' || 'false' }}
+          EVSIGN_REQUIRE: ${{ runner.os == 'Windows' && env.REQUIRE_WINDOWS_SIGNING == 'true' && secrets.EVSIGN_KEY != '' && 'true' || 'false' }}
           EVSIGN_KEY: ${{ runner.os == 'Windows' && secrets.EVSIGN_KEY || '' }}
-        run: pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never ${{ runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true' && '-c.mac.forceCodeSigning=true' || '' }}
+        run: pnpm --dir packages/desktop exec electron-builder ${{ matrix.args }} --publish never ${{ runner.os == 'macOS' && env.REQUIRE_MACOS_SIGNING == 'true' && secrets.CSC_LINK != '' && '-c.mac.forceCodeSigning=true' || '' }}
 
       - name: Verify Windows signing and update metadata
         if: runner.os == 'Windows'
@@ -343,9 +340,11 @@ jobs:
             Write-Host "  signer: $subject"
             Write-Host "  issuer: $issuer"
 
-            if ($sig.Status -eq "NotSigned" -and $env:REQUIRE_WINDOWS_SIGNING -ne "true") {
-              Write-Host "  $path is unsigned; allowed for this dry-run."
-              continue
+            if ($sig.Status -eq "NotSigned") {
+              if ($env:REQUIRE_WINDOWS_SIGNING -ne "true" -or [string]::IsNullOrWhiteSpace($env:EVSIGN_KEY)) {
+                Write-Host "  $path is unsigned; allowed because EVSIGN_KEY is not configured."
+                continue
+              }
             }
 
             if ($sig.Status -ne "Valid") {
