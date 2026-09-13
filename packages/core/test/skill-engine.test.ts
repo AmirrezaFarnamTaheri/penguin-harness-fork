@@ -81,6 +81,16 @@ Use the configured gateway for {{service}}.
     expect(result).toBe("Deploy service api-gateway to cluster prod-us-east with profile release.");
   });
 
+  it("preserves literal replacement data without recursive interpolation", () => {
+    const template = "A={{a}} B={b} C=$c";
+    const result = interpolateVariables(template, {
+      a: "$& $$ {b} {{c}} $c \\ literal",
+      b: "brace-{a}",
+      c: "dollar-$&-$$",
+    });
+    expect(result).toBe("A=$& $$ {b} {{c}} $c \\ literal B=brace-{a} C=dollar-$&-$$");
+  });
+
   it("scores relevance from canonical names, tags, category and bounded description evidence", () => {
     const skill = parseSkillMarkdown(`---
 name: systematic-debugging
@@ -172,6 +182,34 @@ Deploy container images via registry.`)!;
     expect(promptSection).toContain("=== SKILL: ui-ux-pro-max ===");
     expect(promptSection).toContain("Use high-contrast accessible color palettes.");
     expect(promptSection).toContain("=== END SKILL: ui-ux-pro-max ===");
+  });
+
+  it("binds declared defaults, lets explicit values win, and rejects missing required parameters", () => {
+    const registry = new SkillRegistry({});
+    const skill = parseSkillMarkdown(`---
+name: parameterized-skill
+description: Exercise declared skill parameters.
+parameters:
+  - name: required_value
+    required: true
+  - name: mode
+    default: safe
+---
+Required={{required_value}} Mode={{mode}}.`)!;
+    registry.register(skill);
+
+    expect(() => registry.buildPromptSection("parameterized-skill")).toThrow(
+      /requires parameter "required_value"/,
+    );
+    expect(
+      registry.buildPromptSection("parameterized-skill", { required_value: "present" }),
+    ).toContain("Required=present Mode=safe.");
+    expect(
+      registry.buildPromptSection("parameterized-skill", {
+        required_value: "present",
+        mode: "explicit",
+      }),
+    ).toContain("Required=present Mode=explicit.");
   });
 
   it("resolves default and custom skill aliases transparently without inventing removed targets", () => {
