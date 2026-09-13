@@ -87,14 +87,8 @@ function parseSpendModelBreakdown(
         `sessions[${sessionIndex}].modelBreakdown contains an invalid model identifier.`,
       );
     }
-    if (
-      typeof rawBreakdown !== "object" ||
-      rawBreakdown === null ||
-      Array.isArray(rawBreakdown)
-    ) {
-      throw badRequest(
-        `sessions[${sessionIndex}].modelBreakdown.${model} must be an object.`,
-      );
+    if (typeof rawBreakdown !== "object" || rawBreakdown === null || Array.isArray(rawBreakdown)) {
+      throw badRequest(`sessions[${sessionIndex}].modelBreakdown.${model} must be an object.`);
     }
     const breakdown = rawBreakdown as Record<string, unknown>;
     const costUSD = breakdown.costUSD;
