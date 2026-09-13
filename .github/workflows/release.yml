@@ -94,8 +94,8 @@ jobs:
     with:
       ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-      require_macos_signing: true
-      require_windows_signing: true
+      require_macos_signing: false
+      require_windows_signing: false
     # The signing secrets themselves live in the called workflow's matrix environments
     # (`apple-signing` for macOS, `desktop-build` for Windows) and resolve inside those
     # jobs; `inherit` additionally forwards repo-level secrets so the called workflow
@@ -427,7 +427,7 @@ jobs:
     name: Mirror GitHub Release to Alibaba Cloud OSS
     needs: [check-release, release]
     if: >-
-      ${{ always() && needs.check-release.result == 'success' &&
+      ${{ always() && github.repository == 'Prism-Shadow/penguin-harness' && needs.check-release.result == 'success' &&
           (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     runs-on: ubuntu-latest
     concurrency:
@@ -517,6 +517,7 @@ jobs:
 
   publish-npm:
     name: Publish npm packages
+    if: github.repository == 'Prism-Shadow/penguin-harness'
     runs-on: ubuntu-latest
     # OIDC trusted publishing (same as AgentHub's publish.yml): no token; npmjs establishes trust via
     # environment `npm` + this workflow. A publish failure doesn't affect the release job (independent, parallel).
@@ -690,7 +691,7 @@ jobs:
     name: Publish the official Docker image
     needs: [check-release, release]
     if: >-
-      ${{ always() && needs.check-release.result == 'success' &&
+      ${{ always() && github.repository == 'Prism-Shadow/penguin-harness' && needs.check-release.result == 'success' &&
           (needs.release.result == 'success' || needs.release.result == 'skipped') }}
     permissions:
       contents: read
