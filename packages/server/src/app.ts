@@ -106,6 +106,7 @@ import { AdminService } from "./services/admin-service.js";
 import { DesktopService } from "./services/desktop-service.js";
 import { LifecycleService } from "./services/lifecycle-service.js";
 import { desktopRoutes, desktopUpdateRoutes } from "./http/routes/desktop.js";
+import { cockpitRoutes } from "./http/routes/cockpit.js";
 import { AgentConfigService } from "./services/agent-config-service.js";
 import { MemoryService } from "./services/memory-service.js";
 import { AgentService } from "./services/agent-service.js";
@@ -496,6 +497,7 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
 
   // Public routes (no login required).
   app.route("/api/auth", authRoutes(deps));
+  app.route("/api/cockpit", cockpitRoutes());
   // Desktop shutdown authenticates with the shell's Bearer token, not the cookie
   // session, so it mounts outside authMiddleware (and only in desktop mode).
   if (deps.desktop) {

@@ -13,6 +13,7 @@ import { MemoryPage } from "../memory/memory-page";
 import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
 import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
 import { SnapshotsPage } from "../snapshots/snapshots-page";
+import { useCockpitTelemetry, type LiveTurnSummary, type LiveMailboxEntry } from "./use-cockpit-telemetry.js";
 
 export interface AgentCockpitProps {
   open?: boolean;
@@ -75,10 +76,13 @@ export function AgentCockpit({
     | "swarm"
   >("topology");
 
+  const telemetry = useCockpitTelemetry(sessionId);
+  const [swarmPrompt, setSwarmPrompt] = useState("");
+
   // State: Turn Ledger
-  const [activeTurn] = useState<string>("turn-7a8f9c2d");
+  const activeTurn = telemetry.activeTaskId ?? "turn-7a8f9c2d";
   const [turnStatus] = useState<"running" | "completed" | "queued">("running");
-  const [turnSummaries] = useState<MockTurnSummary[]>([
+  const defaultTurnSummaries: LiveTurnSummary[] = [
     {
       turnId: "turn-7a8f9c2d",
       terminalSeq: 42,
@@ -103,10 +107,11 @@ export function AgentCockpit({
       outcome: "Mounted REST gateway endpoints for quota and pricing catalog",
       streamRecords: 22,
     },
-  ]);
+  ];
+  const turnSummaries = telemetry.turnSummaries.length > 0 ? telemetry.turnSummaries : defaultTurnSummaries;
 
   // State: Mailbox
-  const [mailboxes] = useState<MockMailboxEntry[]>([
+  const defaultMailboxes: LiveMailboxEntry[] = [
     { agentName: "orchestrator", queueDepth: 0, pendingReplies: 0, leaseState: "idle" },
     {
       agentName: "coder",
@@ -123,7 +128,8 @@ export function AgentCockpit({
       leaseState: "acquired",
       leaseRemainingSec: 18,
     },
-  ]);
+  ];
+  const mailboxes = telemetry.mailboxEntries.length > 0 ? telemetry.mailboxEntries : defaultMailboxes;
 
   const [toAgent, setToAgent] = useState("coder");
   const [messageText, setMessageText] = useState("");
@@ -143,53 +149,9 @@ export function AgentCockpit({
   const [filesCompleted] = useState(28);
   const [totalFiles] = useState(40);
 
-  // State: Swarm & Handoff Topology (from agent-teams-ai GraphDataPort & aif-handoff)
-  const [swarmNodes] = useState<SwarmAgentNode[]>([
-    {
-      id: "orchestrator",
-      role: "orchestrator",
-      status: "active",
-      tasksCompleted: 14,
-      currentTask: "Dispatching batch extraction and verification",
-    },
-    {
-      id: "coder",
-      role: "coder",
-      status: "active",
-      tasksCompleted: 28,
-      currentTask: "Implementing gateway routes and UI controls",
-      handoffTarget: "reviewer",
-    },
-    {
-      id: "reviewer",
-      role: "reviewer",
-      status: "idle",
-      tasksCompleted: 27,
-      currentTask: "Waiting for pull request diff audit",
-    },
-    {
-      id: "researcher",
-      role: "researcher",
-      status: "idle",
-      tasksCompleted: 19,
-      currentTask: "Analyzing upstream source trees",
-    },
-    {
-      id: "tester",
-      role: "tester",
-      status: "idle",
-      tasksCompleted: 22,
-      currentTask: "Standing by for Vitest run",
-    },
-  ]);
-
-  const [swarmEdges] = useState<SwarmEdge[]>([
-    { from: "orchestrator", to: "coder", kind: "directive", activeCount: 2 },
-    { from: "coder", to: "reviewer", kind: "handoff", activeCount: 1 },
-    { from: "reviewer", to: "orchestrator", kind: "review_gate", activeCount: 1 },
-    { from: "orchestrator", to: "researcher", kind: "directive", activeCount: 0 },
-    { from: "coder", to: "tester", kind: "handoff", activeCount: 0 },
-  ]);
+  // State: Swarm & Handoff Topology (from live telemetry)
+  const swarmNodes = telemetry.swarmAgents;
+  const swarmEdges = telemetry.swarmEdges;
 
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
@@ -199,6 +161,44 @@ export function AgentCockpit({
 
   const bodyContent = (
     <div className="flex flex-col gap-4">
+        {/* Live WebSocket Connection Status Banner */}
+        <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-xs">
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                telemetry.transport === "ws"
+                  ? "bg-emerald-500 animate-pulse"
+                  : telemetry.transport === "http"
+                    ? "bg-cyan-500"
+                    : "bg-amber-500"
+              }`}
+            />
+            <span className="font-medium text-gray-700 dark:text-gray-300">
+              {telemetry.transport === "ws"
+                ? "Live WebSocket Stream Active (/api/cockpit/stream)"
+                : telemetry.transport === "http"
+                  ? "Connected via HTTP Telemetry Polling"
+                  : "Offline Mode (Reconnecting...)"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {telemetry.activeTaskId && (
+              <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 font-mono text-[11px]">
+                <span className="text-gray-400">Task:</span>
+                <span className="font-semibold">{telemetry.activeTaskId}</span>
+              </div>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void telemetry.refresh()}
+              className="text-[11px] h-6 px-2"
+            >
+              Refresh
+            </Button>
+          </div>
+        </div>
+
         {/* Live Telemetry Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <button
@@ -681,6 +681,41 @@ export function AgentCockpit({
           <div className="flex flex-col gap-4">
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Autonomous Agent Swarm Network (GraphDataPort physics & AIF handoff routing):
+            </div>
+
+            {/* Autonomous Swarm Dispatch Bar */}
+            <div className="p-3 rounded-lg border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-950/20 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-cyan-700 dark:text-cyan-300 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                  Autonomous Multi-Agent Task Dispatcher
+                </span>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                  {telemetry.transport.toUpperCase()} STREAM
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  size="sm"
+                  value={swarmPrompt}
+                  onChange={(e) => setSwarmPrompt(e.target.value)}
+                  placeholder="Enter high-level objective (e.g., 'Refactor database pool and run tests')..."
+                  className="flex-1 bg-white dark:bg-gray-950"
+                  disabled={telemetry.isDispatching}
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (swarmPrompt.trim()) {
+                      void telemetry.triggerTask(swarmPrompt.trim());
+                      setSwarmPrompt("");
+                    }
+                  }}
+                  disabled={telemetry.isDispatching || !swarmPrompt.trim()}
+                >
+                  {telemetry.isDispatching ? "Swarm Running..." : "Launch Swarm"}
+                </Button>
+              </div>
             </div>
 
             {/* Swarm Agent Nodes Grid */}

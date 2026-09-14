@@ -28,6 +28,7 @@ import { applyProxySettings, installGlobalProxyDispatcher } from "./net/proxy.js
 import { PluginHost } from "./plugin/host.js";
 import { loadPlugins } from "./plugin/loader.js";
 import { attachTerminalWebSocket } from "./terminal/ws.js";
+import { attachCockpitWebSocket } from "./cockpit/ws.js";
 import { loopbackHostRoles } from "./services/preview-token.js";
 import {
   acquireServerInstanceClaim,
@@ -246,6 +247,10 @@ class PenguinServer {
       (info) => this.onListening(info.port),
     );
     attachTerminalWebSocket(this.httpServer as unknown as HttpServer, this.terminalWebSocketDeps());
+    attachCockpitWebSocket(this.httpServer as unknown as HttpServer, {
+      authService: this.deps.authService,
+      log: (line) => console.log(line),
+    });
   }
 
   /**
@@ -391,6 +396,10 @@ class PenguinServer {
     // handler — it has to be bound on each Node listener, this one included, or the
     // terminal only works on whichever address the browser happened to resolve.
     attachTerminalWebSocket(loopback as unknown as HttpServer, this.terminalWebSocketDeps());
+    attachCockpitWebSocket(loopback as unknown as HttpServer, {
+      authService: this.deps.authService,
+      log: (line) => console.log(line),
+    });
   }
 
   /** Terminal WebSocket wiring, shared by every listener this process opens. */

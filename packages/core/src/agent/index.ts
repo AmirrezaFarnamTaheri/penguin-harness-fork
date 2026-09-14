@@ -19,3 +19,4 @@ export * from "./completion-tracker.js";
 export * from "./shell-guardian.js";
 export * from "./code-graph.js";
 export * from "./repeat-tool-guard.js";
+export * from "./swarm-coordinator.js";

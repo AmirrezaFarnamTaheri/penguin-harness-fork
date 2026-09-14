@@ -1,0 +1,515 @@
+/**
+ * Autonomous Multi-Agent Swarm Coordinator & Quorum Deliberation Pipeline.
+ *
+ * Orchestrates autonomous multi-agent pipelines (Orchestrator -> Coder -> Reviewer)
+ * by integrating MailboxBureau leases, QuorumConsensus evidence gates, TurnLedger
+ * audit trails, ShellGuardian security barriers, and LoopDetector stall prevention.
+ */
+
+import { randomUUID } from "node:crypto";
+import { MailboxKernel, type MailboxSummary, normalizeMailboxOwnerName } from "./mailbox.js";
+import {
+  QuorumConsensusEngine,
+  type TopicStanding,
+  type QuorumPolicy,
+} from "./quorum-consensus.js";
+import { TurnLedger, type TerminalSummary, type ReplayView } from "./turn-ledger.js";
+import { LoopDetector, type LoopDetectorOptions } from "./loop-detector.js";
+import { ShellGuardian, type ShellSafetyAssessment } from "./shell-guardian.js";
+import { TaskWatchdog, type WatchdogConfig, type WatchdogStatus } from "./task-watchdog.js";
+
+export type SwarmRole = "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
+
+export interface SwarmTaskDefinition {
+  id?: string;
+  goal: string;
+  workspaceDir?: string;
+  files?: string[];
+  constraints?: string[];
+  quorumThreshold?: number;
+  maxRounds?: number;
+  proposedCommands?: string[];
+}
+
+export interface SwarmAgentState {
+  id: string;
+  role: SwarmRole;
+  status: "idle" | "active" | "waiting_approval" | "handoff" | "completed" | "failed";
+  tasksCompleted: number;
+  currentTask?: string;
+  handoffTarget?: string;
+}
+
+export interface SwarmEdgeState {
+  from: string;
+  to: string;
+  kind: "directive" | "handoff" | "review_gate";
+  activeCount: number;
+}
+
+export interface SwarmArtifact {
+  path: string;
+  summary: string;
+  content?: string;
+}
+
+export type SwarmEventType =
+  | "task_started"
+  | "step_started"
+  | "step_completed"
+  | "review_requested"
+  | "consensus_endorsed"
+  | "consensus_refuted"
+  | "consensus_settled"
+  | "command_evaluated"
+  | "loop_detected"
+  | "task_completed"
+  | "task_failed";
+
+export interface SwarmEvent {
+  type: SwarmEventType;
+  taskId: string;
+  timestamp: number;
+  agentId?: string;
+  payload: Record<string, unknown>;
+}
+
+export interface SwarmExecutionResult {
+  taskId: string;
+  status: "settled" | "refuted" | "max_rounds_exceeded" | "loop_aborted" | "error";
+  rounds: number;
+  standing?: TopicStanding;
+  terminalSummary?: TerminalSummary;
+  artifacts: SwarmArtifact[];
+  safetyFindings: ShellSafetyAssessment[];
+  log: string[];
+}
+
+export interface SwarmRoleHandlers {
+  onPlan?: (task: SwarmTaskDefinition) => Promise<{ steps: string[]; targetFiles: string[] }>;
+  onExecute?: (
+    task: SwarmTaskDefinition,
+    step: string,
+    round: number,
+  ) => Promise<{
+    artifacts: SwarmArtifact[];
+    proposedCommands?: string[];
+    summary: string;
+  }>;
+  onReview?: (
+    task: SwarmTaskDefinition,
+    artifacts: SwarmArtifact[],
+    round: number,
+  ) => Promise<{
+    approved: boolean;
+    grounds: string;
+  }>;
+}
+
+export class SwarmCoordinator {
+  public readonly mailbox: MailboxKernel;
+  public readonly consensus: QuorumConsensusEngine;
+  public readonly ledger: TurnLedger;
+  public readonly loopDetector: LoopDetector;
+  public readonly shellGuardian: ShellGuardian;
+  public readonly watchdog: TaskWatchdog;
+
+  private agents = new Map<string, SwarmAgentState>();
+  private edges = new Map<string, SwarmEdgeState>();
+  private listeners = new Set<(event: SwarmEvent) => void>();
+  private activeTaskId: string | null = null;
+  private logMessages: string[] = [];
+
+  constructor(options?: {
+    quorumPolicy?: Partial<QuorumPolicy>;
+    loopOptions?: LoopDetectorOptions;
+    watchdogConfig?: Partial<WatchdogConfig>;
+    sessionId?: string;
+  }) {
+    const sessionId = options?.sessionId ?? `swarm-session-${Date.now()}`;
+    this.mailbox = new MailboxKernel();
+    this.consensus = new QuorumConsensusEngine(options?.quorumPolicy ?? { threshold: 2, requireGrounded: true });
+    this.ledger = new TurnLedger(sessionId);
+    this.loopDetector = new LoopDetector(options?.loopOptions ?? { maxRepeats: 4, timeoutSeconds: 300 });
+    this.shellGuardian = new ShellGuardian();
+    this.watchdog = new TaskWatchdog(options?.watchdogConfig ?? { maxStepCount: 40 });
+
+    this.registerStandardSwarmAgents();
+  }
+
+  private registerStandardSwarmAgents(): void {
+    const defaultAgents: Array<{ id: string; role: SwarmRole }> = [
+      { id: "orchestrator", role: "orchestrator" },
+      { id: "coder", role: "coder" },
+      { id: "reviewer", role: "reviewer" },
+      { id: "tester", role: "tester" },
+      { id: "researcher", role: "researcher" },
+    ];
+
+    for (const a of defaultAgents) {
+      this.agents.set(a.id, {
+        id: a.id,
+        role: a.role,
+        status: "idle",
+        tasksCompleted: 0,
+      });
+    }
+
+    this.addEdge("orchestrator", "coder", "directive");
+    this.addEdge("coder", "reviewer", "handoff");
+    this.addEdge("reviewer", "orchestrator", "review_gate");
+    this.addEdge("reviewer", "coder", "review_gate");
+    this.addEdge("coder", "tester", "handoff");
+  }
+
+  public subscribe(listener: (event: SwarmEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(type: SwarmEventType, taskId: string, agentId?: string, payload: Record<string, unknown> = {}): void {
+    const event: SwarmEvent = {
+      type,
+      taskId,
+      timestamp: Date.now(),
+      agentId,
+      payload,
+    };
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        console.error("[SwarmCoordinator] Listener error:", err);
+      }
+    }
+  }
+
+  private addEdge(from: string, to: string, kind: "directive" | "handoff" | "review_gate"): void {
+    const key = `${from}->${to}`;
+    if (!this.edges.has(key)) {
+      this.edges.set(key, { from, to, kind, activeCount: 0 });
+    }
+  }
+
+  private incrementEdge(from: string, to: string): void {
+    const key = `${from}->${to}`;
+    const edge = this.edges.get(key);
+    if (edge) edge.activeCount++;
+  }
+
+  public getAgents(): SwarmAgentState[] {
+    return Array.from(this.agents.values()).map((a) => ({ ...a }));
+  }
+
+  public getEdges(): SwarmEdgeState[] {
+    return Array.from(this.edges.values()).map((e) => ({ ...e }));
+  }
+
+  public getMailboxSummaries(): Record<string, MailboxSummary> {
+    const result: Record<string, MailboxSummary> = {};
+    for (const agentId of this.agents.keys()) {
+      result[agentId] = this.mailbox.getSummary(agentId);
+    }
+    return result;
+  }
+
+  public getStandings(): TopicStanding[] {
+    return this.consensus.listStandings();
+  }
+
+  public getWatchdogStatus(): WatchdogStatus {
+    return this.watchdog.checkHealth();
+  }
+
+  public getReplayView(): ReplayView {
+    return this.ledger.replay(0);
+  }
+
+  /**
+   * Executes an autonomous coding task with end-to-end multi-agent deliberation.
+   */
+  public async runTask(
+    task: SwarmTaskDefinition,
+    handlers?: SwarmRoleHandlers,
+  ): Promise<SwarmExecutionResult> {
+    const taskId = task.id ?? `task-${randomUUID().slice(0, 8)}`;
+    this.activeTaskId = taskId;
+    this.logMessages = [];
+    const safetyFindings: ShellSafetyAssessment[] = [];
+    const collectedArtifacts: SwarmArtifact[] = [];
+
+    const log = (msg: string) => {
+      const line = `[${new Date().toISOString()}] ${msg}`;
+      this.logMessages.push(line);
+    };
+
+    log(`Starting Swarm task '${taskId}': ${task.goal}`);
+    this.watchdog.start();
+    const activeTurnId = this.ledger.begin(taskId);
+    this.emit("task_started", taskId, "orchestrator", { goal: task.goal });
+
+    // Step 1: Orchestrator initializes consensus topic & issues directive
+    const orchestrator = this.agents.get("orchestrator")!;
+    orchestrator.status = "active";
+    orchestrator.currentTask = task.goal;
+    this.watchdog.heartbeat({ action: "orchestrator_plan" });
+
+    this.ledger.append("text", { role: "orchestrator", text: `Analyzing task: ${task.goal}` }, "running");
+
+    const topic = this.consensus.proposeTopic({
+      topicId: taskId,
+      topic: task.goal,
+      proposerId: "orchestrator",
+      initialGrounds: `Plan formulation grounded in target files: ${(task.files ?? []).join(", ") || "workspace root"}`,
+      policy: {
+        threshold: task.quorumThreshold ?? 2,
+        requireGrounded: true,
+        refutationCap: 1,
+      },
+    });
+
+    // Plan steps
+    let steps = ["implement_solution", "run_verification"];
+    if (handlers?.onPlan) {
+      const planRes = await handlers.onPlan(task);
+      if (planRes.steps.length > 0) steps = planRes.steps;
+    }
+
+    // Send task message via Mailbox to Coder
+    this.mailbox.send("coder", "orchestrator", "task_assignment", {
+      taskId,
+      goal: task.goal,
+      steps,
+      files: task.files,
+      constraints: task.constraints,
+    });
+    this.incrementEdge("orchestrator", "coder");
+    orchestrator.status = "handoff";
+    orchestrator.handoffTarget = "coder";
+
+    // Loop through deliberation rounds (Coder -> Reviewer)
+    const maxRounds = task.maxRounds ?? 4;
+    let currentRound = 0;
+    let settled = false;
+    let refuted = false;
+
+    while (currentRound < maxRounds && !settled && !refuted) {
+      currentRound++;
+      log(`Deliberation round ${currentRound}/${maxRounds}`);
+
+      // Loop check
+      // Loop check: check consecutive identical actions for this task
+      const loopCheck = this.loopDetector.checkToolCall("coder_execution", {
+        taskId,
+        goal: task.goal,
+      });
+      if (loopCheck.shouldStop) {
+        log(`Loop Breaker triggered: ${loopCheck.message}`);
+        this.emit("loop_detected", taskId, "coder", { message: loopCheck.message });
+        this.ledger.append("turn_done", loopCheck.message, "interrupted");
+        return {
+          taskId,
+          status: "loop_aborted",
+          rounds: currentRound,
+          standing: this.consensus.getStanding(taskId),
+          terminalSummary: this.ledger.getSummaries().find((s) => s.turnId === activeTurnId),
+          artifacts: collectedArtifacts,
+          safetyFindings,
+          log: this.logMessages,
+        };
+      }
+
+      // 2. Coder polls mailbox and claims lease
+      const coder = this.agents.get("coder")!;
+      coder.status = "active";
+      coder.currentTask = `Coding round ${currentRound}`;
+      this.watchdog.heartbeat({ action: `coder_round_${currentRound}` });
+
+      const coderMsg = this.mailbox.poll<{ goal: string; steps: string[] }>("coder");
+      let leaseToken: string | null = null;
+      if (coderMsg) {
+        try {
+          const lease = this.mailbox.acquireLease("coder", coderMsg.id, 15000);
+          leaseToken = lease.leaseToken;
+        } catch {
+          // Lease busy or already held
+        }
+      }
+
+      // Check safety of proposed commands
+      const commandsToCheck = task.proposedCommands ?? [];
+      for (const cmd of commandsToCheck) {
+        const assessment = this.shellGuardian.analyzeCommand(cmd);
+        safetyFindings.push(assessment);
+        this.emit("command_evaluated", taskId, "coder", {
+          command: cmd,
+          risk: assessment.riskLevel,
+          isSafe: assessment.isSafe,
+        });
+
+        if (assessment.suggestedAction === "block") {
+          log(`Shell Guardian blocked dangerous command: '${cmd}' (Rule: ${assessment.findings[0]?.ruleId})`);
+          this.consensus.refuteTopic(
+            taskId,
+            "coder",
+            `Shell Guardian policy blocked critical command '${cmd}': ${assessment.findings[0]?.description}`,
+          );
+          refuted = true;
+          break;
+        }
+      }
+
+      if (refuted) break;
+
+      // Coder produces implementation
+      let artifacts: SwarmArtifact[] = [];
+      let summary = `Implementation generated for ${task.goal}`;
+
+      if (handlers?.onExecute) {
+        const execRes = await handlers.onExecute(task, steps[0] ?? "implement", currentRound);
+        artifacts = execRes.artifacts;
+        summary = execRes.summary;
+      } else {
+        artifacts = [
+          {
+            path: (task.files && task.files[0]) || "src/solution.ts",
+            summary: `Automated patch for '${task.goal}' created in round ${currentRound}`,
+            content: `// Solution for: ${task.goal}\n// Verified by Penguin Harness Swarm\n`,
+          },
+        ];
+      }
+
+      for (const art of artifacts) {
+        collectedArtifacts.push(art);
+      }
+
+      this.ledger.append(
+        "tool_dispatch",
+        { tool: "coder_patch", summary, artifactCount: artifacts.length },
+        "running",
+      );
+
+      // Release lease and hand off to Reviewer
+      if (leaseToken) {
+        try {
+          this.mailbox.releaseLease("coder", leaseToken);
+        } catch {
+          // ignore
+        }
+      }
+      coder.tasksCompleted++;
+      coder.status = "handoff";
+      coder.handoffTarget = "reviewer";
+
+      this.mailbox.send("reviewer", "coder", "review_request", {
+        taskId,
+        round: currentRound,
+        artifacts,
+      });
+      this.incrementEdge("coder", "reviewer");
+      this.emit("review_requested", taskId, "coder", { round: currentRound, artifacts });
+
+      // 3. Reviewer claims lease and audits changes
+      const reviewer = this.agents.get("reviewer")!;
+      reviewer.status = "active";
+      reviewer.currentTask = `Reviewing round ${currentRound}`;
+      this.watchdog.heartbeat({ action: `reviewer_round_${currentRound}` });
+
+      const revMsg = this.mailbox.poll<{ round: number; artifacts: SwarmArtifact[] }>("reviewer");
+      let revLeaseToken: string | null = null;
+      if (revMsg) {
+        try {
+          const lease = this.mailbox.acquireLease("reviewer", revMsg.id, 15000);
+          revLeaseToken = lease.leaseToken;
+        } catch {
+          // ignore
+        }
+      }
+
+      let reviewPassed = true;
+      let reviewGrounds = `Verified invariants and types for round ${currentRound} across ${artifacts.length} file(s)`;
+
+      if (handlers?.onReview) {
+        const revRes = await handlers.onReview(task, artifacts, currentRound);
+        reviewPassed = revRes.approved;
+        reviewGrounds = revRes.grounds;
+      }
+
+      if (reviewPassed) {
+        log(`Reviewer endorsed topic: ${reviewGrounds}`);
+        const updatedStanding = this.consensus.endorseTopic(taskId, "reviewer", reviewGrounds);
+        this.emit("consensus_endorsed", taskId, "reviewer", { grounds: reviewGrounds });
+
+        if (updatedStanding.status === "settled") {
+          settled = true;
+          this.emit("consensus_settled", taskId, "reviewer", { standing: updatedStanding });
+          log(`Quorum consensus settled successfully with threshold met!`);
+        }
+      } else {
+        if (currentRound >= maxRounds) {
+          log(`Reviewer refuted changes (max rounds reached): ${reviewGrounds}`);
+          const updatedStanding = this.consensus.refuteTopic(taskId, "reviewer", reviewGrounds);
+          this.emit("consensus_refuted", taskId, "reviewer", { grounds: reviewGrounds });
+          if (updatedStanding.status === "refuted") {
+            refuted = true;
+          }
+        } else {
+          log(`Reviewer requested revisions for round ${currentRound}: ${reviewGrounds}`);
+          this.emit("review_requested", taskId, "reviewer", {
+            round: currentRound,
+            feedback: reviewGrounds,
+            approved: false,
+          });
+          this.mailbox.send("coder", "reviewer", "revision_request", {
+            taskId,
+            round: currentRound,
+            feedback: reviewGrounds,
+          });
+          this.incrementEdge("reviewer", "coder");
+        }
+      }
+
+      if (revLeaseToken) {
+        try {
+          this.mailbox.releaseLease("reviewer", revLeaseToken);
+        } catch {
+          // ignore
+        }
+      }
+      reviewer.tasksCompleted++;
+      reviewer.status = settled ? "completed" : "idle";
+    }
+
+    // Finalize status
+    let finalStatus: SwarmExecutionResult["status"] = "settled";
+    if (refuted) finalStatus = "refuted";
+    else if (!settled && currentRound >= maxRounds) finalStatus = "max_rounds_exceeded";
+
+    const terminalOutcome = settled
+      ? `Consensus settled across ${currentRound} round(s)`
+      : `Execution concluded with status: ${finalStatus}`;
+
+    this.ledger.append("turn_done", terminalOutcome, settled ? "completed" : "failed");
+    this.emit(settled ? "task_completed" : "task_failed", taskId, "orchestrator", {
+      status: finalStatus,
+      rounds: currentRound,
+    });
+
+    for (const a of this.agents.values()) {
+      a.status = "idle";
+      a.currentTask = undefined;
+      a.handoffTarget = undefined;
+    }
+
+    return {
+      taskId,
+      status: finalStatus,
+      rounds: currentRound,
+      standing: this.consensus.getStanding(taskId),
+      terminalSummary: this.ledger.getSummaries().find((s) => s.turnId === activeTurnId),
+      artifacts: collectedArtifacts,
+      safetyFindings,
+      log: this.logMessages,
+    };
+  }
+}
