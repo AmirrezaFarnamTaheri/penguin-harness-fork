@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
-import type { CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { CodeGraph, type CodeGraphNode, type CodeGraphEdge } from "@prismshadow/penguin-core";
 import { useProject } from "../../state/project";
 import { Button } from "../../components/ui/button";
 import { Segmented } from "../../components/ui/segmented";
@@ -21,8 +21,32 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
   const [toNodeId, setToNodeId] = useState<string | null>("sym/ShellGuardian#analyzeCommand");
   const [impactNodeIds, setImpactNodeIds] = useState<Set<string>>(new Set());
 
-  // Instantiate and memoize graph
-  const graph = useMemo(() => createPenguinCodeGraph(), []);
+  const [liveGraph, setLiveGraph] = useState<CodeGraph | null>(null);
+  const [isLiveSynced, setIsLiveSynced] = useState(false);
+
+  const fetchTopology = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cockpit/topology");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.nodes && Array.isArray(data.nodes) && data.nodes.length > 0) {
+          const constructed = CodeGraph.fromJSON(data);
+          setLiveGraph(constructed);
+          setIsLiveSynced(true);
+        }
+      }
+    } catch {
+      // offline or standalone mode: fallback to static factory
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchTopology();
+  }, [fetchTopology]);
+
+  // Fallback factory or live graph
+  const defaultGraph = useMemo(() => createPenguinCodeGraph(), []);
+  const graph = liveGraph ?? defaultGraph;
 
   const allNodes = useMemo(() => graph.getAllNodes(), [graph]);
 
@@ -73,7 +97,7 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 font-mono">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : "bg-cyan-400 animate-pulse"}`} />
               CodeGraph & AST Symbol Topology
             </h1>
             <p className="text-xs text-gray-400 font-mono mt-0.5">
@@ -81,18 +105,32 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
             </p>
           </div>
 
-          {/* View Mode Switcher */}
-          <div className="w-64">
-            <Segmented
-              cols={3}
-              options={[
-                { value: "studio", label: "Studio" },
-                { value: "canvas", label: "Canvas" },
-                { value: "matrix", label: "Matrix" },
-              ]}
-              value={viewMode}
-              onChange={(val) => setViewMode(val as TopologyViewMode)}
-            />
+          {/* Sync badge, refresh & view mode switcher */}
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono bg-gray-900 border border-gray-800 text-gray-400">
+              <span className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : "bg-gray-500"}`} />
+              {isLiveSynced ? "Live AST Stream" : "AST Static"}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void fetchTopology()}
+              className="text-xs h-7 px-2 text-gray-400 hover:text-white"
+            >
+              Refresh
+            </Button>
+            <div className="w-56">
+              <Segmented
+                cols={3}
+                options={[
+                  { value: "studio", label: "Studio" },
+                  { value: "canvas", label: "Canvas" },
+                  { value: "matrix", label: "Matrix" },
+                ]}
+                value={viewMode}
+                onChange={(val) => setViewMode(val as TopologyViewMode)}
+              />
+            </div>
           </div>
         </div>
 

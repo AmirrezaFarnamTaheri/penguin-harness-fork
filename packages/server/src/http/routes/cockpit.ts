@@ -39,6 +39,49 @@ export function cockpitRoutes(): Hono {
     });
   });
 
+  app.post("/keys/action", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const action = body.action;
+    const provider = typeof body.provider === "string" ? body.provider : "";
+    const maskedKey = typeof body.maskedKey === "string" ? body.maskedKey : "";
+    const monitor = getSharedKeyFleetMonitor();
+
+    if (action === "revive") {
+      monitor.reviveKey(provider, maskedKey);
+    } else if (action === "cooldown") {
+      monitor.cooldownKey(provider, maskedKey, typeof body.cooldownMs === "number" ? body.cooldownMs : 60_000);
+    } else if (action === "evict") {
+      monitor.evictKey(provider, maskedKey);
+    } else if (action === "revive_all") {
+      monitor.reviveAllCooldowns();
+    }
+
+    return c.json({
+      success: true,
+      stats: monitor.getFleetStats(),
+      snapshot: monitor.getCockpitSnapshot(),
+    });
+  });
+
+  app.post("/mailbox/send", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const from = typeof body.from === "string" ? body.from : "operator";
+    const to = typeof body.to === "string" ? body.to : "coder";
+    const content = typeof body.content === "string" ? body.content : "";
+
+    if (!content.trim()) {
+      return c.json({ success: false, error: "Directive content cannot be empty" }, 400);
+    }
+
+    const coordinator = getSharedSwarmCoordinator();
+    const directive = coordinator.dispatchDirective(from, to, content.trim());
+    return c.json({
+      success: true,
+      directive,
+      mailbox: coordinator.getMailboxSummaries(),
+    });
+  });
+
   app.get("/topology", (c) => {
     const watcher = getSharedCodeGraphWatcher();
     return c.json(watcher.exportSnapshot());

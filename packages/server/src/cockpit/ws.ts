@@ -181,6 +181,27 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             return;
           }
 
+          if (msg.type === "send_directive") {
+            const from = typeof msg.from === "string" ? msg.from : "operator";
+            const to = typeof msg.to === "string" ? msg.to : "coder";
+            const content = typeof msg.content === "string" ? msg.content : "";
+            if (content.trim()) {
+              const directive = coordinator.dispatchDirective(from, to, content.trim());
+              const confirmPayload = JSON.stringify({
+                type: "directive_dispatched",
+                directive,
+                mailbox: coordinator.getMailboxSummaries(),
+                timestamp: Date.now(),
+              });
+              for (const client of connectedClients) {
+                if (client.readyState === client.OPEN) {
+                  client.send(confirmPayload);
+                }
+              }
+            }
+            return;
+          }
+
           if (msg.type === "trigger_swarm") {
             const goal = typeof msg.goal === "string" ? msg.goal : "Autonomous local coding task";
             const files = Array.isArray(msg.files) ? msg.files : undefined;

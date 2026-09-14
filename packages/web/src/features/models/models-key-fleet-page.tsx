@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
@@ -194,6 +194,24 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     modelId: string;
   } | null>(null);
 
+  const fetchLiveFleet = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cockpit/keys");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.reports) && data.reports.length > 0) {
+          setReports(data.reports);
+        }
+      }
+    } catch {
+      // offline / standalone fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchLiveFleet();
+  }, [fetchLiveFleet]);
+
   const stats = useMemo(() => calculateFleetHealth(reports), [reports]);
 
   const filteredReports = useMemo(() => {
@@ -211,6 +229,17 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       setProbingTarget({ keyItem: item, provider, modelId });
       return;
     }
+
+    void fetch("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action,
+        provider,
+        maskedKey: item.maskedKey,
+        cooldownMs: 60_000,
+      }),
+    }).catch(() => {});
 
     setReports((prev) =>
       prev.map((rep) => {
@@ -262,6 +291,12 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   };
 
   const handleReviveAllCooldowns = () => {
+    void fetch("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "revive_all" }),
+    }).catch(() => {});
+
     setReports((prev) =>
       prev.map((rep) => {
         const updatedKeys = rep.keys.map((k) => {
@@ -314,13 +349,20 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void fetchLiveFleet()}
+            >
+              <RefreshIcon size={13} />
+              Refresh
+            </Button>
             {stats.cooldownCount > 0 && (
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={handleReviveAllCooldowns}
               >
-                <RefreshIcon size={13} />
                 Revive All Cooldowns ({stats.cooldownCount})
               </Button>
             )}

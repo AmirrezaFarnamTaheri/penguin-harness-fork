@@ -22,23 +22,6 @@ export interface AgentCockpitProps {
   embedded?: boolean;
 }
 
-interface MockTurnSummary {
-  turnId: string;
-  terminalSeq: number;
-  status: "queued" | "running" | "completed" | "interrupted" | "failed";
-  durationMs: number;
-  outcome?: string;
-  streamRecords: number;
-}
-
-interface MockMailboxEntry {
-  agentName: string;
-  queueDepth: number;
-  pendingReplies: number;
-  leaseState: "acquired" | "idle" | "expired";
-  leaseRemainingSec?: number;
-}
-
 export interface SwarmAgentNode {
   id: string;
   role: "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
@@ -79,57 +62,20 @@ export function AgentCockpit({
   const telemetry = useCockpitTelemetry(sessionId);
   const [swarmPrompt, setSwarmPrompt] = useState("");
 
-  // State: Turn Ledger
-  const activeTurn = telemetry.activeTaskId ?? "turn-7a8f9c2d";
-  const [turnStatus] = useState<"running" | "completed" | "queued">("running");
-  const defaultTurnSummaries: LiveTurnSummary[] = [
-    {
-      turnId: "turn-7a8f9c2d",
-      terminalSeq: 42,
-      status: "running",
-      durationMs: 3420,
-      outcome: "Investigating upstream archives and compiling TypeScript declarations",
-      streamRecords: 18,
-    },
-    {
-      turnId: "turn-6c1e4b9a",
-      terminalSeq: 24,
-      status: "completed",
-      durationMs: 8940,
-      outcome: "Loop detector and turn ledger test suite verified 15/15 passed",
-      streamRecords: 35,
-    },
-    {
-      turnId: "turn-5b2d8f1e",
-      terminalSeq: 12,
-      status: "completed",
-      durationMs: 4120,
-      outcome: "Mounted REST gateway endpoints for quota and pricing catalog",
-      streamRecords: 22,
-    },
-  ];
-  const turnSummaries = telemetry.turnSummaries.length > 0 ? telemetry.turnSummaries : defaultTurnSummaries;
+  // Live Turn Ledger summaries
+  const activeTurn = telemetry.activeTaskId ?? "Idle";
+  const turnSummaries = telemetry.turnSummaries;
 
-  // State: Mailbox
-  const defaultMailboxes: LiveMailboxEntry[] = [
-    { agentName: "orchestrator", queueDepth: 0, pendingReplies: 0, leaseState: "idle" },
-    {
-      agentName: "coder",
-      queueDepth: 1,
-      pendingReplies: 1,
-      leaseState: "acquired",
-      leaseRemainingSec: 24,
-    },
-    { agentName: "reviewer", queueDepth: 0, pendingReplies: 0, leaseState: "idle" },
-    {
-      agentName: "researcher",
-      queueDepth: 2,
-      pendingReplies: 0,
-      leaseState: "acquired",
-      leaseRemainingSec: 18,
-    },
-  ];
-  const mailboxes = telemetry.mailboxEntries.length > 0 ? telemetry.mailboxEntries : defaultMailboxes;
+  // Live Mailbox entries: fallback to idle agent entries if none received yet
+  const mailboxes: LiveMailboxEntry[] =
+    telemetry.mailboxEntries.length > 0
+      ? telemetry.mailboxEntries
+      : telemetry.swarmAgents.map((a) => ({
+          agentName: a.id,
+          queueDepth: 0,
+          pendingReplies: 0,
+          leaseState: "idle" as const,
+        }));
 
   const [toAgent, setToAgent] = useState("coder");
   const [messageText, setMessageText] = useState("");
@@ -137,7 +83,7 @@ export function AgentCockpit({
 
   // State: Loop & Circuit Breaker
   const [consecutiveErrors] = useState(0);
-  const [timeSinceLastProgress] = useState(4.2);
+  const [timeSinceLastProgress] = useState(0);
   const [currentFile] = useState("packages/core/src/agent/turn-ledger.ts");
   const [recentTools] = useState([
     "view_file",
@@ -153,10 +99,13 @@ export function AgentCockpit({
   const swarmNodes = telemetry.swarmAgents;
   const swarmEdges = telemetry.swarmEdges;
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!messageText.trim()) return;
-    setDispatchedCount((c) => c + 1);
-    setMessageText("");
+    const ok = await telemetry.dispatchDirective(toAgent, messageText.trim());
+    if (ok) {
+      setDispatchedCount((c) => c + 1);
+      setMessageText("");
+    }
   };
 
   const bodyContent = (
@@ -213,7 +162,7 @@ export function AgentCockpit({
               <BrainIcon size={16} className="text-purple-500" />
             </div>
             <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-              3 Topics <span className="text-xs font-normal text-gray-400">/ 4.2 KB</span>
+              Active Project Memory
             </div>
             <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
               ● Synchronized
@@ -232,10 +181,13 @@ export function AgentCockpit({
               <KeyRoundIcon size={16} className="text-amber-500" />
             </div>
             <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-              100% Healthy <span className="text-xs font-normal text-gray-400">(3 leases)</span>
+              {telemetry.keyFleet.healthy ? "100% Healthy" : "Degraded"}{" "}
+              <span className="text-xs font-normal text-gray-400">
+                ({telemetry.keyFleet.activeCount} Active)
+              </span>
             </div>
             <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-              ● 0 Cooldowns
+              ● {telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length} Cooldowns
             </div>
           </button>
 
@@ -251,10 +203,10 @@ export function AgentCockpit({
               <FlameIcon size={16} className="text-orange-500" />
             </div>
             <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-              TTFT: 350ms <span className="text-xs font-normal text-gray-400">/ 1.20s</span>
+              Causal Performance
             </div>
             <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-              ● 0 Causal Errors
+              ● Telemetry Streaming
             </div>
           </button>
 
@@ -270,7 +222,7 @@ export function AgentCockpit({
               <HistoryIcon size={16} className="text-blue-500" />
             </div>
             <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-              v3 Active <span className="text-xs font-normal text-gray-400">(3 checkpoints)</span>
+              Workspace Snapshots
             </div>
             <div className="text-[11px] text-cyan-600 dark:text-cyan-400 mt-1 font-mono">
               ● Time-Travel Ready
@@ -482,7 +434,7 @@ export function AgentCockpit({
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-                  Status: {turnStatus.toUpperCase()}
+                  Status: {telemetry.activeTaskId ? "RUNNING" : "IDLE"}
                 </span>
                 <span className="text-xs text-gray-400 font-mono">Session: {sessionId}</span>
               </div>
@@ -491,41 +443,50 @@ export function AgentCockpit({
             <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-1">
               Terminal Turn History & Checkpoint Log
             </div>
-            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-              {turnSummaries.map((turn) => (
-                <div
-                  key={turn.turnId}
-                  className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-gray-800 dark:text-gray-200">
-                        {turn.turnId}
-                      </span>
-                      <span
-                        className={`px-2 py-0.2 rounded text-[10px] font-medium ${
-                          turn.status === "completed"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                            : turn.status === "running"
-                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                              : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
-                        }`}
-                      >
-                        {turn.status}
-                      </span>
+            {turnSummaries.length === 0 ? (
+              <div className="p-8 text-center rounded-lg border border-dashed border-gray-300 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 text-gray-500 text-xs flex flex-col items-center gap-1.5">
+                <span className="font-semibold text-gray-700 dark:text-gray-300">No turn checkpoints recorded yet</span>
+                <span className="text-[11px] text-gray-400">
+                  Execute a command or launch an autonomous swarm task to generate turn ledger replays.
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                {turnSummaries.map((turn) => (
+                  <div
+                    key={turn.turnId}
+                    className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-gray-800 dark:text-gray-200">
+                          {turn.turnId}
+                        </span>
+                        <span
+                          className={`px-2 py-0.2 rounded text-[10px] font-medium ${
+                            turn.status === "completed"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                              : turn.status === "running"
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                          }`}
+                        >
+                          {turn.status}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        Seq #{turn.terminalSeq} • {turn.durationMs}ms • {turn.streamRecords} chunks
+                      </div>
                     </div>
-                    <div className="text-[11px] text-gray-400">
-                      Seq #{turn.terminalSeq} • {turn.durationMs}ms • {turn.streamRecords} chunks
-                    </div>
+                    {turn.outcome && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                        {turn.outcome}
+                      </div>
+                    )}
                   </div>
-                  {turn.outcome && (
-                    <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                      {turn.outcome}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -580,10 +541,11 @@ export function AgentCockpit({
                   onChange={(e) => setToAgent(e.target.value)}
                   className="text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-2.5 py-1.5 text-gray-800 dark:text-gray-200"
                 >
-                  <option value="coder">To: coder</option>
-                  <option value="reviewer">To: reviewer</option>
-                  <option value="researcher">To: researcher</option>
-                  <option value="orchestrator">To: orchestrator</option>
+                  {telemetry.swarmAgents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      To: {a.id} ({a.role})
+                    </option>
+                  ))}
                 </select>
                 <Input
                   value={messageText}
@@ -592,12 +554,12 @@ export function AgentCockpit({
                   className="flex-1"
                 />
                 <Button size="sm" onClick={handleSendMessage} disabled={!messageText.trim()}>
-                  Send
+                  Send Directive
                 </Button>
               </div>
               {dispatchedCount > 0 && (
                 <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  ✓ {dispatchedCount} directives dispatched to inter-agent FIFO mailbox queue.
+                  ✓ {dispatchedCount} live directive(s) queued into destination Mailbox.
                 </div>
               )}
             </div>

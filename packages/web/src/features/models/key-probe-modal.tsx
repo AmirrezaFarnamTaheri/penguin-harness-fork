@@ -23,14 +23,28 @@ export function KeyProbeModal({
   const [probing, setProbing] = useState(true);
   const [result, setResult] = useState<KeyProbeResult | null>(null);
 
-  const runProbe = () => {
+  const runProbe = async () => {
     setProbing(true);
-    // Simulate brief network latency check
-    setTimeout(() => {
-      const probeResult = simulateKeyProbe(keyItem.maskedKey, provider);
-      setResult(probeResult);
-      setProbing(false);
-    }, 450);
+    try {
+      const res = await fetch("/api/cockpit/keys/probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, maskedKey: keyItem.maskedKey }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.result) {
+          setResult(json.result);
+          setProbing(false);
+          return;
+        }
+      }
+    } catch {
+      // network fallback
+    }
+    const probeResult = simulateKeyProbe(keyItem.maskedKey, provider);
+    setResult(probeResult);
+    setProbing(false);
   };
 
   useEffect(() => {

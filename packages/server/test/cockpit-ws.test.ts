@@ -80,4 +80,49 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(json.edges).toBeDefined();
     expect(json.stats).toBeDefined();
   });
+
+  it("dispatches live inter-agent directives via POST /mailbox/send", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const res = await app.request("/api/cockpit/mailbox/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "operator",
+        to: "coder",
+        content: "Run test suite and verify imports",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.success).toBe(true);
+    expect(json.directive.id).toBeDefined();
+    expect(json.directive.fromAgent).toBe("operator");
+    expect(json.directive.toAgent).toBe("coder");
+    expect(json.mailbox.coder.queueDepth).toBeGreaterThanOrEqual(1);
+  });
+
+  it("modifies key states via POST /keys/action", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const res = await app.request("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "cooldown",
+        provider: "openai",
+        maskedKey: "sk-proj-...1c4a",
+        cooldownMs: 30000,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.success).toBe(true);
+    expect(json.stats).toBeDefined();
+    expect(json.snapshot).toBeDefined();
+  });
 });

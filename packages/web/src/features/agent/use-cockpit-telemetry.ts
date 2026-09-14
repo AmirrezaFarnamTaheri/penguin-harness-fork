@@ -47,6 +47,7 @@ export interface CockpitTelemetryState {
   lastEventTime: number | null;
   isDispatching: boolean;
   triggerTask: (goal: string, files?: string[]) => Promise<void>;
+  dispatchDirective: (to: string, content: string, from?: string) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
 
@@ -185,6 +186,25 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
             } else if (msg.type === "swarm_task_settled") {
               setIsDispatching(false);
               void fetchRestTelemetry();
+            } else if (msg.type === "directive_dispatched") {
+              setLastEventTime(Date.now());
+              if (msg.mailbox) {
+                const mbList: LiveMailboxEntry[] = Object.entries(msg.mailbox).map(
+                  ([agentName, summary]: [string, any]) => ({
+                    agentName,
+                    queueDepth: summary.queueDepth ?? 0,
+                    pendingReplies: summary.pendingReplyCount ?? 0,
+                    leaseState: summary.lease?.leaseState ?? "idle",
+                    leaseRemainingSec: summary.lease?.expiresAt
+                      ? Math.max(0, Math.round((summary.lease.expiresAt - Date.now()) / 1000))
+                      : undefined,
+                  }),
+                );
+                setMailboxEntries(mbList);
+              }
+            } else if (msg.type === "key_fleet_update" && msg.keyFleet) {
+              setKeyFleet(msg.keyFleet);
+              setLastEventTime(Date.now());
             }
           } catch {
             // malformed
@@ -251,6 +271,38 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
     [fetchRestTelemetry],
   );
 
+  const dispatchDirective = useCallback(
+    async (to: string, content: string, from = "operator"): Promise<boolean> => {
+      const ws = socketRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            type: "send_directive",
+            from,
+            to,
+            content,
+          }),
+        );
+        return true;
+      }
+      try {
+        const res = await fetch("/api/cockpit/mailbox/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from, to, content }),
+        });
+        if (res.ok) {
+          void fetchRestTelemetry();
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [fetchRestTelemetry],
+  );
+
   return {
     connected,
     transport,
@@ -263,6 +315,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
     lastEventTime,
     isDispatching,
     triggerTask,
+    dispatchDirective,
     refresh: fetchRestTelemetry,
   };
 }

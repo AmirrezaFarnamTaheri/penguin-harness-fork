@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { MailboxKernel, type MailboxSummary, normalizeMailboxOwnerName } from "./mailbox.js";
+import { MailboxKernel, type MailboxMessage, type MailboxSummary, normalizeMailboxOwnerName } from "./mailbox.js";
 import {
   QuorumConsensusEngine,
   type TopicStanding,
@@ -64,6 +64,7 @@ export type SwarmEventType =
   | "consensus_settled"
   | "command_evaluated"
   | "command_executed"
+  | "directive_dispatched"
   | "loop_detected"
   | "task_completed"
   | "task_failed";
@@ -275,6 +276,25 @@ export class SwarmCoordinator {
 
   public getReplayView(): ReplayView {
     return this.ledger.replay(0);
+  }
+
+  /**
+   * Dispatches a live inter-agent directive into the destination agent's Mailbox queue,
+   * updates edge telemetry, and emits a directive_dispatched event.
+   */
+  public dispatchDirective(from: string, to: string, content: string): MailboxMessage {
+    const fromId = from.trim() || "operator";
+    const toId = to.trim() || "coder";
+    const msg = this.mailbox.send(toId, fromId, "directive", { content });
+    this.addEdge(fromId, toId, "directive");
+    this.incrementEdge(fromId, toId);
+    this.emit("directive_dispatched", this.activeTaskId ?? "inter-agent", fromId, {
+      from: fromId,
+      to: toId,
+      content,
+      messageId: msg.id,
+    });
+    return msg;
   }
 
   /**
