@@ -36,6 +36,21 @@ export type {
   WeightedKeyStatus,
   WeightedKeyRotatorOptions,
 } from "./key-rotator.js";
+export {
+  KeyFleetMonitor,
+  maskApiKey,
+} from "./key-fleet-monitor.js";
+export type {
+  KeyHealthStatus,
+  KeyFleetRotationStrategy,
+  KeyHealthItem,
+  ModelKeyFleetReport,
+  FleetHealthStats,
+  KeyProbeResult,
+  CockpitKeyFleetSnapshot,
+  ProbeFunction,
+  ProviderRegistration,
+} from "./key-fleet-monitor.js";
 export { listEndpointModels } from "./list-models.js";
 export type { ListEndpointModelsOptions } from "./list-models.js";
 export { ToolCallIdAllocator, stripToolCallIdSuffix } from "./tool-call-ids.js";

@@ -16,6 +16,7 @@ import {
 import { TurnLedger, type TerminalSummary, type ReplayView } from "./turn-ledger.js";
 import { LoopDetector, type LoopDetectorOptions } from "./loop-detector.js";
 import { ShellGuardian, type ShellSafetyAssessment } from "./shell-guardian.js";
+import { SandboxedCommandRunner, type SandboxExecutionResult } from "./sandbox-runner.js";
 import { TaskWatchdog, type WatchdogConfig, type WatchdogStatus } from "./task-watchdog.js";
 
 export type SwarmRole = "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
@@ -62,6 +63,7 @@ export type SwarmEventType =
   | "consensus_refuted"
   | "consensus_settled"
   | "command_evaluated"
+  | "command_executed"
   | "loop_detected"
   | "task_completed"
   | "task_failed";
@@ -112,6 +114,7 @@ export class SwarmCoordinator {
   public readonly ledger: TurnLedger;
   public readonly loopDetector: LoopDetector;
   public readonly shellGuardian: ShellGuardian;
+  public readonly sandboxRunner: SandboxedCommandRunner;
   public readonly watchdog: TaskWatchdog;
 
   private agents = new Map<string, SwarmAgentState>();
@@ -125,6 +128,7 @@ export class SwarmCoordinator {
     loopOptions?: LoopDetectorOptions;
     watchdogConfig?: Partial<WatchdogConfig>;
     sessionId?: string;
+    sandboxRunner?: SandboxedCommandRunner;
   }) {
     const sessionId = options?.sessionId ?? `swarm-session-${Date.now()}`;
     this.mailbox = new MailboxKernel();
@@ -132,9 +136,57 @@ export class SwarmCoordinator {
     this.ledger = new TurnLedger(sessionId);
     this.loopDetector = new LoopDetector(options?.loopOptions ?? { maxRepeats: 4, timeoutSeconds: 300 });
     this.shellGuardian = new ShellGuardian();
+    this.sandboxRunner = options?.sandboxRunner ?? new SandboxedCommandRunner({ guardian: this.shellGuardian });
     this.watchdog = new TaskWatchdog(options?.watchdogConfig ?? { maxStepCount: 40 });
 
     this.registerStandardSwarmAgents();
+  }
+
+  /**
+   * Executes a shell command inside an OS-adaptive sandbox interlocked with ShellGuardian.
+   */
+  public async executeCommand(
+    command: string,
+    options?: { workingDirectory?: string; timeoutMs?: number; env?: Record<string, string> },
+  ): Promise<SandboxExecutionResult> {
+    const result = await this.sandboxRunner.execute(command, options);
+
+    const hasActiveTurn = this.ledger.getActiveTurnId() !== null;
+    let ephemeralTurn = false;
+    if (!hasActiveTurn) {
+      this.ledger.begin("ephemeral-exec");
+      ephemeralTurn = true;
+    }
+
+    this.ledger.append(
+      "tool_dispatch",
+      {
+        tool: "sandboxed_command",
+        command,
+        allowed: result.allowed,
+        exitCode: result.exitCode,
+        isolationMode: result.isolationMode,
+        durationMs: result.durationMs,
+      },
+      "running",
+    );
+
+    if (ephemeralTurn) {
+      this.ledger.append(
+        "turn_done",
+        { status: result.exitCode === 0 ? "completed" : "failed" },
+        result.exitCode === 0 ? "completed" : "failed",
+      );
+    }
+
+    this.emit("command_executed", this.activeTaskId ?? "unassigned", "coder", {
+      command,
+      allowed: result.allowed,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      isolationMode: result.isolationMode,
+    });
+    return result;
   }
 
   private registerStandardSwarmAgents(): void {

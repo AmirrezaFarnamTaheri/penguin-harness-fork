@@ -18,5 +18,7 @@ export * from "./task-watchdog.js";
 export * from "./completion-tracker.js";
 export * from "./shell-guardian.js";
 export * from "./code-graph.js";
+export * from "./code-graph-watcher.js";
+export * from "./sandbox-runner.js";
 export * from "./repeat-tool-guard.js";
 export * from "./swarm-coordinator.js";

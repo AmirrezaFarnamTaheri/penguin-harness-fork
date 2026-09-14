@@ -80,6 +80,168 @@ export class CodeGraph {
     return Array.from(this.nodes.values(), cloneNode);
   }
 
+  public removeNode(id: string): void {
+    if (!this.nodes.has(id)) return;
+    this.nodes.delete(id);
+
+    const outEdges = this.outgoing.get(id) ?? [];
+    for (const edge of outEdges) {
+      const inList = this.incoming.get(edge.target);
+      if (inList) {
+        this.incoming.set(
+          edge.target,
+          inList.filter((e) => !(e.source === id && e.target === edge.target && e.kind === edge.kind)),
+        );
+      }
+    }
+    this.outgoing.delete(id);
+
+    const inEdges = this.incoming.get(id) ?? [];
+    for (const edge of inEdges) {
+      const outList = this.outgoing.get(edge.source);
+      if (outList) {
+        this.outgoing.set(
+          edge.source,
+          outList.filter((e) => !(e.source === edge.source && e.target === id && e.kind === edge.kind)),
+        );
+      }
+    }
+    this.incoming.delete(id);
+  }
+
+  public removeFile(filePath: string): void {
+    const toRemove: string[] = [];
+    for (const [id, node] of this.nodes) {
+      if (node.filePath === filePath || id.startsWith(filePath + "#")) {
+        toRemove.push(id);
+      }
+    }
+    for (const id of toRemove) {
+      this.removeNode(id);
+    }
+  }
+
+  public updateFile(summary: FileSummary): void {
+    this.removeFile(summary.filePath);
+
+    this.addNode({
+      id: summary.filePath,
+      name: summary.filePath.split("/").pop() || summary.filePath,
+      filePath: summary.filePath,
+      kind: "file",
+      loc: summary.linesOfCode,
+      exports: summary.exports,
+      imports: summary.imports,
+    });
+
+    for (const cls of summary.classes) {
+      const id = `${summary.filePath}#${cls}`;
+      this.addNode({
+        id,
+        name: cls,
+        filePath: summary.filePath,
+        kind: "class",
+      });
+      this.addEdge({
+        source: summary.filePath,
+        target: id,
+        kind: "contains",
+      });
+    }
+
+    for (const iface of summary.interfaces) {
+      const id = `${summary.filePath}#${iface}`;
+      this.addNode({
+        id,
+        name: iface,
+        filePath: summary.filePath,
+        kind: "interface",
+      });
+      this.addEdge({
+        source: summary.filePath,
+        target: id,
+        kind: "contains",
+      });
+    }
+
+    for (const fn of summary.functions) {
+      const id = `${summary.filePath}#${fn}`;
+      this.addNode({
+        id,
+        name: fn,
+        filePath: summary.filePath,
+        kind: "function",
+      });
+      this.addEdge({
+        source: summary.filePath,
+        target: id,
+        kind: "contains",
+      });
+    }
+
+    const allFiles = Array.from(this.nodes.values()).filter(
+      (n) => n.kind === "file" && n.filePath !== summary.filePath,
+    );
+
+    const matchPath = (imp: string, path: string) => {
+      const base = path.replace(/\.[^/.]+$/, "");
+      return imp.endsWith(base) || base.endsWith(imp) || imp.includes(base);
+    };
+
+    for (const imp of summary.imports) {
+      const target = allFiles.find((other) => matchPath(imp, other.filePath));
+      if (target) {
+        this.addEdge({
+          source: summary.filePath,
+          target: target.filePath,
+          kind: "imports",
+        });
+      }
+    }
+
+    for (const other of allFiles) {
+      if (other.imports) {
+        for (const imp of other.imports) {
+          if (matchPath(imp, summary.filePath)) {
+            this.addEdge({
+              source: other.filePath,
+              target: summary.filePath,
+              kind: "imports",
+            });
+          }
+        }
+      }
+    }
+  }
+
+  public getAllEdges(): CodeGraphEdge[] {
+    const edges: CodeGraphEdge[] = [];
+    for (const list of this.outgoing.values()) {
+      for (const edge of list) {
+        edges.push(cloneEdge(edge));
+      }
+    }
+    return edges;
+  }
+
+  public toJSON(): { nodes: CodeGraphNode[]; edges: CodeGraphEdge[] } {
+    return {
+      nodes: this.getAllNodes(),
+      edges: this.getAllEdges(),
+    };
+  }
+
+  public static fromJSON(data: { nodes: CodeGraphNode[]; edges: CodeGraphEdge[] }): CodeGraph {
+    const graph = new CodeGraph();
+    for (const node of data.nodes) {
+      graph.addNode(node);
+    }
+    for (const edge of data.edges) {
+      graph.addEdge(edge);
+    }
+    return graph;
+  }
+
   public addEdge(edge: CodeGraphEdge): void {
     const stored = cloneEdge(edge);
     let outList = this.outgoing.get(stored.source);

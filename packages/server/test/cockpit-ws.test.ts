@@ -42,4 +42,42 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(json.result.rounds).toBeGreaterThanOrEqual(1);
     expect(json.result.artifacts.length).toBeGreaterThan(0);
   });
+
+  it("serves key fleet metrics and handles synthetic probes", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const res = await app.request("/api/cockpit/keys");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.reports.length).toBeGreaterThan(0);
+    expect(json.stats.healthyCount).toBeGreaterThan(0);
+    expect(json.snapshot.healthy).toBe(true);
+
+    // Trigger probe
+    const probeRes = await app.request("/api/cockpit/keys/probe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "anthropic",
+        maskedKey: json.reports[0].keys[0].maskedKey,
+      }),
+    });
+    expect(probeRes.status).toBe(200);
+    const probeJson = (await probeRes.json()) as any;
+    expect(probeJson.success).toBe(true);
+    expect(probeJson.result.latencyMs).toBeGreaterThan(0);
+  });
+
+  it("serves live code graph topology snapshot via GET /topology", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const res = await app.request("/api/cockpit/topology");
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.nodes).toBeDefined();
+    expect(json.edges).toBeDefined();
+    expect(json.stats).toBeDefined();
+  });
 });

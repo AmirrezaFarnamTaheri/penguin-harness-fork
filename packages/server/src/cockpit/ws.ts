@@ -12,7 +12,12 @@
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
-import { SwarmCoordinator, type SwarmEvent } from "@prismshadow/penguin-core";
+import {
+  SwarmCoordinator,
+  KeyFleetMonitor,
+  CodeGraphWatcher,
+  type SwarmEvent,
+} from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
 
@@ -21,9 +26,12 @@ const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
 export interface CockpitWebSocketDeps {
   authService?: AuthService;
   log?: (line: string) => void;
+  workspaceRoot?: string;
 }
 
 let sharedCoordinator: SwarmCoordinator | null = null;
+let sharedKeyFleet: KeyFleetMonitor | null = null;
+let sharedCodeGraphWatcher: CodeGraphWatcher | null = null;
 
 export function getSharedSwarmCoordinator(): SwarmCoordinator {
   if (!sharedCoordinator) {
@@ -32,9 +40,26 @@ export function getSharedSwarmCoordinator(): SwarmCoordinator {
   return sharedCoordinator;
 }
 
+export function getSharedKeyFleetMonitor(): KeyFleetMonitor {
+  if (!sharedKeyFleet) {
+    sharedKeyFleet = new KeyFleetMonitor();
+  }
+  return sharedKeyFleet;
+}
+
+export function getSharedCodeGraphWatcher(workspaceRoot = process.cwd()): CodeGraphWatcher {
+  if (!sharedCodeGraphWatcher) {
+    sharedCodeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
+    void sharedCodeGraphWatcher.init();
+  }
+  return sharedCodeGraphWatcher;
+}
+
 export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocketDeps = {}): void {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   const coordinator = getSharedSwarmCoordinator();
+  const keyFleet = getSharedKeyFleetMonitor();
+  const codeGraphWatcher = getSharedCodeGraphWatcher(deps.workspaceRoot);
   const connectedClients = new Set<WebSocket>();
 
   // Subscribe coordinator events and broadcast to all connected cockpit clients
@@ -43,6 +68,37 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       type: "swarm_event",
       timestamp: Date.now(),
       event,
+    });
+    for (const ws of connectedClients) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(payload);
+      }
+    }
+  });
+
+  // Subscribe key fleet updates and broadcast to cockpit clients
+  keyFleet.subscribe((_stats) => {
+    const payload = JSON.stringify({
+      type: "key_fleet_update",
+      timestamp: Date.now(),
+      keyFleet: keyFleet.getCockpitSnapshot(),
+      reports: keyFleet.getFleetReport(),
+      stats: keyFleet.getFleetStats(),
+    });
+    for (const ws of connectedClients) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(payload);
+      }
+    }
+  });
+
+  // Subscribe code graph changes and broadcast to cockpit clients
+  codeGraphWatcher.on("change", (ev) => {
+    const payload = JSON.stringify({
+      type: "topology_change",
+      timestamp: Date.now(),
+      event: ev,
+      stats: codeGraphWatcher.getStats(),
     });
     for (const ws of connectedClients) {
       if (ws.readyState === ws.OPEN) {
@@ -80,6 +136,48 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           const msg = JSON.parse(raw.toString());
           if (msg.type === "ping") {
             ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+            return;
+          }
+
+          if (msg.type === "probe_key") {
+            const provider = typeof msg.provider === "string" ? msg.provider : "anthropic";
+            const maskedKey = typeof msg.maskedKey === "string" ? msg.maskedKey : "";
+            const result = await keyFleet.probeKey(provider, maskedKey);
+            ws.send(
+              JSON.stringify({
+                type: "key_probe_settled",
+                result,
+                timestamp: Date.now(),
+              }),
+            );
+            return;
+          }
+
+          if (msg.type === "probe_fleet") {
+            const results = await keyFleet.probeFleet();
+            ws.send(
+              JSON.stringify({
+                type: "fleet_probe_settled",
+                results,
+                timestamp: Date.now(),
+              }),
+            );
+            return;
+          }
+
+          if (msg.type === "key_action") {
+            const action = msg.action;
+            const provider = typeof msg.provider === "string" ? msg.provider : "";
+            const maskedKey = typeof msg.maskedKey === "string" ? msg.maskedKey : "";
+            if (action === "revive") {
+              keyFleet.reviveKey(provider, maskedKey);
+            } else if (action === "cooldown") {
+              keyFleet.cooldownKey(provider, maskedKey, typeof msg.cooldownMs === "number" ? msg.cooldownMs : 60_000);
+            } else if (action === "evict") {
+              keyFleet.evictKey(provider, maskedKey);
+            } else if (action === "revive_all") {
+              keyFleet.reviveAllCooldowns();
+            }
             return;
           }
 
@@ -137,7 +235,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
   });
 }
 
-export function buildCockpitSnapshot(coordinator: SwarmCoordinator) {
+export function buildCockpitSnapshot(
+  coordinator: SwarmCoordinator = getSharedSwarmCoordinator(),
+  keyFleet: KeyFleetMonitor = getSharedKeyFleetMonitor(),
+  codeGraphWatcher: CodeGraphWatcher = getSharedCodeGraphWatcher(),
+) {
   return {
     type: "cockpit_init",
     timestamp: Date.now(),
@@ -150,16 +252,8 @@ export function buildCockpitSnapshot(coordinator: SwarmCoordinator) {
       mailbox: coordinator.getMailboxSummaries(),
       watchdog: coordinator.getWatchdogStatus(),
       replay: coordinator.getReplayView(),
-      keyFleet: {
-        healthy: true,
-        activeCount: 4,
-        providers: [
-          { provider: "anthropic", status: "active", latencyMs: 142, cooldownSec: 0 },
-          { provider: "openai", status: "active", latencyMs: 185, cooldownSec: 0 },
-          { provider: "google", status: "active", latencyMs: 98, cooldownSec: 0 },
-          { provider: "groq", status: "active", latencyMs: 45, cooldownSec: 0 },
-        ],
-      },
+      keyFleet: keyFleet.getCockpitSnapshot(),
+      topology: codeGraphWatcher.getStats(),
     },
   };
 }
