@@ -1600,13 +1600,16 @@ export function Sidebar({
         icon: COMPANY_NAV_ICONS[key],
         note: null,
       }))
-    : navKeysFor(user?.isAdmin === true).map((key) => ({
-        key,
-        to: `/${key}`,
-        label: S.nav[key],
-        icon: NAV_ICONS[key],
-        note: navNoteFor(badges, `/${key}`),
-      }));
+    : navKeysFor(user?.isAdmin === true).map((key) => {
+        const path = key === "contextBreakdown" ? "/context-breakdown" : `/${key}`;
+        return {
+          key,
+          to: path,
+          label: S.nav[key],
+          icon: NAV_ICONS[key],
+          note: navNoteFor(badges, path),
+        };
+      });
 
   return (
     <div className="flex h-full w-full flex-col">

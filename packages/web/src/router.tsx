@@ -18,11 +18,42 @@ const AppLayout = lazy(() =>
 const LoginPage = lazy(() =>
   import("./pages/login").then(({ LoginPage }) => ({ default: LoginPage })),
 );
+const CockpitPage = lazy(() =>
+  import("./features/agent/agent-cockpit").then(({ CockpitPage }) => ({ default: CockpitPage })),
+);
+const TopologyPage = lazy(() =>
+  import("./features/topology/topology-page").then(({ TopologyPage }) => ({ default: TopologyPage })),
+);
+const GuardianPage = lazy(() =>
+  import("./features/guardian/guardian-page").then(({ GuardianPage }) => ({ default: GuardianPage })),
+);
+const ConsensusPage = lazy(() =>
+  import("./features/consensus/consensus-page").then(({ ConsensusPage }) => ({ default: ConsensusPage })),
+);
+const ContextBreakdownPage = lazy(() =>
+  import("./features/context/context-breakdown-page").then(({ ContextBreakdownPage }) => ({
+    default: ContextBreakdownPage,
+  })),
+);
 const ChatPage = lazy(() =>
   import("./features/chat/chat-page").then(({ ChatPage }) => ({ default: ChatPage })),
 );
 const AgentsPage = lazy(() =>
   import("./features/agents/agents-page").then(({ AgentsPage }) => ({ default: AgentsPage })),
+);
+const KanbanPage = lazy(() =>
+  import("./features/kanban/kanban-page").then(({ KanbanPage }) => ({ default: KanbanPage })),
+);
+const PipelinesPage = lazy(() =>
+  import("./features/pipelines/pipelines-page").then(({ PipelinesPage }) => ({
+    default: PipelinesPage,
+  })),
+);
+const WikiPage = lazy(() =>
+  import("./features/wiki/wiki-page").then(({ WikiPage }) => ({ default: WikiPage })),
+);
+const SkillsPage = lazy(() =>
+  import("./features/skills/skills-page").then(({ SkillsPage }) => ({ default: SkillsPage })),
 );
 const AgentSettingsPage = lazy(() =>
   import("./features/agents/agent-settings-page").then(({ AgentSettingsPage }) => ({
@@ -34,6 +65,9 @@ const PluginsPage = lazy(() =>
 );
 const ModelsPage = lazy(() =>
   import("./features/models/models-page").then(({ ModelsPage }) => ({ default: ModelsPage })),
+);
+const GatewayPage = lazy(() =>
+  import("./features/gateway/gateway-page").then(({ GatewayPage }) => ({ default: GatewayPage })),
 );
 const UsagePage = lazy(() =>
   import("./features/usage/usage-page").then(({ UsagePage }) => ({ default: UsagePage })),
@@ -219,6 +253,50 @@ export function AppRouter() {
                 }
               />
               <Route
+                path="/cockpit"
+                element={
+                  <RouteContent>
+                    <CockpitPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/topology"
+                element={
+                  <RouteContent>
+                    <TopologyPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/guardian"
+                element={
+                  <RouteContent>
+                    <GuardianPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/consensus"
+                element={
+                  <RouteContent>
+                    <ConsensusPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/context-breakdown"
+                element={
+                  <RouteContent>
+                    <ContextBreakdownPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/contextBreakdown"
+                element={<Navigate to="/context-breakdown" replace />}
+              />
+              <Route
                 path="/agents"
                 element={
                   <RouteContent>
@@ -235,6 +313,38 @@ export function AppRouter() {
                 }
               />
               <Route
+                path="/kanban"
+                element={
+                  <RouteContent>
+                    <KanbanPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/pipelines"
+                element={
+                  <RouteContent>
+                    <PipelinesPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/wiki"
+                element={
+                  <RouteContent>
+                    <WikiPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/skills"
+                element={
+                  <RouteContent>
+                    <SkillsPage />
+                  </RouteContent>
+                }
+              />
+              <Route
                 path="/plugins"
                 element={
                   <RouteContent>
@@ -247,6 +357,14 @@ export function AppRouter() {
                 element={
                   <RouteContent>
                     <ModelsPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/gateway"
+                element={
+                  <RouteContent>
+                    <GatewayPage />
                   </RouteContent>
                 }
               />

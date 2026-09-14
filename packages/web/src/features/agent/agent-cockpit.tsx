@@ -2,11 +2,18 @@ import { useState } from "react";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
+import { useDocumentTitle } from "../../lib/use-document-title";
+import { S } from "../../lib/strings";
+import { TopologyPage } from "../topology/topology-page";
+import { GuardianPage } from "../guardian/guardian-page";
+import { ConsensusPage } from "../consensus/consensus-page";
+import { ContextBreakdownPage } from "../context/context-breakdown-page";
 
 export interface AgentCockpitProps {
-  open: boolean;
-  onClose: () => void;
+  open?: boolean;
+  onClose?: () => void;
   sessionId?: string;
+  embedded?: boolean;
 }
 
 interface MockTurnSummary {
@@ -26,17 +33,6 @@ interface MockMailboxEntry {
   leaseRemainingSec?: number;
 }
 
-interface MockCompactionAnchor {
-  anchorId: string;
-  phase: "turn-start" | "in-loop" | "agent-session";
-  trigger: "manual" | "auto";
-  preTokens: number;
-  postTokens: number;
-  foldedCount: number;
-  durationMs: number;
-  timestamp: string;
-}
-
 export interface SwarmAgentNode {
   id: string;
   role: "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
@@ -53,8 +49,15 @@ export interface SwarmEdge {
   activeCount: number;
 }
 
-export function AgentCockpit({ open, onClose, sessionId = "default-session" }: AgentCockpitProps) {
-  const [tab, setTab] = useState<"ledger" | "mailbox" | "loop" | "compaction" | "swarm">("ledger");
+export function AgentCockpit({
+  open,
+  onClose,
+  sessionId = "default-session",
+  embedded = false,
+}: AgentCockpitProps) {
+  const [tab, setTab] = useState<
+    "topology" | "guardian" | "consensus" | "context" | "ledger" | "mailbox" | "loop" | "swarm"
+  >("topology");
 
   // State: Turn Ledger
   const [activeTurn] = useState<string>("turn-7a8f9c2d");
@@ -124,30 +127,6 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
   const [filesCompleted] = useState(28);
   const [totalFiles] = useState(40);
 
-  // State: Compaction Anchors
-  const [anchors, setAnchors] = useState<MockCompactionAnchor[]>([
-    {
-      anchorId: "anchor-c81e9f",
-      phase: "turn-start",
-      trigger: "auto",
-      preTokens: 78500,
-      postTokens: 24300,
-      foldedCount: 14,
-      durationMs: 450,
-      timestamp: "2 mins ago",
-    },
-    {
-      anchorId: "anchor-a24b7d",
-      phase: "in-loop",
-      trigger: "manual",
-      preTokens: 64200,
-      postTokens: 19800,
-      foldedCount: 10,
-      durationMs: 380,
-      timestamp: "18 mins ago",
-    },
-  ]);
-
   // State: Swarm & Handoff Topology (from agent-teams-ai GraphDataPort & aif-handoff)
   const [swarmNodes] = useState<SwarmAgentNode[]>([
     {
@@ -196,40 +175,64 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
     { from: "coder", to: "tester", kind: "handoff", activeCount: 0 },
   ]);
 
-  const handleManualCompact = () => {
-    const newAnchor: MockCompactionAnchor = {
-      anchorId: `anchor-${Math.random().toString(16).slice(2, 8)}`,
-      phase: "agent-session",
-      trigger: "manual",
-      preTokens: 42000,
-      postTokens: 14800,
-      foldedCount: 6,
-      durationMs: 290,
-      timestamp: "Just now",
-    };
-    setAnchors([newAnchor, ...anchors]);
-  };
-
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
     setDispatchedCount((c) => c + 1);
     setMessageText("");
   };
 
-  return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Agent War Room & Autonomous Cockpit"
-      widthClass="sm:max-w-3xl"
-    >
-      <div className="flex flex-col gap-4">
+  const bodyContent = (
+    <div className="flex flex-col gap-4">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-800 gap-2">
+        <div className="flex border-b border-gray-200 dark:border-gray-800 gap-1 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setTab("topology")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "topology"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Code Topology
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("guardian")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "guardian"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Shell Guardian
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("consensus")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "consensus"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Quorum Consensus
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("context")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "context"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Context Breakdown
+          </button>
           <button
             type="button"
             onClick={() => setTab("ledger")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === "ledger"
                 ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
@@ -240,7 +243,7 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           <button
             type="button"
             onClick={() => setTab("mailbox")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === "mailbox"
                 ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
@@ -251,39 +254,56 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           <button
             type="button"
             onClick={() => setTab("loop")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === "loop"
                 ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
           >
-            Loop & Circuit Breaker
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("compaction")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
-              tab === "compaction"
-                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-            }`}
-          >
-            Context Anchors ({anchors.length})
+            Loop Breaker
           </button>
           <button
             type="button"
             onClick={() => setTab("swarm")}
-            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === "swarm"
                 ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
           >
-            Swarm Topology ({swarmNodes.length})
+            Swarm ({swarmNodes.length})
           </button>
         </div>
 
-        {/* Tab 1: Turn Ledger */}
+        {/* Tab: Code Topology */}
+        {tab === "topology" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <TopologyPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Shell Guardian */}
+        {tab === "guardian" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <GuardianPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Quorum Consensus */}
+        {tab === "consensus" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <ConsensusPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Context Breakdown */}
+        {tab === "context" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <ContextBreakdownPage embedded sessionId={sessionId} />
+          </div>
+        )}
+
+        {/* Tab: Turn Ledger */}
         {tab === "ledger" && (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
@@ -489,79 +509,6 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           </div>
         )}
 
-        {/* Tab 4: Compaction Anchors */}
-        {tab === "compaction" && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-gray-600 dark:text-gray-400">
-                Dynamic Context Pruning folds earlier conversation turns into structured memory
-                anchors.
-              </div>
-              <Button size="sm" variant="secondary" onClick={handleManualCompact}>
-                Compact History Now
-              </Button>
-            </div>
-
-            <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto pr-1">
-              {anchors.map((anc) => {
-                const savingsPct = Math.round(
-                  ((anc.preTokens - anc.postTokens) / anc.preTokens) * 100,
-                );
-                return (
-                  <div
-                    key={anc.anchorId}
-                    className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-gray-800 dark:text-gray-200">
-                          {anc.anchorId}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                          -{savingsPct}% tokens saved
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-gray-400 font-mono">
-                        {anc.timestamp} • {anc.durationMs}ms
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                      <span>
-                        Pre:{" "}
-                        <strong className="text-gray-700 dark:text-gray-300">
-                          {anc.preTokens.toLocaleString()}
-                        </strong>{" "}
-                        tok
-                      </span>
-                      <span>
-                        Post:{" "}
-                        <strong className="text-gray-700 dark:text-gray-300">
-                          {anc.postTokens.toLocaleString()}
-                        </strong>{" "}
-                        tok
-                      </span>
-                      <span>
-                        Folded:{" "}
-                        <strong className="text-gray-700 dark:text-gray-300">
-                          {anc.foldedCount}
-                        </strong>{" "}
-                        turns
-                      </span>
-                      <span>
-                        Phase: <code className="text-cyan-600 dark:text-cyan-400">{anc.phase}</code>
-                      </span>
-                      <span>
-                        Trigger:{" "}
-                        <code className="text-gray-600 dark:text-gray-400">{anc.trigger}</code>
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Tab 5: Swarm Topology */}
         {tab === "swarm" && (
           <div className="flex flex-col gap-4">
@@ -656,6 +603,43 @@ export function AgentCockpit({ open, onClose, sessionId = "default-session" }: A
           </div>
         )}
       </div>
+  );
+
+  if (embedded || open === undefined) {
+    return (
+      <div className="h-full overflow-y-auto p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Agent War Room & Autonomous Cockpit
+          </h2>
+          {onClose && (
+            <Button size="sm" variant="ghost" onClick={onClose}>
+              Close
+            </Button>
+          )}
+        </div>
+        <div className="mt-3">{bodyContent}</div>
+      </div>
+    );
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose ?? (() => {})}
+      title="Agent War Room & Autonomous Cockpit"
+      widthClass="sm:max-w-5xl"
+    >
+      {bodyContent}
     </Modal>
+  );
+}
+
+export function CockpitPage() {
+  useDocumentTitle(S.nav.cockpit ?? "Agent Cockpit");
+  return (
+    <div className="h-full p-4 overflow-y-auto">
+      <AgentCockpit embedded={true} />
+    </div>
   );
 }

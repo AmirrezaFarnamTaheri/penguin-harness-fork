@@ -9,6 +9,7 @@ import { NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-route
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
+import { navKeysFor } from "../../lib/nav-group-collapse";
 import { navNoteFor, useUpdateBadges } from "../../lib/use-update-badges";
 import { useAuth } from "../../state/auth";
 import { useProject } from "../../state/project";
@@ -131,13 +132,16 @@ function CollapsedRail({ onExpand }: { onExpand: () => void }) {
         icon: COMPANY_NAV_ICONS[key],
         note: null,
       }))
-    : [
-        { to: "/agents", label: S.nav.agents, icon: NAV_ICONS.agents },
-        { to: "/plugins", label: S.nav.plugins, icon: NAV_ICONS.plugins },
-        { to: "/models", label: S.nav.models, icon: NAV_ICONS.models },
-        { to: "/usage", label: S.nav.usage, icon: NAV_ICONS.usage },
-        { to: "/benchmark", label: S.nav.benchmark, icon: NAV_ICONS.benchmark },
-      ].map((item) => ({ ...item, key: item.to, note: navNoteFor(badges, item.to) }));
+    : navKeysFor(user?.isAdmin === true).map((key) => {
+        const path = key === "contextBreakdown" ? "/context-breakdown" : `/${key}`;
+        return {
+          key: path,
+          to: path,
+          label: S.nav[key],
+          icon: NAV_ICONS[key],
+          note: navNoteFor(badges, path),
+        };
+      });
 
   /**
    * The rail's avatar hangs its menu off the rail's OUTER edge rather than over the rail:

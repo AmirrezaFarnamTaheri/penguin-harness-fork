@@ -18,6 +18,7 @@ export interface HudStatuslineProps {
   onOpenGateway?: () => void;
   onOpenCockpit?: () => void;
   onOpenKanban?: () => void;
+  onOpenContext?: () => void;
 }
 
 export function HudStatusline({
@@ -32,6 +33,7 @@ export function HudStatusline({
   onOpenGateway,
   onOpenCockpit,
   onOpenKanban,
+  onOpenContext,
 }: HudStatuslineProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -48,8 +50,14 @@ export function HudStatusline({
         {/* Context Capacity Meter */}
         <div
           className="flex items-center gap-1.5 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
-          onClick={() => setExpanded(!expanded)}
-          title={`Context Window: ${(tokensUsed / 1000).toFixed(1)}k / ${(contextWindow / 1000).toFixed(0)}k tokens (${capacityPct}%)`}
+          onClick={() => {
+            if (onOpenContext) {
+              onOpenContext();
+            } else {
+              setExpanded(!expanded);
+            }
+          }}
+          title={`Context Window: ${(tokensUsed / 1000).toFixed(1)}k / ${(contextWindow / 1000).toFixed(0)}k tokens (${capacityPct}%) - Click to open Context Breakdown`}
         >
           <span className="font-medium text-gray-700 dark:text-gray-300">
             {(tokensUsed / 1000).toFixed(1)}k
@@ -87,7 +95,7 @@ export function HudStatusline({
             }`}
             title={`Prompt Cache: ${promptCache.remainingSeconds}s TTL remaining`}
           >
-            <span>⚡ Cache</span>
+            <span>Cache</span>
             {promptCache.remainingSeconds > 0 && <span>{promptCache.remainingSeconds}s</span>}
           </div>
         )}
@@ -128,7 +136,7 @@ export function HudStatusline({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
             title="Open Agent War Room & Autonomous Cockpit"
           >
-            <span>⚡ Cockpit</span>
+            <span>Cockpit</span>
           </button>
         )}
 
@@ -140,7 +148,7 @@ export function HudStatusline({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors"
             title="Open Multi-Agent Kanban & Pipeline"
           >
-            <span>📋 Kanban</span>
+            <span>Kanban</span>
           </button>
         )}
 
