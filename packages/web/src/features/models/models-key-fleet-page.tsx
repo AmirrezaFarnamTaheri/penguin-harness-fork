@@ -184,7 +184,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
   },
 ];
 
-export function ModelsKeyFleetPage() {
+export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [reports, setReports] = useState<ModelKeyFleetReport[]>(INITIAL_FLEET_REPORTS);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "healthy" | "cooldown" | "evicted">("all");
@@ -295,36 +295,38 @@ export function ModelsKeyFleetPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className={`flex flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
       {/* Top Banner & Title */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <KeyIcon size={22} />
+      {!embedded && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <KeyIcon size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Model Key Fleet & Resilient Failover Console
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease routing
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Model Key Fleet & Resilient Failover Console
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease routing
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {stats.cooldownCount > 0 && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleReviveAllCooldowns}
-            >
-              <RefreshIcon size={13} />
-              Revive All Cooldowns ({stats.cooldownCount})
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {stats.cooldownCount > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleReviveAllCooldowns}
+              >
+                <RefreshIcon size={13} />
+                Revive All Cooldowns ({stats.cooldownCount})
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Fleet Telemetry Metrics Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">

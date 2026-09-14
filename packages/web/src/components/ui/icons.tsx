@@ -305,6 +305,16 @@ export const NAV_ICONS = {
     "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
   /** Context Token Breakdown & Compaction Inspector (lucide pie-chart). */
   contextBreakdown: "M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z",
+  /** Memory Vault & Semantic Knowledge Studio (lucide brain). */
+  memory:
+    "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18ZM12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z",
+  /** Model Key Fleet & Failover Console (lucide key). */
+  keyFleet: "M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3M7.5 21a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z",
+  /** Execution Waterfall & Flamegraph Profiler (lucide flame). */
+  flamegraph:
+    "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z",
+  /** Session Time-Travel & Snapshot Rewind Studio (lucide history). */
+  snapshots: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5M12 7v5l4 2",
   agents: AGENT_GROUP_ICON,
   /** Task Kanban board (lucide square-kanban). */
   kanban:
@@ -357,3 +367,36 @@ export const NAV_ICONS = {
 /** Company mode (lucide building-2: a tower with wings and windows), the settings rail, the sidebar's organization groups and the collapsed rail's toggle. */
 export const COMPANY_MODE_ICON =
   "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4";
+
+export function BrainIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d={NAV_ICONS.memory} />
+    </svg>
+  );
+}
+
+export function KeyRoundIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d={NAV_ICONS.keyFleet} />
+    </svg>
+  );
+}
+
+export function FlameIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d={NAV_ICONS.flamegraph} />
+    </svg>
+  );
+}
+
+export function HistoryIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d={NAV_ICONS.snapshots} />
+    </svg>
+  );
+}
+

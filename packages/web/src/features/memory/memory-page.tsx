@@ -211,7 +211,7 @@ tags: [security, auth, tokens]
   },
 ];
 
-export function MemoryPage() {
+export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [topics, setTopics] = useState<MemoryTopicNode[]>(INITIAL_TOPICS);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>("coding-guidelines");
   const [searchQuery, setSearchQuery] = useState("");
@@ -228,29 +228,32 @@ export function MemoryPage() {
 
   // Telemetry Aggregates
   const stats = useMemo(() => {
-    const userCount = topics.filter((t) => t.scope === "user").length;
-    const workspaceCount = topics.filter((t) => t.scope === "workspace").length;
-    const totalBytes = topics.reduce((sum, t) => sum + t.bytes, 0);
-    const totalTokens = topics.reduce((sum, t) => sum + t.tokens, 0);
-    return { userCount, workspaceCount, totalBytes, totalTokens };
+    const totalBytes = topics.reduce((acc, t) => acc + t.bytes, 0);
+    const totalTokens = topics.reduce((acc, t) => acc + t.tokens, 0);
+    const userScopeCount = topics.filter((t) => t.scope === "user").length;
+    const workspaceScopeCount = topics.filter((t) => t.scope === "workspace").length;
+    return {
+      totalBytes,
+      totalTokens,
+      userScopeCount,
+      workspaceScopeCount,
+    };
   }, [topics]);
 
-  const handleSaveTopic = (id: string, updatedContent: string, newTitle?: string) => {
+  const handleUpdateTopic = (id: string, updatedContent: string, newTitle?: string) => {
     setTopics((prev) =>
       prev.map((t) => {
-        if (t.id === id) {
-          const bytes = new Blob([updatedContent]).size;
-          const tokens = Math.ceil(bytes / 4);
-          return {
-            ...t,
-            content: updatedContent,
-            title: newTitle || t.title,
-            bytes,
-            tokens,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return t;
+        if (t.id !== id) return t;
+        const bytes = new TextEncoder().encode(updatedContent).length;
+        const tokens = Math.ceil(bytes / 4);
+        return {
+          ...t,
+          content: updatedContent,
+          title: newTitle || t.title,
+          bytes,
+          tokens,
+          updatedAt: new Date().toISOString(),
+        };
       })
     );
   };
@@ -263,7 +266,7 @@ export function MemoryPage() {
   };
 
   const handleCreateTopic = () => {
-    const newId = `topic-${Date.now().toString().slice(-6)}`;
+    const newId = `topic-${Date.now()}`;
     const newName = `new-topic-${Date.now().toString().slice(-4)}.md`;
     const newTopic: MemoryTopicNode = {
       id: newId,
@@ -281,38 +284,40 @@ export function MemoryPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 p-6 min-h-screen bg-background text-foreground">
+    <div className={`flex flex-col gap-5 ${embedded ? "p-3" : "p-6 min-h-screen"} bg-background text-foreground`}>
       {/* Page Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border pb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
-            <BrainIcon size={24} />
+      {!embedded && (
+        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
+              <BrainIcon size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Agent Memory Vault & Knowledge Studio
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Visual Knowledge Graph, semantic recall testing, and persistent memory topic management
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Agent Memory Vault & Knowledge Studio
-            </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Visual Knowledge Graph, semantic recall testing, and persistent memory topic management
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" className="h-8">
-            <UploadIcon size={14} />
-            <span className="ml-1.5">Import Scope</span>
-          </Button>
-          <Button size="sm" variant="secondary" className="h-8">
-            <DownloadIcon size={14} />
-            <span className="ml-1.5">Export Archive</span>
-          </Button>
-          <Button size="sm" variant="primary" onClick={handleCreateTopic} className="h-8">
-            <PlusIcon size={14} />
-            <span className="ml-1.5">New Memory Topic</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" className="h-8">
+              <UploadIcon size={14} />
+              <span className="ml-1.5">Import Scope</span>
+            </Button>
+            <Button size="sm" variant="secondary" className="h-8">
+              <DownloadIcon size={14} />
+              <span className="ml-1.5">Export Archive</span>
+            </Button>
+            <Button size="sm" variant="primary" onClick={handleCreateTopic} className="h-8">
+              <PlusIcon size={14} />
+              <span className="ml-1.5">New Memory Topic</span>
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
@@ -332,7 +337,7 @@ export function MemoryPage() {
             <span className="text-xs font-medium">User Scope</span>
             <UserIcon size={16} className="text-blue-400" />
           </div>
-          <div className="text-2xl font-bold text-blue-400 mt-1.5">{stats.userCount}</div>
+          <div className="text-2xl font-bold text-blue-400 mt-1.5">{stats.userScopeCount}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
             Cross-session personal profile
           </div>
@@ -343,7 +348,7 @@ export function MemoryPage() {
             <span className="text-xs font-medium">Workspace Scope</span>
             <FolderGitIcon size={16} className="text-emerald-400" />
           </div>
-          <div className="text-2xl font-bold text-emerald-400 mt-1.5">{stats.workspaceCount}</div>
+          <div className="text-2xl font-bold text-emerald-400 mt-1.5">{stats.workspaceScopeCount}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5">
             Project repository context
           </div>
@@ -448,7 +453,7 @@ export function MemoryPage() {
             {activeTab === "editor" ? (
               <MemoryDocumentStudio
                 topic={selectedTopic}
-                onSaveTopic={handleSaveTopic}
+                onSaveTopic={handleUpdateTopic}
                 onDeleteTopic={handleDeleteTopic}
               />
             ) : (

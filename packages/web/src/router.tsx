@@ -35,6 +35,24 @@ const ContextBreakdownPage = lazy(() =>
     default: ContextBreakdownPage,
   })),
 );
+const MemoryPage = lazy(() =>
+  import("./features/memory/memory-page").then(({ MemoryPage }) => ({ default: MemoryPage })),
+);
+const ModelsKeyFleetPage = lazy(() =>
+  import("./features/models/models-key-fleet-page").then(({ ModelsKeyFleetPage }) => ({
+    default: ModelsKeyFleetPage,
+  })),
+);
+const TraceFlamegraphPage = lazy(() =>
+  import("./features/traces/trace-flamegraph-page").then(({ TraceFlamegraphPage }) => ({
+    default: TraceFlamegraphPage,
+  })),
+);
+const SnapshotsPage = lazy(() =>
+  import("./features/snapshots/snapshots-page").then(({ SnapshotsPage }) => ({
+    default: SnapshotsPage,
+  })),
+);
 const ChatPage = lazy(() =>
   import("./features/chat/chat-page").then(({ ChatPage }) => ({ default: ChatPage })),
 );
@@ -295,6 +313,38 @@ export function AppRouter() {
               <Route
                 path="/contextBreakdown"
                 element={<Navigate to="/context-breakdown" replace />}
+              />
+              <Route
+                path="/memory"
+                element={
+                  <RouteContent>
+                    <MemoryPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/models/keys"
+                element={
+                  <RouteContent>
+                    <ModelsKeyFleetPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/traces/flamegraph"
+                element={
+                  <RouteContent>
+                    <TraceFlamegraphPage />
+                  </RouteContent>
+                }
+              />
+              <Route
+                path="/snapshots"
+                element={
+                  <RouteContent>
+                    <SnapshotsPage />
+                  </RouteContent>
+                }
               />
               <Route
                 path="/agents"

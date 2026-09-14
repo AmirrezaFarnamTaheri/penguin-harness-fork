@@ -1601,7 +1601,14 @@ export function Sidebar({
         note: null,
       }))
     : navKeysFor(user?.isAdmin === true).map((key) => {
-        const path = key === "contextBreakdown" ? "/context-breakdown" : `/${key}`;
+        const path =
+          key === "contextBreakdown"
+            ? "/context-breakdown"
+            : key === "keyFleet"
+              ? "/models/keys"
+              : key === "flamegraph"
+                ? "/traces/flamegraph"
+                : `/${key}`;
         return {
           key,
           to: path,

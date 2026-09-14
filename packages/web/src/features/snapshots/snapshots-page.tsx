@@ -118,7 +118,7 @@ const INITIAL_STATE_DETAILS: Record<number, AgentSnapshotState> = {
   },
 };
 
-export function SnapshotsPage() {
+export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [snapshots, setSnapshots] = useState<SnapshotVersionInfo[]>(INITIAL_SNAPSHOTS);
   const [stateDetails, setStateDetails] = useState(INITIAL_STATE_DETAILS);
   const [selectedVersion, setSelectedVersion] = useState<number>(1);
@@ -198,52 +198,54 @@ export function SnapshotsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className={`flex flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
       {/* Top Header & Banner */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <HistoryIcon size={22} />
+      {!embedded && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <HistoryIcon size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Session Time-Travel & Snapshot Rewind Studio
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Deterministic agent state checkpoints, cross-version diff inspection, and dual-mode rollback recovery
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Session Time-Travel & Snapshot Rewind Studio
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Deterministic agent state checkpoints, cross-version diff inspection, and dual-mode rollback recovery
-            </p>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                const dummyBlob = new Blob(["agent_state_archive"], { type: "application/gzip" });
+                const url = URL.createObjectURL(dummyBlob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `agent-v${currentSnapshot.version}.tar.gz`;
+                a.click();
+                setStatusMessage(`Exported snapshot v${currentSnapshot.version}.tar.gz`);
+              }}
+            >
+              <DownloadIcon size={13} />
+              Export Archive (.tar.gz)
+            </Button>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsCreatingModal(true)}
+            >
+              <PlusIcon size={13} />
+              Create Checkpoint
+            </Button>
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              const dummyBlob = new Blob(["agent_state_archive"], { type: "application/gzip" });
-              const url = URL.createObjectURL(dummyBlob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `agent-v${currentSnapshot.version}.tar.gz`;
-              a.click();
-              setStatusMessage(`Exported snapshot v${currentSnapshot.version}.tar.gz`);
-            }}
-          >
-            <DownloadIcon size={13} />
-            Export Archive (.tar.gz)
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setIsCreatingModal(true)}
-          >
-            <PlusIcon size={13} />
-            Create Checkpoint
-          </Button>
-        </div>
-      </div>
+      )}
 
       {/* Status Alert Notification (if active) */}
       {statusMessage && (

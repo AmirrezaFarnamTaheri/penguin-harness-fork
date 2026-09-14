@@ -69,6 +69,12 @@ export function panelLabel(kind: PanelKind): string {
       return S.nav.consensus ?? "Quorum Consensus";
     case "contextBreakdown":
       return S.nav.contextBreakdown ?? "Context Breakdown";
+    case "keyFleet":
+      return S.nav.keyFleet ?? "Key Fleet";
+    case "flamegraph":
+      return S.nav.flamegraph ?? "Flamegraph";
+    case "snapshots":
+      return S.nav.snapshots ?? "Snapshots";
   }
 }
 
@@ -100,5 +106,11 @@ export function panelGlyph(kind: PanelKind, size: number = ICON_SIZE.iconButton)
       return <GlyphIcon d={NAV_ICONS.consensus} size={size} />;
     case "contextBreakdown":
       return <GlyphIcon d={NAV_ICONS.contextBreakdown} size={size} />;
+    case "keyFleet":
+      return <GlyphIcon d={NAV_ICONS.keyFleet} size={size} />;
+    case "flamegraph":
+      return <GlyphIcon d={NAV_ICONS.flamegraph} size={size} />;
+    case "snapshots":
+      return <GlyphIcon d={NAV_ICONS.snapshots} size={size} />;
   }
 }

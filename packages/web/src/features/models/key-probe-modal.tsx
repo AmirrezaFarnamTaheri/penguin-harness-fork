@@ -136,7 +136,7 @@ export function KeyProbeModal({
                         <polyline
                           fill="none"
                           stroke="rgb(16, 185, 129)"
-                          strokeWidth="2.5"
+                          strokeWidth="2"
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           points={result.sparkline

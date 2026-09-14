@@ -52,7 +52,10 @@ export type PanelKind =
   | "topology"
   | "guardian"
   | "consensus"
-  | "contextBreakdown";
+  | "contextBreakdown"
+  | "keyFleet"
+  | "flamegraph"
+  | "snapshots";
 
 export const PANEL_KINDS: readonly PanelKind[] = [
   "agents",
@@ -68,6 +71,9 @@ export const PANEL_KINDS: readonly PanelKind[] = [
   "guardian",
   "consensus",
   "contextBreakdown",
+  "keyFleet",
+  "flamegraph",
+  "snapshots",
 ];
 
 export type DockTab =

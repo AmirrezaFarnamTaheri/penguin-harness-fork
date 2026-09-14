@@ -2,12 +2,17 @@ import { useState } from "react";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
 import { Input } from "../../components/ui/input.js";
+import { BrainIcon, KeyRoundIcon, FlameIcon, HistoryIcon } from "../../components/ui/icons.js";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
 import { TopologyPage } from "../topology/topology-page";
 import { GuardianPage } from "../guardian/guardian-page";
 import { ConsensusPage } from "../consensus/consensus-page";
 import { ContextBreakdownPage } from "../context/context-breakdown-page";
+import { MemoryPage } from "../memory/memory-page";
+import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
+import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
+import { SnapshotsPage } from "../snapshots/snapshots-page";
 
 export interface AgentCockpitProps {
   open?: boolean;
@@ -56,7 +61,18 @@ export function AgentCockpit({
   embedded = false,
 }: AgentCockpitProps) {
   const [tab, setTab] = useState<
-    "topology" | "guardian" | "consensus" | "context" | "ledger" | "mailbox" | "loop" | "swarm"
+    | "topology"
+    | "guardian"
+    | "consensus"
+    | "context"
+    | "memory"
+    | "keys"
+    | "flamegraph"
+    | "snapshots"
+    | "ledger"
+    | "mailbox"
+    | "loop"
+    | "swarm"
   >("topology");
 
   // State: Turn Ledger
@@ -183,6 +199,85 @@ export function AgentCockpit({
 
   const bodyContent = (
     <div className="flex flex-col gap-4">
+        {/* Live Telemetry Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={() => setTab("memory")}
+            className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
+          >
+            <div className="flex items-center justify-between w-full mb-1">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
+                Memory Vault
+              </span>
+              <BrainIcon size={16} className="text-purple-500" />
+            </div>
+            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              3 Topics <span className="text-xs font-normal text-gray-400">/ 4.2 KB</span>
+            </div>
+            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+              ● Synchronized
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab("keys")}
+            className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
+          >
+            <div className="flex items-center justify-between w-full mb-1">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
+                Model Key Fleet
+              </span>
+              <KeyRoundIcon size={16} className="text-amber-500" />
+            </div>
+            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              100% Healthy <span className="text-xs font-normal text-gray-400">(3 leases)</span>
+            </div>
+            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+              ● 0 Cooldowns
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab("flamegraph")}
+            className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
+          >
+            <div className="flex items-center justify-between w-full mb-1">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
+                Trace Flamegraph
+              </span>
+              <FlameIcon size={16} className="text-orange-500" />
+            </div>
+            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              TTFT: 350ms <span className="text-xs font-normal text-gray-400">/ 1.20s</span>
+            </div>
+            <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
+              ● 0 Causal Errors
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab("snapshots")}
+            className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
+          >
+            <div className="flex items-center justify-between w-full mb-1">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
+                Snapshot Rewind
+              </span>
+              <HistoryIcon size={16} className="text-blue-500" />
+            </div>
+            <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              v3 Active <span className="text-xs font-normal text-gray-400">(3 checkpoints)</span>
+            </div>
+            <div className="text-[11px] text-cyan-600 dark:text-cyan-400 mt-1 font-mono">
+              ● Time-Travel Ready
+            </div>
+          </button>
+        </div>
+
         {/* Navigation Tabs */}
         <div className="flex border-b border-gray-200 dark:border-gray-800 gap-1 overflow-x-auto">
           <button
@@ -228,6 +323,50 @@ export function AgentCockpit({
             }`}
           >
             Context Breakdown
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("memory")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "memory"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Memory Vault
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("keys")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "keys"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Model Key Fleet
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("flamegraph")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "flamegraph"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Trace Flamegraph
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("snapshots")}
+            className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+              tab === "snapshots"
+                ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+          >
+            Snapshot Rewind
           </button>
           <button
             type="button"
@@ -300,6 +439,34 @@ export function AgentCockpit({
         {tab === "context" && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
             <ContextBreakdownPage embedded sessionId={sessionId} />
+          </div>
+        )}
+
+        {/* Tab: Memory Vault */}
+        {tab === "memory" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <MemoryPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Model Key Fleet */}
+        {tab === "keys" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <ModelsKeyFleetPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Trace Flamegraph */}
+        {tab === "flamegraph" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <TraceFlamegraphPage embedded />
+          </div>
+        )}
+
+        {/* Tab: Snapshot Rewind */}
+        {tab === "snapshots" && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
+            <SnapshotsPage embedded />
           </div>
         )}
 

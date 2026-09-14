@@ -123,6 +123,10 @@ import { TopologyPage } from "../topology/topology-page";
 import { GuardianPage } from "../guardian/guardian-page";
 import { ConsensusPage } from "../consensus/consensus-page";
 import { ContextBreakdownPage } from "../context/context-breakdown-page";
+import { MemoryPage } from "../memory/memory-page";
+import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
+import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
+import { SnapshotsPage } from "../snapshots/snapshots-page";
 import { DockPanel } from "../dock/dock-panel";
 import { DockLauncher } from "../dock/dock-launcher";
 import { useDockMount } from "../dock/use-dock-mount";
@@ -1763,6 +1767,12 @@ export function ChatPage() {
             sessionId={selected.sessionId}
           />
         );
+      case "keyFleet":
+        return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
+      case "flamegraph":
+        return <TraceFlamegraphPage key={selected.sessionId} embedded />;
+      case "snapshots":
+        return <SnapshotsPage key={selected.sessionId} embedded />;
     }
   };
 

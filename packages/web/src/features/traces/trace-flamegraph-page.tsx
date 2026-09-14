@@ -156,7 +156,7 @@ const SAMPLE_TRACES: Record<string, ExecutionSpan[]> = {
   ],
 };
 
-export function TraceFlamegraphPage() {
+export function TraceFlamegraphPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [selectedTraceKey, setSelectedTraceKey] = useState<string>("trace-autonomous-refactor");
   const [selectedSpan, setSelectedSpan] = useState<ExecutionSpan | null>(null);
 
@@ -229,39 +229,41 @@ export function TraceFlamegraphPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
+    <div className={`flex h-full flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
       {/* Top Banner & Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <FlameIcon size={22} />
+      {!embedded && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <FlameIcon size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-foreground">
+                Deep Execution Waterfall & Flamegraph Profiler
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Sub-millisecond span profiling, time-to-first-token attribution, and root-cause failure causality
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Deep Execution Waterfall & Flamegraph Profiler
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Sub-millisecond span profiling, time-to-first-token attribution, and root-cause failure causality
-            </p>
-          </div>
-        </div>
 
-        {/* Trace Selection Dropdown */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Active Session:</span>
-          <select
-            value={selectedTraceKey}
-            onChange={(e) => {
-              setSelectedTraceKey(e.target.value);
-              setSelectedSpan(null);
-            }}
-            className="rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="trace-autonomous-refactor">Task-4819: Autonomous Refactor (1 Error)</option>
-            <option value="trace-codebase-indexing">Task-4818: Codebase Indexing (Clean)</option>
-          </select>
+          {/* Trace Selection Dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Active Session:</span>
+            <select
+              value={selectedTraceKey}
+              onChange={(e) => {
+                setSelectedTraceKey(e.target.value);
+                setSelectedSpan(null);
+              }}
+              className="rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="trace-autonomous-refactor">Task-4819: Autonomous Refactor (1 Error)</option>
+              <option value="trace-codebase-indexing">Task-4818: Codebase Indexing (Clean)</option>
+            </select>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Latency & Telemetry Metric Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
