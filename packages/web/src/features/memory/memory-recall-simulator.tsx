@@ -5,7 +5,17 @@ import { Input } from "../../components/ui/input";
 
 function SearchIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
@@ -14,7 +24,17 @@ function SearchIcon({ size = 14, className = "" }: { size?: number; className?: 
 
 function SparklesIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <path d="M12 3l1.912 5.888L20 10l-6.088 1.112L12 17l-1.912-5.888L4 10l6.088-1.112z" />
     </svg>
   );
@@ -22,7 +42,17 @@ function SparklesIcon({ size = 14, className = "" }: { size?: number; className?
 
 function SlidersIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <line x1="4" y1="21" x2="4" y2="14" />
       <line x1="4" y1="10" x2="4" y2="3" />
       <line x1="12" y1="21" x2="12" y2="12" />
@@ -38,7 +68,17 @@ function SlidersIcon({ size = 14, className = "" }: { size?: number; className?:
 
 function ArrowUpRightIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <line x1="7" y1="17" x2="17" y2="7" />
       <polyline points="7 7 17 7 17 17" />
     </svg>
@@ -78,13 +118,17 @@ export function MemoryRecallSimulator({
           </div>
 
           <div className="text-[11px] text-muted-foreground font-mono">
-            Recalled: <span className="font-semibold text-primary">{totalTokensRecalled}</span> tokens
+            Recalled: <span className="font-semibold text-primary">{totalTokensRecalled}</span>{" "}
+            tokens
           </div>
         </div>
 
         {/* Search Query Input */}
         <div className="relative">
-          <SearchIcon size={14} className="absolute left-2.5 top-2 text-muted-foreground pointer-events-none" />
+          <SearchIcon
+            size={14}
+            className="absolute left-2.5 top-2 text-muted-foreground pointer-events-none"
+          />
           <Input
             size="sm"
             value={query}
@@ -99,7 +143,9 @@ export function MemoryRecallSimulator({
           <div className="flex items-center gap-1.5">
             <SlidersIcon size={12} />
             <span>Similarity Threshold:</span>
-            <span className="font-mono font-medium text-foreground">{Math.round(threshold * 100)}%</span>
+            <span className="font-mono font-medium text-foreground">
+              {Math.round(threshold * 100)}%
+            </span>
           </div>
           <input
             type="range"
@@ -118,8 +164,12 @@ export function MemoryRecallSimulator({
         {recallResults.length === 0 ? (
           <div className="h-40 flex flex-col items-center justify-center text-center text-muted-foreground">
             <SearchIcon size={24} className="text-muted-foreground/40 mb-1" />
-            <p className="text-xs">No matching topics exceeded threshold ({Math.round(threshold * 100)}%)</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Try a broader query or lower the threshold</p>
+            <p className="text-xs">
+              No matching topics exceeded threshold ({Math.round(threshold * 100)}%)
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Try a broader query or lower the threshold
+            </p>
           </div>
         ) : (
           recallResults.map((result) => {
@@ -158,8 +208,8 @@ export function MemoryRecallSimulator({
                         pct >= 70
                           ? "bg-emerald-500/10 text-emerald-400"
                           : pct >= 40
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-muted text-muted-foreground"
+                            ? "bg-amber-500/10 text-amber-400"
+                            : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {pct}%

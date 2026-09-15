@@ -150,7 +150,7 @@ describe("global shortcut and tray manager", () => {
         platform: "win32",
         getAppOrigin: () => "http://localhost:1234",
         isServerRunning: () => true,
-        getWindow: () => ({ isVisible: () => isVisible, isMinimized: () => false } as never),
+        getWindow: () => ({ isVisible: () => isVisible, isMinimized: () => false }) as never,
         onToggleWindow: vi.fn(),
         onRestartServer: vi.fn(),
         onQuit: vi.fn(),

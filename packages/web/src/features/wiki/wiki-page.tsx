@@ -10,7 +10,7 @@ import type {
   WikiNodeType,
   WikiGraph,
   WikiLintReport,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
 import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -24,9 +24,12 @@ type WikiTab = "editor" | "neighbors" | "pathfinder" | "linter";
 
 const TYPE_TONES: Record<WikiNodeType, string> = {
   source: "bg-blue-500/10 text-blue-700 border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-300",
-  entity: "bg-purple-500/10 text-purple-700 border-purple-500/30 dark:bg-purple-950/30 dark:text-purple-300",
-  concept: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-300",
-  synthesis: "bg-amber-500/10 text-amber-700 border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300",
+  entity:
+    "bg-purple-500/10 text-purple-700 border-purple-500/30 dark:bg-purple-950/30 dark:text-purple-300",
+  concept:
+    "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-300",
+  synthesis:
+    "bg-amber-500/10 text-amber-700 border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300",
   unknown: "bg-gray-500/10 text-gray-700 border-gray-500/30 dark:bg-gray-950/30 dark:text-gray-300",
 };
 
@@ -76,63 +79,26 @@ export function WikiPage() {
 
       let loadedNodes: WikiNode[] = [];
       if (nodesRes && Array.isArray(nodesRes.nodes) && nodesRes.nodes.length > 0) {
-        loadedNodes = nodesRes.nodes.map((n) => ({
-          id: n.id,
-          title: n.id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-          type: "concept" as WikiNodeType,
-          tags: n.links || [],
-          aliases: [],
-          rawContent: `# ${n.id}\n\nLinks: ${(n.links || []).map((l) => `[[${l}]]`).join(", ")}`,
-          filePath: n.filePath,
-          metadata: {},
-        }));
-      } else {
-        loadedNodes = [
-          // Sample fallback if repository wiki is being initialized
-          {
-            id: "core-architecture",
-            title: "Core Architecture & Boundary Specification",
-            type: "synthesis",
-            tags: ["architecture", "spec", "boundaries"],
-            aliases: ["Architecture", "SystemDesign"],
-            rawContent: `# Core Architecture\n\nThis system implements a decoupled Multi-Agent Cockpit with strict type safety.\n\n[[workflow-pipeline]] manages DAG execution.\n[[llm-gateway]] controls model quota and spend flow.\n[[kanban-engine]] tracks asynchronous agent tasks.`,
-            metadata: {},
-          },
-          {
-            id: "workflow-pipeline",
-            title: "Workflow Pipeline Engine",
-            type: "concept",
-            tags: ["dag", "pipeline", "execution"],
-            aliases: ["DAG", "Pipelines"],
-            rawContent: `# Workflow Pipeline Engine\n\nImplements topological execution of multi-agent stages, condition gates, and persona masks.\nSee [[core-architecture]].`,
-            metadata: {},
-          },
-          {
-            id: "llm-gateway",
-            title: "LLM Gateway & Fallback Matrix",
-            type: "entity",
-            tags: ["gateway", "routing", "quota"],
-            aliases: ["Gateway", "QuotaEngine"],
-            rawContent: `# LLM Gateway\n\nRoutes inferences through provider fallbacks, tracks session tokens, and measures live tokens per second.`,
-            metadata: {},
-          },
-          {
-            id: "kanban-engine",
-            title: "Multi-Agent Kanban Engine",
-            type: "entity",
-            tags: ["kanban", "tasks", "triage"],
-            aliases: ["Kanban", "Tasks"],
-            rawContent: `# Multi-Agent Kanban\n\nOrchestrates task states from backlog through triage, active worker execution, and review gates.`,
-            metadata: {},
-          },
-        ];
+        loadedNodes = nodesRes.nodes.map((n) => {
+          const raw = n as unknown as WikiNode;
+          return {
+            id: n.id,
+            title: raw.title || n.id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            type: (raw.type as WikiNodeType) || "concept",
+            tags: raw.tags || n.links || [],
+            aliases: raw.aliases || [],
+            rawContent: raw.rawContent || "",
+            filePath: n.filePath,
+            metadata: raw.metadata || {},
+          };
+        });
       }
 
       setNodes(loadedNodes);
-      if (graphRes && graphRes.nodes) {
+      if (graphRes && Array.isArray(graphRes.nodes)) {
         setGraph({
           nodes: loadedNodes,
-          edges: graphRes.edges.map((e, idx) => ({
+          edges: (graphRes.edges || []).map((e, idx) => ({
             id: `edge-${idx}`,
             from: e.from,
             to: e.to,
@@ -142,22 +108,16 @@ export function WikiPage() {
           updatedAt: Date.now(),
         });
       } else {
-        setGraph({
-          nodes: loadedNodes,
-          edges: [
-            { id: "e1", from: "core-architecture", to: "workflow-pipeline", type: "extracted", confidence: 1 },
-            { id: "e2", from: "core-architecture", to: "llm-gateway", type: "extracted", confidence: 1 },
-            { id: "e3", from: "core-architecture", to: "kanban-engine", type: "extracted", confidence: 1 },
-            { id: "e4", from: "workflow-pipeline", to: "core-architecture", type: "extracted", confidence: 1 },
-          ],
-          updatedAt: Date.now(),
-        });
+        setGraph(null);
       }
 
-      const firstNode = loadedNodes[0];
-      if (firstNode && !selectedNodeId) {
-        setSelectedNodeId(firstNode.id);
-        setEditContent(firstNode.rawContent);
+      if (loadedNodes.length > 0) {
+        setSelectedNodeId((prev) =>
+          prev && loadedNodes.some((x) => x.id === prev) ? prev : (loadedNodes[0]?.id ?? null),
+        );
+      } else {
+        setSelectedNodeId(null);
+        setEditContent("");
       }
     } catch (err) {
       console.error("Failed to load wiki nodes:", err);
@@ -165,7 +125,7 @@ export function WikiPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, selectedNodeId]);
+  }, [projectId]);
 
   useEffect(() => {
     void loadGraphAndNodes();
@@ -177,10 +137,38 @@ export function WikiPage() {
 
   useEffect(() => {
     if (selectedNode) {
-      setEditContent(selectedNode.rawContent);
+      setEditContent(selectedNode.rawContent || "");
       setIsEditing(false);
-      // Load neighbors
+
       if (projectId && selectedNode.id) {
+        // Authoritatively fetch full node content from server
+        void api
+          .getWikiNode(projectId, selectedNode.id)
+          .then((res) => {
+            if (res?.node) {
+              const raw = res.node as unknown as WikiNode & { content?: string; links?: string[] };
+              const fetchedContent = raw.rawContent ?? raw.content ?? "";
+              setEditContent(fetchedContent);
+              setNodes((curr) =>
+                curr.map((n) =>
+                  n.id === selectedNode.id
+                    ? {
+                        ...n,
+                        rawContent: fetchedContent,
+                        title: raw.title ?? n.title,
+                        tags: raw.tags ?? (raw.links || n.tags),
+                        type: raw.type ?? n.type,
+                      }
+                    : n,
+                ),
+              );
+            }
+          })
+          .catch(() => {
+            // Keep existing local content if fetch encounters transient issue
+          });
+
+        // Load neighbors
         void api
           .getWikiNeighbors(projectId, selectedNode.id)
           .then((res) => {
@@ -213,8 +201,11 @@ export function WikiPage() {
             }
           });
       }
+    } else {
+      setEditContent("");
+      setNeighbors([]);
     }
-  }, [selectedNode, projectId, graph, nodes]);
+  }, [selectedNode?.id, projectId, graph, nodes]);
 
   const handleSaveNode = async () => {
     if (!projectId || !selectedNode) return;
@@ -243,17 +234,16 @@ export function WikiPage() {
     try {
       setFindingPath(true);
       const res = await api.getWikiPath(projectId, selectedNode.id, pathToId);
-      if (res && Array.isArray(res.path)) {
+      if (res && Array.isArray(res.path) && res.path.length > 0) {
         setPathResult(res.path);
         toastSuccess(`Path found: ${res.path.length} hops`);
       } else {
-        // Fallback local BFS
-        setPathResult([selectedNode.id, pathToId]);
-        toastSuccess("Direct link path resolved");
+        setPathResult(null);
+        toastError("No path exists between the selected concepts");
       }
     } catch (err) {
       console.error("Failed to find path:", err);
-      toastError("No path found between selected concepts");
+      toastError("Failed to find path between selected concepts");
     } finally {
       setFindingPath(false);
     }
@@ -345,9 +335,7 @@ export function WikiPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 Code Graph & Knowledge Wiki
               </h1>
-              <Badge tone="brand">
-                AST & Concept Memory
-              </Badge>
+              <Badge tone="brand">AST & Concept Memory</Badge>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Bidirectional wikilink graph, AST symbols, BFS pathfinder, and architectural memory
@@ -360,7 +348,10 @@ export function WikiPage() {
             </span>
             <span className="text-gray-300 dark:text-gray-700">·</span>
             <span className="font-mono text-xs text-gray-500">
-              Edges: <strong className="text-gray-800 dark:text-gray-200">{graph?.edges.length ?? 0}</strong>
+              Edges:{" "}
+              <strong className="text-gray-800 dark:text-gray-200">
+                {graph?.edges.length ?? 0}
+              </strong>
             </span>
           </div>
         </div>
@@ -407,42 +398,50 @@ export function WikiPage() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {filteredNodes.map((n) => {
-              const active = n.id === selectedNodeId;
-              const typeClass = TYPE_TONES[n.type] || TYPE_TONES.unknown;
-              return (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => setSelectedNodeId(n.id)}
-                  className={`w-full text-left p-2.5 rounded-lg border transition-all text-xs ${
-                    active
-                      ? "border-blue-500/40 bg-blue-50/50 dark:border-blue-500/40 dark:bg-blue-950/20 text-gray-900 dark:text-gray-100"
-                      : "border-transparent hover:border-gray-200 dark:hover:border-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100/50 dark:hover:bg-gray-800/40"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold truncate">{n.title}</span>
-                    <span className={`px-1.5 py-0.2 rounded-sm border text-[10px] uppercase font-mono ${typeClass}`}>
-                      {n.type}
-                    </span>
-                  </div>
-                  <div className="font-mono text-[10px] text-gray-400 truncate">[[{n.id}]]</div>
-                  {n.tags.length > 0 && (
-                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                      {n.tags.slice(0, 3).map((tag) => (
-                        <span
-                          key={tag}
-                          className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px]"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
+            {filteredNodes.length === 0 ? (
+              <div className="p-4 text-center text-xs text-gray-500">
+                {nodes.length === 0 ? "No wiki pages found." : "No matching nodes."}
+              </div>
+            ) : (
+              filteredNodes.map((n) => {
+                const active = n.id === selectedNodeId;
+                const typeClass = TYPE_TONES[n.type] || TYPE_TONES.unknown;
+                return (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => setSelectedNodeId(n.id)}
+                    className={`w-full text-left p-2.5 rounded-lg border transition-all text-xs ${
+                      active
+                        ? "border-blue-500/40 bg-blue-50/50 dark:border-blue-500/40 dark:bg-blue-950/20 text-gray-900 dark:text-gray-100"
+                        : "border-transparent hover:border-gray-200 dark:hover:border-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100/50 dark:hover:bg-gray-800/40"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold truncate">{n.title}</span>
+                      <span
+                        className={`px-1.5 py-0.2 rounded-sm border text-[10px] uppercase font-mono ${typeClass}`}
+                      >
+                        {n.type}
+                      </span>
                     </div>
-                  )}
-                </button>
-              );
-            })}
+                    <div className="font-mono text-[10px] text-gray-400 truncate">[[{n.id}]]</div>
+                    {n.tags.length > 0 && (
+                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                        {n.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px]"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -561,7 +560,8 @@ export function WikiPage() {
                           placeholder="Markdown content with [[wikilinks]]..."
                         />
                         <p className="text-[11px] text-gray-400">
-                          Tip: Use [[concept-id]] to link between files and create knowledge edges automatically.
+                          Tip: Use [[concept-id]] to link between files and create knowledge edges
+                          automatically.
                         </p>
                       </div>
                     ) : (
@@ -615,7 +615,9 @@ export function WikiPage() {
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] text-gray-400 mb-1">To Target Node</label>
+                        <label className="block text-[11px] text-gray-400 mb-1">
+                          To Target Node
+                        </label>
                         <select
                           value={pathToId}
                           onChange={(e) => setPathToId(e.target.value)}
@@ -706,7 +708,9 @@ export function WikiPage() {
 
                         {lintReport.brokenLinks.length > 0 && (
                           <div className="space-y-2">
-                            <div className="font-semibold text-rose-600">Broken Links Detected:</div>
+                            <div className="font-semibold text-rose-600">
+                              Broken Links Detected:
+                            </div>
                             {lintReport.brokenLinks.map((bl, idx) => (
                               <div
                                 key={idx}
@@ -722,7 +726,8 @@ export function WikiPage() {
                         {lintReport.brokenLinks.length === 0 &&
                           lintReport.orphanedNodes.length === 0 && (
                             <div className="p-6 text-center text-emerald-600 dark:text-emerald-400 font-medium">
-                              ✓ Graph is 100% healthy: Zero broken wikilinks or orphaned nodes detected.
+                              ✓ Graph is 100% healthy: Zero broken wikilinks or orphaned nodes
+                              detected.
                             </div>
                           )}
                       </div>
@@ -733,8 +738,18 @@ export function WikiPage() {
                 )}
               </>
             ) : (
-              <div className="text-center text-gray-400 py-12">
-                Select a concept from the left panel to inspect.
+              <div className="text-center text-gray-400 py-12 text-xs">
+                {nodes.length === 0 ? (
+                  <div className="space-y-2">
+                    <p className="font-semibold text-gray-300">No Wiki Pages</p>
+                    <p>
+                      This project has no wiki pages yet. Click &ldquo;+ New Node&rdquo; to create
+                      the first document.
+                    </p>
+                  </div>
+                ) : (
+                  "Select a concept from the left panel to inspect."
+                )}
               </div>
             )}
           </div>
@@ -742,7 +757,11 @@ export function WikiPage() {
       </div>
 
       {/* Create Node Modal */}
-      <Modal open={createModalOpen} onClose={() => setCreateModalOpen(false)} title="Create Wiki Node">
+      <Modal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="Create Wiki Node"
+      >
         <form onSubmit={handleCreateNode} className="space-y-4 p-4 text-xs">
           <div>
             <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">

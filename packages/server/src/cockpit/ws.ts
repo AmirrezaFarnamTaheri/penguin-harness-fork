@@ -11,17 +11,25 @@
 
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
-import { WebSocketServer, type WebSocket } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import {
   SwarmCoordinator,
   KeyFleetMonitor,
   CodeGraphWatcher,
+  redactObject,
   type SwarmEvent,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
 
 const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
+const MAX_BUFFERED_AMOUNT = 64 * 1024; // 64KB backpressure guard
+
+function safeSend(ws: WebSocket, payload: string): void {
+  if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < MAX_BUFFERED_AMOUNT) {
+    ws.send(payload);
+  }
+}
 
 export interface CockpitWebSocketDeps {
   authService?: AuthService;
@@ -62,17 +70,22 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
   const codeGraphWatcher = getSharedCodeGraphWatcher(deps.workspaceRoot);
   const connectedClients = new Set<WebSocket>();
 
+  // Attach error handler to prevent unhandled EventEmitter exceptions from crashing process
+  codeGraphWatcher.on("error", (err) => {
+    deps.log?.(
+      `[cockpit-ws] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+
   // Subscribe coordinator events and broadcast to all connected cockpit clients
   coordinator.subscribe((event: SwarmEvent) => {
     const payload = JSON.stringify({
       type: "swarm_event",
       timestamp: Date.now(),
-      event,
+      event: redactObject(event),
     });
     for (const ws of connectedClients) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(payload);
-      }
+      safeSend(ws, payload);
     }
   });
 
@@ -81,14 +94,12 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const payload = JSON.stringify({
       type: "key_fleet_update",
       timestamp: Date.now(),
-      keyFleet: keyFleet.getCockpitSnapshot(),
-      reports: keyFleet.getFleetReport(),
+      keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+      reports: redactObject(keyFleet.getFleetReport()),
       stats: keyFleet.getFleetStats(),
     });
     for (const ws of connectedClients) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(payload);
-      }
+      safeSend(ws, payload);
     }
   });
 
@@ -101,9 +112,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       stats: codeGraphWatcher.getStats(),
     });
     for (const ws of connectedClients) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(payload);
-      }
+      safeSend(ws, payload);
     }
   });
 
@@ -115,11 +124,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       return refuse(socket, 403, "Forbidden");
     }
 
-    // Authenticate if authService is provided
+    // Strict authentication if authService is provided
     if (deps.authService) {
       const token = readCookie(req.headers.cookie, SESSION_COOKIE);
       const authed = token ? deps.authService.authenticateWithMeta(token) : null;
-      if (!authed && !isLocalhostOrDev(req)) {
+      if (!authed) {
         return refuse(socket, 401, "Unauthorized");
       }
     }
@@ -128,14 +137,14 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       connectedClients.add(ws);
 
       // Send initial cockpit telemetry snapshot
-      const snapshot = buildCockpitSnapshot(coordinator);
-      ws.send(JSON.stringify(snapshot));
+      const snapshot = buildCockpitSnapshot(coordinator, keyFleet, codeGraphWatcher);
+      safeSend(ws, JSON.stringify(snapshot));
 
       ws.on("message", async (raw: Buffer | string) => {
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === "ping") {
-            ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+            safeSend(ws, JSON.stringify({ type: "pong", timestamp: Date.now() }));
             return;
           }
 
@@ -143,7 +152,8 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             const provider = typeof msg.provider === "string" ? msg.provider : "anthropic";
             const maskedKey = typeof msg.maskedKey === "string" ? msg.maskedKey : "";
             const result = await keyFleet.probeKey(provider, maskedKey);
-            ws.send(
+            safeSend(
+              ws,
               JSON.stringify({
                 type: "key_probe_settled",
                 result,
@@ -155,7 +165,8 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
           if (msg.type === "probe_fleet") {
             const results = await keyFleet.probeFleet();
-            ws.send(
+            safeSend(
+              ws,
               JSON.stringify({
                 type: "fleet_probe_settled",
                 results,
@@ -172,7 +183,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             if (action === "revive") {
               keyFleet.reviveKey(provider, maskedKey);
             } else if (action === "cooldown") {
-              keyFleet.cooldownKey(provider, maskedKey, typeof msg.cooldownMs === "number" ? msg.cooldownMs : 60_000);
+              keyFleet.cooldownKey(
+                provider,
+                maskedKey,
+                typeof msg.cooldownMs === "number" ? msg.cooldownMs : 60_000,
+              );
             } else if (action === "evict") {
               keyFleet.evictKey(provider, maskedKey);
             } else if (action === "revive_all") {
@@ -182,32 +197,69 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           }
 
           if (msg.type === "send_directive") {
-            const from = typeof msg.from === "string" ? msg.from : "operator";
-            const to = typeof msg.to === "string" ? msg.to : "coder";
+            const from = typeof msg.from === "string" ? msg.from.slice(0, 64) : "operator";
+            const to = typeof msg.to === "string" ? msg.to.slice(0, 64) : "coder";
             const content = typeof msg.content === "string" ? msg.content : "";
-            if (content.trim()) {
-              const directive = coordinator.dispatchDirective(from, to, content.trim());
+            const trimmed = content.trim();
+            if (trimmed && trimmed.length <= 8192) {
+              // Bound mailbox queue depth (< 100 pending messages)
+              const summaries = coordinator.getMailboxSummaries();
+              const targetSummary = summaries[to];
+              if (targetSummary && targetSummary.queueDepth >= 100) {
+                safeSend(
+                  ws,
+                  JSON.stringify({
+                    type: "directive_rejected",
+                    reason: `Mailbox queue for '${to}' exceeds capacity (max 100 pending)`,
+                    timestamp: Date.now(),
+                  }),
+                );
+                return;
+              }
+              const directive = coordinator.dispatchDirective(from, to, trimmed);
               const confirmPayload = JSON.stringify({
                 type: "directive_dispatched",
-                directive,
+                directive: redactObject(directive),
                 mailbox: coordinator.getMailboxSummaries(),
                 timestamp: Date.now(),
               });
               for (const client of connectedClients) {
-                if (client.readyState === client.OPEN) {
-                  client.send(confirmPayload);
-                }
+                safeSend(client, confirmPayload);
               }
+            } else if (trimmed.length > 8192) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "directive_rejected",
+                  reason: "Directive content exceeds maximum length of 8192 characters",
+                  timestamp: Date.now(),
+                }),
+              );
             }
             return;
           }
 
           if (msg.type === "trigger_swarm") {
-            const goal = typeof msg.goal === "string" ? msg.goal : "Autonomous local coding task";
-            const files = Array.isArray(msg.files) ? msg.files : undefined;
-            const proposedCommands = Array.isArray(msg.proposedCommands) ? msg.proposedCommands : undefined;
+            const goal =
+              typeof msg.goal === "string"
+                ? msg.goal.slice(0, 4096)
+                : "Autonomous local coding task";
+            const files = Array.isArray(msg.files)
+              ? (msg.files.filter((f: unknown) => typeof f === "string" && f.trim()) as string[])
+              : undefined;
+            const proposedCommands = Array.isArray(msg.proposedCommands)
+              ? (msg.proposedCommands.filter(
+                  (c: unknown) => typeof c === "string" && c.trim(),
+                ) as string[])
+              : undefined;
+            const maxRounds =
+              typeof msg.maxRounds === "number"
+                ? Math.min(Math.max(1, Math.floor(msg.maxRounds)), 10)
+                : 3;
+            const simulate = msg.simulate === true;
 
-            ws.send(
+            safeSend(
+              ws,
               JSON.stringify({
                 type: "swarm_task_accepted",
                 goal,
@@ -216,28 +268,34 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             );
 
             // Execute task asynchronously
-            void coordinator.runTask({
-              goal,
-              files,
-              proposedCommands,
-              maxRounds: msg.maxRounds ?? 3,
-            }).then((res: unknown) => {
-              ws.send(
-                JSON.stringify({
-                  type: "swarm_task_settled",
-                  result: res,
-                  timestamp: Date.now(),
-                }),
-              );
-            }).catch((err: unknown) => {
-              ws.send(
-                JSON.stringify({
-                  type: "swarm_task_error",
-                  error: err instanceof Error ? err.message : String(err),
-                  timestamp: Date.now(),
-                }),
-              );
-            });
+            void coordinator
+              .runTask({
+                goal,
+                files,
+                proposedCommands,
+                maxRounds,
+                simulate,
+              })
+              .then((res: unknown) => {
+                safeSend(
+                  ws,
+                  JSON.stringify({
+                    type: "swarm_task_settled",
+                    result: redactObject(res),
+                    timestamp: Date.now(),
+                  }),
+                );
+              })
+              .catch((err: unknown) => {
+                safeSend(
+                  ws,
+                  JSON.stringify({
+                    type: "swarm_task_error",
+                    error: err instanceof Error ? err.message : String(err),
+                    timestamp: Date.now(),
+                  }),
+                );
+              });
           }
         } catch {
           // malformed json
@@ -272,8 +330,8 @@ export function buildCockpitSnapshot(
       },
       mailbox: coordinator.getMailboxSummaries(),
       watchdog: coordinator.getWatchdogStatus(),
-      replay: coordinator.getReplayView(),
-      keyFleet: keyFleet.getCockpitSnapshot(),
+      replay: redactObject(coordinator.getReplayView()),
+      keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
       topology: codeGraphWatcher.getStats(),
     },
   };
@@ -290,11 +348,6 @@ function isAllowedOrigin(req: IncomingMessage): boolean {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   return parsed.host === (req.headers.host ?? "");
-}
-
-function isLocalhostOrDev(req: IncomingMessage): boolean {
-  const host = req.headers.host ?? "";
-  return host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]");
 }
 
 function readCookie(header: string | undefined, name: string): string | null {

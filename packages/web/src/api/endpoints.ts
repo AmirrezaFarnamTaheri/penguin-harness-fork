@@ -197,6 +197,7 @@ import type {
   KanbanTask,
   KanbanTaskPriority,
   KanbanTaskState,
+  TriageDraft,
   WorkflowNode,
   WorkflowEdge,
   WorkflowRunState,
@@ -204,7 +205,7 @@ import type {
   SessionCostRecord,
   SpendFlowReport,
   PersonaMask,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 import { apiFetch, apiFetchWithMeta } from "./client";
 
 // Auth & user -----------------------------------------------------------------
@@ -1780,13 +1781,10 @@ export const updateKanbanTask = (
     description?: string;
   },
 ) =>
-  apiFetch<{ ok: boolean; task: KanbanTask }>(
-    `/api/projects/${projectId}/kanban/tasks/${taskId}`,
-    {
-      method: "PATCH",
-      body,
-    },
-  );
+  apiFetch<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks/${taskId}`, {
+    method: "PATCH",
+    body,
+  });
 
 export const claimKanbanTask = (projectId: string, taskId: string, assignee: string) =>
   apiFetch<{ ok: boolean; task: KanbanTask }>(
@@ -1796,6 +1794,9 @@ export const claimKanbanTask = (projectId: string, taskId: string, assignee: str
       body: { assignee },
     },
   );
+
+export const listTriageDrafts = (projectId: string) =>
+  apiFetch<{ drafts: TriageDraft[] }>(`/api/projects/${projectId}/kanban/drafts`);
 
 export const launchTriageDraft = (projectId: string, draftId: string) =>
   apiFetch<{ ok: boolean; task: KanbanTask }>(
@@ -1928,8 +1929,8 @@ export const getWikiNeighbors = (projectId: string, nodeId: string, maxHops = 1)
   );
 
 export const getWikiPath = (projectId: string, from: string, to: string) =>
-  apiFetch<{ path: string[] | null; hops: number }>(`/api/projects/${projectId}/wiki/path`, {
-    query: { from, to },
+  apiFetch<{ path: string[] | null; hops?: number }>(`/api/projects/${projectId}/wiki/path`, {
+    query: { start: from, end: to, from, to },
   });
 
 export const lintWikiGraph = (projectId: string) =>
@@ -1980,4 +1981,3 @@ export const computeGatewaySpendFlow = (
     method: "POST",
     body,
   });
-

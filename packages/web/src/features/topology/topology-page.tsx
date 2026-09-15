@@ -1,5 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { CodeGraph, type CodeGraphNode, type CodeGraphEdge } from "@prismshadow/penguin-core";
+import {
+  CodeGraph,
+  type CodeGraphNode,
+  type CodeGraphEdge,
+} from "@prismshadow/penguin-core/browser";
 import { useProject } from "../../state/project";
 import { Button } from "../../components/ui/button";
 import { Segmented } from "../../components/ui/segmented";
@@ -62,14 +66,12 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
   const hubNodes = useMemo(() => graph.getHubNodes(3), [graph]);
   const bridgeNodes = useMemo(() => graph.getBridgeNodes(), [graph]);
   const deadCode = useMemo(() => {
-    return allNodes.filter(
-      (n) => n.kind !== "file" && graph.getIncomingEdges(n.id).length === 0,
-    );
+    return allNodes.filter((n) => n.kind !== "file" && graph.getIncomingEdges(n.id).length === 0);
   }, [graph, allNodes]);
 
   // Selected node object
   const selectedNode = useMemo(() => {
-    return selectedNodeId ? graph.getNode(selectedNodeId) ?? null : null;
+    return selectedNodeId ? (graph.getNode(selectedNodeId) ?? null) : null;
   }, [graph, selectedNodeId]);
 
   // Shortest path tracing
@@ -83,32 +85,36 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
     return new Set(tracedPath.map((step) => step.node.id));
   }, [tracedPath]);
 
-  const handleUpdateImpact = useCallback(
-    (nodes: CodeGraphNode[]) => {
-      setImpactNodeIds(new Set(nodes.map((n) => n.id)));
-    },
-    [],
-  );
+  const handleUpdateImpact = useCallback((nodes: CodeGraphNode[]) => {
+    setImpactNodeIds(new Set(nodes.map((n) => n.id)));
+  }, []);
 
   return (
-    <div className={`flex flex-col h-full gap-4 ${embedded ? "p-2" : "p-6"} bg-gray-950 text-gray-100 font-sans select-none overflow-hidden`}>
+    <div
+      className={`flex flex-col h-full gap-4 ${embedded ? "p-2" : "p-6"} bg-gray-950 text-gray-100 font-sans select-none overflow-hidden`}
+    >
       {/* Top Header & Telemetry Cards */}
       <div className="flex flex-col gap-3 shrink-0">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 font-mono">
-              <span className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : "bg-cyan-400 animate-pulse"}`} />
+              <span
+                className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : "bg-cyan-400 animate-pulse"}`}
+              />
               CodeGraph & AST Symbol Topology
             </h1>
             <p className="text-xs text-gray-400 font-mono mt-0.5">
-              Architectural knowledge graph, relational call paths, and blast-radius analysis for {currentProject?.name ?? "Penguin"}
+              Architectural knowledge graph, relational call paths, and blast-radius analysis for{" "}
+              {currentProject?.name ?? "Penguin"}
             </p>
           </div>
 
           {/* Sync badge, refresh & view mode switcher */}
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono bg-gray-900 border border-gray-800 text-gray-400">
-              <span className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : "bg-gray-500"}`} />
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : "bg-gray-500"}`}
+              />
               {isLiveSynced ? "Live AST Stream" : "AST Static"}
             </span>
             <Button
@@ -138,23 +144,33 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 font-mono text-xs">
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Symbols</span>
-            <span className="text-base font-bold text-gray-100 tabular-nums">{allNodes.length}</span>
+            <span className="text-base font-bold text-gray-100 tabular-nums">
+              {allNodes.length}
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">AST Edges</span>
-            <span className="text-base font-bold text-cyan-400 tabular-nums">{allEdges.length}</span>
+            <span className="text-base font-bold text-cyan-400 tabular-nums">
+              {allEdges.length}
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Hub Nodes</span>
-            <span className="text-base font-bold text-indigo-400 tabular-nums">{hubNodes.length}</span>
+            <span className="text-base font-bold text-indigo-400 tabular-nums">
+              {hubNodes.length}
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Bridge Nodes</span>
-            <span className="text-base font-bold text-purple-400 tabular-nums">{bridgeNodes.length}</span>
+            <span className="text-base font-bold text-purple-400 tabular-nums">
+              {bridgeNodes.length}
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Dead Code Candidates</span>
-            <span className="text-base font-bold text-rose-400 tabular-nums">{deadCode.length}</span>
+            <span className="text-base font-bold text-rose-400 tabular-nums">
+              {deadCode.length}
+            </span>
           </div>
         </div>
 
@@ -163,11 +179,11 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 font-semibold">Path Finder:</span>
             <span className="px-2 py-0.5 rounded bg-gray-800 text-cyan-300 truncate max-w-[160px]">
-              {fromNodeId ? graph.getNode(fromNodeId)?.name ?? fromNodeId : "Select Start"}
+              {fromNodeId ? (graph.getNode(fromNodeId)?.name ?? fromNodeId) : "Select Start"}
             </span>
             <span className="text-gray-500">→</span>
             <span className="px-2 py-0.5 rounded bg-gray-800 text-indigo-300 truncate max-w-[160px]">
-              {toNodeId ? graph.getNode(toNodeId)?.name ?? toNodeId : "Select Target"}
+              {toNodeId ? (graph.getNode(toNodeId)?.name ?? toNodeId) : "Select Target"}
             </span>
             {tracedPath && (
               <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">

@@ -76,7 +76,8 @@ export function WorktreeLanesCard({ projectId: _projectId }: WorktreeLanesCardPr
             </span>
           </h3>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            Physical working directory sandboxes preventing parallel subagents from clobbering uncommitted work.
+            Physical working directory sandboxes preventing parallel subagents from clobbering
+            uncommitted work.
           </p>
         </div>
 

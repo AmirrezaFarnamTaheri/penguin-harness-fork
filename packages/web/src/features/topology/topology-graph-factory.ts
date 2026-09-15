@@ -2,8 +2,8 @@
  * Factory for initialising and seeding the CodeGraph AST topology.
  * Maps the Penguin Harness architecture, symbols, modules, and dependencies.
  */
-import { CodeGraph } from "@prismshadow/penguin-core";
-import type { CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core";
+import { CodeGraph } from "@prismshadow/penguin-core/browser";
+import type { CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core/browser";
 
 export function createPenguinCodeGraph(): CodeGraph {
   const graph = new CodeGraph();

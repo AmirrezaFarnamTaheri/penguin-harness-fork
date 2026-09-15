@@ -19,11 +19,7 @@ import { CopyButton } from "../../components/ui/copy-button";
 import { ProviderLogo } from "../../components/ui/provider-logo";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { formatDateTime } from "../../lib/format";
-import {
-  formatCooldown,
-  keyHealthLabel,
-  type ModelKeyHealthReportDto,
-} from "./model-keys-health";
+import { formatCooldown, keyHealthLabel, type ModelKeyHealthReportDto } from "./model-keys-health";
 import type { RowState } from "./models-page";
 import { modelLabelOf } from "./models-page";
 
@@ -231,9 +227,7 @@ export function ModelsKeyPools({
                     : "100% Operational"}
               </Badge>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {S.models.keyPoolsDesc}
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{S.models.keyPoolsDesc}</p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -527,14 +521,19 @@ export function ModelsKeyPools({
                                 >
                                   {keyHealthLabel(k, {
                                     active: S.models.keyHealthActive,
-                                    cooldown: isCd && cdText ? `Cooldown (${cdText})` : S.models.keyHealthCooldown,
+                                    cooldown:
+                                      isCd && cdText
+                                        ? `Cooldown (${cdText})`
+                                        : S.models.keyHealthCooldown,
                                     evicted: S.models.keyHealthEvicted,
                                   })}
                                 </span>
                               </div>
 
                               <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-                                <span>{S.models.successCount} / {S.models.failureCount}</span>
+                                <span>
+                                  {S.models.successCount} / {S.models.failureCount}
+                                </span>
                                 <span className="text-gray-900 dark:text-gray-100">
                                   {k.successCount} / {k.failureCount}
                                 </span>
@@ -550,7 +549,9 @@ export function ModelsKeyPools({
                               <div className="flex items-center justify-between text-gray-400 text-[10px] pt-1 border-t border-gray-100 dark:border-gray-800/40">
                                 <span>{S.models.lastUsed}</span>
                                 <span>
-                                  {k.lastUsedAt ? formatDateTime(new Date(k.lastUsedAt).toISOString()) : S.models.neverUsed}
+                                  {k.lastUsedAt
+                                    ? formatDateTime(new Date(k.lastUsedAt).toISOString())
+                                    : S.models.neverUsed}
                                 </span>
                               </div>
                             </div>

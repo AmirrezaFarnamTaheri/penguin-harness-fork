@@ -1739,20 +1739,9 @@ export function ChatPage() {
           />
         );
       case "cockpit":
-        return (
-          <AgentCockpit
-            key={selected.sessionId}
-            embedded
-            sessionId={selected.sessionId}
-          />
-        );
+        return <AgentCockpit key={selected.sessionId} embedded sessionId={selected.sessionId} />;
       case "spendFlow":
-        return (
-          <SpendFlowPanel
-            key={selected.sessionId}
-            projectId={projectId ?? ""}
-          />
-        );
+        return <SpendFlowPanel key={selected.sessionId} projectId={projectId ?? ""} />;
       case "topology":
         return <TopologyPage key={selected.sessionId} embedded />;
       case "guardian":
@@ -1761,11 +1750,7 @@ export function ChatPage() {
         return <ConsensusPage key={selected.sessionId} embedded />;
       case "contextBreakdown":
         return (
-          <ContextBreakdownPage
-            key={selected.sessionId}
-            embedded
-            sessionId={selected.sessionId}
-          />
+          <ContextBreakdownPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
         );
       case "keyFleet":
         return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
@@ -2200,8 +2185,8 @@ export function ChatPage() {
                     1,
                     Math.round(
                       stream.model.stats.taskOutput /
-                        Math.max(1, (stream.model.stats.taskLlmMs || 1000) / 1000)
-                    )
+                        Math.max(1, (stream.model.stats.taskLlmMs || 1000) / 1000),
+                    ),
                   ),
                   outputTokens: stream.model.stats.taskOutput,
                   elapsedMs: stream.model.stats.taskLlmMs || 1000,
@@ -2220,11 +2205,9 @@ export function ChatPage() {
                 }
               : undefined
           }
-          costUsd={costHoldRef.current.sessionCost ?? (liveTaskUsd ?? 0)}
+          costUsd={costHoldRef.current.sessionCost ?? liveTaskUsd ?? 0}
           costSavingsUsd={
-            usageBuckets && usageBuckets.cacheRead > 0
-              ? usageBuckets.cacheRead * 0.000002
-              : 0
+            usageBuckets && usageBuckets.cacheRead > 0 ? usageBuckets.cacheRead * 0.000002 : 0
           }
           vcs={{
             branch: currentProject?.name ? "main" : undefined,
@@ -2239,7 +2222,9 @@ export function ChatPage() {
                     id: "task-active",
                     toolName:
                       stream.subagents.length > 0
-                        ? stream.subagents[0]?.subagentId || stream.subagents[0]?.sessionId || "Subagent"
+                        ? stream.subagents[0]?.subagentId ||
+                          stream.subagents[0]?.sessionId ||
+                          "Subagent"
                         : "Agent Task",
                     startTime: Date.now() - 2000,
                     durationMs: 2000,

@@ -7,6 +7,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import child_process from "node:child_process";
 import { ShellGuardian, type ShellSafetyAssessment } from "./shell-guardian.js";
@@ -20,6 +21,7 @@ export interface SandboxExecutionOptions {
   env?: Record<string, string>;
   maxOutputBytes?: number;
   allowCritical?: boolean;
+  approved?: boolean;
 }
 
 export interface SandboxExecutionResult {
@@ -35,10 +37,32 @@ export interface SandboxExecutionResult {
   durationMs?: number;
 }
 
+const DEFAULT_SAFE_ENV_KEYS = [
+  "PATH",
+  "PATHEXT",
+  "HOME",
+  "USER",
+  "USERNAME",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TMP",
+  "TEMP",
+  "TMPDIR",
+  "SYSTEMROOT",
+  "COMSPEC",
+  "WINDIR",
+  "NODE",
+  "NODE_PATH",
+];
+
 export class SandboxedCommandRunner {
   private readonly guardian: ShellGuardian;
   private readonly sandboxManager: SandboxManager;
   private readonly platform: NodeJS.Platform;
+  private seatbeltProfilePath: string | null = null;
 
   constructor(options?: {
     guardian?: ShellGuardian;
@@ -58,6 +82,22 @@ export class SandboxedCommandRunner {
     return this.sandboxManager;
   }
 
+  private ensureSeatbeltProfile(): string {
+    if (this.seatbeltProfilePath && fs.existsSync(this.seatbeltProfilePath)) {
+      return this.seatbeltProfilePath;
+    }
+    const profileDir = os.tmpdir();
+    const target = path.join(profileDir, "penguin-seatbelt.sb");
+    const profile = `(version 1)\n(allow default)\n(deny file-read* file-write* (regex #"/(\\.(ssh|aws|kube))"))\n`;
+    try {
+      fs.writeFileSync(target, profile, "utf8");
+      this.seatbeltProfilePath = target;
+    } catch {
+      this.seatbeltProfilePath = target;
+    }
+    return target;
+  }
+
   /**
    * Evaluates command safety and executes in an OS-appropriate sandbox.
    */
@@ -71,7 +111,26 @@ export class SandboxedCommandRunner {
       return {
         command,
         allowed: false,
-        blockedReason: assessment.findings[0]?.description ?? "Blocked by Shell Guardian critical safety policy",
+        blockedReason:
+          assessment.findings[0]?.description ?? "Blocked by Shell Guardian critical safety policy",
+        riskAssessment: assessment,
+        platform: this.platform,
+        isolationMode: "blocked",
+      };
+    }
+
+    if (
+      (assessment.suggestedAction === "prompt_user" || assessment.requiresApproval) &&
+      !options.allowCritical &&
+      !options.approved
+    ) {
+      const reason = assessment.findings[0]?.description
+        ? `${assessment.findings[0].description} (requires explicit approval)`
+        : "Command requires explicit approval before unattended execution";
+      return {
+        command,
+        allowed: false,
+        blockedReason: reason,
         riskAssessment: assessment,
         platform: this.platform,
         isolationMode: "blocked",
@@ -79,7 +138,18 @@ export class SandboxedCommandRunner {
     }
 
     const isolationMode = this.resolveIsolationMode();
-    const wrappedCommand = this.wrapCommandForPlatform(command, isolationMode, options.workingDirectory);
+    const plan = this.resolveExecutionPlan(command, isolationMode, options.workingDirectory);
+
+    // Build sanitized environment without inheriting parent secrets
+    const sanitizedEnv: Record<string, string> = {};
+    for (const key of DEFAULT_SAFE_ENV_KEYS) {
+      if (process.env[key] !== undefined) {
+        sanitizedEnv[key] = process.env[key]!;
+      }
+    }
+    if (options.env) {
+      Object.assign(sanitizedEnv, options.env);
+    }
 
     const cwd = options.workingDirectory ?? process.cwd();
     const sandbox = this.sandboxManager.createSandbox({
@@ -87,11 +157,16 @@ export class SandboxedCommandRunner {
       workingDirectory: cwd,
       timeoutMs: options.timeoutMs ?? 30_000,
       maxOutputBytes: options.maxOutputBytes ?? 1024 * 1024,
-      env: options.env,
+      env: sanitizedEnv,
     });
 
+    const startTime = Date.now();
     try {
-      const execResult: SandboxExecResult = await this.sandboxManager.exec(sandbox.id, wrappedCommand);
+      const execResult: SandboxExecResult = await this.sandboxManager.exec(
+        sandbox.id,
+        plan.executable,
+        plan.args.length > 0 ? { args: plan.args, shell: plan.shell } : { shell: plan.shell },
+      );
       this.sandboxManager.terminate(sandbox.id);
 
       return {
@@ -103,9 +178,10 @@ export class SandboxedCommandRunner {
         exitCode: execResult.exitCode,
         stdout: execResult.stdout,
         stderr: execResult.stderr,
-        durationMs: execResult.durationMs,
+        durationMs: Math.max(execResult.durationMs, Date.now() - startTime),
       };
     } catch (err: unknown) {
+      const durationMs = Date.now() - startTime;
       try {
         this.sandboxManager.terminate(sandbox.id);
       } catch {
@@ -118,10 +194,10 @@ export class SandboxedCommandRunner {
         riskAssessment: assessment,
         platform: this.platform,
         isolationMode,
-        exitCode: 1,
-        stdout: "",
+        exitCode: (err as any)?.exitCode ?? (err as any)?.status ?? 1,
+        stdout: (err as any)?.stdout ?? "",
         stderr: err instanceof Error ? err.message : String(err),
-        durationMs: 0,
+        durationMs,
       };
     }
   }
@@ -149,6 +225,54 @@ export class SandboxedCommandRunner {
   }
 
   /**
+   * Resolves the concrete executable and argv vector for the target platform.
+   */
+  public resolveExecutionPlan(
+    command: string,
+    mode: SandboxIsolationMode,
+    workingDir?: string,
+  ): { executable: string; args: string[]; shell: boolean } {
+    if (mode === "seatbelt") {
+      const profilePath = this.ensureSeatbeltProfile();
+      return {
+        executable: "/usr/bin/sandbox-exec",
+        args: ["-f", profilePath, "/bin/sh", "-lc", command],
+        shell: false,
+      };
+    }
+
+    if (mode === "bwrap") {
+      const cwd = workingDir ?? process.cwd();
+      return {
+        executable: "bwrap",
+        args: [
+          "--ro-bind",
+          "/",
+          "/",
+          "--bind",
+          cwd,
+          cwd,
+          "--dev",
+          "/dev",
+          "--proc",
+          "/proc",
+          "--unshare-net",
+          "/bin/sh",
+          "-lc",
+          command,
+        ],
+        shell: false,
+      };
+    }
+
+    return {
+      executable: command,
+      args: [],
+      shell: true,
+    };
+  }
+
+  /**
    * Wraps a shell command with native sandbox primitives if available.
    */
   public wrapCommandForPlatform(
@@ -157,14 +281,13 @@ export class SandboxedCommandRunner {
     workingDir?: string,
   ): string {
     if (mode === "seatbelt") {
-      // Basic macOS seatbelt profile restricting sensitive keys and credentials
-      const profile = `(version 1) (allow default) (deny file-read* file-write* (regex #"/(\\.ssh|\\.aws|\\.kube)"))`;
-      return `sandbox-exec -p "${profile}" ${command}`;
+      const profilePath = this.ensureSeatbeltProfile();
+      return `sandbox-exec -f "${profilePath}" /bin/sh -lc ${JSON.stringify(command)}`;
     }
 
     if (mode === "bwrap") {
       const cwd = workingDir ?? process.cwd();
-      return `bwrap --ro-bind / / --bind "${cwd}" "${cwd}" --dev /dev --proc /proc --unshare-net ${command}`;
+      return `bwrap --ro-bind / / --bind "${cwd}" "${cwd}" --dev /dev --proc /proc --unshare-net /bin/sh -lc ${JSON.stringify(command)}`;
     }
 
     return command;

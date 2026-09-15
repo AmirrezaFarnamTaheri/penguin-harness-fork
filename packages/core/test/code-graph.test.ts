@@ -22,10 +22,10 @@ describe("code-graph", () => {
         language: "typescript",
         classes: ["StateManager"],
         interfaces: ["StateObserver"],
-        types: [],
+        types: ["StateToken"],
         functions: [],
         imports: [],
-        exports: ["StateManager"],
+        exports: ["StateManager", "StateToken"],
         linesOfCode: 80,
         summary: "",
       },
@@ -36,9 +36,30 @@ describe("code-graph", () => {
     expect(graph.getNode("src/engine.ts")).toBeDefined();
     expect(graph.getNode("src/engine.ts#ContextEngine")).toBeDefined();
     expect(graph.getNode("src/state.ts#StateManager")).toBeDefined();
+    expect(graph.getNode("src/state.ts#StateToken")?.kind).toBe("type");
 
     const out = graph.getOutgoingEdges("src/engine.ts");
     expect(out.some((e) => e.kind === "contains")).toBe(true);
+    expect(out.some((e) => e.kind === "imports" && e.target === "src/state.ts")).toBe(true);
+
+    // Verify updating state.ts preserves incoming import edge from engine.ts
+    graph.updateFile({
+      filePath: "src/state.ts",
+      language: "typescript",
+      classes: ["StateManager"],
+      interfaces: ["StateObserver"],
+      types: ["StateToken", "NewType"],
+      functions: [],
+      imports: [],
+      exports: ["StateManager"],
+      linesOfCode: 85,
+      summary: "",
+    });
+    const incomingToState = graph.getIncomingEdges("src/state.ts");
+    expect(incomingToState.some((e) => e.source === "src/engine.ts" && e.kind === "imports")).toBe(
+      true,
+    );
+    expect(graph.getNode("src/state.ts#NewType")?.kind).toBe("type");
   });
 
   it("finds shortest path through connected nodes", () => {

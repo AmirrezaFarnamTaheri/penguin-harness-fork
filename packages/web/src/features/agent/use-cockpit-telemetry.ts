@@ -53,7 +53,9 @@ export interface CockpitTelemetryState {
 
 export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTelemetryState {
   const [connected, setConnected] = useState(false);
-  const [transport, setTransport] = useState<"ws" | "http" | "connecting" | "offline">("connecting");
+  const [transport, setTransport] = useState<"ws" | "http" | "connecting" | "offline">(
+    "connecting",
+  );
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [swarmAgents, setSwarmAgents] = useState<SwarmAgentNode[]>([
     { id: "orchestrator", role: "orchestrator", status: "idle", tasksCompleted: 0 },
@@ -75,14 +77,9 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
     activeCount: number;
     providers: KeyFleetProvider[];
   }>({
-    healthy: true,
-    activeCount: 4,
-    providers: [
-      { provider: "anthropic", status: "active", latencyMs: 142, cooldownSec: 0 },
-      { provider: "openai", status: "active", latencyMs: 185, cooldownSec: 0 },
-      { provider: "google", status: "active", latencyMs: 98, cooldownSec: 0 },
-      { provider: "groq", status: "active", latencyMs: 45, cooldownSec: 0 },
-    ],
+    healthy: false,
+    activeCount: 0,
+    providers: [],
   });
   const [lastEventTime, setLastEventTime] = useState<number | null>(null);
   const [isDispatching, setIsDispatching] = useState(false);
@@ -116,12 +113,17 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
       for (const ev of data.replay.events) {
         if (ev.kind === "turn_done" || ev.status === "completed" || ev.status === "failed") {
           turns.push({
-            turnId: ev.turnId,
+            turnId: ev.turnId ?? `turn-${ev.seq}`,
             terminalSeq: ev.seq,
-            status: ev.status,
-            durationMs: 2500,
-            outcome: typeof ev.payload === "string" ? ev.payload : "Turn execution concluded",
-            streamRecords: 12,
+            status: ev.status ?? "completed",
+            durationMs: typeof ev.payload?.durationMs === "number" ? ev.payload.durationMs : 0,
+            outcome:
+              typeof ev.payload === "string"
+                ? ev.payload
+                : typeof ev.payload?.outcome === "string"
+                  ? ev.payload.outcome
+                  : undefined,
+            streamRecords: typeof ev.payload?.recordCount === "number" ? ev.payload.recordCount : 0,
           });
         }
       }

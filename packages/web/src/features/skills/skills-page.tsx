@@ -28,12 +28,15 @@ const CATEGORIES = [
 ] as const;
 
 const CATEGORY_TONES: Record<string, string> = {
-  engineering: "bg-blue-500/10 text-blue-700 border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-300",
+  engineering:
+    "bg-blue-500/10 text-blue-700 border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-300",
   design: "bg-pink-500/10 text-pink-700 border-pink-500/30 dark:bg-pink-950/30 dark:text-pink-300",
   qa: "bg-purple-500/10 text-purple-700 border-purple-500/30 dark:bg-purple-950/30 dark:text-purple-300",
-  science: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-300",
+  science:
+    "bg-emerald-500/10 text-emerald-700 border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-300",
   ops: "bg-amber-500/10 text-amber-700 border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300",
-  management: "bg-cyan-500/10 text-cyan-700 border-cyan-500/30 dark:bg-cyan-950/30 dark:text-cyan-300",
+  management:
+    "bg-cyan-500/10 text-cyan-700 border-cyan-500/30 dark:bg-cyan-950/30 dark:text-cyan-300",
   general: "bg-gray-500/10 text-gray-700 border-gray-500/30 dark:bg-gray-950/30 dark:text-gray-300",
 };
 
@@ -47,10 +50,12 @@ export function SkillsPage() {
   const [selectedSkillName, setSelectedSkillName] = useState<string>("");
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       let loaded: SkillEntry[] = [];
       try {
         const pluginLib = await api.getPluginLibrary();
@@ -75,56 +80,17 @@ export function SkillsPage() {
           }
         }
       } catch (e) {
-        console.warn("Plugin library fetch deferred, using presets", e);
-      }
-
-      if (loaded.length === 0) {
-        loaded = [
-          // Sample built-in skills if remote catalog is initializing
-          {
-            name: "design-taste-frontend-v1",
-            description: "Pro engineering cockpit aesthetics: high visual density, 1px dividers, tabular-nums, dark-glass pro polish.",
-            category: "design" as const,
-            tags: ["ui", "design", "cockpit", "frontend"],
-            allowedTools: ["view_file", "replace_file_content", "write_to_file"],
-            content: `# design-taste-frontend-v1\n\nApply high visual density, Linear/Raycast dark-glass aesthetics, strict WCAG AA contrast, and zero AI-slop design.`,
-            parameters: [
-              { name: "DESIGN_VARIANCE", description: "Design variance intensity level (1-10)", default: "8" },
-              { name: "VISUAL_DENSITY", description: "Visual data density level (1-10)", default: "9" },
-            ],
-          },
-          {
-            name: "porting-investigator",
-            description: "Strict full-scope codebase audit and parity porting with zero code omissions or stubs.",
-            category: "engineering" as const,
-            tags: ["audit", "porting", "parity", "codebase"],
-            allowedTools: ["view_file", "grep_search", "run_command"],
-            content: `# porting-investigator\n\nExhaustive source inspection, parity analysis against upstream, and continuous AST alignment.`,
-            parameters: [{ name: "targetRepo", description: "Repository path or upstream remote to analyze", required: true }],
-          },
-          {
-            name: "code-review-excellence",
-            description: "Comprehensive 5-axis PR code quality review covering correctness, types, performance, security, and tests.",
-            category: "qa" as const,
-            tags: ["review", "qa", "security", "code-quality"],
-            allowedTools: ["view_file", "grep_search"],
-            content: `# code-review-excellence\n\nAdversarial inspection of diffs for security vulnerabilities, type regressions, and missing edge test cases.`,
-          },
-          {
-            name: "elite-devops-architect",
-            description: "Kubernetes, Docker, CI/CD pipelines, and cloud infrastructure deployment specialist.",
-            category: "ops" as const,
-            tags: ["devops", "docker", "k8s", "ci-cd"],
-            allowedTools: ["run_command", "view_file", "write_to_file"],
-            content: `# elite-devops-architect\n\nDesign production-grade deployment manifests, zero-downtime rolling updates, and distributed tracing telemetry.`,
-          },
-        ];
+        const msg = e instanceof Error ? e.message : "Failed to fetch skills catalog from server";
+        setLoadError(msg);
+        console.warn("Plugin library fetch failed:", e);
       }
 
       setSkills(loaded);
       const firstSkill = loaded[0];
       if (firstSkill && !selectedSkillName) {
         setSelectedSkillName(firstSkill.name);
+      } else if (!firstSkill) {
+        setSelectedSkillName("");
       }
     } catch (err) {
       console.error("Failed to load skills:", err);
@@ -187,12 +153,11 @@ export function SkillsPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 Skills Hub & Capabilities Catalog
               </h1>
-              <Badge tone="brand">
-                {skills.length} Loaded
-              </Badge>
+              <Badge tone="brand">{skills.length} Loaded</Badge>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Searchable production catalog of engineering, research, design, QA, and operational agent skills
+              Searchable production catalog of engineering, research, design, QA, and operational
+              agent skills
             </p>
           </div>
         </div>
@@ -253,7 +218,9 @@ export function SkillsPage() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold font-mono truncate">{s.name}</span>
-                    <span className={`px-1.5 py-0.2 rounded-sm border text-[10px] uppercase font-mono ${toneClass}`}>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-sm border text-[10px] uppercase font-mono ${toneClass}`}
+                    >
                       {s.category}
                     </span>
                   </div>
@@ -275,11 +242,17 @@ export function SkillsPage() {
                 </button>
               );
             })}
-            {filteredSkills.length === 0 && (
-              <div className="text-center text-xs text-gray-400 py-12">
-                No skills matching search criteria.
+            {loadError ? (
+              <div className="p-4 text-center text-xs text-rose-400">
+                Failed to load skills catalog.
               </div>
-            )}
+            ) : filteredSkills.length === 0 ? (
+              <div className="text-center text-xs text-gray-400 py-12">
+                {skills.length === 0
+                  ? "No skills available in the catalog."
+                  : "No skills matching search criteria."}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -298,9 +271,7 @@ export function SkillsPage() {
                       {selectedSkill.description}
                     </p>
                   </div>
-                  <Badge tone="brand">
-                    {selectedSkill.category.toUpperCase()}
-                  </Badge>
+                  <Badge tone="brand">{selectedSkill.category.toUpperCase()}</Badge>
                 </div>
 
                 <div className="flex items-center gap-2 mt-4 flex-wrap">
@@ -381,9 +352,19 @@ export function SkillsPage() {
                 </div>
               </div>
             </div>
+          ) : loadError ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-xs gap-3">
+              <p className="font-semibold text-rose-400">Failed to load skills catalog</p>
+              <p className="text-gray-400 max-w-sm">{loadError}</p>
+              <Button variant="secondary" size="sm" onClick={() => void loadSkills()}>
+                Retry
+              </Button>
+            </div>
           ) : (
             <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
-              Select a skill to inspect its configuration and capabilities.
+              {skills.length === 0
+                ? "No skills available in the catalog."
+                : "Select a skill to inspect its configuration and capabilities."}
             </div>
           )}
         </div>

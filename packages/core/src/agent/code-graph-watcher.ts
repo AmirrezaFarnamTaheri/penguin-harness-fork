@@ -82,7 +82,9 @@ export class CodeGraphWatcher extends EventEmitter {
     this.rootDir = path.resolve(rootDir);
     this.graph = options.graph ?? new CodeGraph();
     this.indexer = options.indexer ?? new SymbolIndexer();
-    this.extensions = new Set((options.extensions ?? DEFAULT_EXTENSIONS).map((ext) => ext.toLowerCase()));
+    this.extensions = new Set(
+      (options.extensions ?? DEFAULT_EXTENSIONS).map((ext) => ext.toLowerCase()),
+    );
     this.ignorePatterns = options.ignorePatterns ?? DEFAULT_IGNORES;
     this.debounceMs = options.debounceMs ?? 100;
 
@@ -126,7 +128,11 @@ export class CodeGraphWatcher extends EventEmitter {
     const normalized = targetPath.replace(/\\/g, "/");
     for (const pattern of this.ignorePatterns) {
       if (typeof pattern === "string") {
-        if (normalized.includes(`/${pattern}/`) || normalized.endsWith(`/${pattern}`) || normalized.startsWith(`${pattern}/`)) {
+        if (
+          normalized.includes(`/${pattern}/`) ||
+          normalized.endsWith(`/${pattern}`) ||
+          normalized.startsWith(`${pattern}/`)
+        ) {
           return true;
         }
       } else if (pattern.test(normalized)) {
@@ -182,8 +188,12 @@ export class CodeGraphWatcher extends EventEmitter {
 
     walk(this.rootDir);
 
-    for (const file of filesToProcess) {
-      this.processFile(file);
+    const chunkSize = 25;
+    for (let i = 0; i < filesToProcess.length; i++) {
+      this.processFile(filesToProcess[i]!);
+      if (i > 0 && i % chunkSize === 0) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
     }
 
     this.lastUpdated = Date.now();

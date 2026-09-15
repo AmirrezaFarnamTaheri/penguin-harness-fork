@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 export interface LoopDetectorOptions {
   /** Maximum consecutive calls to the same tool before flagging a loop (default: 5). */
   maxRepeats?: number;
@@ -286,8 +284,13 @@ export class LoopDetector {
       return "";
     }
     try {
-      const serialized = typeof input === "string" ? input : JSON.stringify(input);
-      return createHash("sha256").update(serialized).digest("hex").slice(0, 16);
+      const str = typeof input === "string" ? input : JSON.stringify(input);
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = (hash * 0x01000193) >>> 0;
+      }
+      return hash.toString(16).padStart(8, "0");
     } catch {
       return String(input).slice(0, 32);
     }

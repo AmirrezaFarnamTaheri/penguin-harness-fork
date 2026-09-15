@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import type { CodeGraphNode, CodeGraphEdge, CodeNodeKind } from "@prismshadow/penguin-core";
+import type { CodeGraphNode, CodeGraphEdge, CodeNodeKind } from "@prismshadow/penguin-core/browser";
 
 export interface TopologyGraphCanvasProps {
   nodes: CodeGraphNode[];
@@ -46,7 +46,10 @@ export function TopologyGraphCanvas({
     const files = nodes.filter((n) => n.kind === "file");
     const classes = nodes.filter((n) => n.kind === "class" || n.kind === "struct");
     const functions = nodes.filter((n) => n.kind === "function");
-    const others = nodes.filter((n) => n.kind !== "file" && n.kind !== "class" && n.kind !== "struct" && n.kind !== "function");
+    const others = nodes.filter(
+      (n) =>
+        n.kind !== "file" && n.kind !== "class" && n.kind !== "struct" && n.kind !== "function",
+    );
 
     // Circular multi-tier concentric layout
     // Center: Classes (tier 1)
@@ -302,13 +305,7 @@ export function TopologyGraphCanvas({
                   <circle
                     r={radius + 6}
                     fill="none"
-                    stroke={
-                      isSelected
-                        ? "#06b6d4"
-                        : isPathNode
-                          ? "#10b981"
-                          : "#f43f5e"
-                    }
+                    stroke={isSelected ? "#06b6d4" : isPathNode ? "#10b981" : "#f43f5e"}
                     strokeWidth={2}
                     className="animate-pulse"
                     filter="url(#glow-selected)"

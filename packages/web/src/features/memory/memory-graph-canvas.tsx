@@ -3,7 +3,16 @@ import type { MemoryTopicNode } from "./memory-types";
 import { parseMemoryLinks, formatBytes } from "./memory-types";
 function ZoomInIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
       <line x1="11" y1="8" x2="11" y2="14" />
@@ -14,7 +23,16 @@ function ZoomInIcon({ size = 14 }: { size?: number }) {
 
 function ZoomOutIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
       <line x1="8" y1="11" x2="14" y2="11" />
@@ -24,7 +42,16 @@ function ZoomOutIcon({ size = 14 }: { size?: number }) {
 
 function RefreshIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5" />
     </svg>
   );
@@ -32,7 +59,16 @@ function RefreshIcon({ size = 14 }: { size?: number }) {
 
 function LayersIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polygon points="12 2 2 7 12 12 22 7 12 2" />
       <polyline points="2 17 12 22 22 17" />
       <polyline points="2 12 12 17 22 12" />
@@ -137,7 +173,9 @@ export function MemoryGraphCanvas({
       <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-background/80 backdrop-blur-md px-2.5 py-1.5 rounded-md border border-border text-xs">
         <div className="flex items-center gap-1.5 font-medium text-foreground">
           <LayersIcon size={14} />
-          <span>Knowledge Graph ({topics.length} Topics, {edges.length} Links)</span>
+          <span>
+            Knowledge Graph ({topics.length} Topics, {edges.length} Links)
+          </span>
         </div>
         <div className="h-3 w-px bg-border mx-1" />
         <div className="flex items-center gap-1">
@@ -229,16 +267,16 @@ export function MemoryGraphCanvas({
             const strokeColor = isSelected
               ? "#f59e0b"
               : isHighlighted
-              ? "#38bdf8"
-              : isUserScope
-              ? "#3b82f6"
-              : "#10b981";
+                ? "#38bdf8"
+                : isUserScope
+                  ? "#3b82f6"
+                  : "#10b981";
 
             const fillColor = isSelected
               ? "rgba(245, 158, 11, 0.25)"
               : isUserScope
-              ? "rgba(59, 130, 246, 0.15)"
-              : "rgba(16, 185, 129, 0.15)";
+                ? "rgba(59, 130, 246, 0.15)"
+                : "rgba(16, 185, 129, 0.15)";
 
             return (
               <g

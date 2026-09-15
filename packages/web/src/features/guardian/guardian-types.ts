@@ -2,7 +2,7 @@ import type {
   ShellRiskLevel,
   ShellSafetyAssessment,
   ShellFinding,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 
 export type { ShellRiskLevel, ShellSafetyAssessment, ShellFinding };
 

@@ -10,7 +10,7 @@ import type {
   KanbanTaskState,
   KanbanTaskPriority,
   TriageDraft,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
 import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -43,11 +43,18 @@ export function KanbanPage() {
     if (!projectId) return;
     try {
       setLoading(true);
-      const res = await api.listKanbanTasks(projectId);
-      if (res && Array.isArray(res.tasks)) {
-        setTasks(res.tasks);
+      const [tasksRes, draftsRes] = await Promise.all([
+        api.listKanbanTasks(projectId),
+        api.listTriageDrafts(projectId).catch(() => ({ drafts: [] })),
+      ]);
+      if (tasksRes && Array.isArray(tasksRes.tasks)) {
+        setTasks(tasksRes.tasks);
       }
-      setDrafts([]);
+      if (draftsRes && Array.isArray(draftsRes.drafts)) {
+        setDrafts(draftsRes.drafts);
+      } else {
+        setDrafts([]);
+      }
     } catch (err) {
       console.error("Failed to load kanban tasks:", err);
       toastError("Failed to fetch kanban tasks");
@@ -63,7 +70,9 @@ export function KanbanPage() {
   const handleUpdateTaskState = async (taskId: string, state: KanbanTaskState) => {
     if (!projectId) return;
     const prev = [...tasks];
-    setTasks((curr) => curr.map((t) => (t.id === taskId ? { ...t, state, updatedAt: Date.now() } : t)));
+    setTasks((curr) =>
+      curr.map((t) => (t.id === taskId ? { ...t, state, updatedAt: Date.now() } : t)),
+    );
     try {
       await api.updateKanbanTask(projectId, taskId, { state });
       toastSuccess(`Task moved to ${state.replace("_", " ")}`);
@@ -154,9 +163,7 @@ export function KanbanPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 Multi-Agent Task Kanban
               </h1>
-              <Badge tone="brand">
-                {currentProject?.name ?? "Project"}
-              </Badge>
+              <Badge tone="brand">{currentProject?.name ?? "Project"}</Badge>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Autonomous task coordination, triage inbox, and agent workflow handoffs

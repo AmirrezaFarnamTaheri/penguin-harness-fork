@@ -5,7 +5,7 @@
  * spend attribution flow, and pricing matrix calculator.
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
-import type { ModelCombo, SpendFlowReport } from "@prismshadow/penguin-core";
+import type { ModelCombo, SpendFlowReport } from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
 import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -50,7 +50,9 @@ export function GatewayPage() {
   const [comboModalOpen, setComboModalOpen] = useState(false);
   const [newComboId, setNewComboId] = useState("");
   const [newComboName, setNewComboName] = useState("");
-  const [newComboTargets, setNewComboTargets] = useState("anthropic:claude-3-7-sonnet, openai:gpt-4o, deepseek:deepseek-chat");
+  const [newComboTargets, setNewComboTargets] = useState(
+    "anthropic:claude-3-7-sonnet, openai:gpt-4o, deepseek:deepseek-chat",
+  );
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -66,75 +68,39 @@ export function GatewayPage() {
       if (quotaRes) {
         setQuota(quotaRes);
       } else {
-        // High fidelity fallback telemetry
-        setQuota({
-          activeQuota: {
-            sessionUsedPct: 42,
-            weeklyUsedPct: 68,
-            resetsIn: "3d 14h",
-            status: "healthy",
-          },
-          models: [
-            { provider: "anthropic", modelId: "claude-3-7-sonnet", isCooling: false },
-            { provider: "openai", modelId: "gpt-4o", isCooling: false },
-            { provider: "deepseek", modelId: "deepseek-chat", isCooling: false },
-            { provider: "google", modelId: "gemini-2.5-pro", isCooling: true },
-          ],
-        });
+        setQuota(null);
       }
 
       if (Array.isArray(combosRes?.combos)) {
         setCombos(combosRes.combos);
       } else {
-        setCombos([
-          {
-            id: "combo-primary-fast",
-            name: "High Velocity Engineering Combo",
-            description: "Claude 3.7 Sonnet with fast fallback to GPT-4o and DeepSeek V3",
-            targets: [
-              { provider: "anthropic", modelId: "claude-3-7-sonnet" },
-              { provider: "openai", modelId: "gpt-4o" },
-              { provider: "deepseek", modelId: "deepseek-chat" },
-            ],
-          },
-        ]);
+        setCombos([]);
       }
 
-      if (pricingRes && typeof pricingRes === "object" && "pricing" in pricingRes && Array.isArray((pricingRes as any).pricing)) {
-        setPricing((pricingRes as any).pricing);
+      if (pricingRes && typeof pricingRes === "object") {
+        if ("pricing" in pricingRes && Array.isArray((pricingRes as any).pricing)) {
+          setPricing((pricingRes as any).pricing);
+        } else if ("catalog" in pricingRes && Array.isArray((pricingRes as any).catalog)) {
+          setPricing(
+            (pricingRes as any).catalog.map((entry: any) => ({
+              modelId: entry.modelId,
+              provider: entry.provider,
+              inputPerMillion: entry.promptPerMillion ?? entry.inputPerMillion ?? 0,
+              outputPerMillion: entry.completionPerMillion ?? entry.outputPerMillion ?? 0,
+              cacheReadPerMillion: entry.cacheReadPerMillion,
+            })),
+          );
+        } else {
+          setPricing([]);
+        }
       } else {
-        setPricing([
-          { modelId: "claude-3-7-sonnet", provider: "anthropic", inputPerMillion: 3.0, outputPerMillion: 15.0, cacheReadPerMillion: 0.3 },
-          { modelId: "gpt-4o", provider: "openai", inputPerMillion: 2.5, outputPerMillion: 10.0, cacheReadPerMillion: 1.25 },
-          { modelId: "deepseek-chat", provider: "deepseek", inputPerMillion: 0.14, outputPerMillion: 0.28, cacheReadPerMillion: 0.014 },
-          { modelId: "gemini-2.5-pro", provider: "google", inputPerMillion: 1.25, outputPerMillion: 5.0, cacheReadPerMillion: 0.31 },
-        ]);
+        setPricing([]);
       }
 
       if (spendRes && spendRes.report) {
         setSpendFlow(spendRes.report);
       } else {
-        setSpendFlow({
-          totalCostUsd: 18.42,
-          period: {
-            label: "Current Billing Cycle (Month-to-Date)",
-            start: "2026-09-01",
-            end: "2026-09-13",
-          },
-          models: [
-            { id: "claude-3-7-sonnet", label: "Claude 3.7 Sonnet", cost: 12.8 },
-            { id: "gpt-4o", label: "GPT-4o", cost: 4.35 },
-            { id: "deepseek-chat", label: "DeepSeek V3", cost: 1.27 },
-          ],
-          projects: [
-            { id: projectId, label: currentProject?.name ?? "Primary Project", cost: 18.42 },
-          ],
-          links: [
-            { model: "claude-3-7-sonnet", project: projectId, cost: 12.8 },
-            { model: "gpt-4o", project: projectId, cost: 4.35 },
-            { model: "deepseek-chat", project: projectId, cost: 1.27 },
-          ],
-        });
+        setSpendFlow(null);
       }
     } catch (err) {
       console.error("Failed to load gateway data:", err);
@@ -156,7 +122,10 @@ export function GatewayPage() {
         .split(",")
         .map((part) => {
           const [provider, modelId] = part.trim().split(":");
-          return { provider: provider?.trim() || "anthropic", modelId: modelId?.trim() || "default" };
+          return {
+            provider: provider?.trim() || "anthropic",
+            modelId: modelId?.trim() || "default",
+          };
         })
         .filter((t) => t.modelId);
 
@@ -200,12 +169,11 @@ export function GatewayPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 LLM Gateway & Quota Cockpit
               </h1>
-              <Badge tone="brand">
-                Router v2 Active
-              </Badge>
+              <Badge tone="brand">Router v2 Active</Badge>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Multi-model routing chains, live cooldown gates, spend flow analysis, and quota telemetry
+              Multi-model routing chains, live cooldown gates, spend flow analysis, and quota
+              telemetry
             </p>
           </div>
         </div>
@@ -272,91 +240,106 @@ export function GatewayPage() {
       <div className="flex-1 overflow-auto p-6">
         {activeTab === "quota" && (
           <div className="max-w-4xl mx-auto space-y-6 text-xs">
-            {/* Top Stat Meters */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                <div className="text-[11px] text-gray-400 font-medium">Session Quota Used</div>
-                <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
-                  {quota?.activeQuota.sessionUsedPct ?? 0}%
-                </div>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 rounded-full"
-                    style={{ width: `${quota?.activeQuota.sessionUsedPct ?? 0}%` }}
-                  />
-                </div>
+            {quota === null ? (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center text-gray-500">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">
+                  Quota Telemetry Unavailable
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  No active quota monitors configured for this project.
+                </p>
               </div>
-
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                <div className="text-[11px] text-gray-400 font-medium">Weekly Quota Used</div>
-                <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
-                  {quota?.activeQuota.weeklyUsedPct ?? 0}%
-                </div>
-                <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                  <div
-                    className="h-full bg-purple-500 rounded-full"
-                    style={{ width: `${quota?.activeQuota.weeklyUsedPct ?? 0}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                <div className="text-[11px] text-gray-400 font-medium">Next Reset Window</div>
-                <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
-                  {quota?.activeQuota.resetsIn ?? "N/A"}
-                </div>
-                <div className="mt-2 text-[11px] text-gray-400">Automatic quota replenishment</div>
-              </div>
-            </div>
-
-            {/* Models Cooldown & Telemetry Status Table */}
-            <div className="p-5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-                  Provider Model Health & Cooldown Circuit
-                </h3>
-                <span className="text-[11px] text-gray-400 font-mono">
-                  {quota?.models.length ?? 0} endpoints monitored
-                </span>
-              </div>
-
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {quota?.models.map((m) => (
-                  <div
-                    key={`${m.provider}-${m.modelId}`}
-                    className="py-3 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`w-2 h-2 rounded-full ${
-                          m.isCooling ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
-                        }`}
-                      />
-                      <div>
-                        <div className="font-semibold text-gray-800 dark:text-gray-200">
-                          {m.modelId}
-                        </div>
-                        <div className="text-[11px] text-gray-400 font-mono capitalize">
-                          Provider: {m.provider}
-                        </div>
-                      </div>
+            ) : (
+              <>
+                {/* Top Stat Meters */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
+                    <div className="text-[11px] text-gray-400 font-medium">Session Quota Used</div>
+                    <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
+                      {quota.activeQuota.sessionUsedPct !== null
+                        ? `${quota.activeQuota.sessionUsedPct}%`
+                        : "N/A"}
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      {m.isCooling ? (
-                        <Badge tone="amber">
-                          COOLING DOWN
-                        </Badge>
-                      ) : (
-                        <Badge tone="green">
-                          OPERATIONAL
-                        </Badge>
-                      )}
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                      <div
+                        className="h-full bg-blue-500 rounded-full"
+                        style={{ width: `${quota.activeQuota.sessionUsedPct ?? 0}%` }}
+                      />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
+                    <div className="text-[11px] text-gray-400 font-medium">Weekly Quota Used</div>
+                    <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
+                      {quota.activeQuota.weeklyUsedPct !== null
+                        ? `${quota.activeQuota.weeklyUsedPct}%`
+                        : "N/A"}
+                    </div>
+                    <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 rounded-full"
+                        style={{ width: `${quota.activeQuota.weeklyUsedPct ?? 0}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
+                    <div className="text-[11px] text-gray-400 font-medium">Next Reset Window</div>
+                    <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                      {quota.activeQuota.resetsIn ?? "N/A"}
+                    </div>
+                    <div className="mt-2 text-[11px] text-gray-400">
+                      Automatic quota replenishment
+                    </div>
+                  </div>
+                </div>
+
+                {/* Models Cooldown & Telemetry Status Table */}
+                <div className="p-5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                      Provider Model Health & Cooldown Circuit
+                    </h3>
+                    <span className="text-[11px] text-gray-400 font-mono">
+                      {quota.models.length} endpoints monitored
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {quota.models.map((m) => (
+                      <div
+                        key={`${m.provider}-${m.modelId}`}
+                        className="py-3 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`w-2 h-2 rounded-full ${
+                              m.isCooling ? "bg-amber-500 animate-pulse" : "bg-emerald-500"
+                            }`}
+                          />
+                          <div>
+                            <div className="font-semibold text-gray-800 dark:text-gray-200">
+                              {m.modelId}
+                            </div>
+                            <div className="text-[11px] text-gray-400 font-mono capitalize">
+                              Provider: {m.provider}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {m.isCooling ? (
+                            <Badge tone="amber">COOLING DOWN</Badge>
+                          ) : (
+                            <Badge tone="green">OPERATIONAL</Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -368,45 +351,56 @@ export function GatewayPage() {
               </h3>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              {combos.map((combo) => (
-                <div
-                  key={combo.id}
-                  className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                        {combo.name}
+            {combos.length === 0 ? (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center text-gray-500">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">
+                  No Model Combos Configured
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Register a fallback chain above to enable automatic model failover.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {combos.map((combo) => (
+                  <div
+                    key={combo.id}
+                    className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                          {combo.name}
+                        </div>
+                        <div className="font-mono text-[11px] text-gray-400">{combo.id}</div>
                       </div>
-                      <div className="font-mono text-[11px] text-gray-400">{combo.id}</div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleDeleteCombo(combo.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleDeleteCombo(combo.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      Delete
-                    </Button>
-                  </div>
 
-                  <div className="flex items-center gap-2 flex-wrap font-mono text-xs pt-1">
-                    {(combo.targets || []).map((target, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium text-blue-600 dark:text-blue-400">
-                          {idx === 0 ? "★ Primary: " : `#${idx + 1} Fallback: `}
-                          {target.modelId} ({target.provider})
-                        </span>
-                        {idx < (combo.targets || []).length - 1 && (
-                          <span className="text-gray-400">→</span>
-                        )}
-                      </div>
-                    ))}
+                    <div className="flex items-center gap-2 flex-wrap font-mono text-xs pt-1">
+                      {(combo.targets || []).map((target, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 font-medium text-blue-600 dark:text-blue-400">
+                            {idx === 0 ? "★ Primary: " : `#${idx + 1} Fallback: `}
+                            {target.modelId} ({target.provider})
+                          </span>
+                          {idx < (combo.targets || []).length - 1 && (
+                            <span className="text-gray-400">→</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -415,7 +409,14 @@ export function GatewayPage() {
             {spendFlow ? (
               <SpendFlowCard report={spendFlow} />
             ) : (
-              <div className="text-center text-gray-400 py-12">Loading spend flow metrics...</div>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center text-gray-500">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">
+                  Spend Flow Metrics Unavailable
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  No spend telemetry records are available for this project yet.
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -425,46 +426,61 @@ export function GatewayPage() {
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Model Token Pricing Matrix (USD per 1 Million Tokens)
             </h3>
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden shadow-xs">
-              <table className="w-full text-left">
-                <thead className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 font-mono text-[11px] text-gray-500">
-                  <tr>
-                    <th className="p-3">Model</th>
-                    <th className="p-3">Provider</th>
-                    <th className="p-3">Prompt Input / 1M</th>
-                    <th className="p-3">Completion / 1M</th>
-                    <th className="p-3">Prompt Cache Read / 1M</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-mono">
-                  {pricing.map((p) => (
-                    <tr key={`${p.provider}-${p.modelId}`}>
-                      <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">
-                        {p.modelId}
-                      </td>
-                      <td className="p-3 capitalize text-gray-600 dark:text-gray-400">
-                        {p.provider}
-                      </td>
-                      <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">
-                        ${p.inputPerMillion.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-purple-600 dark:text-purple-400 font-medium">
-                        ${p.outputPerMillion.toFixed(2)}
-                      </td>
-                      <td className="p-3 text-emerald-600 dark:text-emerald-400">
-                        ${(p.cacheReadPerMillion ?? p.inputPerMillion * 0.1).toFixed(3)}
-                      </td>
+            {pricing.length === 0 ? (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center text-gray-500">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">
+                  Pricing Catalog Unavailable
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  No pricing data found for model endpoints.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden shadow-xs">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 font-mono text-[11px] text-gray-500">
+                    <tr>
+                      <th className="p-3">Model</th>
+                      <th className="p-3">Provider</th>
+                      <th className="p-3">Prompt Input / 1M</th>
+                      <th className="p-3">Completion / 1M</th>
+                      <th className="p-3">Prompt Cache Read / 1M</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-mono">
+                    {pricing.map((p) => (
+                      <tr key={`${p.provider}-${p.modelId}`}>
+                        <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">
+                          {p.modelId}
+                        </td>
+                        <td className="p-3 capitalize text-gray-600 dark:text-gray-400">
+                          {p.provider}
+                        </td>
+                        <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">
+                          ${p.inputPerMillion.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-purple-600 dark:text-purple-400 font-medium">
+                          ${p.outputPerMillion.toFixed(2)}
+                        </td>
+                        <td className="p-3 text-emerald-600 dark:text-emerald-400">
+                          ${(p.cacheReadPerMillion ?? p.inputPerMillion * 0.1).toFixed(3)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Create Combo Modal */}
-      <Modal open={comboModalOpen} onClose={() => setComboModalOpen(false)} title="Register Model Combo">
+      <Modal
+        open={comboModalOpen}
+        onClose={() => setComboModalOpen(false)}
+        title="Register Model Combo"
+      >
         <form onSubmit={handleCreateCombo} className="space-y-4 p-4 text-xs">
           <div>
             <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">

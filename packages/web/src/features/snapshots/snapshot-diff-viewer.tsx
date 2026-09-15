@@ -1,10 +1,6 @@
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import type {
-  RollbackMode,
-  SnapshotVersionInfo,
-  StateDiffSummary,
-} from "./snapshot-types";
+import type { RollbackMode, SnapshotVersionInfo, StateDiffSummary } from "./snapshot-types";
 
 export interface SnapshotDiffViewerProps {
   currentSnapshot: SnapshotVersionInfo;
@@ -44,18 +40,10 @@ export function SnapshotDiffViewer({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onConfirmRollback("fork-branch")}
-          >
+          <Button variant="secondary" size="sm" onClick={() => onConfirmRollback("fork-branch")}>
             Fork New Session
           </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={() => onConfirmRollback("in-place")}
-          >
+          <Button variant="danger" size="sm" onClick={() => onConfirmRollback("in-place")}>
             Revert In-Place
           </Button>
         </div>
@@ -64,9 +52,7 @@ export function SnapshotDiffViewer({
       {/* System Prompt Comparison */}
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-foreground">
-            System Prompt Specification
-          </span>
+          <span className="text-xs font-semibold text-foreground">System Prompt Specification</span>
           <Badge tone={diffSummary.promptDiff.changed ? "amber" : "gray"}>
             {diffSummary.promptDiff.changed ? "Modified" : "Unchanged"}
           </Badge>
@@ -127,14 +113,10 @@ export function SnapshotDiffViewer({
                 >
                   <div className="flex items-center gap-2">
                     <Badge tone={tone}>{change.changeType}</Badge>
-                    <span className="font-mono font-medium text-foreground">
-                      {change.topic}
-                    </span>
+                    <span className="font-mono font-medium text-foreground">{change.topic}</span>
                   </div>
                   {change.diffSnippet && (
-                    <span className="text-[11px] text-muted-foreground">
-                      {change.diffSnippet}
-                    </span>
+                    <span className="text-[11px] text-muted-foreground">{change.diffSnippet}</span>
                   )}
                 </div>
               );
@@ -168,9 +150,7 @@ export function SnapshotDiffViewer({
                 <Badge tone={skill.changeType === "added" ? "green" : "red"}>
                   {skill.changeType}
                 </Badge>
-                <span className="font-medium text-foreground">
-                  {skill.skillName}
-                </span>
+                <span className="font-medium text-foreground">{skill.skillName}</span>
               </div>
             ))}
           </div>

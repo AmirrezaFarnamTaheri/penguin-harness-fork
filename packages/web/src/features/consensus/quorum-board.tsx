@@ -1,52 +1,13 @@
 import { useState, useMemo } from "react";
-import { QuorumConsensusEngine } from "@prismshadow/penguin-core";
-import type { TopicStanding, TopicConsensusStatus } from "@prismshadow/penguin-core";
+import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
+import type { TopicStanding, TopicConsensusStatus } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { RequiredMark } from "../../components/ui/field";
 
 export function QuorumBoard() {
-  const [engine] = useState(() => {
-    const qe = new QuorumConsensusEngine();
-    // Pre-populate realistic multi-agent topics
-    const t1 = qe.proposeTopic({
-      topicId: "topic-ast-graph",
-      topic: "Adopt unified AST symbol graph and CodeGraph for code navigation",
-      proposerId: "agent-architect",
-      policy: { threshold: 2, requireGrounded: true, refutationCap: 1 },
-    });
-    qe.endorseTopic(t1.topicId, "agent-coder-1", "Verified packages/core/src/agent/code-graph.ts AST speeds");
-    qe.endorseTopic(t1.topicId, "agent-reviewer", "Confirmed zero cyclic dependency overhead");
-
-    const t2 = qe.proposeTopic({
-      topicId: "topic-postgres-migration",
-      topic: "Evaluate SQLite WAL clustering vs PostgreSQL for multi-node deployments",
-      proposerId: "agent-devops",
-      policy: { threshold: 2, requireGrounded: true, refutationCap: 1 },
-    });
-    qe.endorseTopic(t2.topicId, "agent-coder-1", "Benchmarks show SQLite WAL satisfies up to 10k req/s");
-
-    const t3 = qe.proposeTopic({
-      topicId: "topic-worktree-prune",
-      topic: "Enable automated Git worktree cleanup after 24h inactivity",
-      proposerId: "agent-tester-1",
-      policy: { threshold: 2, requireGrounded: true, refutationCap: 1 },
-    });
-    qe.endorseTopic(t3.topicId, "agent-coder-2", "Prevents disk accumulation under .lanes/");
-    qe.refuteTopic(t3.topicId, "agent-architect", "Risks clobbering long-running parallel benchmark runs");
-
-    const t4 = qe.proposeTopic({
-      topicId: "topic-cache-ttl",
-      topic: "Enforce proactive prompt cache ping at 240s remaining TTL",
-      proposerId: "agent-architect",
-      policy: { threshold: 2, requireGrounded: true, refutationCap: 1 },
-    });
-    qe.endorseTopic(t4.topicId, "agent-coder-1", "Saves ~80% gateway cost for extended sessions");
-    qe.endorseTopic(t4.topicId, "agent-tester-1", "Verified in HUD statusline prompt cache gauge");
-
-    return qe;
-  });
+  const [engine] = useState(() => new QuorumConsensusEngine());
 
   const [version, setVersion] = useState(0);
   const [filter, setFilter] = useState<TopicConsensusStatus | "all">("all");
@@ -85,14 +46,18 @@ export function QuorumBoard() {
 
   const handleExecuteAction = () => {
     if (!activeActionTopic || !actionGrounds.trim()) return;
-    if (actionKind === "endorse") {
-      engine.endorseTopic(activeActionTopic.topicId, actionAgent, actionGrounds.trim());
-    } else {
-      engine.refuteTopic(activeActionTopic.topicId, actionAgent, actionGrounds.trim());
+    try {
+      if (actionKind === "endorse") {
+        engine.endorseTopic(activeActionTopic.topicId, actionAgent, actionGrounds.trim());
+      } else {
+        engine.refuteTopic(activeActionTopic.topicId, actionAgent, actionGrounds.trim());
+      }
+      setActiveActionTopic(null);
+      setActionGrounds("");
+      setVersion((v) => v + 1);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
     }
-    setActiveActionTopic(null);
-    setActionGrounds("");
-    setVersion((v) => v + 1);
   };
 
   return (
@@ -123,128 +88,137 @@ export function QuorumBoard() {
 
       {/* Topics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-        {topics.map((t) => {
-          const threshold = t.policy.threshold;
-          const progressPct = Math.min(100, Math.round((t.supporters.length / threshold) * 100));
+        {topics.length === 0 ? (
+          <div className="col-span-full p-8 text-center text-sm text-gray-500 border border-dashed border-gray-800 rounded-xl">
+            No quorum consensus topics found. Propose a decision topic above to begin deliberation.
+          </div>
+        ) : (
+          topics.map((t) => {
+            const peerEndorsements = t.supporters.filter((s) => s.agentId !== t.proposerId).length;
+            const threshold = t.policy.threshold;
+            const progressPct = Math.min(100, Math.round((peerEndorsements / threshold) * 100));
 
-          return (
-            <div
-              key={t.topicId}
-              className="p-4 rounded-xl border border-gray-800 bg-gray-950 flex flex-col gap-3"
-            >
-              {/* Card Header */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-col gap-1">
-                  <span className="font-bold text-sm text-gray-100 leading-snug">{t.topic}</span>
-                  <span className="text-[10px] text-gray-500">
-                    Proposer: <strong className="text-gray-400">{t.proposerId}</strong>
-                  </span>
-                </div>
-                <span
-                  className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider shrink-0 ${
-                    t.status === "settled"
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                      : t.status === "refuted"
-                        ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                        : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                  }`}
-                >
-                  {t.status}
-                </span>
-              </div>
-
-              {/* Consensus Progress Bar */}
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between text-[11px] text-gray-400">
-                  <span>Peer Endorsement Quorum:</span>
-                  <span className="font-semibold text-gray-200">
-                    {t.supporters.length} / {threshold} required ({progressPct}%)
-                  </span>
-                </div>
-                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-300 ${
+            return (
+              <div
+                key={t.topicId}
+                className="p-4 rounded-xl border border-gray-800 bg-gray-950 flex flex-col gap-3"
+              >
+                {/* Card Header */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-bold text-sm text-gray-100 leading-snug">{t.topic}</span>
+                    <span className="text-[10px] text-gray-500">
+                      Proposer: <strong className="text-gray-400">{t.proposerId}</strong>
+                    </span>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider shrink-0 ${
                       t.status === "settled"
-                        ? "bg-emerald-500"
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
                         : t.status === "refuted"
-                          ? "bg-rose-500"
-                          : "bg-cyan-500"
+                          ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                          : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
                     }`}
-                    style={{ width: `${progressPct}%` }}
-                  />
+                  >
+                    {t.status}
+                  </span>
                 </div>
-              </div>
 
-              {/* Grounded Evidence Supporters */}
-              <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-gray-900/50 border border-gray-900">
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-semibold uppercase">
-                  <span>Grounded Endorsements ({t.supporters.length})</span>
+                {/* Consensus Progress Bar */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-[11px] text-gray-400">
+                    <span>Peer Endorsement Quorum:</span>
+                    <span className="font-semibold text-gray-200">
+                      {peerEndorsements} / {threshold} required ({progressPct}%)
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        t.status === "settled"
+                          ? "bg-emerald-500"
+                          : t.status === "refuted"
+                            ? "bg-rose-500"
+                            : "bg-cyan-500"
+                      }`}
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
                 </div>
-                {t.supporters.length === 0 ? (
-                  <div className="text-[11px] text-gray-600 italic">No peer endorsements yet.</div>
-                ) : (
-                  t.supporters.map((s, idx) => (
-                    <div key={idx} className="text-[11px] flex items-start gap-1.5 text-gray-300">
-                      <span className="text-emerald-400 font-bold">✓</span>
-                      <div>
-                        <strong className="text-gray-200">{s.agentId}:</strong>{" "}
-                        <span className="text-gray-400">{s.grounds ?? "Approved"}</span>
-                      </div>
+
+                {/* Grounded Evidence Supporters */}
+                <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-gray-900/50 border border-gray-900">
+                  <div className="flex items-center justify-between text-[10px] text-gray-400 font-semibold uppercase">
+                    <span>Grounded Endorsements ({t.supporters.length})</span>
+                  </div>
+                  {t.supporters.length === 0 ? (
+                    <div className="text-[11px] text-gray-600 italic">
+                      No peer endorsements yet.
                     </div>
-                  ))
+                  ) : (
+                    t.supporters.map((s, idx) => (
+                      <div key={idx} className="text-[11px] flex items-start gap-1.5 text-gray-300">
+                        <span className="text-emerald-400 font-bold">✓</span>
+                        <div>
+                          <strong className="text-gray-200">{s.agentId}:</strong>{" "}
+                          <span className="text-gray-400">{s.grounds ?? "Approved"}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Refutations */}
+                {t.refuters.length > 0 && (
+                  <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-rose-950/20 border border-rose-900/30">
+                    <div className="text-[10px] text-rose-400 font-semibold uppercase">
+                      Refutations ({t.refuters.length})
+                    </div>
+                    {t.refuters.map((r, idx) => (
+                      <div key={idx} className="text-[11px] flex items-start gap-1.5 text-rose-300">
+                        <span className="text-rose-500 font-bold">✗</span>
+                        <div>
+                          <strong className="text-rose-200">{r.agentId}:</strong>{" "}
+                          <span className="text-rose-400/90">{r.grounds}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action Buttons for In-Debate */}
+                {t.status === "debating" && (
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-900">
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="text-[11px] h-7"
+                      onClick={() => {
+                        setActiveActionTopic(t);
+                        setActionKind("refute");
+                        setActionGrounds("");
+                      }}
+                    >
+                      Refute
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="text-[11px] h-7"
+                      onClick={() => {
+                        setActiveActionTopic(t);
+                        setActionKind("endorse");
+                        setActionGrounds("");
+                      }}
+                    >
+                      Endorse with Grounds
+                    </Button>
+                  </div>
                 )}
               </div>
-
-              {/* Refutations */}
-              {t.refuters.length > 0 && (
-                <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-rose-950/20 border border-rose-900/30">
-                  <div className="text-[10px] text-rose-400 font-semibold uppercase">
-                    Refutations ({t.refuters.length})
-                  </div>
-                  {t.refuters.map((r, idx) => (
-                    <div key={idx} className="text-[11px] flex items-start gap-1.5 text-rose-300">
-                      <span className="text-rose-500 font-bold">✗</span>
-                      <div>
-                        <strong className="text-rose-200">{r.agentId}:</strong>{" "}
-                        <span className="text-rose-400/90">{r.grounds}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Action Buttons for In-Debate */}
-              {t.status === "debating" && (
-                <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-900">
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    className="text-[11px] h-7"
-                    onClick={() => {
-                      setActiveActionTopic(t);
-                      setActionKind("refute");
-                      setActionGrounds("");
-                    }}
-                  >
-                    Refute
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="text-[11px] h-7"
-                    onClick={() => {
-                      setActiveActionTopic(t);
-                      setActionKind("endorse");
-                      setActionGrounds("");
-                    }}
-                  >
-                    Endorse with Grounds
-                  </Button>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* Propose Topic Modal */}
@@ -327,11 +301,7 @@ export function QuorumBoard() {
 
           <div>
             <label className="block mb-1 text-gray-400 font-medium">Acting Agent Role</label>
-            <Input
-              value={actionAgent}
-              onChange={(e) => setActionAgent(e.target.value)}
-              size="sm"
-            />
+            <Input value={actionAgent} onChange={(e) => setActionAgent(e.target.value)} size="sm" />
           </div>
 
           <div>

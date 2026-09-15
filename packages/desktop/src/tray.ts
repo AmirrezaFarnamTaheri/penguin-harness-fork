@@ -49,9 +49,10 @@ export function buildTrayMenuTemplate(opts: TrayMenuOptions): MenuItemConstructo
     },
     { type: "separator" },
     {
-      label: opts.isRunning && opts.appOrigin
-        ? `Server: Running (${opts.appOrigin})`
-        : "Server: Offline",
+      label:
+        opts.isRunning && opts.appOrigin
+          ? `Server: Running (${opts.appOrigin})`
+          : "Server: Offline",
       enabled: false,
     },
     {
@@ -122,7 +123,9 @@ export function registerCockpitShortcut(onTrigger: () => void): boolean {
   try {
     const registered = globalShortcut.register(COCKPIT_GLOBAL_SHORTCUT, onTrigger);
     if (!registered) {
-      process.stderr.write(`[shortcut] Failed to register global shortcut: ${COCKPIT_GLOBAL_SHORTCUT}\n`);
+      process.stderr.write(
+        `[shortcut] Failed to register global shortcut: ${COCKPIT_GLOBAL_SHORTCUT}\n`,
+      );
     }
     return registered;
   } catch (err) {

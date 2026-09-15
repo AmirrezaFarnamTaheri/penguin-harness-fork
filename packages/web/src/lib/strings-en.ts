@@ -1175,7 +1175,8 @@ export const en: Strings = {
     tabCatalog: "Model Catalog",
     tabKeyPools: "Key Pools & Health",
     keyPoolsTitle: "API Key Health & Rotation Telemetry",
-    keyPoolsDesc: "Monitor multi-key round-robin rotation, active cooldowns from 429 rate limits, 401 evictions, and failure telemetry.",
+    keyPoolsDesc:
+      "Monitor multi-key round-robin rotation, active cooldowns from 429 rate limits, 401 evictions, and failure telemetry.",
     filterAll: "All Models",
     filterHealthy: "Healthy Only",
     filterIssues: "Issues / Cooldown",

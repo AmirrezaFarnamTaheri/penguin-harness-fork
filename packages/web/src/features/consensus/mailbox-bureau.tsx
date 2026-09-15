@@ -142,7 +142,8 @@ export function MailboxBureau() {
         <div>
           <h3 className="font-bold text-sm text-gray-100">Inter-Agent Mailbox Bureau</h3>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            Distributed message queues, lease acquisition timeouts, and event brokers across swarm agents.
+            Distributed message queues, lease acquisition timeouts, and event brokers across swarm
+            agents.
           </p>
         </div>
 
@@ -155,7 +156,9 @@ export function MailboxBureau() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {mailboxes.map((mb) => {
           const leaseActive = mb.lease && mb.lease.expiresAt > Date.now();
-          const remainingSec = mb.lease ? Math.max(0, Math.round((mb.lease.expiresAt - Date.now()) / 1000)) : 0;
+          const remainingSec = mb.lease
+            ? Math.max(0, Math.round((mb.lease.expiresAt - Date.now()) / 1000))
+            : 0;
 
           return (
             <div
@@ -177,7 +180,9 @@ export function MailboxBureau() {
 
               <div className="flex items-center justify-between text-[11px] text-gray-400">
                 <span>Queue Depth:</span>
-                <span className="font-semibold text-gray-100 tabular-nums">{mb.queueDepth} pending</span>
+                <span className="font-semibold text-gray-100 tabular-nums">
+                  {mb.queueDepth} pending
+                </span>
               </div>
 
               {leaseActive && (
@@ -193,7 +198,9 @@ export function MailboxBureau() {
 
       {/* Messages Queue Stream */}
       <div className="flex flex-col gap-2 p-3 rounded-xl border border-gray-800 bg-gray-950">
-        <div className="text-xs font-bold text-gray-200">Recent Inter-Agent Dispatches ({messages.length})</div>
+        <div className="text-xs font-bold text-gray-200">
+          Recent Inter-Agent Dispatches ({messages.length})
+        </div>
         <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
           {messages.map((m) => (
             <div
@@ -251,19 +258,11 @@ export function MailboxBureau() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block mb-1 text-gray-400 font-medium">From Agent</label>
-              <Input
-                value={fromAgent}
-                onChange={(e) => setFromAgent(e.target.value)}
-                size="sm"
-              />
+              <Input value={fromAgent} onChange={(e) => setFromAgent(e.target.value)} size="sm" />
             </div>
             <div>
               <label className="block mb-1 text-gray-400 font-medium">To Agent</label>
-              <Input
-                value={toAgent}
-                onChange={(e) => setToAgent(e.target.value)}
-                size="sm"
-              />
+              <Input value={toAgent} onChange={(e) => setToAgent(e.target.value)} size="sm" />
             </div>
           </div>
 

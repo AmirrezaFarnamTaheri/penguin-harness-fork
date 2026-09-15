@@ -6,10 +6,20 @@ import { MemoryDocumentStudio } from "./memory-document-studio";
 import { MemoryRecallSimulator } from "./memory-recall-simulator";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Badge } from "../../components/ui/badge";
 
 function BrainIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18ZM12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
     </svg>
   );
@@ -17,7 +27,16 @@ function BrainIcon({ size = 20 }: { size?: number }) {
 
 function PlusIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -26,7 +45,16 @@ function PlusIcon({ size = 14 }: { size?: number }) {
 
 function DownloadIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -36,7 +64,16 @@ function DownloadIcon({ size = 14 }: { size?: number }) {
 
 function UploadIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="17 8 12 3 7 8" />
       <line x1="12" y1="3" x2="12" y2="15" />
@@ -46,7 +83,17 @@ function UploadIcon({ size = 14 }: { size?: number }) {
 
 function SearchIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
@@ -55,7 +102,16 @@ function SearchIcon({ size = 14, className = "" }: { size?: number; className?: 
 
 function DatabaseIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
       <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
@@ -65,7 +121,17 @@ function DatabaseIcon({ size = 16 }: { size?: number }) {
 
 function UserIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
     </svg>
@@ -74,7 +140,17 @@ function UserIcon({ size = 16, className = "" }: { size?: number; className?: st
 
 function FolderGitIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
       <circle cx="12" cy="13" r="2" />
     </svg>
@@ -83,7 +159,17 @@ function FolderGitIcon({ size = 16, className = "" }: { size?: number; className
 
 function CpuIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <rect x="9" y="9" width="6" height="6" />
       <line x1="9" y1="1" x2="9" y2="4" />
@@ -100,7 +186,17 @@ function CpuIcon({ size = 16, className = "" }: { size?: number; className?: str
 
 function SparklesIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <path d="M12 3l1.912 5.888L20 10l-6.088 1.112L12 17l-1.912-5.888L4 10l6.088-1.112z" />
     </svg>
   );
@@ -108,7 +204,16 @@ function SparklesIcon({ size = 14, className = "" }: { size?: number; className?
 
 function FileCodeIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
       <polyline points="10 13 8 15 10 17" />
@@ -254,7 +359,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
           tokens,
           updatedAt: new Date().toISOString(),
         };
-      })
+      }),
     );
   };
 
@@ -284,7 +389,9 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
   };
 
   return (
-    <div className={`flex flex-col gap-5 ${embedded ? "p-3" : "p-6 min-h-screen"} bg-background text-foreground`}>
+    <div
+      className={`flex flex-col gap-5 ${embedded ? "p-3" : "p-6 min-h-screen"} bg-background text-foreground`}
+    >
       {/* Page Header */}
       {!embedded && (
         <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border pb-4">
@@ -293,11 +400,15 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
               <BrainIcon size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground">
-                Agent Memory Vault & Knowledge Studio
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                  Agent Memory Vault & Knowledge Studio
+                </h1>
+                <Badge tone="amber">[Local Studio Sample]</Badge>
+              </div>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Visual Knowledge Graph, semantic recall testing, and persistent memory topic management
+                Local simulation and inspection studio for visual knowledge graph, semantic recall
+                testing, and memory topic management
               </p>
             </div>
           </div>
@@ -327,9 +438,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
             <DatabaseIcon size={16} />
           </div>
           <div className="text-2xl font-bold text-foreground mt-1.5">{topics.length}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">
-            Indexed in MEMORY.md
-          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Indexed in MEMORY.md</div>
         </div>
 
         <div className="p-3.5 rounded-lg border border-border bg-card">
@@ -348,10 +457,10 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
             <span className="text-xs font-medium">Workspace Scope</span>
             <FolderGitIcon size={16} className="text-emerald-400" />
           </div>
-          <div className="text-2xl font-bold text-emerald-400 mt-1.5">{stats.workspaceScopeCount}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">
-            Project repository context
+          <div className="text-2xl font-bold text-emerald-400 mt-1.5">
+            {stats.workspaceScopeCount}
           </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Project repository context</div>
         </div>
 
         <div className="p-3.5 rounded-lg border border-border bg-card">
@@ -391,7 +500,10 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
             </div>
 
             <div className="relative w-56">
-              <SearchIcon size={14} className="absolute left-2.5 top-2 text-muted-foreground pointer-events-none" />
+              <SearchIcon
+                size={14}
+                className="absolute left-2.5 top-2 text-muted-foreground pointer-events-none"
+              />
               <Input
                 size="sm"
                 value={searchQuery}

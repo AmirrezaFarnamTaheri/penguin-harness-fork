@@ -15,7 +15,16 @@ import {
 
 function KeyIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <circle cx="7.5" cy="15.5" r="5.5" />
       <path d="m21 2-9.6 9.6" />
       <path d="m15.5 7.5 3 3L22 7l-3-3" />
@@ -25,7 +34,17 @@ function KeyIcon({ size = 20 }: { size?: number }) {
 
 function SearchIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
@@ -34,7 +53,16 @@ function SearchIcon({ size = 14, className = "" }: { size?: number; className?: 
 
 function ShieldCheckIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <path d="m9 12 2 2 4-4" />
     </svg>
@@ -43,7 +71,16 @@ function ShieldCheckIcon({ size = 16 }: { size?: number }) {
 
 function RefreshIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
       <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
@@ -343,26 +380,19 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
                 Model Key Fleet & Resilient Failover Console
               </h1>
               <p className="text-xs text-muted-foreground">
-                Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease routing
+                Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease
+                routing
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void fetchLiveFleet()}
-            >
+            <Button variant="secondary" size="sm" onClick={() => void fetchLiveFleet()}>
               <RefreshIcon size={13} />
               Refresh
             </Button>
             {stats.cooldownCount > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleReviveAllCooldowns}
-              >
+              <Button variant="secondary" size="sm" onClick={handleReviveAllCooldowns}>
                 Revive All Cooldowns ({stats.cooldownCount})
               </Button>
             )}
@@ -374,9 +404,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           <span className="text-xs text-muted-foreground">Total Fleet Keys</span>
-          <span className="font-mono text-2xl font-bold text-foreground">
-            {stats.totalKeys}
-          </span>
+          <span className="font-mono text-2xl font-bold text-foreground">{stats.totalKeys}</span>
           <span className="text-[11px] text-muted-foreground">
             Across {reports.length} model pools
           </span>
@@ -400,29 +428,19 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
 
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           <span className="text-xs text-muted-foreground">Active Leases</span>
-          <span className="font-mono text-2xl font-bold text-primary">
-            {stats.activeLeases}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            Concurrent model requests
-          </span>
+          <span className="font-mono text-2xl font-bold text-primary">{stats.activeLeases}</span>
+          <span className="text-[11px] text-muted-foreground">Concurrent model requests</span>
         </div>
 
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           <span className="text-xs text-muted-foreground">In Cooldown (429)</span>
-          <span className="font-mono text-2xl font-bold text-amber-500">
-            {stats.cooldownCount}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            Recovering automatically
-          </span>
+          <span className="font-mono text-2xl font-bold text-amber-500">{stats.cooldownCount}</span>
+          <span className="text-[11px] text-muted-foreground">Recovering automatically</span>
         </div>
 
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           <span className="text-xs text-muted-foreground">Evicted (401)</span>
-          <span className="font-mono text-2xl font-bold text-red-500">
-            {stats.evictedCount}
-          </span>
+          <span className="font-mono text-2xl font-bold text-red-500">{stats.evictedCount}</span>
           <span className="text-[11px] text-muted-foreground">
             Requires key credential rotation
           </span>
@@ -521,9 +539,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
                   </span>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-foreground">
-                        {report.modelId}
-                      </h2>
+                      <h2 className="text-sm font-bold text-foreground">{report.modelId}</h2>
                       <span className="font-mono text-xs text-muted-foreground">
                         ({report.provider})
                       </span>
@@ -541,10 +557,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
                     <select
                       value={report.rotationStrategy}
                       onChange={(e) =>
-                        handleChangeStrategy(
-                          report.modelRef,
-                          e.target.value as RotationStrategy,
-                        )
+                        handleChangeStrategy(report.modelRef, e.target.value as RotationStrategy)
                       }
                       className="rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                     >

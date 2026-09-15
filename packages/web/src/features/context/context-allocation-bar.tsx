@@ -7,16 +7,42 @@ export interface ContextAllocationBarProps {
 
 export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAllocationBarProps) {
   const parts = [
-    { label: "System Prompt", tokens: data.systemPrompt, color: "bg-blue-500", text: "text-blue-400" },
+    {
+      label: "System Prompt",
+      tokens: data.systemPrompt,
+      color: "bg-blue-500",
+      text: "text-blue-400",
+    },
     { label: "Tool Defs", tokens: data.toolDefs, color: "bg-purple-500", text: "text-purple-400" },
-    { label: "User Messages", tokens: data.userMessages, color: "bg-indigo-500", text: "text-indigo-400" },
-    { label: "Assistant Output", tokens: data.assistantMessages, color: "bg-cyan-500", text: "text-cyan-400" },
-    { label: "Tool Calls", tokens: data.toolRequests, color: "bg-amber-500", text: "text-amber-400" },
-    { label: "Tool Results", tokens: data.toolResults, color: "bg-emerald-500", text: "text-emerald-400" },
+    {
+      label: "User Messages",
+      tokens: data.userMessages,
+      color: "bg-indigo-500",
+      text: "text-indigo-400",
+    },
+    {
+      label: "Assistant Output",
+      tokens: data.assistantMessages,
+      color: "bg-cyan-500",
+      text: "text-cyan-400",
+    },
+    {
+      label: "Tool Calls",
+      tokens: data.toolRequests,
+      color: "bg-amber-500",
+      text: "text-amber-400",
+    },
+    {
+      label: "Tool Results",
+      tokens: data.toolResults,
+      color: "bg-emerald-500",
+      text: "text-emerald-400",
+    },
   ];
 
   const totalTokens = parts.reduce((acc, p) => acc + p.tokens, 0);
-  const occupancyPct = contextWindow > 0 ? Math.min(100, Math.round((totalTokens / contextWindow) * 100)) : 0;
+  const occupancyPct =
+    contextWindow > 0 ? Math.min(100, Math.round((totalTokens / contextWindow) * 100)) : 0;
   const thresholdPct =
     data.compactionThreshold && contextWindow > 0
       ? Math.min(100, Math.round((data.compactionThreshold / contextWindow) * 100))
@@ -72,7 +98,8 @@ export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAl
         <div className="flex items-center justify-between text-[10px] text-gray-500">
           <span>0 tokens</span>
           <span className="text-rose-400 font-semibold">
-            Compaction triggers at: {data.compactionThreshold?.toLocaleString()} tok ({thresholdPct}%)
+            Compaction triggers at: {data.compactionThreshold?.toLocaleString()} tok ({thresholdPct}
+            %)
           </span>
           <span>{contextWindow.toLocaleString()} tok</span>
         </div>

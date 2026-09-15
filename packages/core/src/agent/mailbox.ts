@@ -1,4 +1,11 @@
-import { randomUUID } from "node:crypto";
+function generateId(prefix = ""): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    const uuid = globalThis.crypto.randomUUID();
+    return prefix ? `${prefix}${uuid}` : uuid;
+  }
+  const rand = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
+  return prefix ? `${prefix}${rand}` : rand;
+}
 
 export type LeaseState = "idle" | "acquired" | "expired";
 
@@ -67,6 +74,13 @@ export class MailboxKernel {
   private readonly leases = new Map<string, MailboxLease>();
   private readonly deadLetters = new Map<string, Array<{ msg: MailboxMessage; reason: string }>>();
   private readonly lastActivity = new Map<string, number>();
+  private readonly maxQueueDepth: number;
+  private readonly maxPayloadSizeBytes: number;
+
+  constructor(options?: { maxQueueDepth?: number; maxPayloadSizeBytes?: number }) {
+    this.maxQueueDepth = options?.maxQueueDepth ?? 500;
+    this.maxPayloadSizeBytes = options?.maxPayloadSizeBytes ?? 512 * 1024;
+  }
 
   public send<T = unknown>(
     toAgent: string,
@@ -80,8 +94,24 @@ export class MailboxKernel {
 
     if (!target) throw new Error("Recipient agent name cannot be empty");
 
+    if (payload !== undefined && payload !== null) {
+      const payloadStr = typeof payload === "string" ? payload : JSON.stringify(payload);
+      if (payloadStr.length > this.maxPayloadSizeBytes) {
+        throw new Error(
+          `Message payload exceeds maximum allowed size of ${this.maxPayloadSizeBytes} bytes`,
+        );
+      }
+    }
+
+    const queue = this.queues.get(target) ?? [];
+    if (queue.length >= this.maxQueueDepth) {
+      throw new Error(
+        `Mailbox for agent '${target}' has reached maximum queue capacity (${this.maxQueueDepth})`,
+      );
+    }
+
     const msg: MailboxMessage<T> = {
-      id: `msg-${randomUUID().slice(0, 12)}`,
+      id: generateId("msg-"),
       fromAgent: source,
       toAgent: target,
       eventType,
@@ -91,7 +121,6 @@ export class MailboxKernel {
       attempts: 0,
     };
 
-    const queue = this.queues.get(target) ?? [];
     if (priority === "high") queue.unshift(msg as MailboxMessage);
     else queue.push(msg as MailboxMessage);
     this.queues.set(target, queue);
@@ -113,7 +142,7 @@ export class MailboxKernel {
     const lease: MailboxLease = {
       agentName: name,
       inboundEventId: eventId,
-      leaseToken: randomUUID(),
+      leaseToken: generateId(),
       leaseState: "acquired",
       acquiredAt: now,
       expiresAt: now + ttlMs,
@@ -307,7 +336,7 @@ export class EventBroker {
     if (!set || set.size === 0) return;
 
     const event: BrokerEvent<T> = {
-      id: `ev-${randomUUID().slice(0, 8)}`,
+      id: generateId("ev-"),
       type,
       payload,
       timestamp: Date.now(),
@@ -336,7 +365,7 @@ export class EventBroker {
     if (!set || set.size === 0) return;
 
     const event: BrokerEvent<T> = {
-      id: `ev-must-${randomUUID().slice(0, 8)}`,
+      id: generateId("ev-must-"),
       type,
       payload,
       timestamp: Date.now(),

@@ -131,7 +131,11 @@ export class SandboxManager {
     return list;
   }
 
-  public async exec(sandboxId: string, command: string): Promise<SandboxExecResult> {
+  public async exec(
+    sandboxId: string,
+    command: string,
+    options?: { args?: string[]; shell?: boolean },
+  ): Promise<SandboxExecResult> {
     const sbx = this.sandboxes.get(sandboxId);
     if (!sbx) throw new Error(`Sandbox '${sandboxId}' not found`);
     if (sbx.status !== "running") {
@@ -164,14 +168,23 @@ export class SandboxManager {
 
     const startedAt = Date.now();
     return await new Promise<SandboxExecResult>((resolve, reject) => {
-      const child = child_process.spawn(command, {
-        shell: true,
-        cwd: sbx.workingDirectory,
-        env: { ...process.env, ...sbx.env },
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: process.platform !== "win32",
-        windowsHide: true,
-      });
+      const child = options?.args
+        ? child_process.spawn(command, options.args, {
+            shell: options.shell ?? false,
+            cwd: sbx.workingDirectory,
+            env: { ...process.env, ...sbx.env },
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: process.platform !== "win32",
+            windowsHide: true,
+          })
+        : child_process.spawn(command, {
+            shell: options?.shell ?? true,
+            cwd: sbx.workingDirectory,
+            env: { ...process.env, ...sbx.env },
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: process.platform !== "win32",
+            windowsHide: true,
+          });
       this.activeChildren.set(sandboxId, child);
 
       let stdout = "";

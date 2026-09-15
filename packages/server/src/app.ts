@@ -497,7 +497,6 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
 
   // Public routes (no login required).
   app.route("/api/auth", authRoutes(deps));
-  app.route("/api/cockpit", cockpitRoutes());
   // Desktop shutdown authenticates with the shell's Bearer token, not the cookie
   // session, so it mounts outside authMiddleware (and only in desktop mode).
   if (deps.desktop) {
@@ -1333,6 +1332,7 @@ export function createApp(
 
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
   app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));
+  app.route("/api/cockpit", cockpitRoutes());
   app.route("/api/me", meRoutes(deps));
   app.route("/api/version", versionRoutes(deps));
   app.route("/api/admin/users", adminUsersRoutes(deps));

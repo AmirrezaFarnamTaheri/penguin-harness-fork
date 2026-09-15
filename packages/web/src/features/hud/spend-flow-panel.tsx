@@ -4,7 +4,7 @@
  * Fetches and displays multi-project and multi-model LLM gateway cost attribution.
  */
 import { useEffect, useState, useCallback } from "react";
-import type { SpendFlowReport } from "@prismshadow/penguin-core";
+import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
 import { SpendFlowCard } from "./spend-flow-card";
 import { Button } from "../../components/ui/button";
@@ -28,41 +28,11 @@ export function SpendFlowPanel({ projectId }: SpendFlowPanelProps) {
       if (res && res.report) {
         setReport(res.report);
       } else {
-        setReport({
-          period: { label: "Current Session", start: new Date().toISOString(), end: new Date().toISOString() },
-          models: [
-            { id: "claude-3-5-sonnet", label: "Claude 3.5 Sonnet", cost: 1.42 },
-            { id: "deepseek-chat", label: "DeepSeek Chat", cost: 0.18 },
-            { id: "gpt-4o", label: "GPT-4o", cost: 0.85 },
-          ],
-          projects: [
-            { id: projectId, label: "Current Project", cost: 2.45 },
-          ],
-          links: [
-            { model: "claude-3-5-sonnet", project: projectId, cost: 1.42 },
-            { model: "deepseek-chat", project: projectId, cost: 0.18 },
-            { model: "gpt-4o", project: projectId, cost: 0.85 },
-          ],
-          totalCostUsd: 2.45,
-        });
+        setReport(null);
       }
-    } catch {
-      // Fallback display
-      setReport({
-        period: { label: "Current Session", start: new Date().toISOString(), end: new Date().toISOString() },
-        models: [
-          { id: "claude-3-5-sonnet", label: "Claude 3.5 Sonnet", cost: 1.42 },
-          { id: "deepseek-chat", label: "DeepSeek Chat", cost: 0.18 },
-        ],
-        projects: [
-          { id: projectId, label: "Current Project", cost: 1.60 },
-        ],
-        links: [
-          { model: "claude-3-5-sonnet", project: projectId, cost: 1.42 },
-          { model: "deepseek-chat", project: projectId, cost: 0.18 },
-        ],
-        totalCostUsd: 1.60,
-      });
+    } catch (err) {
+      setReport(null);
+      setError(err instanceof Error ? err.message : "Failed to load spend telemetry");
     } finally {
       setLoading(false);
     }
@@ -98,7 +68,15 @@ export function SpendFlowPanel({ projectId }: SpendFlowPanelProps) {
           {error}
         </div>
       )}
-      {report && <SpendFlowCard report={report} />}
+      {report ? (
+        <SpendFlowCard report={report} />
+      ) : (
+        !loading && (
+          <div className="p-4 text-center text-xs text-gray-500 rounded border border-dashed border-gray-200 dark:border-gray-800">
+            No spend telemetry available for this project yet.
+          </div>
+        )
+      )}
     </div>
   );
 }

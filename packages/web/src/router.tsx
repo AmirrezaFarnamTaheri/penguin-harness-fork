@@ -22,13 +22,19 @@ const CockpitPage = lazy(() =>
   import("./features/agent/agent-cockpit").then(({ CockpitPage }) => ({ default: CockpitPage })),
 );
 const TopologyPage = lazy(() =>
-  import("./features/topology/topology-page").then(({ TopologyPage }) => ({ default: TopologyPage })),
+  import("./features/topology/topology-page").then(({ TopologyPage }) => ({
+    default: TopologyPage,
+  })),
 );
 const GuardianPage = lazy(() =>
-  import("./features/guardian/guardian-page").then(({ GuardianPage }) => ({ default: GuardianPage })),
+  import("./features/guardian/guardian-page").then(({ GuardianPage }) => ({
+    default: GuardianPage,
+  })),
 );
 const ConsensusPage = lazy(() =>
-  import("./features/consensus/consensus-page").then(({ ConsensusPage }) => ({ default: ConsensusPage })),
+  import("./features/consensus/consensus-page").then(({ ConsensusPage }) => ({
+    default: ConsensusPage,
+  })),
 );
 const ContextBreakdownPage = lazy(() =>
   import("./features/context/context-breakdown-page").then(({ ContextBreakdownPage }) => ({

@@ -61,6 +61,14 @@ export class TaskWatchdog {
     this.warnings.length = 0;
   }
 
+  public stop(): void {
+    this.startTime = 0;
+    this.currentStep = 0;
+    this.terminalState = undefined;
+    this.abortReason = undefined;
+    this.warnings.length = 0;
+  }
+
   public heartbeat(info?: { stepNumber?: number; action?: string }): WatchdogStatus {
     if (this.startTime === 0) this.start();
     if (this.terminalState) return this.checkHealth();

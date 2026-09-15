@@ -93,7 +93,8 @@ export function simulateSemanticRecall(
   const results: MemoryRecallResult[] = [];
 
   for (const topic of topics) {
-    const textCorpus = `${topic.title} ${topic.name} ${topic.tags.join(" ")} ${topic.content}`.toLowerCase();
+    const textCorpus =
+      `${topic.title} ${topic.name} ${topic.tags.join(" ")} ${topic.content}`.toLowerCase();
     let hits = 0;
 
     for (const term of terms) {
@@ -105,9 +106,9 @@ export function simulateSemanticRecall(
     const relevance = Math.min(1, Number((hits / terms.length).toFixed(2)));
 
     if (relevance >= threshold) {
-      const firstLine = topic.content
-        .split("\n")
-        .find((l) => l.trim().length > 0 && !l.startsWith("---")) ?? topic.title;
+      const firstLine =
+        topic.content.split("\n").find((l) => l.trim().length > 0 && !l.startsWith("---")) ??
+        topic.title;
 
       results.push({
         topic,
@@ -143,9 +144,7 @@ export function validateMemoryFrontmatter(content: string): {
   const tagsMatch = frontmatterBody.match(/tags:\s*\[(.*)\]/);
 
   const title =
-    titleMatch && titleMatch[1]
-      ? titleMatch[1].trim().replace(/^['"]|['"]$/g, "")
-      : undefined;
+    titleMatch && titleMatch[1] ? titleMatch[1].trim().replace(/^['"]|['"]$/g, "") : undefined;
   const tags =
     tagsMatch && tagsMatch[1]
       ? tagsMatch[1]

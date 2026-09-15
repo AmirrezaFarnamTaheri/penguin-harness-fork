@@ -25,9 +25,7 @@ export function SpanDetailDrawer({ span, onClose }: SpanDetailDrawerProps) {
           <Badge tone={span.status === "error" ? "red" : "green"}>
             {span.status.toUpperCase()}
           </Badge>
-          <span className="font-mono text-xs font-semibold text-foreground">
-            {span.kind}
-          </span>
+          <span className="font-mono text-xs font-semibold text-foreground">{span.kind}</span>
         </div>
         <button
           type="button"
@@ -57,9 +55,7 @@ export function SpanDetailDrawer({ span, onClose }: SpanDetailDrawerProps) {
         <div className="flex flex-col gap-1">
           <span className="font-semibold text-foreground">{span.name}</span>
           <div className="flex items-center gap-1.5">
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {span.id}
-            </span>
+            <span className="font-mono text-[11px] text-muted-foreground">{span.id}</span>
             <CopyButton text={span.id} label="Copy span id" />
           </div>
         </div>

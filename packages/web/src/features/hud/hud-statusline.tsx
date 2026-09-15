@@ -4,7 +4,7 @@ import type {
   HudPromptCacheMetrics,
   HudVcsMetrics,
   HudActiveTask,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 
 export interface HudStatuslineProps {
   tokensUsed?: number;

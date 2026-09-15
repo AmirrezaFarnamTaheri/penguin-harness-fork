@@ -28,8 +28,8 @@ export function ConsensusPage({ embedded = false }: ConsensusPageProps) {
               Multi-Agent Quorum Consensus & Mailbox Bureau
             </h1>
             <p className="text-xs text-gray-400 font-mono mt-0.5">
-              Decentralized peer endorsement voting, anti-cascade evidence grounding, and message lease bureau for{" "}
-              {currentProject?.name ?? "Penguin"}
+              Decentralized peer endorsement voting, anti-cascade evidence grounding, and message
+              lease bureau for {currentProject?.name ?? "Penguin"}
             </p>
           </div>
 

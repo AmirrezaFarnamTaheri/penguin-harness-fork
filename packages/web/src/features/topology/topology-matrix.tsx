@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CodeGraph, CodeGraphNode, CodeNodeKind } from "@prismshadow/penguin-core";
+import type { CodeGraph, CodeGraphNode, CodeNodeKind } from "@prismshadow/penguin-core/browser";
 import { Input } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 
@@ -124,7 +124,10 @@ export function TopologyMatrix({
                         {n.kind}
                       </span>
                     </td>
-                    <td className="py-2 px-3 text-gray-400 text-[11px] truncate max-w-xs" title={n.filePath}>
+                    <td
+                      className="py-2 px-3 text-gray-400 text-[11px] truncate max-w-xs"
+                      title={n.filePath}
+                    >
                       {n.filePath}
                     </td>
                     <td className="py-2 px-3 text-right tabular-nums text-gray-400">

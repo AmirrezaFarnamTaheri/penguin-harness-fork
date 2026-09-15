@@ -55,6 +55,24 @@ describe("MailboxKernel", () => {
     expect(summary.queueDepth).toBe(2);
     expect(summary.pendingReplyCount).toBe(1);
   });
+
+  it("enforces maximum queue capacity to prevent resource exhaustion", () => {
+    const mb = new MailboxKernel({ maxQueueDepth: 3 });
+    mb.send("worker-capped", "caller", "m1", {});
+    mb.send("worker-capped", "caller", "m2", {});
+    mb.send("worker-capped", "caller", "m3", {});
+
+    expect(() => mb.send("worker-capped", "caller", "m4", {})).toThrow(/maximum queue capacity/);
+  });
+
+  it("enforces maximum payload size", () => {
+    const mb = new MailboxKernel({ maxPayloadSizeBytes: 100 });
+    const hugePayload = "x".repeat(200);
+
+    expect(() => mb.send("worker-payload", "caller", "msg", hugePayload)).toThrow(
+      /maximum allowed size/,
+    );
+  });
 });
 
 describe("EventBroker", () => {

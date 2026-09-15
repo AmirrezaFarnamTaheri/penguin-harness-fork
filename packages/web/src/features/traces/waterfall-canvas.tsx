@@ -31,11 +31,7 @@ function kindTone(kind: SpanKind) {
   }
 }
 
-export function WaterfallCanvas({
-  spans,
-  selectedSpanId,
-  onSelectSpan,
-}: WaterfallCanvasProps) {
+export function WaterfallCanvas({ spans, selectedSpanId, onSelectSpan }: WaterfallCanvasProps) {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   const bounds = useMemo(() => computeWaterfallBounds(spans), [spans]);
@@ -48,9 +44,7 @@ export function WaterfallCanvas({
       {/* Canvas Controls Header */}
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-foreground">
-            Execution Waterfall
-          </span>
+          <span className="text-xs font-semibold text-foreground">Execution Waterfall</span>
           <span className="text-xs text-muted-foreground">
             ({flattened.length} spans • {formatDurationMs(bounds.totalDuration)})
           </span>
@@ -63,9 +57,7 @@ export function WaterfallCanvas({
             type="button"
             onClick={() => setZoomLevel(1)}
             className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-              zoomLevel === 1
-                ? "bg-muted text-foreground"
-                : "hover:bg-muted hover:text-foreground"
+              zoomLevel === 1 ? "bg-muted text-foreground" : "hover:bg-muted hover:text-foreground"
             }`}
           >
             1x Fit
@@ -74,9 +66,7 @@ export function WaterfallCanvas({
             type="button"
             onClick={() => setZoomLevel(2)}
             className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-              zoomLevel === 2
-                ? "bg-muted text-foreground"
-                : "hover:bg-muted hover:text-foreground"
+              zoomLevel === 2 ? "bg-muted text-foreground" : "hover:bg-muted hover:text-foreground"
             }`}
           >
             2x
@@ -85,9 +75,7 @@ export function WaterfallCanvas({
             type="button"
             onClick={() => setZoomLevel(4)}
             className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-              zoomLevel === 4
-                ? "bg-muted text-foreground"
-                : "hover:bg-muted hover:text-foreground"
+              zoomLevel === 4 ? "bg-muted text-foreground" : "hover:bg-muted hover:text-foreground"
             }`}
           >
             4x
@@ -107,9 +95,7 @@ export function WaterfallCanvas({
         <span className="absolute left-3/4 top-1 -translate-x-1/2 font-mono">
           {formatDurationMs(totalDuration * 0.75)}
         </span>
-        <span className="absolute right-0 top-1 font-mono">
-          {formatDurationMs(totalDuration)}
-        </span>
+        <span className="absolute right-0 top-1 font-mono">{formatDurationMs(totalDuration)}</span>
       </div>
 
       {/* Waterfall Rows List */}
@@ -137,9 +123,7 @@ export function WaterfallCanvas({
                 key={span.id}
                 onClick={() => onSelectSpan(span)}
                 className={`group flex cursor-pointer items-center rounded-md p-1.5 transition-colors ${
-                  isSelected
-                    ? "bg-primary/10 ring-1 ring-primary"
-                    : "hover:bg-muted/60"
+                  isSelected ? "bg-primary/10 ring-1 ring-primary" : "hover:bg-muted/60"
                 }`}
               >
                 {/* Left Hierarchy Label column */}
@@ -147,15 +131,11 @@ export function WaterfallCanvas({
                   className="flex w-64 shrink-0 items-center gap-1.5 truncate pr-2 text-xs"
                   style={{ paddingLeft: `${span.depth * 16}px` }}
                 >
-                  <span className="text-muted-foreground/60">
-                    {span.depth > 0 ? "└─" : "●"}
-                  </span>
+                  <span className="text-muted-foreground/60">{span.depth > 0 ? "└─" : "●"}</span>
                   <Badge tone={kindTone(span.kind)}>{span.kind}</Badge>
                   <span
                     className={`truncate font-medium ${
-                      span.status === "error"
-                        ? "text-red-500 font-semibold"
-                        : "text-foreground"
+                      span.status === "error" ? "text-red-500 font-semibold" : "text-foreground"
                     }`}
                     title={span.name}
                   >

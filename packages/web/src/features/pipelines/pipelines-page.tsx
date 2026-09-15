@@ -11,7 +11,7 @@ import type {
   WorkflowRunState,
   WorkflowNodeKind,
   PersonaMask,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
 import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -30,7 +30,10 @@ interface PipelineSummary {
   updatedAt?: number;
 }
 
-const KIND_COLORS: Record<WorkflowNodeKind, { bg: string; border: string; text: string; badge: string }> = {
+const KIND_COLORS: Record<
+  WorkflowNodeKind,
+  { bg: string; border: string; text: string; badge: string }
+> = {
   trigger: {
     bg: "bg-amber-500/10 dark:bg-amber-950/30",
     border: "border-amber-500/30 dark:border-amber-600/40",
@@ -97,14 +100,48 @@ export function PipelinesPage() {
             {
               id: "pipeline-triage-impl",
               name: "Autonomous Triage & Implementation Loop",
-              description: "Schedules triage review, gates requirements, dispatches specialized subagent, and validates results.",
+              description:
+                "Schedules triage review, gates requirements, dispatches specialized subagent, and validates results.",
               nodes: [
-                { id: "node-trigger", name: "Inbound Task Trigger", kind: "trigger", summary: "Fired when new task enters backlog" },
-                { id: "node-triage", name: "Analyst Triage & Scope", kind: "agent", agentRole: "analyst", summary: "Verify clarity and acceptance criteria" },
-                { id: "node-gate-review", name: "Specification Approval Gate", kind: "gate", summary: "Human-in-the-loop or consensus signoff" },
-                { id: "node-exec", name: "Senior Developer Executor", kind: "agent", agentRole: "Senior Developer", summary: "Build implementation with test suite" },
-                { id: "node-qa-condition", name: "Test Suite Evaluation", kind: "condition", conditionField: "test_passed", conditionExpected: true },
-                { id: "node-output", name: "Production Artifact & Report", kind: "output", summary: "Publish commit & audit summary" },
+                {
+                  id: "node-trigger",
+                  name: "Inbound Task Trigger",
+                  kind: "trigger",
+                  summary: "Fired when new task enters backlog",
+                },
+                {
+                  id: "node-triage",
+                  name: "Analyst Triage & Scope",
+                  kind: "agent",
+                  agentRole: "analyst",
+                  summary: "Verify clarity and acceptance criteria",
+                },
+                {
+                  id: "node-gate-review",
+                  name: "Specification Approval Gate",
+                  kind: "gate",
+                  summary: "Human-in-the-loop or consensus signoff",
+                },
+                {
+                  id: "node-exec",
+                  name: "Senior Developer Executor",
+                  kind: "agent",
+                  agentRole: "Senior Developer",
+                  summary: "Build implementation with test suite",
+                },
+                {
+                  id: "node-qa-condition",
+                  name: "Test Suite Evaluation",
+                  kind: "condition",
+                  conditionField: "test_passed",
+                  conditionExpected: true,
+                },
+                {
+                  id: "node-output",
+                  name: "Production Artifact & Report",
+                  kind: "output",
+                  summary: "Publish commit & audit summary",
+                },
               ],
               edges: [
                 { from: "node-trigger", to: "node-triage" },
@@ -266,9 +303,7 @@ export function PipelinesPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 Workflow Pipelines & Organization DAG
               </h1>
-              <Badge tone="brand">
-                Active DAG Runner
-              </Badge>
+              <Badge tone="brand">Active DAG Runner</Badge>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Autonomous multi-agent execution graphs, condition gates, and persona orchestration
@@ -329,9 +364,7 @@ export function PipelinesPage() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="truncate font-semibold">{p.name}</span>
-                    <span className="text-[10px] font-mono opacity-60">
-                      {p.nodes.length} nodes
-                    </span>
+                    <span className="text-[10px] font-mono opacity-60">{p.nodes.length} nodes</span>
                   </div>
                   {p.description && (
                     <p className="line-clamp-2 text-[11px] text-gray-500 dark:text-gray-400">
@@ -418,8 +451,8 @@ export function PipelinesPage() {
                               nodeRunState.status === "succeeded"
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                                 : nodeRunState.status === "running"
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                                : "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                  ? "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                  : "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                             }`}
                           >
                             {nodeRunState.status}
@@ -451,7 +484,11 @@ export function PipelinesPage() {
                   {index < currentPipeline.nodes.length - 1 && (
                     <div className="flex flex-col items-center py-2 text-gray-400 dark:text-gray-600">
                       <div className="w-0.5 h-6 bg-gray-300 dark:bg-gray-700" />
-                      <svg className="w-4 h-4 -mt-1 text-gray-400 dark:text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                      <svg
+                        className="w-4 h-4 -mt-1 text-gray-400 dark:text-gray-600"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
                         <path
                           fillRule="evenodd"
                           d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
@@ -493,14 +530,14 @@ export function PipelinesPage() {
 
                 <div>
                   <div className="text-[11px] text-gray-400 font-mono">Kind</div>
-                  <Badge tone="brand">
-                    {selectedNode.kind.toUpperCase()}
-                  </Badge>
+                  <Badge tone="brand">{selectedNode.kind.toUpperCase()}</Badge>
                 </div>
 
                 {selectedNode.agentRole && (
                   <div>
-                    <div className="text-[11px] text-gray-400 font-mono">Assigned Persona / Role</div>
+                    <div className="text-[11px] text-gray-400 font-mono">
+                      Assigned Persona / Role
+                    </div>
                     <div className="mt-1 font-mono text-cyan-600 dark:text-cyan-400 font-medium">
                       {selectedNode.agentRole}
                     </div>
@@ -513,7 +550,8 @@ export function PipelinesPage() {
                       Branch Condition
                     </div>
                     <div className="mt-1 font-mono text-[11px] text-purple-900 dark:text-purple-200">
-                      if context.{selectedNode.conditionField} === {String(selectedNode.conditionExpected)}
+                      if context.{selectedNode.conditionField} ==={" "}
+                      {String(selectedNode.conditionExpected)}
                     </div>
                   </div>
                 )}
@@ -541,7 +579,9 @@ export function PipelinesPage() {
                         <div className="font-semibold text-gray-800 dark:text-gray-200">
                           {p.name}
                         </div>
-                        <div className="text-[10px] text-gray-500 line-clamp-1">{p.description}</div>
+                        <div className="text-[10px] text-gray-500 line-clamp-1">
+                          {p.description}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -587,7 +627,12 @@ export function PipelinesPage() {
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setCreateOpen(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setCreateOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" variant="primary" size="sm">

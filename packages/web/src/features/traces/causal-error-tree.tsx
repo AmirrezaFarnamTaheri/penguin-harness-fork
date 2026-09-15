@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 import { Badge } from "../../components/ui/badge";
-import {
-  extractCausalErrorChain,
-  formatDurationMs,
-  type ExecutionSpan,
-} from "./flamegraph-types";
+import { extractCausalErrorChain, formatDurationMs, type ExecutionSpan } from "./flamegraph-types";
 
 export interface CausalErrorTreeProps {
   spans: ExecutionSpan[];
@@ -13,7 +9,16 @@ export interface CausalErrorTreeProps {
 
 function AlertTriangleIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
       <line x1="12" y1="9" x2="12" y2="13" />
       <line x1="12" y1="17" x2="12.01" y2="17" />
@@ -23,7 +28,16 @@ function AlertTriangleIcon({ size = 16 }: { size?: number }) {
 
 function CheckShieldIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
       <path d="m9 12 2 2 4-4" />
     </svg>
@@ -40,9 +54,7 @@ export function CausalErrorTree({ spans, onSelectSpanId }: CausalErrorTreeProps)
           <CheckShieldIcon size={16} />
         </div>
         <div>
-          <span className="font-semibold text-foreground">
-            Zero Failure Causality
-          </span>
+          <span className="font-semibold text-foreground">Zero Failure Causality</span>
           <p className="text-[11px] text-muted-foreground">
             All execution spans, model invocations, and tool executions terminated successfully.
           </p>

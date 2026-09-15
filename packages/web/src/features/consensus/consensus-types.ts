@@ -7,7 +7,7 @@ import type {
   MailboxMessage,
   MailboxSummary,
   LeaseState,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 
 export type {
   TopicStanding,

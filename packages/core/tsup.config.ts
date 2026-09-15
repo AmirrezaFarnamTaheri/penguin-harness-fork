@@ -21,6 +21,8 @@ export default defineConfig({
     "src/llm/context-limits.ts",
     // Hot-update kernel: zero-dependency subpath so web can bundle it directly.
     "src/kernel/index.ts",
+    // Browser-safe SDK entrypoint: pure types and zero-Node utilities for web bundling.
+    "src/browser.ts",
   ],
   format: ["esm"],
   target: "node24",

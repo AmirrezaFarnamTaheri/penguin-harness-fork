@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { ShellGuardian } from "@prismshadow/penguin-core";
-import type { ShellSafetyAssessment, ShellRiskLevel } from "@prismshadow/penguin-core";
+import { ShellGuardian } from "@prismshadow/penguin-core/browser";
+import type { ShellSafetyAssessment, ShellRiskLevel } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
 
 const PRESET_COMMANDS = [

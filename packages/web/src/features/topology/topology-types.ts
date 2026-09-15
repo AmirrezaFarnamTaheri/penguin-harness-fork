@@ -3,7 +3,7 @@ import type {
   CodeGraphEdge,
   CodeNodeKind,
   CodeEdgeKind,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 
 export type TopologyViewMode = "studio" | "canvas" | "matrix";
 

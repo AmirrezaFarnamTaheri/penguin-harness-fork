@@ -58,7 +58,7 @@ describe("flamegraph-types", () => {
               errorMessage: "Build failed with exit code 1: TS2322 Type mismatch",
               stackTrace: "Error: Process exited with 1\n  at runBashCommand (bash-plugin.ts:42)",
               inputPayload: '{"command": "pnpm run build"}',
-              outputPayload: 'ELIFECYCLE Command failed with exit code 1',
+              outputPayload: "ELIFECYCLE Command failed with exit code 1",
             },
           ],
         },

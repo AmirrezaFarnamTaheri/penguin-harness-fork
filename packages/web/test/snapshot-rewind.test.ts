@@ -44,11 +44,14 @@ describe("snapshot-types", () => {
     },
   ];
 
-  const stateDetails: Record<number, {
-    systemPrompt: string;
-    memoryFiles: Record<string, string>;
-    skills: string[];
-  }> = {
+  const stateDetails: Record<
+    number,
+    {
+      systemPrompt: string;
+      memoryFiles: Record<string, string>;
+      skills: string[];
+    }
+  > = {
     1: {
       systemPrompt: "You are a coding assistant.",
       memoryFiles: {

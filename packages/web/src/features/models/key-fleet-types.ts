@@ -81,8 +81,7 @@ export function calculateFleetHealth(reports: ModelKeyFleetReport[]): FleetHealt
     activeLeases += report.activeLeases;
   }
 
-  const healthPercentage =
-    totalKeys === 0 ? 100 : Math.round((healthyCount / totalKeys) * 100);
+  const healthPercentage = totalKeys === 0 ? 100 : Math.round((healthyCount / totalKeys) * 100);
 
   return {
     totalKeys,
@@ -137,9 +136,7 @@ export function filterKeyFleetReports(
       // Filter keys inside report
       const matchingKeys = report.keys.filter((key) => {
         const keyQueryMatch =
-          q.length === 0 ||
-          modelMatches ||
-          key.maskedKey.toLowerCase().includes(q);
+          q.length === 0 || modelMatches || key.maskedKey.toLowerCase().includes(q);
 
         if (!keyQueryMatch) return false;
 

@@ -25,7 +25,9 @@ export function TopConsumersCard({ tools, files }: TopConsumersCardProps) {
                 className="flex items-center justify-between p-2 rounded-lg bg-gray-900/50 border border-gray-800/80"
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 text-[10px] tabular-nums font-bold">#{idx + 1}</span>
+                  <span className="text-gray-500 text-[10px] tabular-nums font-bold">
+                    #{idx + 1}
+                  </span>
                   <span className="font-semibold text-cyan-400">{t.name}</span>
                 </div>
                 <div className="text-right">

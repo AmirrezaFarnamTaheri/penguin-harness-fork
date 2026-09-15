@@ -48,9 +48,7 @@ export function SnapshotTimeline({
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div>
-          <h2 className="text-xs font-semibold text-foreground">
-            Session Checkpoint History
-          </h2>
+          <h2 className="text-xs font-semibold text-foreground">Session Checkpoint History</h2>
           <p className="text-[11px] text-muted-foreground">
             Select any checkpoint node to inspect state diff or time-travel
           </p>
@@ -79,12 +77,8 @@ export function SnapshotTimeline({
                   <span className="font-mono text-xs font-bold text-foreground">
                     v{item.version}
                   </span>
-                  <Badge tone={triggerTone(item.trigger)}>
-                    {item.trigger}
-                  </Badge>
-                  {item.isCurrent && (
-                    <Badge tone="green">Current Active State</Badge>
-                  )}
+                  <Badge tone={triggerTone(item.trigger)}>{item.trigger}</Badge>
+                  {item.isCurrent && <Badge tone="green">Current Active State</Badge>}
                 </div>
                 <span className="text-[11px] text-muted-foreground">
                   {formatSnapshotTimestamp(item.timestamp)}
@@ -92,9 +86,7 @@ export function SnapshotTimeline({
               </div>
 
               {/* Label & Description */}
-              <span className="text-xs font-medium text-foreground">
-                {item.label}
-              </span>
+              <span className="text-xs font-medium text-foreground">{item.label}</span>
 
               {/* Metadata Row: Files, Memory, Archive Size */}
               <div className="flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">

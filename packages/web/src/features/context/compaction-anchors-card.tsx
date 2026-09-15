@@ -60,7 +60,8 @@ export function CompactionAnchorsCard({
         <div>
           <h4 className="font-bold text-sm text-gray-200">Context Compaction History & Anchors</h4>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            Historical context folding points preserving conversation state while purging transient tool outputs.
+            Historical context folding points preserving conversation state while purging transient
+            tool outputs.
           </p>
         </div>
 

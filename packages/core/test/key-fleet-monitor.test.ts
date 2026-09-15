@@ -16,32 +16,59 @@ describe("key-fleet-monitor", () => {
     expect(maskApiKey("")).toBe("empty-key");
   });
 
-  it("initializes with default providers and reports healthy stats", () => {
+  it("initializes without default providers (safe unconfigured state)", () => {
     const monitor = new KeyFleetMonitor();
     const stats = monitor.getFleetStats();
 
-    expect(stats.totalKeys).toBeGreaterThanOrEqual(4);
-    expect(stats.healthyCount).toBe(stats.totalKeys);
+    expect(stats.totalKeys).toBe(0);
+    expect(stats.healthyCount).toBe(0);
     expect(stats.cooldownCount).toBe(0);
     expect(stats.evictedCount).toBe(0);
     expect(stats.healthPercentage).toBe(100);
 
     const snapshot = monitor.getCockpitSnapshot();
-    expect(snapshot.healthy).toBe(true);
-    expect(snapshot.activeCount).toBeGreaterThanOrEqual(4);
-    expect(snapshot.providers.length).toBeGreaterThanOrEqual(4);
+    expect(snapshot.healthy).toBe(false);
+    expect(snapshot.activeCount).toBe(0);
+    expect(snapshot.providers.length).toBe(0);
   });
 
-  it("probes keys and records latency in sparkline history", async () => {
-    const monitor = new KeyFleetMonitor();
-    const reports = monitor.getFleetReport();
-    const anthropicReport = reports.find((r) => r.provider === "anthropic")!;
-    const targetKey = anthropicReport.keys[0]!.maskedKey;
+  it("registers providers with stable keyIds and reports healthy stats", () => {
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "anthropic",
+        modelId: "claude-3-5-sonnet",
+        keys: ["sk-ant-api03-sample-primary-key-8a1c", "sk-ant-api03-sample-secondary-key-9f2e"],
+      },
+      {
+        provider: "openai",
+        modelId: "gpt-4o",
+        keys: ["sk-proj-sample-prod-key-1c4a"],
+      },
+    ]);
+    const stats = monitor.getFleetStats();
+    expect(stats.totalKeys).toBe(3);
+    expect(stats.healthyCount).toBe(3);
+    expect(stats.cooldownCount).toBe(0);
+    expect(stats.evictedCount).toBe(0);
+    expect(stats.healthPercentage).toBe(100);
 
-    const probeRes = await monitor.probeKey("anthropic", targetKey);
-    expect(probeRes.status).toBe("ok");
-    expect(probeRes.latencyMs).toBeGreaterThan(0);
-    expect(probeRes.sparkline.length).toBeGreaterThan(0);
+    const reports = monitor.getFleetReport();
+    expect(reports[0]?.keys[0]?.keyId).toBe("anthropic-key-1");
+    expect(reports[0]?.keys[0]?.maskedKey).toBe("sk-ant-...8a1c");
+  });
+
+  it("returns skipped status when probing without probe function", async () => {
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "anthropic",
+        modelId: "claude-3-5-sonnet",
+        keys: ["sk-ant-api03-sample-primary-key-8a1c"],
+      },
+    ]);
+    const probeRes = await monitor.probeKey("anthropic", "anthropic-key-1");
+    expect(probeRes.status).toBe("skipped");
+    expect(probeRes.latencyMs).toBe(0);
+    expect(probeRes.sparkline).toEqual([]);
   });
 
   it("handles custom probe function with success and failure simulation", async () => {
@@ -55,11 +82,12 @@ describe("key-fleet-monitor", () => {
     ]);
 
     const reports = monitor.getFleetReport();
-    const targetKey = reports[0]!.keys[0]!.maskedKey;
+    const targetKey = reports[0]!.keys[0]!.keyId;
 
     const result = await monitor.probeKey("custom-ai", targetKey);
     expect(result.status).toBe("ok");
     expect(result.latencyMs).toBe(75);
+    expect(result.sparkline).toEqual([75]);
 
     // Custom probe failure
     const failingResult = await monitor.probeKey("custom-ai", targetKey, async () => ({
@@ -72,7 +100,13 @@ describe("key-fleet-monitor", () => {
   });
 
   it("transitions keys through cooldown and eviction states and notifies subscribers", () => {
-    const monitor = new KeyFleetMonitor();
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "openai",
+        modelId: "gpt-4o",
+        keys: ["sk-proj-sample-prod-key-1c4a"],
+      },
+    ]);
     let notificationCount = 0;
     const unsubscribe = monitor.subscribe(() => {
       notificationCount++;
@@ -80,7 +114,7 @@ describe("key-fleet-monitor", () => {
 
     const reports = monitor.getFleetReport();
     const openai = reports.find((r) => r.provider === "openai")!;
-    const key1 = openai.keys[0]!.maskedKey;
+    const key1 = openai.keys[0]!.keyId;
 
     // Cooldown
     monitor.cooldownKey("openai", key1, 60_000);
@@ -99,6 +133,12 @@ describe("key-fleet-monitor", () => {
     stats = monitor.getFleetStats();
     expect(stats.evictedCount).toBe(1);
     expect(notificationCount).toBe(3);
+
+    // Revive single
+    monitor.reviveKey("openai", key1);
+    stats = monitor.getFleetStats();
+    expect(stats.evictedCount).toBe(0);
+    expect(notificationCount).toBe(4);
 
     unsubscribe();
   });

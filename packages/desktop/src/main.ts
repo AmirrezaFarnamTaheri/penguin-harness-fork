@@ -51,11 +51,7 @@ import {
   MAX_SERVER_RESTARTS,
   restartDelayMs,
 } from "./util.js";
-import {
-  registerCockpitShortcut,
-  setupDesktopTray,
-  unregisterCockpitShortcut,
-} from "./tray.js";
+import { registerCockpitShortcut, setupDesktopTray, unregisterCockpitShortcut } from "./tray.js";
 import type { DesktopTrayManager } from "./tray.js";
 
 // Identity first: the name decides the userData directory, which also keys the
@@ -75,6 +71,7 @@ let server: EmbeddedServer | null = null;
 /** App origin (embedded or attached); null until boot resolves. */
 let appOrigin: string | null = null;
 let quitting = false;
+let isRestarting = false;
 let stopPromise: Promise<void> | null = null;
 let restartAttempts = 0;
 let trayManager: DesktopTrayManager | null = null;
@@ -248,26 +245,31 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
 
 /** Explicitly restart the embedded server (e.g. from the system tray menu). */
 async function restartServer(): Promise<void> {
-  if (server !== null) {
-    const running = server;
-    server = null;
+  isRestarting = true;
+  try {
+    if (server !== null) {
+      const running = server;
+      server = null;
+      trayManager?.updateStatus();
+      await stopEmbeddedServer(running);
+    }
+    restartAttempts = 0;
+    const dataRoot = desktopDataRoot({
+      envHome: process.env.PENGUIN_HOME,
+      isPackaged: app.isPackaged,
+      homedir: os.homedir(),
+      releaseRoot: resolveRoot,
+    });
+    await startServerAndWindow(dataRoot);
     trayManager?.updateStatus();
-    await stopEmbeddedServer(running);
+  } finally {
+    isRestarting = false;
   }
-  restartAttempts = 0;
-  const dataRoot = desktopDataRoot({
-    envHome: process.env.PENGUIN_HOME,
-    isPackaged: app.isPackaged,
-    homedir: os.homedir(),
-    releaseRoot: resolveRoot,
-  });
-  await startServerAndWindow(dataRoot);
-  trayManager?.updateStatus();
 }
 
 /** Unexpected server death: restart with backoff; give up with an error dialog at the cap. */
 async function handleServerExit(dataRoot: string, code: number): Promise<void> {
-  if (quitting) return;
+  if (quitting || isRestarting) return;
   server = null;
   trayManager?.updateStatus();
   if (restartAttempts >= MAX_SERVER_RESTARTS) {
@@ -278,7 +280,7 @@ async function handleServerExit(dataRoot: string, code: number): Promise<void> {
   restartAttempts += 1;
   process.stdout.write(`[shell] server exited (code ${code}); restarting in ${wait}ms\n`);
   await new Promise((resolve) => setTimeout(resolve, wait));
-  if (quitting) return;
+  if (quitting || isRestarting) return;
   try {
     await startServerAndWindow(dataRoot);
   } catch (err) {

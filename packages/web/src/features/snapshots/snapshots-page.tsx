@@ -15,7 +15,16 @@ import {
 
 function HistoryIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
       <path d="M3 3v5h5" />
       <path d="M12 7v5l4 2" />
@@ -25,7 +34,16 @@ function HistoryIcon({ size = 20 }: { size?: number }) {
 
 function PlusIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -34,7 +52,16 @@ function PlusIcon({ size = 14 }: { size?: number }) {
 
 function DownloadIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
@@ -44,7 +71,16 @@ function DownloadIcon({ size = 14 }: { size?: number }) {
 
 function UploadIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="17 8 12 3 7 8" />
       <line x1="12" y1="3" x2="12" y2="15" />
@@ -156,10 +192,7 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
       isCurrent: true,
     };
 
-    setSnapshots((prev) => [
-      ...prev.map((s) => ({ ...s, isCurrent: false })),
-      newSnapshot,
-    ]);
+    setSnapshots((prev) => [...prev.map((s) => ({ ...s, isCurrent: false })), newSnapshot]);
 
     setStateDetails((prev) => ({
       ...prev,
@@ -207,11 +240,15 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
               <HistoryIcon size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground">
-                Session Time-Travel & Snapshot Rewind Studio
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                  Session Time-Travel & Snapshot Rewind Studio
+                </h1>
+                <Badge tone="amber">[Preview / Local Studio]</Badge>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Deterministic agent state checkpoints, cross-version diff inspection, and dual-mode rollback recovery
+                Local preview studio for deterministic agent state checkpoints, cross-version diff
+                inspection, and dual-mode rollback recovery
               </p>
             </div>
           </div>
@@ -235,11 +272,7 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
               Export Archive (.tar.gz)
             </Button>
 
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsCreatingModal(true)}
-            >
+            <Button variant="primary" size="sm" onClick={() => setIsCreatingModal(true)}>
               <PlusIcon size={13} />
               Create Checkpoint
             </Button>
@@ -271,19 +304,13 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
             </span>
             <Badge tone="green">Current</Badge>
           </div>
-          <span className="text-[11px] text-muted-foreground">
-            {currentSnapshot.label}
-          </span>
+          <span className="text-[11px] text-muted-foreground">{currentSnapshot.label}</span>
         </div>
 
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
           <span className="text-xs text-muted-foreground">Total Checkpoints</span>
-          <span className="font-mono text-2xl font-bold text-primary">
-            {snapshots.length}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            Preserved in archive tree
-          </span>
+          <span className="font-mono text-2xl font-bold text-primary">{snapshots.length}</span>
+          <span className="text-[11px] text-muted-foreground">Preserved in archive tree</span>
         </div>
 
         <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
@@ -301,9 +328,7 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
           <span className="font-mono text-2xl font-bold text-emerald-500">
             {currentSnapshot.memoryTopicsCount}
           </span>
-          <span className="text-[11px] text-muted-foreground">
-            Indexed knowledge files
-          </span>
+          <span className="text-[11px] text-muted-foreground">Indexed knowledge files</span>
         </div>
       </div>
 
@@ -341,17 +366,14 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
       {isCreatingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-foreground">
-              Create Agent State Checkpoint
-            </h3>
+            <h3 className="text-base font-bold text-foreground">Create Agent State Checkpoint</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Creates an immutable snapshot archive preserving prompt, memory topics, and skill configurations.
+              Creates an immutable snapshot archive preserving prompt, memory topics, and skill
+              configurations.
             </p>
 
             <div className="flex flex-col gap-2 my-4">
-              <span className="text-xs font-medium text-foreground">
-                Checkpoint Tag / Label
-              </span>
+              <span className="text-xs font-medium text-foreground">Checkpoint Tag / Label</span>
               <Input
                 size="sm"
                 value={newLabel}
@@ -361,18 +383,10 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
             </div>
 
             <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsCreatingModal(false)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setIsCreatingModal(false)}>
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleCreateCheckpoint}
-              >
+              <Button variant="primary" size="sm" onClick={handleCreateCheckpoint}>
                 Save Checkpoint
               </Button>
             </div>
@@ -384,9 +398,7 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
       {rollbackConfirmation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-foreground">
-              Confirm Time-Travel Execution
-            </h3>
+            <h3 className="text-base font-bold text-foreground">Confirm Time-Travel Execution</h3>
             <p className="text-xs text-muted-foreground mt-1">
               {rollbackConfirmation.mode === "in-place"
                 ? `You are reverting the active workspace in-place to version v${rollbackConfirmation.targetVersion}. An automatic pre-rollback safety snapshot will be recorded before rewriting.`
@@ -394,11 +406,7 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
             </p>
 
             <div className="flex items-center justify-end gap-2 border-t border-border pt-4 mt-5">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setRollbackConfirmation(null)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setRollbackConfirmation(null)}>
                 Cancel
               </Button>
               <Button

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CodeGraph, CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core";
+import type { CodeGraph, CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
 import { CopyButton } from "../../components/ui/copy-button";
 
@@ -47,7 +47,8 @@ export function TopologyInspector({
         </div>
         <div className="font-semibold text-gray-300">No Symbol Selected</div>
         <div className="text-[11px] text-gray-500 mt-1 max-w-xs">
-          Click any node in the AST graph or table row to inspect callers, callees, and simulate alteration blast radius.
+          Click any node in the AST graph or table row to inspect callers, callees, and simulate
+          alteration blast radius.
         </div>
       </div>
     );
@@ -114,8 +115,9 @@ export function TopologyInspector({
         />
         <div className="text-[11px] text-gray-400">
           Altering this symbol directly or transitively impacts{" "}
-          <strong className="text-rose-400">{Math.max(0, impact.nodes.length - 1)}</strong> dependent symbols across{" "}
-          <strong className="text-gray-200">{impact.edges.length}</strong> relationships.
+          <strong className="text-rose-400">{Math.max(0, impact.nodes.length - 1)}</strong>{" "}
+          dependent symbols across <strong className="text-gray-200">{impact.edges.length}</strong>{" "}
+          relationships.
         </div>
         {impact.nodes.length > 1 && (
           <div className="flex flex-wrap gap-1 mt-1 max-h-24 overflow-y-auto">

@@ -191,8 +191,20 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
         description: definition.description,
         nodeCount: definition.nodes.length,
         edgeCount: definition.edges.length,
+        nodes: definition.nodes,
+        edges: definition.edges,
       })),
     });
+  });
+
+  app.get("/:pipelineId", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const pipelineId = requireValidId(c, "pipelineId");
+    const definitions = await pipelines.read(projectId);
+    const definition = definitions.find((candidate) => candidate.id === pipelineId);
+    if (!definition) throw notFound(`Pipeline '${pipelineId}' not found in project`);
+    return c.json({ pipeline: cloneDefinition(definition) });
   });
 
   app.post("/", async (c) => {

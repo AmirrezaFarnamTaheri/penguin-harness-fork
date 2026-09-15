@@ -124,6 +124,7 @@ describe("SwarmCoordinator", () => {
         id: "task-loop-004",
         goal: "Loop test",
         maxRounds: 10,
+        simulate: true,
       },
       {
         onReview: async () => ({
@@ -135,5 +136,38 @@ describe("SwarmCoordinator", () => {
 
     expect(result.status).toBe("loop_aborted");
     expect(result.rounds).toBeLessThanOrEqual(3);
+  });
+
+  it("fails closed with unhandled status when no execution handler is attached and simulate is false", async () => {
+    const coordinator = new SwarmCoordinator();
+
+    const result = await coordinator.runTask({
+      id: "task-unhandled-005",
+      goal: "Real task with no handlers",
+    });
+
+    expect(result.status).toBe("unhandled");
+    expect(result.standing?.status).toBe("refuted");
+  });
+
+  it("safely handles concurrent task submissions through FIFO queueing without state corruption", async () => {
+    const coordinator = new SwarmCoordinator();
+    const results = await Promise.all([
+      coordinator.runTask({
+        id: "task-concurrent-1",
+        goal: "Concurrent Goal 1",
+        simulate: true,
+      }),
+      coordinator.runTask({
+        id: "task-concurrent-2",
+        goal: "Concurrent Goal 2",
+        simulate: true,
+      }),
+    ]);
+
+    expect(results[0]?.taskId).toBe("task-concurrent-1");
+    expect(results[0]?.status).toBe("settled");
+    expect(results[1]?.taskId).toBe("task-concurrent-2");
+    expect(results[1]?.status).toBe("settled");
   });
 });

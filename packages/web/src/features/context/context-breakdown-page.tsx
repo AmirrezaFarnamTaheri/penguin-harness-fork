@@ -106,8 +106,8 @@ export function ContextBreakdownPage({
               Context Token Breakdown & Compaction Cockpit
             </h1>
             <p className="text-xs text-gray-400 font-mono mt-0.5">
-              Deep token attribution across 6 partitions, tool traffic consumers, and compaction anchors for{" "}
-              {currentProject?.name ?? "Penguin"}
+              Deep token attribution across 6 partitions, tool traffic consumers, and compaction
+              anchors for {currentProject?.name ?? "Penguin"}
             </p>
           </div>
 
@@ -135,7 +135,9 @@ export function ContextBreakdownPage({
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Compaction Threshold</span>
             <span className="text-base font-bold text-rose-400 tabular-nums">
-              {data?.compactionThreshold ? `${(data.compactionThreshold / 1000).toFixed(0)}k tok` : "—"}
+              {data?.compactionThreshold
+                ? `${(data.compactionThreshold / 1000).toFixed(0)}k tok`
+                : "—"}
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">

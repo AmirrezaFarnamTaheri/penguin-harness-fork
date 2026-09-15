@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { TopicStanding } from "@prismshadow/penguin-core";
+import type { TopicStanding } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
 

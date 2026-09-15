@@ -100,11 +100,12 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
   app.get("/path", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const start = c.req.query("start");
-    const end = c.req.query("end");
-    if (!start || !end) throw badRequest("Query params 'start' and 'end' are required");
+    const start = c.req.query("start") ?? c.req.query("from");
+    const end = c.req.query("end") ?? c.req.query("to");
+    if (!start || !end)
+      throw badRequest("Query params 'start' (or 'from') and 'end' (or 'to') are required");
     const graphPath = hydrateWiki(await store.read(projectId)).findPath(start, end);
-    return c.json({ start, end, path: graphPath });
+    return c.json({ start, end, from: start, to: end, path: graphPath });
   });
 
   app.get("/lint", async (c) => {

@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import {
-  simulateKeyProbe,
-  type KeyHealthItem,
-  type KeyProbeResult,
-} from "./key-fleet-types";
+import { simulateKeyProbe, type KeyHealthItem, type KeyProbeResult } from "./key-fleet-types";
 
 export interface KeyProbeModalProps {
   keyItem: KeyHealthItem;
@@ -14,12 +10,7 @@ export interface KeyProbeModalProps {
   onClose: () => void;
 }
 
-export function KeyProbeModal({
-  keyItem,
-  provider,
-  modelId,
-  onClose,
-}: KeyProbeModalProps) {
+export function KeyProbeModal({ keyItem, provider, modelId, onClose }: KeyProbeModalProps) {
   const [probing, setProbing] = useState(true);
   const [result, setResult] = useState<KeyProbeResult | null>(null);
 
@@ -58,9 +49,7 @@ export function KeyProbeModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div>
-            <h3 className="text-base font-semibold text-foreground">
-              API Key Live Latency Probe
-            </h3>
+            <h3 className="text-base font-semibold text-foreground">API Key Live Latency Probe</h3>
             <p className="text-xs text-muted-foreground">
               Testing endpoint roundtrip latency and authorization validity
             </p>
@@ -93,9 +82,7 @@ export function KeyProbeModal({
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/50 p-3 text-xs">
             <div>
               <span className="text-muted-foreground">Target Key:</span>
-              <div className="font-mono font-medium text-foreground">
-                {keyItem.maskedKey}
-              </div>
+              <div className="font-mono font-medium text-foreground">{keyItem.maskedKey}</div>
             </div>
             <div>
               <span className="text-muted-foreground">Provider / Model:</span>
@@ -120,9 +107,7 @@ export function KeyProbeModal({
                   <Badge tone={result.status === "ok" ? "green" : "red"}>
                     {result.status === "ok" ? "HTTP 200 OK" : "Probe Failed"}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    RTT:
-                  </span>
+                  <span className="text-xs text-muted-foreground">RTT:</span>
                   <span className="font-mono text-sm font-bold text-foreground">
                     {result.latencyMs} ms
                   </span>
@@ -140,9 +125,33 @@ export function KeyProbeModal({
                 <div className="h-20 w-full">
                   <svg className="h-full w-full overflow-visible" viewBox="0 0 200 60">
                     {/* Horizontal grid lines */}
-                    <line x1="0" y1="15" x2="200" y2="15" stroke="currentColor" strokeOpacity="0.1" strokeDasharray="2,2" />
-                    <line x1="0" y1="35" x2="200" y2="35" stroke="currentColor" strokeOpacity="0.1" strokeDasharray="2,2" />
-                    <line x1="0" y1="55" x2="200" y2="55" stroke="currentColor" strokeOpacity="0.1" strokeDasharray="2,2" />
+                    <line
+                      x1="0"
+                      y1="15"
+                      x2="200"
+                      y2="15"
+                      stroke="currentColor"
+                      strokeOpacity="0.1"
+                      strokeDasharray="2,2"
+                    />
+                    <line
+                      x1="0"
+                      y1="35"
+                      x2="200"
+                      y2="35"
+                      stroke="currentColor"
+                      strokeOpacity="0.1"
+                      strokeDasharray="2,2"
+                    />
+                    <line
+                      x1="0"
+                      y1="55"
+                      x2="200"
+                      y2="55"
+                      stroke="currentColor"
+                      strokeOpacity="0.1"
+                      strokeDasharray="2,2"
+                    />
 
                     {/* Sparkline polyline */}
                     {result.sparkline.length > 1 && (
@@ -203,12 +212,7 @@ export function KeyProbeModal({
           <Button variant="secondary" size="sm" onClick={onClose}>
             Close
           </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            disabled={probing}
-            onClick={runProbe}
-          >
+          <Button variant="primary" size="sm" disabled={probing} onClick={runProbe}>
             {probing ? "Probing..." : "Probe Again"}
           </Button>
         </div>

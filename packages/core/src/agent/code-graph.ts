@@ -62,6 +62,53 @@ function cloneEdge(edge: CodeGraphEdge): CodeGraphEdge {
   return { ...edge };
 }
 
+function normalizePath(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
+function stripExt(p: string): string {
+  return p.replace(/\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs|c|cpp|h|hpp)$/i, "");
+}
+
+function resolveRelativePath(fromFile: string, relativePath: string): string {
+  const normFrom = normalizePath(fromFile);
+  const parts = normFrom.split("/");
+  parts.pop(); // remove filename, keep dir
+
+  const segments = normalizePath(relativePath).split("/");
+  for (const seg of segments) {
+    if (seg === "." || seg === "") continue;
+    if (seg === "..") {
+      if (parts.length > 0) parts.pop();
+    } else {
+      parts.push(seg);
+    }
+  }
+  return parts.join("/");
+}
+
+export function matchImportSpecifier(imp: string, fromFile: string, targetFile: string): boolean {
+  const normTarget = stripExt(normalizePath(targetFile));
+  if (imp.startsWith(".")) {
+    const resolved = stripExt(resolveRelativePath(fromFile, imp));
+    if (
+      resolved === normTarget ||
+      normTarget.endsWith(resolved) ||
+      resolved.endsWith(normTarget) ||
+      `${resolved}/index` === normTarget ||
+      normTarget.endsWith(`${resolved}/index`)
+    ) {
+      return true;
+    }
+  }
+  const normImp = stripExt(normalizePath(imp));
+  return (
+    normTarget.endsWith(normImp) ||
+    normImp.endsWith(normTarget) ||
+    normTarget.endsWith(`${normImp}/index`)
+  );
+}
+
 export class CodeGraph {
   private readonly nodes = new Map<string, CodeGraphNode>();
   private readonly outgoing = new Map<string, CodeGraphEdge[]>();
@@ -90,7 +137,9 @@ export class CodeGraph {
       if (inList) {
         this.incoming.set(
           edge.target,
-          inList.filter((e) => !(e.source === id && e.target === edge.target && e.kind === edge.kind)),
+          inList.filter(
+            (e) => !(e.source === id && e.target === edge.target && e.kind === edge.kind),
+          ),
         );
       }
     }
@@ -102,7 +151,9 @@ export class CodeGraph {
       if (outList) {
         this.outgoing.set(
           edge.source,
-          outList.filter((e) => !(e.source === edge.source && e.target === id && e.kind === edge.kind)),
+          outList.filter(
+            (e) => !(e.source === edge.source && e.target === id && e.kind === edge.kind),
+          ),
         );
       }
     }
@@ -179,17 +230,31 @@ export class CodeGraph {
       });
     }
 
+    if (summary.types) {
+      for (const tp of summary.types) {
+        const id = `${summary.filePath}#${tp}`;
+        this.addNode({
+          id,
+          name: tp,
+          filePath: summary.filePath,
+          kind: "type",
+        });
+        this.addEdge({
+          source: summary.filePath,
+          target: id,
+          kind: "contains",
+        });
+      }
+    }
+
     const allFiles = Array.from(this.nodes.values()).filter(
       (n) => n.kind === "file" && n.filePath !== summary.filePath,
     );
 
-    const matchPath = (imp: string, path: string) => {
-      const base = path.replace(/\.[^/.]+$/, "");
-      return imp.endsWith(base) || base.endsWith(imp) || imp.includes(base);
-    };
-
     for (const imp of summary.imports) {
-      const target = allFiles.find((other) => matchPath(imp, other.filePath));
+      const target = allFiles.find((other) =>
+        matchImportSpecifier(imp, summary.filePath, other.filePath),
+      );
       if (target) {
         this.addEdge({
           source: summary.filePath,
@@ -202,7 +267,7 @@ export class CodeGraph {
     for (const other of allFiles) {
       if (other.imports) {
         for (const imp of other.imports) {
-          if (matchPath(imp, summary.filePath)) {
+          if (matchImportSpecifier(imp, other.filePath, summary.filePath)) {
             this.addEdge({
               source: other.filePath,
               target: summary.filePath,
@@ -627,82 +692,9 @@ export class CodeGraph {
    */
   public static fromFileSummaries(summaries: FileSummary[]): CodeGraph {
     const graph = new CodeGraph();
-
     for (const fs of summaries) {
-      graph.addNode({
-        id: fs.filePath,
-        name: fs.filePath.split("/").pop() || fs.filePath,
-        filePath: fs.filePath,
-        kind: "file",
-        loc: fs.linesOfCode,
-        exports: fs.exports,
-        imports: fs.imports,
-      });
-
-      for (const cls of fs.classes) {
-        const id = `${fs.filePath}#${cls}`;
-        graph.addNode({
-          id,
-          name: cls,
-          filePath: fs.filePath,
-          kind: "class",
-        });
-        graph.addEdge({
-          source: fs.filePath,
-          target: id,
-          kind: "contains",
-        });
-      }
-
-      for (const iface of fs.interfaces) {
-        const id = `${fs.filePath}#${iface}`;
-        graph.addNode({
-          id,
-          name: iface,
-          filePath: fs.filePath,
-          kind: "interface",
-        });
-        graph.addEdge({
-          source: fs.filePath,
-          target: id,
-          kind: "contains",
-        });
-      }
-
-      for (const fn of fs.functions) {
-        const id = `${fs.filePath}#${fn}`;
-        graph.addNode({
-          id,
-          name: fn,
-          filePath: fs.filePath,
-          kind: "function",
-        });
-        graph.addEdge({
-          source: fs.filePath,
-          target: id,
-          kind: "contains",
-        });
-      }
+      graph.updateFile(fs);
     }
-
-    for (const fs of summaries) {
-      for (const imp of fs.imports) {
-        const target = summaries.find((other) => {
-          if (other.filePath === fs.filePath) return false;
-          const otherBase = other.filePath.replace(/\.[^/.]+$/, "");
-          return imp.endsWith(otherBase) || otherBase.endsWith(imp) || imp.includes(otherBase);
-        });
-
-        if (target) {
-          graph.addEdge({
-            source: fs.filePath,
-            target: target.filePath,
-            kind: "imports",
-          });
-        }
-      }
-    }
-
     return graph;
   }
 }

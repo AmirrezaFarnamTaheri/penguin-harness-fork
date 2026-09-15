@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { SpendFlowReport } from "@prismshadow/penguin-core";
+import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
 import { Badge } from "../../components/ui/badge";
 
 export interface SpendFlowCardProps {

@@ -12,6 +12,7 @@ export type KeyHealthStatus = "healthy" | "cooldown" | "evicted";
 export type KeyFleetRotationStrategy = "round-robin" | "least-leases" | "priority-weighted";
 
 export interface KeyHealthItem {
+  keyId: string;
   maskedKey: string;
   status: KeyHealthStatus;
   isFailed: boolean;
@@ -46,10 +47,11 @@ export interface FleetHealthStats {
 }
 
 export interface KeyProbeResult {
+  keyId: string;
   maskedKey: string;
   provider: string;
   latencyMs: number;
-  status: "ok" | "error";
+  status: "ok" | "error" | "skipped";
   timestamp: number;
   sparkline: number[];
   details?: string;
@@ -97,7 +99,9 @@ export class KeyFleetMonitor {
       modelRef: string;
       strategy: KeyFleetRotationStrategy;
       probeFn?: ProbeFunction;
-      keyMap: Map<string, string>; // maskedKey -> rawKey
+      keyById: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
+      keyByMask: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
+      rawToId: Map<string, string>;
       latencies: number[];
     }
   >();
@@ -115,32 +119,7 @@ export class KeyFleetMonitor {
   }
 
   private registerDefaults(): void {
-    const defaults: ProviderRegistration[] = [
-      {
-        provider: "anthropic",
-        modelId: "claude-3-5-sonnet",
-        keys: ["sk-ant-api03-sample-primary-key-8a1c", "sk-ant-api03-sample-secondary-key-9f2e"],
-      },
-      {
-        provider: "openai",
-        modelId: "gpt-4o",
-        keys: ["sk-proj-sample-prod-key-1c4a", "sk-proj-sample-backup-key-3b7d"],
-      },
-      {
-        provider: "google",
-        modelId: "gemini-1.5-pro",
-        keys: ["AIzaSy-sample-google-ai-key-5e6f"],
-      },
-      {
-        provider: "groq",
-        modelId: "llama-3.3-70b",
-        keys: ["gsk_sample_groq_speed_key_7g8h"],
-      },
-    ];
-
-    for (const d of defaults) {
-      this.registerProvider(d);
-    }
+    // Defaults are intentionally empty to prevent synthetic or unconfigured keys in production.
   }
 
   public registerProvider(reg: ProviderRegistration): void {
@@ -148,28 +127,28 @@ export class KeyFleetMonitor {
     const rotator = new ApiKeyRotator(reg.keys);
     this.rotators.set(provider, rotator);
 
-    const keyMap = new Map<string, string>();
-    for (const k of reg.keys) {
-      keyMap.set(maskApiKey(k), k);
-    }
+    const keyById = new Map<string, { keyId: string; maskedKey: string; rawKey: string }>();
+    const keyByMask = new Map<string, { keyId: string; maskedKey: string; rawKey: string }>();
+    const rawToId = new Map<string, string>();
 
-    const defaultLatencies: Record<string, number> = {
-      groq: 45,
-      google: 98,
-      anthropic: 142,
-      openai: 185,
-      deepseek: 120,
-    };
-
-    const initialLatency = defaultLatencies[provider] ?? 150;
+    reg.keys.forEach((k, index) => {
+      const keyId = `${provider}-key-${index + 1}`;
+      const masked = maskApiKey(k);
+      const entry = { keyId, maskedKey: masked, rawKey: k };
+      keyById.set(keyId, entry);
+      keyByMask.set(masked, entry);
+      rawToId.set(k, keyId);
+    });
 
     this.providerMeta.set(provider, {
       modelId: reg.modelId,
       modelRef: reg.modelRef ?? `${provider}/${reg.modelId}`,
       strategy: reg.strategy ?? "round-robin",
       probeFn: reg.probeFn,
-      keyMap,
-      latencies: [initialLatency, initialLatency + 5, initialLatency - 8, initialLatency + 2],
+      keyById,
+      keyByMask,
+      rawToId,
+      latencies: [],
     });
   }
 
@@ -186,7 +165,7 @@ export class KeyFleetMonitor {
    */
   public async probeKey(
     provider: string,
-    maskedKey: string,
+    keyIdOrMask: string,
     overrideProbeFn?: ProbeFunction,
   ): Promise<KeyProbeResult> {
     const prov = provider.toLowerCase();
@@ -194,62 +173,55 @@ export class KeyFleetMonitor {
     const rotator = this.rotators.get(prov);
 
     const now = Date.now();
-    const rawKey = meta?.keyMap.get(maskedKey);
+    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+    const rawKey = entry?.rawKey;
+    const keyId = entry?.keyId ?? keyIdOrMask;
+    const maskedKey = entry?.maskedKey ?? maskApiKey(keyIdOrMask);
 
     const probeFn = overrideProbeFn ?? meta?.probeFn;
 
     let latencyMs = 0;
-    let isOk = true;
+    let status: "ok" | "error" | "skipped" = "skipped";
     let details: string | undefined;
 
     if (probeFn && rawKey) {
       try {
         const res = await probeFn(prov, rawKey);
         latencyMs = res.latencyMs;
-        isOk = res.ok;
+        status = res.ok ? "ok" : "error";
         details = res.error;
-        if (isOk) {
+        if (res.ok) {
           rotator?.recordSuccess(rawKey);
         } else {
           rotator?.recordFailure(rawKey, "other");
         }
       } catch (err) {
-        isOk = false;
+        status = "error";
         latencyMs = 999;
         details = err instanceof Error ? err.message : String(err);
         rotator?.recordFailure(rawKey, "other");
       }
     } else {
-      // Synthetic loopback probe simulation: realistic jitter based on provider base latency
-      const baseLatencies: Record<string, number> = {
-        groq: 45,
-        google: 98,
-        anthropic: 142,
-        openai: 185,
-        deepseek: 120,
-      };
-      const base = baseLatencies[prov] ?? 125;
-      const jitter = Math.floor((Math.random() * 20) - 10);
-      latencyMs = Math.max(15, base + jitter);
-      isOk = true;
-      details = `Synthetic TLS handshake and ping probe verified (${latencyMs}ms)`;
-      if (rawKey) rotator?.recordSuccess(rawKey);
+      latencyMs = 0;
+      status = "skipped";
+      details = "No probe function configured for provider";
     }
 
-    if (meta) {
+    if (meta && status !== "skipped" && latencyMs > 0) {
       meta.latencies.push(latencyMs);
       if (meta.latencies.length > 10) {
         meta.latencies.shift();
       }
     }
 
-    const sparkline = meta ? [...meta.latencies] : [latencyMs];
+    const sparkline = meta ? [...meta.latencies] : [];
 
     return {
+      keyId,
       maskedKey,
       provider: prov,
       latencyMs,
-      status: isOk ? "ok" : "error",
+      status,
       timestamp: now,
       sparkline,
       details,
@@ -262,8 +234,8 @@ export class KeyFleetMonitor {
   public async probeFleet(): Promise<KeyProbeResult[]> {
     const results: KeyProbeResult[] = [];
     for (const [provider, meta] of this.providerMeta) {
-      for (const maskedKey of meta.keyMap.keys()) {
-        const res = await this.probeKey(provider, maskedKey);
+      for (const keyId of meta.keyById.keys()) {
+        const res = await this.probeKey(provider, keyId);
         results.push(res);
       }
     }
@@ -274,12 +246,13 @@ export class KeyFleetMonitor {
   /**
    * Revives a key from cooldown or eviction.
    */
-  public reviveKey(provider: string, maskedKey: string): void {
+  public reviveKey(provider: string, keyIdOrMask: string): void {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
-    const rawKey = meta?.keyMap.get(maskedKey);
+    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+    const rawKey = entry?.rawKey;
     if (rawKey && rotator) {
-      rotator.recordSuccess(rawKey);
+      rotator.reviveKey(rawKey);
       this.notifyListeners();
     }
   }
@@ -287,10 +260,11 @@ export class KeyFleetMonitor {
   /**
    * Places a key in temporary cooldown.
    */
-  public cooldownKey(provider: string, maskedKey: string, cooldownMs = 60_000): void {
+  public cooldownKey(provider: string, keyIdOrMask: string, cooldownMs = 60_000): void {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
-    const rawKey = meta?.keyMap.get(maskedKey);
+    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+    const rawKey = entry?.rawKey;
     if (rawKey && rotator) {
       rotator.recordFailure(rawKey, "rate_limit", cooldownMs);
       this.notifyListeners();
@@ -300,10 +274,11 @@ export class KeyFleetMonitor {
   /**
    * Evicts a key permanently (e.g. auth failure).
    */
-  public evictKey(provider: string, maskedKey: string): void {
+  public evictKey(provider: string, keyIdOrMask: string): void {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
-    const rawKey = meta?.keyMap.get(maskedKey);
+    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+    const rawKey = entry?.rawKey;
     if (rawKey && rotator) {
       rotator.recordFailure(rawKey, "auth");
       this.notifyListeners();
@@ -314,16 +289,8 @@ export class KeyFleetMonitor {
    * Revives all cooling-down keys across all providers.
    */
   public reviveAllCooldowns(): void {
-    for (const [prov, meta] of this.providerMeta) {
-      const rotator = this.rotators.get(prov);
-      if (!rotator) continue;
-      for (const rawKey of meta.keyMap.values()) {
-        const statuses = rotator.getKeys();
-        const found = statuses.find((s) => s.key === rawKey);
-        if (found && found.status === "cooldown") {
-          rotator.recordSuccess(rawKey);
-        }
-      }
+    for (const rotator of this.rotators.values()) {
+      rotator.resetAllCooldowns();
     }
     this.notifyListeners();
   }
@@ -348,6 +315,7 @@ export class KeyFleetMonitor {
         const statuses = rotator.getKeys();
         for (const s of statuses) {
           const masked = maskApiKey(s.key);
+          const keyId = meta?.rawToId.get(s.key) ?? masked;
           let st: KeyHealthStatus = "healthy";
           let cooldownRemainingMs = 0;
 
@@ -367,6 +335,7 @@ export class KeyFleetMonitor {
           activeLeases += leases;
 
           keys.push({
+            keyId,
             maskedKey: masked,
             status: st,
             isFailed: s.isFailed,
@@ -439,7 +408,8 @@ export class KeyFleetMonitor {
 
     for (const r of reports) {
       const meta = this.providerMeta.get(r.provider);
-      const lastLat = meta?.latencies[meta.latencies.length - 1] ?? 120;
+      const lastLat =
+        meta && meta.latencies.length > 0 ? meta.latencies[meta.latencies.length - 1]! : 0;
 
       let status: "active" | "cooldown" | "error" = "active";
       let maxCooldownSec = 0;
@@ -449,7 +419,7 @@ export class KeyFleetMonitor {
         totalHealthy++;
       } else if (r.cooldownCount > 0) {
         status = "cooldown";
-        const maxCooldownMs = Math.max(...r.keys.map((k) => k.cooldownRemainingMs));
+        const maxCooldownMs = Math.max(0, ...r.keys.map((k) => k.cooldownRemainingMs));
         maxCooldownSec = Math.round(maxCooldownMs / 1000);
       } else {
         status = "error";

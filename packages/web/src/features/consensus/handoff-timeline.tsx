@@ -64,7 +64,8 @@ export function HandoffTimeline() {
       setSteps((prev) =>
         prev.map((s, idx) => {
           if (idx === 3) return { ...s, status: "completed" };
-          if (idx === 4) return { ...s, status: "in_progress", durationMs: 1200, timestamp: "10:14:15" };
+          if (idx === 4)
+            return { ...s, status: "in_progress", durationMs: 1200, timestamp: "10:14:15" };
           return s;
         }),
       );
@@ -76,9 +77,12 @@ export function HandoffTimeline() {
     <div className="flex flex-col gap-4 p-4 rounded-xl border border-gray-800 bg-gray-950 font-mono text-xs select-none">
       <div className="flex items-center justify-between pb-3 border-b border-gray-800">
         <div>
-          <h3 className="font-bold text-sm text-gray-100">Autonomous Handoff Pipeline & Topology</h3>
+          <h3 className="font-bold text-sm text-gray-100">
+            Autonomous Handoff Pipeline & Topology
+          </h3>
           <p className="text-[11px] text-gray-400 mt-0.5">
-            Sequential task delegation chain across swarm agents with automated quality and review gates.
+            Sequential task delegation chain across swarm agents with automated quality and review
+            gates.
           </p>
         </div>
 

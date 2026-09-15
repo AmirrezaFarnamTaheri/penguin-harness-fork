@@ -52,17 +52,11 @@ export function KeyHealthCard({
         </div>
 
         <div>
-          {keyItem.status === "healthy" && (
-            <Badge tone="green">Healthy</Badge>
-          )}
+          {keyItem.status === "healthy" && <Badge tone="green">Healthy</Badge>}
           {keyItem.status === "cooldown" && (
-            <Badge tone="amber">
-              Cooldown ({formatCooldownTimer(remainingMs)})
-            </Badge>
+            <Badge tone="amber">Cooldown ({formatCooldownTimer(remainingMs)})</Badge>
           )}
-          {keyItem.status === "evicted" && (
-            <Badge tone="red">Evicted (401)</Badge>
-          )}
+          {keyItem.status === "evicted" && <Badge tone="red">Evicted (401)</Badge>}
         </div>
       </div>
 
