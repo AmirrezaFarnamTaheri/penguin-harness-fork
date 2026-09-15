@@ -6,10 +6,28 @@ import { Input } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { RequiredMark } from "../../components/ui/field";
 
-export function QuorumBoard() {
-  const [engine] = useState(() => new QuorumConsensusEngine());
+export interface QuorumBoardProps {
+  engine?: QuorumConsensusEngine;
+  version?: number;
+  onMutate?: () => void;
+}
 
-  const [version, setVersion] = useState(0);
+export function QuorumBoard({
+  engine: externalEngine,
+  version: externalVersion,
+  onMutate,
+}: QuorumBoardProps = {}) {
+  const [internalEngine] = useState(() => new QuorumConsensusEngine());
+  const engine = externalEngine ?? internalEngine;
+
+  const [internalVersion, setInternalVersion] = useState(0);
+  const version = externalVersion ?? internalVersion;
+
+  const triggerMutate = () => {
+    setInternalVersion((v) => v + 1);
+    onMutate?.();
+  };
+
   const [filter, setFilter] = useState<TopicConsensusStatus | "all">("all");
 
   // Propose Modal
@@ -41,7 +59,7 @@ export function QuorumBoard() {
     });
     setProposeOpen(false);
     setNewTopic("");
-    setVersion((v) => v + 1);
+    triggerMutate();
   };
 
   const handleExecuteAction = () => {
@@ -54,7 +72,7 @@ export function QuorumBoard() {
       }
       setActiveActionTopic(null);
       setActionGrounds("");
-      setVersion((v) => v + 1);
+      triggerMutate();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     }

@@ -37,7 +37,7 @@ This specification defines the comprehensive architecture and implementation pla
 |     PILLAR 1       | |      PILLAR 2       | |      PILLAR 3      | |      PILLAR 4      |
 |  Agent Memory      | |  Model Key Fleet    | | Execution Traces   | | State Rewind       |
 |  Vault & Graph     | |  & Failover Health  | |  & Flamegraphs     | | & Checkpoints      |
-|  (/memory)         | |  (/models/keys)     | | (/traces/flame)    | | (/snapshots)       |
+|  (/memory)         | |  (/models/keys)     | |(/traces/flamegraph)| | (/snapshots)       |
 +--------------------+ +---------------------+ +--------------------+ +--------------------+
 | - Topic Graph      | | - Live Key Cards    | | - Waterfall Canvas | | - Version Timeline |
 | - Markdown Studio  | | - Cooldown Timers   | | - Latency Breakout | | - State Diffing    |

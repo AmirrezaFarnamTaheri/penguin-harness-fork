@@ -505,7 +505,8 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
     const body = await readJson(c);
     const provider = requireString(body, "provider", { minLen: 1, maxLen: 64 });
-    const defaultBaseUrl = typeof body.defaultBaseUrl === "string" ? body.defaultBaseUrl : undefined;
+    const defaultBaseUrl =
+      typeof body.defaultBaseUrl === "string" ? body.defaultBaseUrl : undefined;
     const defaultImageBaseUrl =
       typeof body.defaultImageBaseUrl === "string" ? body.defaultImageBaseUrl : undefined;
     const applyToExisting = body.applyToExisting === true;

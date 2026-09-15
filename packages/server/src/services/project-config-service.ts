@@ -697,7 +697,8 @@ export class ProjectConfigService {
     const savedBaseUrl = optStr(entry.base_url);
     const baseUrl = req.baseUrl === null ? undefined : (req.baseUrl ?? savedBaseUrl);
     const savedImageBaseUrl = optStr(entry.image_base_url);
-    const imageBaseUrl = req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
+    const imageBaseUrl =
+      req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
     const effectiveVisionUrl = imageBaseUrl ?? baseUrl;
     const clientType = canonicalClientType(req.clientType ?? optStr(entry.client_type));
     try {
@@ -797,7 +798,8 @@ export class ProjectConfigService {
     const savedBaseUrl = optStr(entry.base_url);
     const baseUrl = req.baseUrl === null ? undefined : (req.baseUrl ?? savedBaseUrl);
     const savedImageBaseUrl = optStr(entry.image_base_url);
-    const imageBaseUrl = req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
+    const imageBaseUrl =
+      req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
     // The pre-0.4.2 "openai" spelling (request or stored entry) is normalized to the
     // canonical "openai-chat" (deprecated upstream alias; see canonicalClientType).
     const clientType = canonicalClientType(req.clientType ?? optStr(entry.client_type));
@@ -850,7 +852,9 @@ export class ProjectConfigService {
           const res: ModelTestResponse = {
             ok: true,
             latencyMs: Date.now() - startedAt,
-            ...(detectedContextWindow !== undefined ? { contextWindow: detectedContextWindow } : {}),
+            ...(detectedContextWindow !== undefined
+              ? { contextWindow: detectedContextWindow }
+              : {}),
           };
           if (firstContentAt !== null) {
             res.ttftMs = firstContentAt - startedAt;
@@ -1323,7 +1327,8 @@ export class ProjectConfigService {
       else delete groupTable.default_base_url;
     }
     if (defaults.defaultImageBaseUrl !== undefined) {
-      if (defaults.defaultImageBaseUrl) groupTable.default_image_base_url = defaults.defaultImageBaseUrl;
+      if (defaults.defaultImageBaseUrl)
+        groupTable.default_image_base_url = defaults.defaultImageBaseUrl;
       else delete groupTable.default_image_base_url;
     }
     if (Object.keys(groupTable).length > 0) {

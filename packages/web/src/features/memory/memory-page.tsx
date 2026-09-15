@@ -354,7 +354,7 @@ export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
         return {
           ...t,
           content: updatedContent,
-          title: newTitle || t.title,
+          title: newTitle ?? t.title,
           bytes,
           tokens,
           updatedAt: new Date().toISOString(),

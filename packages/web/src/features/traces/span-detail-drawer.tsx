@@ -22,7 +22,9 @@ export function SpanDetailDrawer({ span, onClose }: SpanDetailDrawerProps) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2">
-          <Badge tone={span.status === "error" ? "red" : "green"}>
+          <Badge
+            tone={span.status === "error" ? "red" : span.status === "running" ? "amber" : "green"}
+          >
             {span.status.toUpperCase()}
           </Badge>
           <span className="font-mono text-xs font-semibold text-foreground">{span.kind}</span>

@@ -75,7 +75,27 @@ ${content}
   }, [kind, content, previewTheme]);
 
   const handleOpenInNewTab = () => {
-    const blob = new Blob([sandboxedHtml], { type: "text/html" });
+    // Wrap content inside an isolated document with strict CSP and a sandboxed iframe (opaque origin)
+    // to prevent model-generated content from executing scripts in the application's origin.
+    const escapedContent = sandboxedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    const isolatedWrapper = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title.replace(/</g, "&lt;")}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; frame-src data: blob: 'self';">
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${
+      previewTheme === "dark" ? "#0d1117" : "#ffffff"
+    }; }
+    iframe { width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <iframe sandbox="${kind === "svg" ? "" : "allow-scripts"}" srcdoc="${escapedContent}"></iframe>
+</body>
+</html>`;
+    const blob = new Blob([isolatedWrapper], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     window.open(url, "_blank");
   };

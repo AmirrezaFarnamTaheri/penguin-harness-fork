@@ -277,24 +277,24 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 simulate,
               })
               .then((res: unknown) => {
-                safeSend(
-                  ws,
-                  JSON.stringify({
-                    type: "swarm_task_settled",
-                    result: redactObject(res),
-                    timestamp: Date.now(),
-                  }),
-                );
+                const payload = JSON.stringify({
+                  type: "swarm_task_settled",
+                  result: redactObject(res),
+                  timestamp: Date.now(),
+                });
+                for (const client of connectedClients) {
+                  safeSend(client, payload);
+                }
               })
               .catch((err: unknown) => {
-                safeSend(
-                  ws,
-                  JSON.stringify({
-                    type: "swarm_task_error",
-                    error: err instanceof Error ? err.message : String(err),
-                    timestamp: Date.now(),
-                  }),
-                );
+                const payload = JSON.stringify({
+                  type: "swarm_task_error",
+                  error: err instanceof Error ? err.message : String(err),
+                  timestamp: Date.now(),
+                });
+                for (const client of connectedClients) {
+                  safeSend(client, payload);
+                }
               });
           }
         } catch {

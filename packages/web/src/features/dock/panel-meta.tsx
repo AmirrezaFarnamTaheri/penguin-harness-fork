@@ -60,7 +60,7 @@ export function panelLabel(kind: PanelKind): string {
     case "cockpit":
       return S.nav.cockpit ?? "Agent Cockpit";
     case "spendFlow":
-      return "Spend Flow";
+      return S.nav.spendFlow ?? "Spend Flow";
     case "topology":
       return S.nav.topology ?? "Code Topology";
     case "guardian":

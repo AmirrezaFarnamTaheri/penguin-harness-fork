@@ -118,16 +118,26 @@ export function GatewayPage() {
     e.preventDefault();
     if (!projectId || !newComboId.trim() || !newComboName.trim()) return;
     try {
-      const targets = newComboTargets
+      const rawTargets = newComboTargets
         .split(",")
-        .map((part) => {
-          const [provider, modelId] = part.trim().split(":");
-          return {
-            provider: provider?.trim() || "anthropic",
-            modelId: modelId?.trim() || "default",
-          };
-        })
-        .filter((t) => t.modelId);
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      const targets: { provider: string; modelId: string }[] = [];
+      for (const part of rawTargets) {
+        const colonIdx = part.indexOf(":");
+        if (colonIdx === -1) continue;
+        const provider = part.slice(0, colonIdx).trim();
+        const modelId = part.slice(colonIdx + 1).trim();
+        if (provider && modelId) {
+          targets.push({ provider, modelId });
+        }
+      }
+
+      if (targets.length === 0) {
+        toastError("Please provide at least one valid target in provider:model format");
+        return;
+      }
 
       const comboPayload: ModelCombo = {
         id: newComboId.trim(),

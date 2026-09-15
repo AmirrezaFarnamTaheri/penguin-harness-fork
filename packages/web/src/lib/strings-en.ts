@@ -14,6 +14,7 @@ export const en: Strings = {
     chat: "Chat",
     newChat: "New chat",
     cockpit: "Agent Cockpit",
+    spendFlow: "Spend Flow",
     topology: "Code Topology",
     guardian: "Shell Guardian",
     consensus: "Quorum Consensus",

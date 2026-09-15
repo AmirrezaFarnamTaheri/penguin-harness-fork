@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
 import { useProject } from "../../state/project";
 import { Segmented } from "../../components/ui/segmented";
 import { QuorumBoard } from "./quorum-board";
@@ -12,6 +13,16 @@ export interface ConsensusPageProps {
 export function ConsensusPage({ embedded = false }: ConsensusPageProps) {
   const { currentProject } = useProject();
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
+  const [engine] = useState(() => new QuorumConsensusEngine());
+  const [version, setVersion] = useState(0);
+
+  const standings = useMemo(() => {
+    void version;
+    return engine.listStandings();
+  }, [engine, version]);
+
+  const settledCount = standings.filter((s) => s.status === "settled").length;
+  const debatingCount = standings.filter((s) => s.status === "debating").length;
 
   return (
     <div
@@ -51,11 +62,15 @@ export function ConsensusPage({ embedded = false }: ConsensusPageProps) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Settled Topics</span>
-            <span className="text-base font-bold text-emerald-400 tabular-nums">2 settled</span>
+            <span className="text-base font-bold text-emerald-400 tabular-nums">
+              {settledCount} settled
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Active Debates</span>
-            <span className="text-base font-bold text-amber-400 tabular-nums">2 debating</span>
+            <span className="text-base font-bold text-amber-400 tabular-nums">
+              {debatingCount} debating
+            </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Mailbox Leases</span>
@@ -70,7 +85,13 @@ export function ConsensusPage({ embedded = false }: ConsensusPageProps) {
 
       {/* Main Workspace Body */}
       <div className="flex-1 min-h-0">
-        {tab === "quorum" && <QuorumBoard />}
+        {tab === "quorum" && (
+          <QuorumBoard
+            engine={engine}
+            version={version}
+            onMutate={() => setVersion((v) => v + 1)}
+          />
+        )}
         {tab === "mailbox" && <MailboxBureau />}
         {tab === "handoff" && <HandoffTimeline />}
       </div>

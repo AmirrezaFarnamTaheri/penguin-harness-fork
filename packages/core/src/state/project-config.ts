@@ -361,9 +361,7 @@ export function parseCommandPolicy(value: unknown): CommandPolicyConfig | undefi
  * Leniently parses the `[group_defaults]` table: each provider group's defaults
  * (default_base_url, default_image_base_url) are validated as non-empty strings.
  */
-export function parseGroupDefaults(
-  value: unknown,
-): Record<string, ModelGroupDefaults> | undefined {
+export function parseGroupDefaults(value: unknown): Record<string, ModelGroupDefaults> | undefined {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
   const t = value as Record<string, unknown>;
   const out: Record<string, ModelGroupDefaults> = {};

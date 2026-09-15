@@ -1605,9 +1605,7 @@ export function ChatInput({
   // until the caret sits on a different token; suppressed while a switch picker is open (the
   // picker took over the interaction, and its own search box owns the keyboard).
   const slashTok =
-    !modelSwitchOpen && !agentSwitchOpen && !skillPickerOpen
-      ? matchSlash(text, caret)
-      : null;
+    !modelSwitchOpen && !agentSwitchOpen && !skillPickerOpen ? matchSlash(text, caret) : null;
   slashMatchRef.current = slashTok;
   const slashMatches =
     slashTok && slashTok.start !== slashDismissed
@@ -2062,7 +2060,13 @@ export function ChatInput({
       }
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
+    if (
+      e.key === "Enter" &&
+      !e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.nativeEvent.isComposing
+    ) {
       e.preventDefault();
       if (running) {
         void send("queue");

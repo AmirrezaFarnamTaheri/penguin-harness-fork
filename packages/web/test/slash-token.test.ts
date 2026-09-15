@@ -3,7 +3,11 @@
  * boundary, no URL/path false positives) and token removal on command run.
  */
 import { describe, expect, it } from "vitest";
-import { filterSlashCommands, matchSlash, removeSlashToken } from "../src/features/chat/slash-token";
+import {
+  filterSlashCommands,
+  matchSlash,
+  removeSlashToken,
+} from "../src/features/chat/slash-token";
 
 describe("matchSlash", () => {
   it("matches at the start of the text", () => {
@@ -83,9 +87,7 @@ describe("filterSlashCommands", () => {
 
   it("matches word boundary in long skill commands (e.g. creative inside skill name)", () => {
     const res = filterSlashCommands(commands, "creative");
-    expect(res.map((c) => c.cmd)).toContain(
-      "/ai-research-skills-creative-thinking-for-research",
-    );
+    expect(res.map((c) => c.cmd)).toContain("/ai-research-skills-creative-thinking-for-research");
   });
 
   it("matches substring in command name", () => {

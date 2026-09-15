@@ -521,10 +521,7 @@ export function ModelsKeyPools({
                                 >
                                   {keyHealthLabel(k, {
                                     active: S.models.keyHealthActive,
-                                    cooldown:
-                                      isCd && cdText
-                                        ? `Cooldown (${cdText})`
-                                        : S.models.keyHealthCooldown,
+                                    cooldown: S.models.keyHealthCooldown,
                                     evicted: S.models.keyHealthEvicted,
                                   })}
                                 </span>

@@ -413,13 +413,10 @@ export const putModelGroupDefaults = (
     applyToExisting?: boolean;
   },
 ) =>
-  apiFetch<ModelsResponse>(
-    `/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`,
-    {
-      method: "PUT",
-      body,
-    },
-  );
+  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`, {
+    method: "PUT",
+    body,
+  });
 
 // Provider key minting (owner) ----------------------------------------------------------
 

@@ -6,7 +6,6 @@
  */
 import { useEffect, useState, useMemo, useCallback } from "react";
 import * as api from "../../api/endpoints";
-import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
 import { Button } from "../../components/ui/button";
@@ -42,7 +41,6 @@ const CATEGORY_TONES: Record<string, string> = {
 
 export function SkillsPage() {
   useDocumentTitle(S.nav.skills ?? "Skills Hub");
-  const { currentProject } = useProject();
 
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");

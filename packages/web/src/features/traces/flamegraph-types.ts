@@ -207,7 +207,8 @@ export function formatDurationMs(ms: number): string {
   if (sec < 60) {
     return `${sec.toFixed(2)}s`;
   }
-  const minutes = Math.floor(sec / 60);
-  const remainingSec = Math.round(sec % 60);
+  const totalSec = Math.round(sec);
+  const minutes = Math.floor(totalSec / 60);
+  const remainingSec = totalSec % 60;
   return `${minutes}m ${remainingSec}s`;
 }

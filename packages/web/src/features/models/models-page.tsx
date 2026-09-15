@@ -187,8 +187,7 @@ const KEY_ICON =
   "M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4";
 /** Arrow entering a door: authorize with the provider and come back with a key. */
 const SIGN_IN_ICON = "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3";
-const SLIDERS_ICON =
-  "M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6";
+const SLIDERS_ICON = "M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6";
 const REFRESH_ICON =
   "M4 4v5h.582m15.356 2A8.001 8.001 0 0 0 4.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 0 1-15.357-2m15.357 2H15";
 
@@ -729,15 +728,23 @@ export function ModelsPage() {
   /** User-defined group (provider id) whose delete confirmation is open (built-in groups never offer this). */
   const [deleteGroupFor, setDeleteGroupFor] = useState<string | null>(null);
   /** Group-level default endpoints loaded from server. */
-  const [groupDefaults, setGroupDefaults] = useState<Record<string, { defaultBaseUrl?: string; defaultImageBaseUrl?: string }>>({});
+  const [groupDefaults, setGroupDefaults] = useState<
+    Record<string, { defaultBaseUrl?: string; defaultImageBaseUrl?: string }>
+  >({});
   /** Provider whose group defaults dialog is open. */
   const [groupDefaultsFor, setGroupDefaultsFor] = useState<string | null>(null);
   /** Selected model keys (provider + \0 + modelId) for multi-select batch actions. */
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   /** Batch deletion target. */
-  const [batchDeleteFor, setBatchDeleteFor] = useState<{ provider: string; modelIds: string[] } | null>(null);
+  const [batchDeleteFor, setBatchDeleteFor] = useState<{
+    provider: string;
+    modelIds: string[];
+  } | null>(null);
   /** Dead model pruning target. */
-  const [pruneFailedFor, setPruneFailedFor] = useState<{ provider: string; modelIds: string[] } | null>(null);
+  const [pruneFailedFor, setPruneFailedFor] = useState<{
+    provider: string;
+    modelIds: string[];
+  } | null>(null);
   /** Group whose custom presets are currently syncing from its endpoint. */
   const [syncingGroup, setSyncingGroup] = useState<string | null>(null);
   /** "Add group" popup (user-defined group): create-only hands off to that group's add-model dialog, import mode fills the group from its endpoint (see AddGroupDialog). */
@@ -1522,68 +1529,70 @@ export function ModelsPage() {
                     >
                       {/* inert while collapsed: a card with zero height shouldn't still be Tab-focusable or clickable. */}
                       <div className="overflow-hidden" inert={!open}>
-                        {isOwner && group.rows.length > 0 && (() => {
-                          const selectedInGroup = group.rows.filter((r) =>
-                            selectedKeys.has(refMapKey(r.provider, r.modelId)),
-                          );
-                          return (
-                            <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/70 px-3 py-1.5 text-xs dark:border-gray-800 dark:bg-gray-800/40">
-                              <div className="flex items-center gap-3">
-                                {selectedInGroup.length > 0 ? (
-                                  <span className="font-medium text-gray-700 dark:text-gray-300">
-                                    {S.models.batchSelected(selectedInGroup.length)}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-500 dark:text-gray-400">
-                                    {S.models.batchSelect}
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  className="cursor-pointer text-brand-600 hover:underline dark:text-brand-400"
-                                  onClick={() =>
-                                    selectAllInGroup(
-                                      group.provider.id,
-                                      group.rows.map((r) => r.modelId),
-                                    )
-                                  }
-                                >
-                                  {S.models.selectAll(group.rows.length)}
-                                </button>
-                                {selectedInGroup.length > 0 && (
+                        {isOwner &&
+                          group.rows.length > 0 &&
+                          (() => {
+                            const selectedInGroup = group.rows.filter((r) =>
+                              selectedKeys.has(refMapKey(r.provider, r.modelId)),
+                            );
+                            return (
+                              <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50/70 px-3 py-1.5 text-xs dark:border-gray-800 dark:bg-gray-800/40">
+                                <div className="flex items-center gap-3">
+                                  {selectedInGroup.length > 0 ? (
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                      {S.models.batchSelected(selectedInGroup.length)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-500 dark:text-gray-400">
+                                      {S.models.batchSelect}
+                                    </span>
+                                  )}
                                   <button
                                     type="button"
-                                    className="cursor-pointer text-gray-500 hover:underline dark:text-gray-400"
+                                    className="cursor-pointer text-brand-600 hover:underline dark:text-brand-400"
                                     onClick={() =>
-                                      clearSelectionInGroup(
+                                      selectAllInGroup(
                                         group.provider.id,
                                         group.rows.map((r) => r.modelId),
                                       )
                                     }
                                   >
-                                    {S.models.clearSelection}
+                                    {S.models.selectAll(group.rows.length)}
                                   </button>
+                                  {selectedInGroup.length > 0 && (
+                                    <button
+                                      type="button"
+                                      className="cursor-pointer text-gray-500 hover:underline dark:text-gray-400"
+                                      onClick={() =>
+                                        clearSelectionInGroup(
+                                          group.provider.id,
+                                          group.rows.map((r) => r.modelId),
+                                        )
+                                      }
+                                    >
+                                      {S.models.clearSelection}
+                                    </button>
+                                  )}
+                                </div>
+                                {selectedInGroup.length > 0 && (
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      setBatchDeleteFor({
+                                        provider: group.provider.id,
+                                        modelIds: selectedInGroup.map((r) => r.modelId),
+                                      })
+                                    }
+                                  >
+                                    <GlyphIcon d={TRASH_ICON} size={12} />
+                                    <span>{S.models.batchDelete(selectedInGroup.length)}</span>
+                                  </Button>
                                 )}
                               </div>
-                              {selectedInGroup.length > 0 && (
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    setBatchDeleteFor({
-                                      provider: group.provider.id,
-                                      modelIds: selectedInGroup.map((r) => r.modelId),
-                                    })
-                                  }
-                                >
-                                  <GlyphIcon d={TRASH_ICON} size={12} />
-                                  <span>{S.models.batchDelete(selectedInGroup.length)}</span>
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })()}
+                            );
+                          })()}
                         <div
                           className={`grid grid-cols-1 gap-2 border-t border-gray-200 p-2.5 transition-opacity duration-200 sm:grid-cols-2 lg:grid-cols-3 dark:border-gray-800 ${open ? "opacity-100" : "opacity-0"}`}
                         >
@@ -1845,8 +1854,7 @@ export function ModelsPage() {
                 defaultModel?.provider === target.provider
                 ? undefined
                 : defaultModel,
-              toRemove.has(visionModel?.modelId ?? "") &&
-                visionModel?.provider === target.provider
+              toRemove.has(visionModel?.modelId ?? "") && visionModel?.provider === target.provider
                 ? undefined
                 : visionModel,
               S.models.batchDeleted(target.modelIds.length),
@@ -1890,8 +1898,7 @@ export function ModelsPage() {
                 defaultModel?.provider === target.provider
                 ? undefined
                 : defaultModel,
-              toRemove.has(visionModel?.modelId ?? "") &&
-                visionModel?.provider === target.provider
+              toRemove.has(visionModel?.modelId ?? "") && visionModel?.provider === target.provider
                 ? undefined
                 : visionModel,
               S.models.prunedFailed(target.modelIds.length),
@@ -2851,7 +2858,10 @@ function ModelDialog({
       body.fastMode = form.fastMode;
       const res = await api.testModel(projectId, body);
       if (res.ok) {
-        if (res.contextWindow && (!form.contextWindow.trim() || form.contextWindow.trim() === "1000000")) {
+        if (
+          res.contextWindow &&
+          (!form.contextWindow.trim() || form.contextWindow.trim() === "1000000")
+        ) {
           set({ contextWindow: String(res.contextWindow) });
         }
         toastSuccess(S.models.testOk(res.latencyMs ?? 0));
@@ -3598,7 +3608,7 @@ function ModelDialog({
                       <span>
                         {keyHealthLabel(k, {
                           active: S.models.keyHealthActive,
-                          cooldown: isCd && cd ? `Cooldown (${cd})` : S.models.keyHealthCooldown,
+                          cooldown: S.models.keyHealthCooldown,
                           evicted: S.models.keyHealthEvicted,
                         })}
                       </span>
@@ -3621,9 +3631,7 @@ function ModelDialog({
         {form.credential?.apiKeyMasked && !form.apiKeyInput && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
             <span className="font-mono">{revealedKey ?? form.credential.apiKeyMasked}</span>
-            {revealedKey ? (
-              <CopyButton text={revealedKey} label="Copy API key" />
-            ) : null}
+            {revealedKey ? <CopyButton text={revealedKey} label="Copy API key" /> : null}
             {canEdit && (
               <button
                 type="button"
@@ -3647,11 +3655,29 @@ function ModelDialog({
                 title={revealedKey ? S.models.hideApiKey : S.models.showApiKey}
               >
                 {revealedKey ? (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20" />
                   </svg>
                 ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
                     <path d="M2 12s3-7 10-7 10 7 10 7-3-7-10-7-10-7-10-7Z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
@@ -4203,10 +4229,15 @@ function GroupDefaultsDialog({
   count: number;
   currentDefaults?: { defaultBaseUrl?: string; defaultImageBaseUrl?: string };
   onClose: () => void;
-  onSubmit: (defaults: { defaultBaseUrl?: string; defaultImageBaseUrl?: string }, applyToExisting: boolean) => void;
+  onSubmit: (
+    defaults: { defaultBaseUrl?: string; defaultImageBaseUrl?: string },
+    applyToExisting: boolean,
+  ) => void;
 }) {
   const [defaultBaseUrl, setDefaultBaseUrl] = useState(currentDefaults?.defaultBaseUrl ?? "");
-  const [defaultImageBaseUrl, setDefaultImageBaseUrl] = useState(currentDefaults?.defaultImageBaseUrl ?? "");
+  const [defaultImageBaseUrl, setDefaultImageBaseUrl] = useState(
+    currentDefaults?.defaultImageBaseUrl ?? "",
+  );
   const [applyToExisting, setApplyToExisting] = useState(true);
 
   return (
@@ -4238,9 +4269,7 @@ function GroupDefaultsDialog({
       }
     >
       <div className="space-y-3">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {S.models.groupDefaultsDesc}
-        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{S.models.groupDefaultsDesc}</p>
         <div>
           <FieldLabel block={false}>{S.models.defaultBaseUrl}</FieldLabel>
           <Input

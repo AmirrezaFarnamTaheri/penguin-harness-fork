@@ -537,10 +537,7 @@ export class Agent {
     const resolvedContextWindow =
       spec.modelEntry.context_window ??
       catalogEntryFor(spec.modelEntry.provider, spec.modelEntry.model_id)?.contextWindow;
-    const compaction = resolveCompaction(
-      state.systemConfig.compaction,
-      resolvedContextWindow,
-    );
+    const compaction = resolveCompaction(state.systemConfig.compaction, resolvedContextWindow);
 
     // session_meta: this context's runtime configuration — the assembled prompt goes both to
     // the LLM and in here, so the Trace can audit the actual effective value and a resume
@@ -960,7 +957,16 @@ export class Agent {
    * around the context it starts in — see {@link SessionRuntime} for what each part does.
    */
   private buildRuntime(spec: SessionSpec, initial: AssembledContext): SessionRuntime {
-    const { sessionId, workspaceDir, modelEntry, apiKey, apiKeys, baseUrl, imageBaseUrl, subagentDepth } = spec;
+    const {
+      sessionId,
+      workspaceDir,
+      modelEntry,
+      apiKey,
+      apiKeys,
+      baseUrl,
+      imageBaseUrl,
+      subagentDepth,
+    } = spec;
     // The context the Session is running: the initial one, then whatever `openNextContext` last
     // assembled.
     let current = initial;
@@ -1328,9 +1334,7 @@ export class Agent {
         ...(modelEntry.client_type !== undefined ? { clientType: modelEntry.client_type } : {}),
         tools,
         systemPrompt: context.systemPrompt,
-        ...(resolvedContextWindow !== undefined
-          ? { contextWindow: resolvedContextWindow }
-          : {}),
+        ...(resolvedContextWindow !== undefined ? { contextWindow: resolvedContextWindow } : {}),
         ...(context.maxTokens !== undefined ? { maxTokens: context.maxTokens } : {}),
         // Fast mode is a session-request annotation: it rides every context's LLM object,
         // while the bare/meta LLM below and the vision describer deliberately skip it — their
@@ -1415,9 +1419,7 @@ export class Agent {
         maxTokens: metaMaxTokens(300, modelEntry.max_tokens),
         // Same window derivation as ordinary requests (a formality here: the meta budget
         // is far below any real window, so the clamp never binds).
-        ...(resolvedContextWindow !== undefined
-          ? { contextWindow: resolvedContextWindow }
-          : {}),
+        ...(resolvedContextWindow !== undefined ? { contextWindow: resolvedContextWindow } : {}),
         requestTimeoutMs: 30_000,
       });
     };

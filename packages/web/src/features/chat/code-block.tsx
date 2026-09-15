@@ -21,8 +21,6 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { S } from "../../lib/strings";
-import { CopyButton } from "../../components/ui/copy-button";
 import { CodeToolbar } from "../../components/ui/code-toolbar";
 import { DiffBlock } from "../../components/ui/diff-block";
 import { ArtifactPreviewDrawer } from "./artifact-preview-drawer";
@@ -159,15 +157,9 @@ export function CodeBlock({
     return <DiffBlock diffString={code} className="my-2" />;
   }
 
-  const previewable = ["html", "htm", "svg", "mermaid"].includes(lang);
-  const previewKind: "html" | "svg" | "mermaid" | "code" =
-    lang === "html" || lang === "htm"
-      ? "html"
-      : lang === "svg"
-        ? "svg"
-        : lang === "mermaid"
-          ? "mermaid"
-          : "code";
+  const previewable = ["html", "htm", "svg"].includes(lang);
+  const previewKind: "html" | "svg" | "code" =
+    lang === "html" || lang === "htm" ? "html" : lang === "svg" ? "svg" : "code";
 
   return (
     <>
