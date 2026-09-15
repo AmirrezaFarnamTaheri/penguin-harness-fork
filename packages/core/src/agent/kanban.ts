@@ -301,6 +301,54 @@ export class KanbanBoard {
     return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
   }
 
+  public updateTask(
+    taskId: string,
+    updates: {
+      title?: string;
+      description?: string;
+      priority?: KanbanTaskPriority;
+      assignee?: string | null;
+      state?: KanbanTaskState;
+      metadata?: Record<string, unknown>;
+    },
+    options?: { force?: boolean; workerId?: string; generation?: number },
+  ): KanbanTask {
+    const task = this.tasks.get(taskId);
+    if (!task) throw new Error(`Task with id '${taskId}' not found`);
+
+    if (updates.state !== undefined && updates.state !== task.state) {
+      this.updateTaskState(taskId, updates.state, options);
+    }
+
+    if (updates.title !== undefined) {
+      if (typeof updates.title !== "string" || !updates.title.trim()) {
+        throw new Error("title must be a non-empty string");
+      }
+      task.title = updates.title.trim();
+    }
+    if (updates.description !== undefined) {
+      task.description = updates.description;
+    }
+    if (updates.priority !== undefined) {
+      task.priority = updates.priority;
+    }
+    if (updates.assignee !== undefined) {
+      task.assignee = updates.assignee;
+    }
+    if (updates.metadata !== undefined) {
+      task.metadata = { ...task.metadata, ...updates.metadata };
+    }
+
+    this.emit({
+      type: "task.updated",
+      taskId,
+      boardId: this.boardId,
+      timestamp: Date.now(),
+      payload: { task: { ...task } },
+    });
+    return { ...task, dependencies: [...task.dependencies], childTaskIds: [...task.childTaskIds] };
+  }
+
   public claimTask(
     taskId: string,
     assignee: string,
@@ -528,6 +576,37 @@ export class KanbanBoard {
     return {
       parentTask: { ...parentTask },
       childTasks: childTasks.map((task) => this.getTask(task.id) ?? task),
+    };
+  }
+
+  public listTriageDrafts(): TriageDraft[] {
+    return Array.from(this.drafts.values()).map((draft) => ({
+      ...draft,
+      suggestedTasks: draft.suggestedTasks ? [...draft.suggestedTasks] : [],
+    }));
+  }
+
+  public getStats(): {
+    totalTasks: number;
+    byState: Record<KanbanTaskState, number>;
+    activeDrafts: number;
+  } {
+    const byState: Record<KanbanTaskState, number> = {
+      backlog: 0,
+      triage: 0,
+      in_progress: 0,
+      review: 0,
+      done: 0,
+      archived: 0,
+      failed: 0,
+    };
+    for (const task of this.tasks.values()) {
+      byState[task.state] = (byState[task.state] ?? 0) + 1;
+    }
+    return {
+      totalTasks: this.tasks.size,
+      byState,
+      activeDrafts: this.drafts.size,
     };
   }
 

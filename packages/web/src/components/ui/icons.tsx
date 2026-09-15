@@ -293,7 +293,40 @@ export const SCHEDULE_ICON =
   "M12 21a7 7 0 1 0 0-14 7 7 0 0 0 0 14zm0-10v3l2 1.5M5 3L2.5 5.5M19 3l2.5 2.5";
 
 export const NAV_ICONS = {
+  /** Unified Agent Cockpit & War Room (lucide gauge / dashboard). */
+  cockpit: "M12 14l3.5-3.5M20.49 17A10 10 0 1 0 3.5 17",
+  /** CodeGraph & AST Symbol Topology Navigator (lucide git-fork / network nodes). */
+  topology:
+    "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98",
+  /** Shell Guardian & Safe Execution Cockpit (lucide shield-check). */
+  guardian: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM9 12l2 2 4-4",
+  /** Quorum Consensus & Multi-Agent Bureau (lucide users). */
+  consensus:
+    "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+  /** Context Token Breakdown & Compaction Inspector (lucide pie-chart). */
+  contextBreakdown: "M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z",
+  /** Memory Vault & Semantic Knowledge Studio (lucide brain). */
+  memory:
+    "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18ZM12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z",
+  /** Model Key Fleet & Failover Console (lucide key). */
+  keyFleet: "M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3M7.5 21a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z",
+  /** Execution Waterfall & Flamegraph Profiler (lucide flame). */
+  flamegraph:
+    "M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z",
+  /** Session Time-Travel & Snapshot Rewind Studio (lucide history). */
+  snapshots: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5M12 7v5l4 2",
   agents: AGENT_GROUP_ICON,
+  /** Task Kanban board (lucide square-kanban). */
+  kanban:
+    "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 7v7M12 7v4M16 7v9",
+  /** Workflow Pipelines DAG builder (lucide git-fork). */
+  pipelines:
+    "M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 6c0 5-6 6-12 9",
+  /** Knowledge Wiki & Code Graph (lucide book-marked). */
+  wiki: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
+  /** Skills Catalog & Hub (lucide star). */
+  skills:
+    "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
   /** Plugin library (the puzzle piece). */
   plugins: PLUGIN_ICON,
   /**
@@ -303,6 +336,8 @@ export const NAV_ICONS = {
    */
   models:
     "M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18ZM12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z",
+  /** LLM Gateway, Fallback Combos & Quota Management (lucide router / zap / network). */
+  gateway: "M2 8h20v6H2zM6 14v4M18 14v4M6 11h.01M10 11h.01M14 11h.01M18 11h.01",
   /** Machines (two stacked server units, each with its own status lamp). */
   machines: "M4 4h16v6H4zM4 14h16v6H4zM7 7h.01M7 17h.01",
   usage: "M4 20V10m6 10V4m6 16v-7m4 7H2",
@@ -332,3 +367,75 @@ export const NAV_ICONS = {
 /** Company mode (lucide building-2: a tower with wings and windows), the settings rail, the sidebar's organization groups and the collapsed rail's toggle. */
 export const COMPANY_MODE_ICON =
   "M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M10 6h4M10 10h4M10 14h4M10 18h4";
+
+export function BrainIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d={NAV_ICONS.memory} />
+    </svg>
+  );
+}
+
+export function KeyRoundIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d={NAV_ICONS.keyFleet} />
+    </svg>
+  );
+}
+
+export function FlameIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d={NAV_ICONS.flamegraph} />
+    </svg>
+  );
+}
+
+export function HistoryIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d={NAV_ICONS.snapshots} />
+    </svg>
+  );
+}

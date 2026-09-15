@@ -174,4 +174,31 @@ describe("KanbanBoard", () => {
       }).state,
     ).toBe("done");
   });
+
+  it("updates task fields and computes board statistics accurately", () => {
+    const board = new KanbanBoard({ boardId: "stats-board" });
+    const t1 = board.createTask({ title: "Task 1", priority: "low" });
+    const t2 = board.createTask({ title: "Task 2", priority: "normal" });
+    board.createTriageDraft({ title: "Draft 1", body: "Draft body" });
+
+    const updated = board.updateTask(t1.id, {
+      title: "Task 1 Updated",
+      description: "New description",
+      priority: "urgent",
+      metadata: { labels: ["core", "p1"] },
+    });
+    expect(updated.title).toBe("Task 1 Updated");
+    expect(updated.description).toBe("New description");
+    expect(updated.priority).toBe("urgent");
+    expect(updated.metadata?.labels).toEqual(["core", "p1"]);
+
+    board.claimTask(t2.id, "worker-1");
+
+    const stats = board.getStats();
+    expect(stats.totalTasks).toBe(2);
+    expect(stats.activeDrafts).toBe(1);
+    expect(stats.byState.backlog).toBe(1);
+    expect(stats.byState.in_progress).toBe(1);
+    expect(stats.byState.done).toBe(0);
+  });
 });

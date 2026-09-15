@@ -106,6 +106,7 @@ import { AdminService } from "./services/admin-service.js";
 import { DesktopService } from "./services/desktop-service.js";
 import { LifecycleService } from "./services/lifecycle-service.js";
 import { desktopRoutes, desktopUpdateRoutes } from "./http/routes/desktop.js";
+import { cockpitRoutes } from "./http/routes/cockpit.js";
 import { AgentConfigService } from "./services/agent-config-service.js";
 import { MemoryService } from "./services/memory-service.js";
 import { AgentService } from "./services/agent-service.js";
@@ -1331,6 +1332,7 @@ export function createApp(
 
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
   app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));
+  app.route("/api/cockpit", cockpitRoutes());
   app.route("/api/me", meRoutes(deps));
   app.route("/api/version", versionRoutes(deps));
   app.route("/api/admin/users", adminUsersRoutes(deps));

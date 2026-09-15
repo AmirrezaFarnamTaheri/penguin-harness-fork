@@ -23,9 +23,23 @@
  * place it happens.
  */
 export const NAV_GROUP_KEYS = [
+  "cockpit",
+  "topology",
+  "guardian",
+  "consensus",
+  "contextBreakdown",
+  "memory",
+  "keyFleet",
+  "flamegraph",
+  "snapshots",
   "agents",
+  "kanban",
+  "pipelines",
+  "wiki",
+  "skills",
   "plugins",
   "models",
+  "gateway",
   "machines",
   "usage",
   "benchmark",

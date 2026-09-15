@@ -58,8 +58,11 @@ import { useAuth } from "../../state/auth";
 import { USD_TO_CNY, useTheme } from "../../state/theme";
 import type { Currency } from "../../state/theme";
 import { toneDot, toneInk, toneStrip, toneSurface } from "../../lib/tone";
-import { keyHealthLabel, keyHealthTone } from "./model-keys-health";
+import { formatCooldown, keyHealthLabel, keyHealthTone } from "./model-keys-health";
 import type { ModelKeyHealthReportDto } from "./model-keys-health";
+import { CopyButton } from "../../components/ui/copy-button";
+import { Badge } from "../../components/ui/badge";
+import { ModelsKeyPools } from "./models-key-pools";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { FieldError, FieldLabel } from "../../components/ui/field";
@@ -658,6 +661,7 @@ export function ModelsPage() {
   const [speedRunning, setSpeedRunning] = useState<string | null>(null);
 
   const [rows, setRows] = useState<RowState[] | null>(null);
+  const [pageTab, setPageTab] = useState<"catalog" | "key-pools">("catalog");
   const [defaultModel, setDefaultModel] = useState<ModelRefDto | undefined>(undefined);
   // Vision model used for read_file's proxy reads (describes images for session models with vision=false).
   const [visionModel, setVisionModel] = useState<ModelRefDto | undefined>(undefined);
@@ -1025,13 +1029,26 @@ export function ModelsPage() {
     <div className="h-full overflow-y-auto p-4 md:p-6">
       <div className="mx-auto max-w-5xl">
         <div className="mb-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="flex items-center gap-1.5 text-xl font-semibold">
-              {S.models.title}
-              {!isOwner && (
-                <InfoPopover label={S.models.title}>{S.models.readOnlyHint}</InfoPopover>
-              )}
-            </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h1 className="flex items-center gap-1.5 text-xl font-semibold">
+                {S.models.title}
+                {!isOwner && (
+                  <InfoPopover label={S.models.title}>{S.models.readOnlyHint}</InfoPopover>
+                )}
+              </h1>
+              <div className="w-56">
+                <Segmented
+                  cols={2}
+                  value={pageTab}
+                  onChange={(v) => setPageTab(v)}
+                  options={[
+                    { value: "catalog", label: S.models.tabCatalog },
+                    { value: "key-pools", label: S.models.tabKeyPools },
+                  ]}
+                />
+              </div>
+            </div>
             {/* The header holds search, the owner-only "sync presets" action and the pair of
                 create buttons — the AI path and the group form, offered side by side (per-model
                 entry points still live in each group header); on narrow screens (flex-wrap wraps
@@ -1097,7 +1114,14 @@ export function ModelsPage() {
           )}
         </div>
 
-        {rows === null ? (
+        {pageTab === "key-pools" ? (
+          <ModelsKeyPools
+            projectId={projectId ?? ""}
+            isOwner={isOwner}
+            rows={rows}
+            onOpenModelDialog={(ref) => setEditing(ref)}
+          />
+        ) : rows === null ? (
           <SkeletonList rows={4} />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -3115,11 +3139,19 @@ function ModelDialog({
         </div>
         {envNote && <p className="text-xs text-gray-400 dark:text-gray-500">{envNote}</p>}
         {keyHealth && keyHealth.keys.length > 0 && (
-          <div className="mt-2 space-y-1.5 rounded-lg border border-gray-200 bg-gray-50/50 p-2.5 dark:border-gray-800 dark:bg-gray-900/40">
+          <div className="mt-3 space-y-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/40 p-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                {S.models.keyHealthTitle(keyHealth.healthyCount, keyHealth.totalKeys)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                  {S.models.keyHealthTitle(keyHealth.healthyCount, keyHealth.totalKeys)}
+                </span>
+                {keyHealth.cooldownCount > 0 && (
+                  <Badge tone="amber">{S.models.keysInCooldown(keyHealth.cooldownCount)}</Badge>
+                )}
+                {keyHealth.evictedCount > 0 && (
+                  <Badge tone="red">{S.models.keysEvicted(keyHealth.evictedCount)}</Badge>
+                )}
+              </div>
               {canEdit && (
                 <Button
                   size="sm"
@@ -3142,26 +3174,50 @@ function ModelDialog({
                 </Button>
               )}
             </div>
-            <div className="flex flex-wrap gap-1.5 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono">
               {keyHealth.keys.map((k, idx) => {
                 const tone = keyHealthTone(k.status);
+                const isCd = k.status === "cooldown";
+                const cd = formatCooldown(k.cooldownRemainingMs);
                 return (
-                  <span
+                  <div
                     key={idx}
-                    className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-mono font-medium ${toneSurface[tone]}`}
+                    className={`rounded-lg border p-2 text-xs transition-colors ${
+                      k.status === "evicted"
+                        ? "border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20"
+                        : isCd
+                          ? "border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20"
+                          : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/40"
+                    }`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${toneDot[tone]}`} />
-                    <span>{k.maskedKey}</span>
-                    <span className="text-[10px] opacity-80">
-                      (
-                      {keyHealthLabel(k, {
-                        active: S.models.keyHealthActive,
-                        cooldown: S.models.keyHealthCooldown,
-                        evicted: S.models.keyHealthEvicted,
-                      })}
-                      )
-                    </span>
-                  </span>
+                    <div className="flex items-center justify-between gap-1 pb-1 border-b border-gray-100 dark:border-gray-800/60">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${toneDot[tone]}`} />
+                        <span className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {k.maskedKey}
+                        </span>
+                      </div>
+                      <CopyButton text={k.maskedKey} label="Copy masked key" />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
+                      <span>
+                        {keyHealthLabel(k, {
+                          active: S.models.keyHealthActive,
+                          cooldown: isCd && cd ? `Cooldown (${cd})` : S.models.keyHealthCooldown,
+                          evicted: S.models.keyHealthEvicted,
+                        })}
+                      </span>
+                      <span>
+                        {k.successCount} ok / {k.failureCount} err
+                      </span>
+                    </div>
+                    {k.activeLeases !== undefined && k.activeLeases > 0 && (
+                      <div className="mt-0.5 flex items-center justify-between text-[10px] text-blue-600 dark:text-blue-400 font-sans">
+                        <span>{S.models.activeLeases}</span>
+                        <span className="font-mono font-bold">{k.activeLeases}</span>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

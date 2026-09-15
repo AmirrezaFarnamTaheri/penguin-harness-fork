@@ -116,6 +116,17 @@ import { MessagingPanel } from "../messaging/messaging-panel";
 import { SchedulePanel } from "../schedules/schedule-panel";
 import { ApiTrackerPanel } from "../api-tracker/api-tracker-panel";
 import { noteScheduleEvent } from "../schedules/schedule-store";
+import { HudStatusline } from "../hud/hud-statusline";
+import { AgentCockpit } from "../agent/agent-cockpit";
+import { SpendFlowPanel } from "../hud/spend-flow-panel";
+import { TopologyPage } from "../topology/topology-page";
+import { GuardianPage } from "../guardian/guardian-page";
+import { ConsensusPage } from "../consensus/consensus-page";
+import { ContextBreakdownPage } from "../context/context-breakdown-page";
+import { MemoryPage } from "../memory/memory-page";
+import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
+import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
+import { SnapshotsPage } from "../snapshots/snapshots-page";
 import { DockPanel } from "../dock/dock-panel";
 import { DockLauncher } from "../dock/dock-launcher";
 import { useDockMount } from "../dock/use-dock-mount";
@@ -1727,6 +1738,26 @@ export function ChatPage() {
             projectId={projectId ?? undefined}
           />
         );
+      case "cockpit":
+        return <AgentCockpit key={selected.sessionId} embedded sessionId={selected.sessionId} />;
+      case "spendFlow":
+        return <SpendFlowPanel key={selected.sessionId} projectId={projectId ?? ""} />;
+      case "topology":
+        return <TopologyPage key={selected.sessionId} embedded />;
+      case "guardian":
+        return <GuardianPage key={selected.sessionId} embedded />;
+      case "consensus":
+        return <ConsensusPage key={selected.sessionId} embedded />;
+      case "contextBreakdown":
+        return (
+          <ContextBreakdownPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
+        );
+      case "keyFleet":
+        return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
+      case "flamegraph":
+        return <TraceFlamegraphPage key={selected.sessionId} embedded />;
+      case "snapshots":
+        return <SnapshotsPage key={selected.sessionId} embedded />;
     }
   };
 
@@ -2135,6 +2166,77 @@ export function ChatPage() {
             </div>
           </Dropdown>
         </div>
+      )}
+
+      {selected && (
+        <HudStatusline
+          tokensUsed={
+            usageBuckets
+              ? usageBuckets.cacheRead + usageBuckets.cacheWrite + usageBuckets.output
+              : stream.model.stats.taskOutput +
+                stream.model.stats.taskCacheRead +
+                stream.model.stats.taskCacheWrite
+          }
+          contextWindow={contextWindow ? Number(contextWindow) : 200000}
+          speed={
+            stream.taskState === "running" && stream.model.stats.taskOutput > 0
+              ? {
+                  tokensPerSecond: Math.max(
+                    1,
+                    Math.round(
+                      stream.model.stats.taskOutput /
+                        Math.max(1, (stream.model.stats.taskLlmMs || 1000) / 1000),
+                    ),
+                  ),
+                  outputTokens: stream.model.stats.taskOutput,
+                  elapsedMs: stream.model.stats.taskLlmMs || 1000,
+                  isStreaming: true,
+                }
+              : undefined
+          }
+          promptCache={
+            usageBuckets && (usageBuckets.cacheRead > 0 || usageBuckets.cacheWrite > 0)
+              ? {
+                  cacheReadTokens: usageBuckets.cacheRead,
+                  cacheCreationTokens: usageBuckets.cacheWrite,
+                  ttlSeconds: 300,
+                  remainingSeconds: 240,
+                  state: usageBuckets.cacheRead > 0 ? "active" : "none",
+                }
+              : undefined
+          }
+          costUsd={costHoldRef.current.sessionCost ?? liveTaskUsd ?? 0}
+          costSavingsUsd={
+            usageBuckets && usageBuckets.cacheRead > 0 ? usageBuckets.cacheRead * 0.000002 : 0
+          }
+          vcs={{
+            branch: currentProject?.name ? "main" : undefined,
+            isClean: true,
+            dirtyFilesCount: 0,
+            stagedFilesCount: 0,
+          }}
+          activeTasks={
+            stream.taskState !== "idle"
+              ? [
+                  {
+                    id: "task-active",
+                    toolName:
+                      stream.subagents.length > 0
+                        ? stream.subagents[0]?.subagentId ||
+                          stream.subagents[0]?.sessionId ||
+                          "Subagent"
+                        : "Agent Task",
+                    startTime: Date.now() - 2000,
+                    durationMs: 2000,
+                  },
+                ]
+              : []
+          }
+          onOpenGateway={() => navigate("/gateway")}
+          onOpenCockpit={() => openPanel("cockpit")}
+          onOpenKanban={() => navigate("/kanban")}
+          onOpenContext={() => openPanel("contextBreakdown")}
+        />
       )}
 
       {/* Body: chat column + the right dock on this row (below the toolbar — a dock

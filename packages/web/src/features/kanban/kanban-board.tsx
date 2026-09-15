@@ -4,7 +4,7 @@ import type {
   KanbanTaskState,
   KanbanTaskPriority,
   TriageDraft,
-} from "@prismshadow/penguin-core";
+} from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button.js";
 import { Badge } from "../../components/ui/badge.js";
 

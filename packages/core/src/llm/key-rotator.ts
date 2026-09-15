@@ -213,6 +213,29 @@ export class ApiKeyRotator {
   }
 
   /**
+   * Explicitly revives a key, clearing failure/eviction status and resetting cooldown.
+   */
+  reviveKey(key?: string): void {
+    if (!key) return;
+    const target = this.keys.find((k) => k.key === key);
+    if (target) {
+      target.isFailed = false;
+      target.cooldownUntil = 0;
+    }
+  }
+
+  /**
+   * Resets cooldown for all non-failed keys without mutating success counts.
+   */
+  resetAllCooldowns(): void {
+    for (const k of this.keys) {
+      if (!k.isFailed && k.cooldownUntil > 0) {
+        k.cooldownUntil = 0;
+      }
+    }
+  }
+
+  /**
    * Records a failure for `key`:
    * - "auth": marks the key permanently failed (will not be selected again unless reset).
    * - "rate_limit": places the key in cooldown for `cooldownMs`.

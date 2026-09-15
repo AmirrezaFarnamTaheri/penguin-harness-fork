@@ -27,6 +27,7 @@ import ReactMarkdown from "react-markdown";
 import type { Components, ExtraProps, Options } from "react-markdown";
 import { NO_REHYPE_PLUGINS, REHYPE_PLUGINS, REMARK_PLUGINS } from "../../lib/markdown-plugins";
 import { CodeBlock } from "./code-block";
+import { Citation } from "../../components/ui/citation";
 
 /** Flatten a react-markdown code element's children to plain text (string or string array in practice). */
 function codeText(children: unknown): string {
@@ -75,6 +76,18 @@ function MdLink({
   children,
   ...anchorProps
 }: ComponentPropsWithoutRef<"a"> & ExtraProps) {
+  const text = typeof children === "string" ? children : "";
+  const matchCitation = /^\[?(\d+)\]?$/.exec(text.trim());
+  if (matchCitation && matchCitation[1]) {
+    return (
+      <Citation
+        index={parseInt(matchCitation[1], 10)}
+        title={typeof anchorProps.title === "string" ? anchorProps.title : text}
+        url={anchorProps.href}
+        compact
+      />
+    );
+  }
   return (
     <a {...anchorProps} target="_blank" rel="noreferrer">
       {children}

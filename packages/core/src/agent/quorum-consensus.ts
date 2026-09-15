@@ -118,16 +118,19 @@ export class QuorumConsensusEngine {
       });
     }
 
+    const peerSupporters = supporters.filter((s) => s.agentId !== proposerId);
+    const isSettled = peerSupporters.length >= policy.threshold;
+
     const standing: TopicStanding = {
       topicId,
       topic,
-      status: supporters.length >= policy.threshold ? "settled" : "debating",
+      status: isSettled ? "settled" : "debating",
       policy,
       proposerId,
       supporters,
       refuters: [],
       createdAt: now,
-      settledAt: supporters.length >= policy.threshold ? now : undefined,
+      settledAt: isSettled ? now : undefined,
     };
 
     this.standings.set(topicId, standing);
@@ -147,6 +150,10 @@ export class QuorumConsensusEngine {
     const normalizedAgentId = agentId.trim();
     if (!normalizedAgentId) throw new Error("Endorser agentId cannot be empty");
 
+    if (normalizedAgentId === standing.proposerId) {
+      throw new Error(`Proposer '${normalizedAgentId}' cannot peer-endorse their own topic`);
+    }
+
     // Check if grounded evidence is required
     if (standing.policy.requireGrounded && (!grounds || !grounds.trim())) {
       throw new Error(
@@ -163,8 +170,9 @@ export class QuorumConsensusEngine {
       });
     }
 
-    // Check if threshold reached
-    if (standing.supporters.length >= standing.policy.threshold && standing.status !== "settled") {
+    // Check if threshold of distinct peer endorsements is reached
+    const peerSupporters = standing.supporters.filter((s) => s.agentId !== standing.proposerId);
+    if (peerSupporters.length >= standing.policy.threshold && standing.status !== "settled") {
       standing.status = "settled";
       standing.settledAt = Date.now();
     }
