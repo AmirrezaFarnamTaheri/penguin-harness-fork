@@ -397,6 +397,30 @@ export const resetModelKeys = (projectId: string, provider?: string, modelId?: s
     body: provider && modelId ? { provider, modelId } : {},
   });
 
+/** Reveals the saved plaintext API key for a model (project owner only). */
+export const getModelApiKey = (projectId: string, provider: string, modelId: string) =>
+  apiFetch<{ provider: string; modelId: string; apiKey: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/key?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`,
+  );
+
+/** Configures group-level defaults for base_url and image_base_url with optional bulk propagation. */
+export const putModelGroupDefaults = (
+  projectId: string,
+  body: {
+    provider: string;
+    defaultBaseUrl?: string;
+    defaultImageBaseUrl?: string;
+    applyToExisting?: boolean;
+  },
+) =>
+  apiFetch<ModelsResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`,
+    {
+      method: "PUT",
+      body,
+    },
+  );
+
 // Provider key minting (owner) ----------------------------------------------------------
 
 /**

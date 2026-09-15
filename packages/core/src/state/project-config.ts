@@ -126,8 +126,16 @@ export interface ModelEntry {
   api_keys?: string[];
   /** Custom base URL (inlined credential); preset for gateway models. */
   base_url?: string;
+  /** Custom image/vision base URL for platforms with separate text and image APIs (e.g. router.bynara.id vs api-images.bynara.id). */
+  image_base_url?: string;
   /** api_key's write timestamp (ISO 8601; a display field maintained by the interface layer). */
   created_at?: string;
+}
+
+/** Group-level defaults inherited by models in a provider group that omit their own base URL. */
+export interface ModelGroupDefaults {
+  default_base_url?: string;
+  default_image_base_url?: string;
 }
 
 /** Approval modes storable in `[default_chat]` (mirrors the Web/CLI ApprovalMode enum). */
@@ -197,6 +205,8 @@ export interface ProjectConfig {
    * key, and dropping `enabled` falls back to on.
    */
   command_policy?: CommandPolicyConfig;
+  /** Group-level defaults (base_url, image_base_url) for provider groups. */
+  group_defaults?: Record<string, ModelGroupDefaults>;
   models: ModelEntry[];
 }
 
@@ -348,6 +358,33 @@ export function parseCommandPolicy(value: unknown): CommandPolicyConfig | undefi
 }
 
 /**
+ * Leniently parses the `[group_defaults]` table: each provider group's defaults
+ * (default_base_url, default_image_base_url) are validated as non-empty strings.
+ */
+export function parseGroupDefaults(
+  value: unknown,
+): Record<string, ModelGroupDefaults> | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const t = value as Record<string, unknown>;
+  const out: Record<string, ModelGroupDefaults> = {};
+  for (const [provider, def] of Object.entries(t)) {
+    if (def === null || typeof def !== "object" || Array.isArray(def)) continue;
+    const d = def as Record<string, unknown>;
+    const groupDef: ModelGroupDefaults = {};
+    if (typeof d.default_base_url === "string" && d.default_base_url.trim() !== "") {
+      groupDef.default_base_url = d.default_base_url.trim();
+    }
+    if (typeof d.default_image_base_url === "string" && d.default_image_base_url.trim() !== "") {
+      groupDef.default_image_base_url = d.default_image_base_url.trim();
+    }
+    if (Object.keys(groupDef).length > 0) {
+      out[provider] = groupDef;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
  * Narrows an already-parsed `.project_config.toml` table into a typed `ProjectConfig`
  * (`file` is used in error messages only). Shared by `loadProjectConfig` and callers that
  * hold a cached parse of the same file (the server's ProjectConfigService), so the two
@@ -365,12 +402,14 @@ export function projectConfigFromTable(
   const visionModel = parseRefField(file, "vision_model", parsed.vision_model);
   const defaultChat = parseDefaultChat(parsed.default_chat);
   const commandPolicy = parseCommandPolicy(parsed.command_policy);
+  const groupDefaults = parseGroupDefaults(parsed.group_defaults);
   return {
     ...(parsed.name !== undefined ? { name: parsed.name as string } : {}),
     ...(defaultModel !== undefined ? { default_model: defaultModel } : {}),
     ...(visionModel !== undefined ? { vision_model: visionModel } : {}),
     ...(defaultChat !== undefined ? { default_chat: defaultChat } : {}),
     ...(commandPolicy !== undefined ? { command_policy: commandPolicy } : {}),
+    ...(groupDefaults !== undefined ? { group_defaults: groupDefaults } : {}),
     models: ((parsed.models as unknown[] | undefined) ?? []).map((m) => assertModelEntry(file, m)),
   };
 }
@@ -490,6 +529,7 @@ export type AddModelInput = {
   api_key?: string;
   api_keys?: string[] | string;
   base_url?: string;
+  image_base_url?: string;
 };
 
 /**
@@ -577,6 +617,10 @@ export function upsertModel(cfg: ProjectConfig, entry: AddModelInput): ModelEntr
   const baseUrl = entry.base_url ?? existing?.base_url;
   if (baseUrl !== undefined) {
     modelEntry.base_url = baseUrl;
+  }
+  const imageBaseUrl = entry.image_base_url ?? existing?.image_base_url;
+  if (imageBaseUrl !== undefined) {
+    modelEntry.image_base_url = imageBaseUrl;
   }
   if (existing?.created_at !== undefined) {
     modelEntry.created_at = existing.created_at;

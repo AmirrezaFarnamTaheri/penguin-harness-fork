@@ -108,7 +108,7 @@ import { ProviderLogo } from "../../components/ui/provider-logo";
 import { sameModelRef } from "../models/model-grouping";
 import { filterAgents, stagedSendRoute } from "./agent-handoff";
 import { ModelMenuList, ModelSelect, PickerList, modelLabel } from "./model-select";
-import { matchSlash, removeSlashToken } from "./slash-token";
+import { filterSlashCommands, matchSlash, removeSlashToken } from "./slash-token";
 import { SELECTABLE_THINKING_LEVELS, thinkingLevelLabel } from "./thinking-level";
 import { BOOK_ICON, buildSkillsMessage, localizedShortText, skillSlashItems } from "./skill-use";
 import { GOAL_ICON, UNLIMITED_BUDGET, parseBudgetInput } from "./goal-use";
@@ -1082,6 +1082,8 @@ export function ChatInput({
   const modelSwitchRef = useRef<HTMLDivElement>(null);
   const [agentSwitchOpen, setAgentSwitchOpen] = useState(false);
   const agentSwitchRef = useRef<HTMLDivElement>(null);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const skillPickerRef = useRef<HTMLDivElement>(null);
   // Anchor for the popups that open upward, and the room actually available above them.
   const anchorRef = useRef<HTMLDivElement>(null);
   const [upwardMaxH, setUpwardMaxH] = useState<number>();
@@ -1563,6 +1565,19 @@ export function ChatInput({
             },
           ]
         : []),
+      // Skills picker command: opens the multi-select skill modal/picker
+      ...(skills && skills.length > 0
+        ? [
+            {
+              cmd: "/skills",
+              desc: S.chat.skillsSelect,
+              run: () => {
+                clearInput();
+                setSkillPickerOpen(true);
+              },
+            },
+          ]
+        : []),
       // Each installed skill gets its own entry: `/<skill_name>` toggles that skill's selection (without sending), description follows the UI language.
       ...skillSlashItems(skills, locale).map((s) => ({
         cmd: s.cmd,
@@ -1590,13 +1605,13 @@ export function ChatInput({
   // until the caret sits on a different token; suppressed while a switch picker is open (the
   // picker took over the interaction, and its own search box owns the keyboard).
   const slashTok =
-    !running && !compacting && !modelSwitchOpen && !agentSwitchOpen
+    !modelSwitchOpen && !agentSwitchOpen && !skillPickerOpen
       ? matchSlash(text, caret)
       : null;
   slashMatchRef.current = slashTok;
   const slashMatches =
     slashTok && slashTok.start !== slashDismissed
-      ? commands.filter((c) => c.cmd.startsWith(`/${slashTok.query}`))
+      ? filterSlashCommands(commands, slashTok.query)
       : [];
   const slashOpen = slashMatches.length > 0;
   const activeSlash = slashMatches[Math.min(slashIndex, slashMatches.length - 1)];
@@ -1605,17 +1620,22 @@ export function ChatInput({
   // have no trigger button of their own, so the handling lives here). Only one can be open at a
   // time — the slash menu that opens them is suppressed while either is up.
   useEffect(() => {
-    if (!modelSwitchOpen && !agentSwitchOpen) return;
+    if (!modelSwitchOpen && !agentSwitchOpen && !skillPickerOpen) return;
     // Dismissing the panel puts the caret back where the user was typing: the picker's search
     // box stole the focus when it opened, and without this it would be left on <body>.
     const closeAll = () => {
       setModelSwitchOpen(false);
       setAgentSwitchOpen(false);
+      setSkillPickerOpen(false);
       textareaRef.current?.focus();
     };
     // globalThis.* event types: the React ones imported above would shadow the DOM ones here.
     const onClick = (e: globalThis.MouseEvent) => {
-      const panel = modelSwitchOpen ? modelSwitchRef.current : agentSwitchRef.current;
+      const panel = modelSwitchOpen
+        ? modelSwitchRef.current
+        : agentSwitchOpen
+          ? agentSwitchRef.current
+          : skillPickerRef.current;
       if (panel && !panel.contains(e.target as Node)) closeAll();
     };
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -1631,7 +1651,7 @@ export function ChatInput({
       window.removeEventListener("mousedown", onClick);
       window.removeEventListener("keydown", onKey);
     };
-  }, [modelSwitchOpen, agentSwitchOpen]);
+  }, [modelSwitchOpen, agentSwitchOpen, skillPickerOpen]);
 
   /** Stage a model as the /model chip (null = drop it), keeping the draft cache in step. */
   const stageModel = (m: ModelInfo | null) => {
@@ -1691,7 +1711,7 @@ export function ChatInput({
   // top edge sits well below the viewport's. A static `40vh` cap can't know that distance and
   // clipped the first rows on shorter windows, so measure the real gap when a menu opens.
   useEffect(() => {
-    if (!slashOpen && !modelSwitchOpen && !agentSwitchOpen) return;
+    if (!slashOpen && !modelSwitchOpen && !agentSwitchOpen && !skillPickerOpen) return;
     const measure = () => {
       const el = anchorRef.current;
       if (!el) return;
@@ -1709,7 +1729,7 @@ export function ChatInput({
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [slashOpen, modelSwitchOpen, agentSwitchOpen]);
+  }, [slashOpen, modelSwitchOpen, agentSwitchOpen, skillPickerOpen]);
 
   /** Auto-grow the textarea (caps at roughly 6 lines, scrolls internally beyond that). */
   const autoGrow = () => {
@@ -1910,49 +1930,47 @@ export function ChatInput({
     }
   };
 
-  const send = async () => {
+  const sendSteerImmediately = async () => {
+    if (!running) return;
+    const steerText = text.trim();
+    const steerImages = images;
+    const steerFiles = attachments.map((f) => ({ fileName: f.name, dataUrl: f.dataUrl }));
+    if (!steerText && steerImages.length === 0 && steerFiles.length === 0) return;
+    if (!onSteer) return;
+    setBusy(true);
+    let res: "queued" | "not_running" | "failed" = "failed";
+    try {
+      res = await onSteer(steerText, steerImages, steerFiles);
+      if (res === "queued") {
+        steerBaseline.current = steeringDeliveredCount ?? 0;
+        setSteerPending(true);
+        setText("");
+        setImages([]);
+        setAttachments([]);
+      }
+    } finally {
+      setBusy(false);
+      textareaRef.current?.focus();
+    }
+    if (res === "not_running") await sendNormal(onQueueFollowUp ?? onSend);
+  };
+
+  const send = async (mode?: "steer" | "queue") => {
     if (running) {
-      // Queue branch: the whole draft goes out through the normal composition path, posted
-      // with queueIfBusy — the server holds it and auto-sends once this run finishes (a staged
-      // switch still opens its new chat directly: neither the handoff target nor the model fork
-      // is the session that is running). One branch for both ways of getting here — follow-up
-      // mode, and steer mode meeting a draft steering cannot carry — since the message sent is
-      // the same either way.
-      if (queueAction) {
-        await sendNormal(onQueueFollowUp!);
+      if (mode === "steer") {
+        await sendSteerImmediately();
         return;
       }
-      // Steering branch: queue the trimmed text, the attached images and the attached files
-      // for the running agent; all are sent and cleared together — selected skills stay for
-      // a normal send (a staged switch chip blocks this branch outright, see midRunAction).
-      if (!steerAction) return;
-      const steerText = text.trim();
-      const steerImages = images;
-      const steerFiles = attachments.map((f) => ({ fileName: f.name, dataUrl: f.dataUrl }));
-      setBusy(true);
-      let res: "queued" | "not_running" | "failed" = "failed";
-      try {
-        res = await onSteer!(steerText, steerImages, steerFiles);
-        if (res === "queued") {
-          // Show the "queued" hint until the steering message shows up in the stream
-          // (steeringDeliveredCount increases) — see the effect below.
-          steerBaseline.current = steeringDeliveredCount ?? 0;
-          setSteerPending(true);
-          setText("");
-          setImages([]);
-          setAttachments([]);
+      if (mode === "queue" || queueAction) {
+        if (onQueueFollowUp) {
+          await sendNormal(onQueueFollowUp);
+          return;
         }
-      } finally {
-        setBusy(false);
-        textareaRef.current?.focus();
       }
-      // Completion race: the SSE snapshot can still say running after /steer reports that the
-      // core run has ended. Deliver the untouched whole draft — skills and all — through the
-      // queue-if-busy path. That endpoint is safe on both sides of the server's own completion
-      // seam: it starts immediately when idle, or queues behind the last sliver of the old run.
-      // A plain Task POST could race the manager's idle flip and return 409, stranding the draft
-      // on a reloaded page (#89).
-      if (res === "not_running") await sendNormal(onQueueFollowUp ?? onSend);
+      if (steerAction) {
+        await sendSteerImmediately();
+        return;
+      }
       return;
     }
     if (!canSend) return;
@@ -2035,9 +2053,23 @@ export function ChatInput({
       clearSwitchTarget();
       return;
     }
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      void send();
+      if (running) {
+        void send("steer");
+      } else {
+        void send();
+      }
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (running) {
+        void send("queue");
+      } else {
+        void send();
+      }
+      return;
     }
   };
 
@@ -2218,6 +2250,22 @@ export function ChatInput({
             agents={agents}
             {...(currentAgentId !== undefined ? { currentAgentId } : {})}
             onPick={pickHandoffTarget}
+          />
+        </SwitchPickerPanel>
+      )}
+
+      {/* /skills picker: opens the skill list in a switch picker panel */}
+      {skillPickerOpen && (
+        <SwitchPickerPanel
+          panelRef={skillPickerRef}
+          maxHeight={upwardMaxH}
+          title={S.chat.skillsSelect}
+        >
+          <SkillPickList
+            skills={skills}
+            selected={selectedSkills}
+            onToggle={toggleSkill}
+            emptyHint={S.chat.skillsEmptyHint}
           />
         </SwitchPickerPanel>
       )}
@@ -2708,16 +2756,16 @@ export function ChatInput({
               skills={skills}
               selected={selectedSkills}
               onToggle={toggleSkill}
-              disabled={running || compacting || busy}
+              disabled={busy}
               direction={models && onChangeModel ? "down" : "up"}
             />
             {/* Help text: shown only when the card is wide enough (@lg); it never competes for
                 space on phones, where the group scrolls instead. */}
             <span
-              title={S.chat.slashHint}
+              title={running ? S.chat.runningFooterHint : S.chat.slashHint}
               className="hidden min-w-0 truncate text-gray-300 @lg:block dark:text-gray-600"
             >
-              {S.chat.slashHint}
+              {running ? S.chat.runningFooterHint : S.chat.slashHint}
             </span>
           </div>
 

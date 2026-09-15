@@ -1049,24 +1049,28 @@ export class GenerativeModel implements LLMInterface {
 
   /**
    * Retrieves or instantiates an AutoLLMClient for the specified API key.
+   * Supports separate imageBaseUrl when handling multimodal/image requests.
    * Caches instances by key and syncs existing conversation history.
    */
-  private getClient(apiKey?: string): AutoLLMClient {
+  private getClient(apiKey?: string, isImage = false): AutoLLMClient {
     const key = apiKey ?? this.primaryKey;
-    let client = this.clients.get(key);
+    const effectiveBaseUrl =
+      isImage && this.config.imageBaseUrl ? this.config.imageBaseUrl : this.config.baseUrl;
+    const cacheKey = `${key}\0${effectiveBaseUrl ?? ""}`;
+    let client = this.clients.get(cacheKey);
     if (!client) {
-      const headers = attributionHeaders(this.config.baseUrl);
+      const headers = attributionHeaders(effectiveBaseUrl);
       client = new AutoLLMClient({
         model: this.config.modelId,
         ...(key !== "" ? { apiKey: key } : {}),
-        ...(this.config.baseUrl !== undefined ? { baseUrl: this.config.baseUrl } : {}),
+        ...(effectiveBaseUrl !== undefined ? { baseUrl: effectiveBaseUrl } : {}),
         ...(this.config.clientType !== undefined ? { clientType: this.config.clientType } : {}),
         ...(headers ? { defaultHeaders: headers } : {}),
       });
       if (this.committedHistory.length > 0) {
         client.setHistory(this.committedHistory);
       }
-      this.clients.set(key, client);
+      this.clients.set(cacheKey, client);
     }
     return client;
   }
@@ -1217,7 +1221,17 @@ export class GenerativeModel implements LLMInterface {
       };
     }
 
-    const client = this.getClient(activeKey);
+    const containsImage = params.newMessages.some((m) => {
+      const p = m.payload as { type?: string; images?: unknown[] };
+      return (
+        p.type === "image_url" ||
+        p.type === "inline_data" ||
+        (Array.isArray(p.images) && p.images.length > 0)
+      );
+    });
+    const isImage = Boolean(containsImage && this.config.imageBaseUrl);
+
+    const client = this.getClient(activeKey, isImage);
     if (this.committedHistory.length > 0) {
       client.setHistory(this.committedHistory);
     } else {
@@ -1277,6 +1291,7 @@ export class GenerativeModel implements LLMInterface {
         ac.signal,
         this.requestConfig(params.thinkingLevel, params.newMessages),
         activeKey,
+        isImage,
       )[Symbol.asyncIterator]();
       for (;;) {
         // The interruption check must happen **before pulling from upstream**: the user may
@@ -1478,8 +1493,9 @@ export class GenerativeModel implements LLMInterface {
     signal: AbortSignal,
     config: UniConfig = this.uniConfig,
     activeKey?: string,
+    isImage = false,
   ): AsyncIterable<UniEvent> {
-    const client = this.getClient(activeKey);
+    const client = this.getClient(activeKey, isImage);
     return client.streamingResponseStateful({
       message: uniMessage,
       config,

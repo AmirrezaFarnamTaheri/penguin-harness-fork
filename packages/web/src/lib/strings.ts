@@ -918,6 +918,39 @@ export const zh = {
       "用内置目录更新预置模型：新增缺失条目、以目录字段为准刷新差异；本地新增模型与 API key 保持不变",
     syncDone: (added: number, updated: number) => `预置模型已同步：新增 ${added}、更新 ${updated}`,
     syncUpToDate: "预置模型已是最新",
+    imageBaseUrl: "图像 API Base URL",
+    imageBaseUrlPlaceholder: "https://… (留空继承 Base URL)",
+    imageBaseUrlHint:
+      "用于图像/视觉多模态调用的独立端点（例如 https://api-images.bynara.id/v1/）",
+    showApiKey: "查看 API key",
+    hideApiKey: "隐藏 API key",
+    revealApiKeyError: "获取 API key 失败",
+    groupDefaults: "分组默认端点",
+    groupDefaultsTitle: "配置分组默认端点",
+    groupDefaultsDesc: "为当前分组配置默认端点，未设置独立地址的模型将自动继承",
+    defaultBaseUrl: "默认 Base URL",
+    defaultImageBaseUrl: "默认图像 API Base URL",
+    applyToExistingModels: (n: number) => `应用到该分组现有的全部 ${n} 个模型`,
+    groupDefaultsSaved: "分组默认端点已更新",
+    batchSelect: "多选模型",
+    batchSelected: (n: number) => `已选择 ${n} 个`,
+    selectAll: (n: number) => `全选 (${n})`,
+    clearSelection: "取消选择",
+    batchDelete: (n: number) => `批量删除 (${n})`,
+    batchDeleteTitle: "删除所选模型",
+    batchDeleteConfirm: (group: string, n: number) =>
+      `确定从 ${group} 分组中删除已选的 ${n} 个模型？该操作无法撤销。`,
+    batchDeleted: (n: number) => `已删除 ${n} 个模型`,
+    pruneFailed: "清理失效模型",
+    pruneFailedTitle: "清理未响应模型",
+    pruneFailedConfirm: (group: string, n: number) =>
+      `确定从 ${group} 分组中移除 ${n} 个未响应的失效模型？`,
+    prunedFailed: (n: number) => `已移除 ${n} 个未响应模型`,
+    noFailedModels: "所测模型均正常响应",
+    syncCustomGroup: "发现/同步模型",
+    syncCustomGroupTitle: "从端点同步模型列表",
+    syncCustomGroupNoNew: "端点没有可新增的新模型",
+    syncCustomGroupDone: (n: number) => `已添加 ${n} 个新发现的模型`,
     /**
      * The header's "Create with AI" entry: the dialog's title and lead, the prompt box's
      * placeholder, the examples and the fixed instruction tail. The tail
@@ -2214,6 +2247,7 @@ Benchmark：
     contextWindowUnderThresholdAction: "打开 Agent 设置",
     contextWindowUnderThresholdDismiss: "忽略",
     slashHint: "输入 / 使用命令",
+    runningFooterHint: "按 [Enter] 排队，[Ctrl+Enter] 立即引导",
     /** `/agent` handoff: command description, picker title, search box, no-match hint, and the staged target's description and remove button. */
     switchAgent: "交给其他 Agent，发送时开启新会话",
     switchAgentTitle: "选择 Agent",

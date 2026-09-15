@@ -40,3 +40,92 @@ export function removeSlashToken(text: string, match: SlashMatch): string {
   // The token was the entire content (possibly padded with whitespace): leave a truly empty input.
   return /^\s*$/.test(joined) ? "" : joined;
 }
+
+/** Slash command shape accepted by filterSlashCommands. */
+export interface SlashCommandLike {
+  cmd: string;
+  desc?: string;
+}
+
+/**
+ * Filters and ranks slash commands against a search query.
+ * Matches:
+ * 1. Exact command name match (highest priority, score: 0)
+ * 2. Command name prefix (score: 10..40 based on length delta)
+ * 3. Word-boundary in command (e.g. "creative" matches "ai-skills-creative-thinking", score: 50..)
+ * 4. Substring in command name (score: 100 + index)
+ * 5. Word-boundary in description (score: 200)
+ * 6. Substring in description (score: 300)
+ * 7. Multi-token match across command and description (score: 400)
+ */
+export function filterSlashCommands<T extends SlashCommandLike>(
+  commands: T[],
+  rawQuery: string,
+): T[] {
+  const query = rawQuery.trim().toLowerCase().replace(/^\//, "");
+  if (!query) return commands;
+
+  const tokens = query.split(/\s+/).filter(Boolean);
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const boundaryRegex = new RegExp(`(?:^|[-_\\s])${escapedQuery}`, "i");
+
+  interface ScoredItem {
+    item: T;
+    score: number;
+  }
+
+  const scored: ScoredItem[] = [];
+
+  for (const item of commands) {
+    const rawCmd = item.cmd.toLowerCase().replace(/^\//, "");
+    const desc = (item.desc || "").toLowerCase();
+
+    // 1. Exact command name match
+    if (rawCmd === query) {
+      scored.push({ item, score: 0 });
+      continue;
+    }
+
+    // 2. Exact command prefix
+    if (rawCmd.startsWith(query)) {
+      scored.push({ item, score: 10 + Math.min(30, rawCmd.length - query.length) });
+      continue;
+    }
+
+    // 3. Word boundary match in command (e.g., "-creative", "_creative", or after separator)
+    if (boundaryRegex.test(rawCmd)) {
+      scored.push({ item, score: 50 + Math.min(40, rawCmd.length - query.length) });
+      continue;
+    }
+
+    // 4. Substring anywhere in command name
+    const cmdIndex = rawCmd.indexOf(query);
+    if (cmdIndex >= 0) {
+      scored.push({ item, score: 100 + Math.min(50, cmdIndex) });
+      continue;
+    }
+
+    // 5. Description word boundary
+    if (boundaryRegex.test(desc)) {
+      scored.push({ item, score: 200 });
+      continue;
+    }
+
+    // 6. Substring in description
+    if (desc.includes(query)) {
+      scored.push({ item, score: 300 });
+      continue;
+    }
+
+    // 7. Multi-token match: all whitespace-separated query tokens present in cmd or desc
+    if (tokens.length > 1) {
+      const allMatch = tokens.every((t) => rawCmd.includes(t) || desc.includes(t));
+      if (allMatch) {
+        scored.push({ item, score: 400 });
+      }
+    }
+  }
+
+  scored.sort((a, b) => a.score - b.score);
+  return scored.map((s) => s.item);
+}
