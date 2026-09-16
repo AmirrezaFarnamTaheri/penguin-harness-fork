@@ -180,6 +180,10 @@ export class SwarmCoordinator {
     return this.pendingTaskCount;
   }
 
+  public getActiveTaskId(): string | null {
+    return this.activeTaskId;
+  }
+
   public hasAgent(id: string): boolean {
     const norm = normalizeMailboxOwnerName(id);
     return this.agents.has(norm);

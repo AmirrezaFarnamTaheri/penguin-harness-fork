@@ -2,10 +2,10 @@ import type { SessionContextResponse } from "@prismshadow/penguin-server/api";
 
 export interface ContextAllocationBarProps {
   data: SessionContextResponse;
-  contextWindow?: number;
+  contextWindow?: number | null;
 }
 
-export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAllocationBarProps) {
+export function ContextAllocationBar({ data, contextWindow }: ContextAllocationBarProps) {
   const parts = [
     {
       label: "System Prompt",
@@ -41,10 +41,12 @@ export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAl
   ];
 
   const totalTokens = parts.reduce((acc, p) => acc + p.tokens, 0);
-  const occupancyPct =
-    contextWindow > 0 ? Math.min(100, Math.round((totalTokens / contextWindow) * 100)) : 0;
+  const hasWindow = typeof contextWindow === "number" && contextWindow > 0;
+  const occupancyPct = hasWindow
+    ? Math.min(100, Math.round((totalTokens / contextWindow) * 100))
+    : null;
   const thresholdPct =
-    data.compactionThreshold && contextWindow > 0
+    data.compactionThreshold && hasWindow
       ? Math.min(100, Math.round((data.compactionThreshold / contextWindow) * 100))
       : null;
 
@@ -57,10 +59,12 @@ export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAl
         </div>
         <div className="flex items-center gap-2 text-gray-400 text-[11px]">
           <span>
-            Total: <strong className="text-gray-100">{totalTokens.toLocaleString()}</strong> /{" "}
-            {contextWindow.toLocaleString()} tokens
+            Total: <strong className="text-gray-100">{totalTokens.toLocaleString()}</strong>
+            {hasWindow ? ` / ${contextWindow.toLocaleString()} tokens` : " tokens (Window: —)"}
           </span>
-          <span className="text-cyan-400 font-bold">({occupancyPct}%)</span>
+          {occupancyPct !== null && (
+            <span className="text-cyan-400 font-bold">({occupancyPct}%)</span>
+          )}
         </div>
       </div>
 
@@ -101,7 +105,7 @@ export function ContextAllocationBar({ data, contextWindow = 200000 }: ContextAl
             Compaction triggers at: {data.compactionThreshold?.toLocaleString()} tok ({thresholdPct}
             %)
           </span>
-          <span>{contextWindow.toLocaleString()} tok</span>
+          <span>{contextWindow ? `${contextWindow.toLocaleString()} tok` : "—"}</span>
         </div>
       )}
 

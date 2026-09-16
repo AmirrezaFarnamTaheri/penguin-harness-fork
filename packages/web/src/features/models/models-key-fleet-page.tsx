@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useProject } from "../../state/project";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -250,26 +250,42 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     return isDemo ? DEMO_FLEET_REPORTS : reports;
   }, [isDemo, reports]);
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
   const fetchLiveFleet = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    fetchAbortRef.current = abortCtrl;
+
     setLoading(true);
     try {
-      const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`);
+      const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`, {
+        signal: abortCtrl.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.reports)) {
           setReports(data.reports);
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
       // offline / standalone fallback
     } finally {
-      setLoading(false);
+      if (!abortCtrl.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [projectId]);
 
   useEffect(() => {
+    setReports([]);
+    setProbingTarget(null);
     void fetchLiveFleet();
-  }, [fetchLiveFleet]);
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
+  }, [projectId, fetchLiveFleet]);
 
   const stats = useMemo(() => calculateFleetHealth(activeReports), [activeReports]);
 

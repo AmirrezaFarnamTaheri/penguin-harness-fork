@@ -29,13 +29,25 @@ export function ContextBreakdownPage({
   const [error, setError] = useState<string | null>(null);
   const [compacting, setCompacting] = useState(false);
 
-  // Synchronize initial session selection from available project sessions
+  const projectId = currentProject?.projectId ?? "default";
+
+  // Reset session selection and context data on project switch
   useEffect(() => {
-    if (!selectedSessionId && sessions.length > 0) {
-      const first = sessions[0];
-      if (first) {
-        setSelectedSessionId(first.sessionId);
+    setSelectedSessionId(null);
+    setData(null);
+    setError(null);
+  }, [projectId]);
+
+  // Synchronize session selection ensuring it belongs to current project's session set
+  useEffect(() => {
+    if (sessions.length > 0) {
+      const exists = sessions.some((s) => s.sessionId === selectedSessionId);
+      if (!exists) {
+        setSelectedSessionId(sessions[0]?.sessionId ?? null);
       }
+    } else {
+      setSelectedSessionId(null);
+      setData(null);
     }
   }, [sessions, selectedSessionId]);
 
@@ -97,7 +109,7 @@ export function ContextBreakdownPage({
     );
   }, [data]);
 
-  const contextWindow = data?.contextWindow ?? 200_000;
+  const contextWindow = data?.contextWindow ?? null;
 
   return (
     <div
@@ -140,7 +152,7 @@ export function ContextBreakdownPage({
               </div>
             )}
             <span className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
-              WINDOW: {contextWindow.toLocaleString()} TOKENS
+              {contextWindow ? `WINDOW: ${contextWindow.toLocaleString()} TOKENS` : "Window: —"}
             </span>
           </div>
         </div>
@@ -156,7 +168,9 @@ export function ContextBreakdownPage({
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Window Capacity</span>
             <span className="text-base font-bold text-cyan-400 tabular-nums">
-              {data ? `${Math.min(100, Math.round((totalTokens / contextWindow) * 100))}%` : "—"}
+              {data && contextWindow && contextWindow > 0
+                ? `${Math.min(100, Math.round((totalTokens / contextWindow) * 100))}%`
+                : "—"}
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">

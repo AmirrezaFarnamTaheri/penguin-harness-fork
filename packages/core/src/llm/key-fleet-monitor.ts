@@ -98,21 +98,22 @@ export function maskApiKey(key: string): string {
   return `${prefix}...${suffix}`;
 }
 
+interface ModelRegistrationMeta {
+  modelId: string;
+  modelRef: string;
+  provider: string;
+  strategy: KeyFleetRotationStrategy;
+  probeFn?: ProbeFunction;
+  keyById: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
+  keyByMask: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
+  rawToId: Map<string, string>;
+  latencies: number[];
+  unsubRotator?: () => void;
+}
+
 export class KeyFleetMonitor {
   private rotators = new Map<string, ApiKeyRotator>();
-  private providerMeta = new Map<
-    string,
-    {
-      modelId: string;
-      modelRef: string;
-      strategy: KeyFleetRotationStrategy;
-      probeFn?: ProbeFunction;
-      keyById: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
-      keyByMask: Map<string, { keyId: string; maskedKey: string; rawKey: string }>;
-      rawToId: Map<string, string>;
-      latencies: number[];
-    }
-  >();
+  private modelMeta = new Map<string, ModelRegistrationMeta>();
   private probeTimer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<(stats: FleetHealthStats) => void>();
 
@@ -130,21 +131,49 @@ export class KeyFleetMonitor {
     // Defaults are intentionally empty to prevent synthetic or unconfigured keys in production.
   }
 
+  private hasKeyIdInOtherModels(keyId: string, currentModelRef: string): boolean {
+    for (const [ref, meta] of this.modelMeta) {
+      if (ref !== currentModelRef && meta.keyById.has(keyId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public registerProvider(reg: ProviderRegistration): void {
-    const provider = reg.provider.toLowerCase();
+    const provider = reg.provider.toLowerCase().trim();
+    const modelId = reg.modelId.trim();
+    const modelRef = reg.modelRef?.trim() || `${provider}/${modelId}`;
+
+    const existingMeta = this.modelMeta.get(modelRef);
+    if (existingMeta?.unsubRotator) {
+      existingMeta.unsubRotator();
+    }
+
     const rotator =
       reg.rotator ??
       (reg.projectId
-        ? KeyRotatorRegistry.get(`${reg.projectId}/${provider}/${reg.modelId}`, reg.keys)
+        ? KeyRotatorRegistry.get(`${reg.projectId}/${provider}/${modelId}`, reg.keys, {
+            updateExisting: false,
+          })
         : new ApiKeyRotator(reg.keys));
-    this.rotators.set(provider, rotator);
+
+    // Connect observable change listener to push real inference events live
+    const unsubRotator = rotator.onChange(() => {
+      this.notifyListeners();
+    });
+
+    this.rotators.set(modelRef, rotator);
 
     const keyById = new Map<string, { keyId: string; maskedKey: string; rawKey: string }>();
     const keyByMask = new Map<string, { keyId: string; maskedKey: string; rawKey: string }>();
     const rawToId = new Map<string, string>();
 
     reg.keys.forEach((k, index) => {
-      const keyId = `${provider}-key-${index + 1}`;
+      const baseKeyId = `${provider}-key-${index + 1}`;
+      const keyId = this.hasKeyIdInOtherModels(baseKeyId, modelRef)
+        ? `${provider}-${modelId.replace(/[^a-zA-Z0-9_-]/g, "-")}-key-${index + 1}`
+        : baseKeyId;
       const masked = maskApiKey(k);
       const entry = { keyId, maskedKey: masked, rawKey: k };
       keyById.set(keyId, entry);
@@ -152,51 +181,93 @@ export class KeyFleetMonitor {
       rawToId.set(k, keyId);
     });
 
-    this.providerMeta.set(provider, {
-      modelId: reg.modelId,
-      modelRef: reg.modelRef ?? `${provider}/${reg.modelId}`,
+    this.modelMeta.set(modelRef, {
+      modelId,
+      modelRef,
+      provider,
       strategy: reg.strategy ?? "round-robin",
       probeFn: reg.probeFn,
       keyById,
       keyByMask,
       rawToId,
-      latencies: [],
+      latencies: existingMeta?.latencies ?? [],
+      unsubRotator,
     });
   }
 
-  public getProviders(): string[] {
-    return Array.from(this.rotators.keys());
+  private findMetaAndRotator(
+    providerOrRef: string,
+    keyIdOrMask?: string,
+  ): { meta: ModelRegistrationMeta; rotator: ApiKeyRotator; modelRef: string } | undefined {
+    const norm = providerOrRef.toLowerCase().trim();
+
+    // 1. Direct match on modelRef
+    for (const [ref, meta] of this.modelMeta) {
+      if (ref.toLowerCase() === norm) {
+        if (!keyIdOrMask || meta.keyById.has(keyIdOrMask) || meta.keyByMask.has(keyIdOrMask)) {
+          const rotator = this.rotators.get(ref);
+          if (rotator) return { meta, rotator, modelRef: ref };
+        }
+      }
+    }
+
+    // 2. Match where provider or modelId matches and key exists (if keyIdOrMask provided)
+    for (const [ref, meta] of this.modelMeta) {
+      if (meta.provider === norm || meta.modelId.toLowerCase() === norm) {
+        if (!keyIdOrMask || meta.keyById.has(keyIdOrMask) || meta.keyByMask.has(keyIdOrMask)) {
+          const rotator = this.rotators.get(ref);
+          if (rotator) return { meta, rotator, modelRef: ref };
+        }
+      }
+    }
+
+    // 3. Fallback: match by provider alone only when keyIdOrMask is not provided
+    if (!keyIdOrMask) {
+      for (const [ref, meta] of this.modelMeta) {
+        if (meta.provider === norm) {
+          const rotator = this.rotators.get(ref);
+          if (rotator) return { meta, rotator, modelRef: ref };
+        }
+      }
+    }
+
+    return undefined;
   }
 
-  public getRotator(provider: string): ApiKeyRotator | undefined {
-    return this.rotators.get(provider.toLowerCase());
+  public getProviders(): string[] {
+    return [...new Set([...this.modelMeta.values()].map((m) => m.provider))];
+  }
+
+  public getRotator(providerOrRef: string): ApiKeyRotator | undefined {
+    return this.findMetaAndRotator(providerOrRef)?.rotator;
   }
 
   public clear(): void {
+    for (const meta of this.modelMeta.values()) {
+      meta.unsubRotator?.();
+    }
     this.rotators.clear();
-    this.providerMeta.clear();
+    this.modelMeta.clear();
     this.notifyListeners();
   }
 
   /**
-   * Executes a synthetic or live latency probe for a specific key under a provider.
+   * Executes a synthetic or live latency probe for a specific key under a provider/model.
    */
   public async probeKey(
-    provider: string,
+    providerOrRef: string,
     keyIdOrMask: string,
     overrideProbeFn?: ProbeFunction,
   ): Promise<KeyProbeResult> {
-    const prov = provider.toLowerCase();
-    const meta = this.providerMeta.get(prov);
-    const rotator = this.rotators.get(prov);
-
+    const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
     const now = Date.now();
-    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+    const entry = found?.meta.keyById.get(keyIdOrMask) ?? found?.meta.keyByMask.get(keyIdOrMask);
     const rawKey = entry?.rawKey;
     const keyId = entry?.keyId ?? keyIdOrMask;
     const maskedKey = entry?.maskedKey ?? maskApiKey(keyIdOrMask);
+    const provider = found?.meta.provider ?? providerOrRef.toLowerCase();
 
-    const probeFn = overrideProbeFn ?? meta?.probeFn;
+    const probeFn = overrideProbeFn ?? found?.meta.probeFn;
 
     let latencyMs = 0;
     let status: "ok" | "error" | "skipped" = "skipped";
@@ -204,20 +275,20 @@ export class KeyFleetMonitor {
 
     if (probeFn && rawKey) {
       try {
-        const res = await probeFn(prov, rawKey);
+        const res = await probeFn(provider, rawKey);
         latencyMs = res.latencyMs;
         status = res.ok ? "ok" : "error";
         details = res.error;
         if (res.ok) {
-          rotator?.recordSuccess(rawKey);
+          found?.rotator.recordSuccess(rawKey);
         } else {
-          rotator?.recordFailure(rawKey, "other");
+          found?.rotator.recordFailure(rawKey, "other");
         }
       } catch (err) {
         status = "error";
         latencyMs = 999;
         details = err instanceof Error ? err.message : String(err);
-        rotator?.recordFailure(rawKey, "other");
+        found?.rotator.recordFailure(rawKey, "other");
       }
     } else {
       latencyMs = 0;
@@ -225,19 +296,19 @@ export class KeyFleetMonitor {
       details = "No probe function configured for provider";
     }
 
-    if (meta && status !== "skipped" && latencyMs > 0) {
-      meta.latencies.push(latencyMs);
-      if (meta.latencies.length > 10) {
-        meta.latencies.shift();
+    if (found && status !== "skipped" && latencyMs > 0) {
+      found.meta.latencies.push(latencyMs);
+      if (found.meta.latencies.length > 10) {
+        found.meta.latencies.shift();
       }
     }
 
-    const sparkline = meta ? [...meta.latencies] : [];
+    const sparkline = found ? [...found.meta.latencies] : [];
 
     return {
       keyId,
       maskedKey,
-      provider: prov,
+      provider,
       latencyMs,
       status,
       timestamp: now,
@@ -251,9 +322,9 @@ export class KeyFleetMonitor {
    */
   public async probeFleet(): Promise<KeyProbeResult[]> {
     const results: KeyProbeResult[] = [];
-    for (const [provider, meta] of this.providerMeta) {
+    for (const [ref, meta] of this.modelMeta) {
       for (const keyId of meta.keyById.keys()) {
-        const res = await this.probeKey(provider, keyId);
+        const res = await this.probeKey(ref, keyId);
         results.push(res);
       }
     }
@@ -264,14 +335,13 @@ export class KeyFleetMonitor {
   /**
    * Revives a key from cooldown or eviction. Returns true if key was found and updated.
    */
-  public reviveKey(provider: string, keyIdOrMask: string): boolean {
-    const meta = this.providerMeta.get(provider.toLowerCase());
-    const rotator = this.rotators.get(provider.toLowerCase());
-    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+  public reviveKey(providerOrRef: string, keyIdOrMask: string): boolean {
+    const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
+    if (!found) return false;
+    const entry = found.meta.keyById.get(keyIdOrMask) ?? found.meta.keyByMask.get(keyIdOrMask);
     const rawKey = entry?.rawKey;
-    if (rawKey && rotator) {
-      rotator.reviveKey(rawKey);
-      this.notifyListeners();
+    if (rawKey) {
+      found.rotator.reviveKey(rawKey);
       return true;
     }
     return false;
@@ -280,14 +350,13 @@ export class KeyFleetMonitor {
   /**
    * Places a key in temporary cooldown. Returns true if key was found and updated.
    */
-  public cooldownKey(provider: string, keyIdOrMask: string, cooldownMs = 60_000): boolean {
-    const meta = this.providerMeta.get(provider.toLowerCase());
-    const rotator = this.rotators.get(provider.toLowerCase());
-    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+  public cooldownKey(providerOrRef: string, keyIdOrMask: string, cooldownMs = 60_000): boolean {
+    const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
+    if (!found) return false;
+    const entry = found.meta.keyById.get(keyIdOrMask) ?? found.meta.keyByMask.get(keyIdOrMask);
     const rawKey = entry?.rawKey;
-    if (rawKey && rotator) {
-      rotator.recordFailure(rawKey, "rate_limit", cooldownMs);
-      this.notifyListeners();
+    if (rawKey) {
+      found.rotator.recordFailure(rawKey, "rate_limit", cooldownMs);
       return true;
     }
     return false;
@@ -296,26 +365,23 @@ export class KeyFleetMonitor {
   /**
    * Evicts a key permanently (e.g. auth failure). Returns true if key was found and updated.
    */
-  public evictKey(provider: string, keyIdOrMask: string): boolean {
-    const meta = this.providerMeta.get(provider.toLowerCase());
-    const rotator = this.rotators.get(provider.toLowerCase());
-    const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
+  public evictKey(providerOrRef: string, keyIdOrMask: string): boolean {
+    const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
+    if (!found) return false;
+    const entry = found.meta.keyById.get(keyIdOrMask) ?? found.meta.keyByMask.get(keyIdOrMask);
     const rawKey = entry?.rawKey;
-    if (rawKey && rotator) {
-      rotator.recordFailure(rawKey, "auth");
-      this.notifyListeners();
+    if (rawKey) {
+      found.rotator.recordFailure(rawKey, "auth");
       return true;
     }
     return false;
   }
 
   /**
-   * Checks whether a key identifier or mask exists for a provider.
+   * Checks whether a key identifier or mask exists for a provider/model.
    */
-  public hasKey(provider: string, keyIdOrMask: string): boolean {
-    const meta = this.providerMeta.get(provider.toLowerCase());
-    if (!meta) return false;
-    return meta.keyById.has(keyIdOrMask) || meta.keyByMask.has(keyIdOrMask);
+  public hasKey(providerOrRef: string, keyIdOrMask: string): boolean {
+    return this.findMetaAndRotator(providerOrRef, keyIdOrMask) !== undefined;
   }
 
   /**
@@ -325,7 +391,6 @@ export class KeyFleetMonitor {
     for (const rotator of this.rotators.values()) {
       rotator.resetAllCooldowns();
     }
-    this.notifyListeners();
   }
 
   /**
@@ -335,8 +400,8 @@ export class KeyFleetMonitor {
     const reports: ModelKeyFleetReport[] = [];
     const now = Date.now();
 
-    for (const [provider, meta] of this.providerMeta) {
-      const rotator = this.rotators.get(provider);
+    for (const [modelRef, meta] of this.modelMeta) {
+      const rotator = this.rotators.get(modelRef);
       const keys: KeyHealthItem[] = [];
 
       let healthyCount = 0;
@@ -348,7 +413,7 @@ export class KeyFleetMonitor {
         const statuses = rotator.getKeys();
         for (const s of statuses) {
           const masked = maskApiKey(s.key);
-          const keyId = meta?.rawToId.get(s.key) ?? masked;
+          const keyId = meta.rawToId.get(s.key) ?? masked;
           let st: KeyHealthStatus = "healthy";
           let cooldownRemainingMs = 0;
 
@@ -383,7 +448,7 @@ export class KeyFleetMonitor {
 
       reports.push({
         modelRef: meta.modelRef,
-        provider,
+        provider: meta.provider,
         modelId: meta.modelId,
         rotationStrategy: meta.strategy,
         totalKeys: keys.length,
@@ -452,7 +517,7 @@ export class KeyFleetMonitor {
     let totalHealthy = 0;
 
     for (const r of reports) {
-      const meta = this.providerMeta.get(r.provider);
+      const meta = this.modelMeta.get(r.modelRef);
       const lastLat =
         meta && meta.latencies.length > 0 ? meta.latencies[meta.latencies.length - 1]! : 0;
 

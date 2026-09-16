@@ -1588,6 +1588,7 @@ export class SessionManager {
       if (entry.session.hasPendingBackgroundNotices?.()) continue;
       if (now - entry.lastActivityMs <= idleMs) continue;
       this.entries.delete(key);
+      this.disposeRemoved(entry);
     }
   }
 
@@ -1665,6 +1666,7 @@ export class SessionManager {
       }
       this.entries.delete(sessionId);
       discardedBackgroundTasks = existing.backgroundTasks;
+      this.disposeRemoved(existing);
     }
     const row = this.deps.sessions.findById(sessionId);
     if (!row) {

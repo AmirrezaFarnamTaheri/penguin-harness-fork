@@ -172,8 +172,11 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
         ? body.projectId.trim()
         : getProjectId(c);
     const runtime = await getRuntime(c, projectId);
-    const from = typeof body.from === "string" ? body.from.slice(0, 64) : "operator";
-    const to = typeof body.to === "string" ? body.to.slice(0, 64) : "coder";
+    const from =
+      (typeof body.from === "string" ? body.from : "operator").trim().slice(0, 64) || "operator";
+    const to =
+      (typeof body.to === "string" ? body.to : "coder").toLowerCase().trim().slice(0, 64) ||
+      "coder";
     const content = typeof body.content === "string" ? body.content : "";
     const trimmed = content.trim();
 
@@ -293,6 +296,18 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
         maxRounds,
         simulate,
       });
+
+      if (!simulate && result && (result as { status?: string }).status === "unhandled") {
+        return c.json(
+          {
+            success: false,
+            error:
+              "Autonomous swarm execution failed: no task handler configured for project and simulation mode was not requested.",
+            result,
+          },
+          400,
+        );
+      }
 
       return c.json({
         success: true,

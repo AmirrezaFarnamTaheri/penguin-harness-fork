@@ -55,7 +55,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(json.result.artifacts.length).toBeGreaterThan(0);
   });
 
-  it("returns unhandled status when POST /swarm/run has no handler and simulate is false", async () => {
+  it("returns 400 with unhandled status when POST /swarm/run has no handler and simulate is false", async () => {
     const app = new Hono();
     app.route("/api/cockpit", cockpitRoutes());
 
@@ -68,10 +68,11 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
     const json = (await res.json()) as any;
-    expect(json.success).toBe(true);
+    expect(json.success).toBe(false);
     expect(json.result.status).toBe("unhandled");
+    expect(json.error).toContain("no task handler configured");
   });
 
   it("serves registered key fleet metrics and handles real probes", async () => {
@@ -560,5 +561,49 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     const resKeysB = await app.request("/api/cockpit/keys?project=project-B");
     expect(resKeysA.status).toBe(200);
     expect(resKeysB.status).toBe(200);
+  });
+
+  it("normalizes mailbox recipient 'to' and prevents backpressure bypass", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    // Dispatching to "Coder " or "CODER" normalizes to "coder"
+    const resUpper = await app.request("/api/cockpit/mailbox/send?project=norm-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "operator",
+        to: "  CODER  ",
+        content: "Normalized directive",
+      }),
+    });
+    expect(resUpper.status).toBe(200);
+    const json = (await resUpper.json()) as any;
+    expect(json.directive.toAgent).toBe("coder");
+    expect(json.mailbox["coder"].queueDepth).toBe(1);
+  });
+
+  it("postpones runtime reaping when swarm tasks are active or pending", async () => {
+    const rt = await getOrCreateProjectRuntime("proj-swarm-reap");
+    let cleanedUp = false;
+    rt.cleanup = () => {
+      cleanedUp = true;
+    };
+
+    // Simulate an active swarm task
+    (rt.coordinator as any).pendingTaskCount = 1;
+
+    scheduleRuntimeReap(rt, {}, 25);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Must NOT be cleaned up because pendingTaskCount > 0
+    expect(cleanedUp).toBe(false);
+
+    // Now clear pending tasks and reap again
+    (rt.coordinator as any).pendingTaskCount = 0;
+    scheduleRuntimeReap(rt, {}, 25);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(cleanedUp).toBe(true);
   });
 });

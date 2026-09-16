@@ -267,6 +267,7 @@ export interface McpToolProviderOptions {
 interface McpConnection {
   server: ResolvedMCPServer;
   client: Client;
+  transport?: Transport;
   tools: Tool[];
   catalogReady: boolean;
   /** True from list-changed until a complete later snapshot has been applied successfully. */
@@ -274,6 +275,7 @@ interface McpConnection {
   refreshRequested: boolean;
   refreshPromise: Promise<void> | null;
   lastRefreshStartedAt: number;
+  lastUsedAt: number;
 }
 
 /** Bounds invalid references retained for actionable stale-reference errors. */
@@ -530,7 +532,7 @@ export class McpToolProvider {
     const kept: McpConnection[] = [];
     for (const conn of this.connections) {
       if (wanted.get(conn.server.name) === JSON.stringify(conn.server)) kept.push(conn);
-      else void conn.client.close().catch(() => {});
+      else void this.closeConnection(conn).catch(() => {});
     }
     this.connections = kept;
     this.ensurePromise = null;
@@ -682,16 +684,102 @@ export class McpToolProvider {
     };
   }
 
+  /**
+   * Gracefully and forcefully closes an MCP connection: closes client, closes transport,
+   * and terminates any hanging stdio child process to prevent memory/handle leaks and zombie processes.
+   */
+  private async closeConnection(conn: McpConnection): Promise<void> {
+    try {
+      await conn.client.close();
+    } catch {
+      // ignore
+    }
+    try {
+      await conn.transport?.close();
+    } catch {
+      // ignore
+    }
+    const proc = (
+      conn.transport as unknown as {
+        _process?: {
+          kill?: (sig?: string) => void;
+          exitCode?: number | null;
+          killed?: boolean;
+        };
+      }
+    )?._process;
+    if (proc && typeof proc.kill === "function" && proc.exitCode === null && !proc.killed) {
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+      const timer = setTimeout(() => {
+        if (proc && typeof proc.kill === "function" && proc.exitCode === null && !proc.killed) {
+          try {
+            proc.kill("SIGKILL");
+          } catch {
+            // ignore
+          }
+        }
+      }, 1500);
+      if (typeof timer.unref === "function") {
+        timer.unref();
+      }
+    }
+  }
+
   /** Closes every connected client (stdio child processes included). Idempotent. */
   async close(): Promise<void> {
     this.closed = true;
     const open = this.connections.splice(0);
-    await Promise.allSettled(open.map((conn) => conn.client.close()));
+    await Promise.allSettled(open.map((conn) => this.closeConnection(conn)));
   }
 
   /** Fire-and-forget close for Environment's synchronous dispose(). */
   closeQuietly(): void {
     void this.close().catch(() => {});
+  }
+
+  /**
+   * Reclaims memory and terminates child processes for idle MCP servers that haven't been used in `maxIdleMs`.
+   * Returns the count of closed connections.
+   */
+  closeIdleConnections(maxIdleMs = 15 * 60 * 1000, now = Date.now()): number {
+    if (this.closed || this.connections.length === 0) return 0;
+    const kept: McpConnection[] = [];
+    const idle: McpConnection[] = [];
+    for (const conn of this.connections) {
+      if (now - conn.lastUsedAt > maxIdleMs) {
+        idle.push(conn);
+      } else {
+        kept.push(conn);
+      }
+    }
+    if (idle.length === 0) return 0;
+    this.connections = kept;
+    for (const conn of idle) {
+      void this.closeConnection(conn).catch(() => {});
+    }
+    this.ensurePromise = null;
+    this.rebuildRegistry();
+    return idle.length;
+  }
+
+  /**
+   * Explicitly closes and removes a connected MCP server by name.
+   */
+  async closeServer(serverName: string): Promise<boolean> {
+    const idx = this.connections.findIndex((c) => c.server.name === serverName);
+    if (idx === -1) return false;
+    const [conn] = this.connections.splice(idx, 1);
+    if (conn) {
+      await this.closeConnection(conn);
+      this.ensurePromise = null;
+      this.rebuildRegistry();
+      return true;
+    }
+    return false;
   }
 
   private ensure(): Promise<void> {
@@ -1156,6 +1244,7 @@ export class McpToolProvider {
       refreshRequested: false,
       refreshPromise: null,
       lastRefreshStartedAt: 0,
+      lastUsedAt: Date.now(),
     };
     // Direct mode intentionally preserves its initial native-tool snapshot. In lazy mode
     // the notification refreshes only the private catalog; listTools() still returns the
@@ -1203,12 +1292,14 @@ export class McpToolProvider {
         t.headers ? { fetch: fetchWithHeaders(t.headers) } : {},
       );
     }
+    conn.transport = transport;
     try {
       const startedAt = Date.now();
       await client.connect(transport, {
         timeout: server.connectTimeoutMs,
         ...(signal ? { signal } : {}),
       });
+      conn.lastUsedAt = Date.now();
       // One budget covers connect + discovery: the SDK's `timeout` is per-request, so
       // discovery gets whatever the handshake left over — granting the full value to
       // both calls would let the worst case run to twice the documented total.
@@ -1220,8 +1311,7 @@ export class McpToolProvider {
       conn.tools = listed.tools;
       return conn;
     } catch (err) {
-      await client.close().catch(() => {});
-      await transport.close().catch(() => {});
+      await this.closeConnection(conn).catch(() => {});
       const detail = describeError(err);
       throw new Error(stderrTail ? `${detail}; server stderr: ${stderrTail.trim()}` : detail);
     }
@@ -1293,6 +1383,7 @@ export class McpToolProvider {
           : {}),
       },
       execute: async function* (args, ctx): AsyncGenerator<OmniMessage, ToolResult> {
+        conn.lastUsedAt = Date.now();
         let result: CallToolResult;
         try {
           result = await conn.client.callTool(

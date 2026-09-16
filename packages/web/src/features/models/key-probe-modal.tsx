@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { simulateKeyProbe, type KeyHealthItem, type KeyProbeResult } from "./key-fleet-types";
@@ -23,12 +23,19 @@ export function KeyProbeModal({
   const [probing, setProbing] = useState(true);
   const [result, setResult] = useState<KeyProbeResult | null>(null);
 
-  const runProbe = async () => {
+  const abortRef = useRef<AbortController | null>(null);
+
+  const runProbe = useCallback(async () => {
+    abortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    abortRef.current = abortCtrl;
+
     setProbing(true);
     try {
       const res = await fetch(`/api/cockpit/keys/probe?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortCtrl.signal,
         body: JSON.stringify({
           projectId,
           provider,
@@ -36,6 +43,7 @@ export function KeyProbeModal({
           maskedKey: keyItem.maskedKey,
         }),
       });
+      if (abortCtrl.signal.aborted) return;
       if (res.ok) {
         const json = await res.json();
         if (json.result) {
@@ -44,9 +52,12 @@ export function KeyProbeModal({
           return;
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
       // network / server error
     }
+
+    if (abortCtrl.signal.aborted) return;
 
     if (isDemo) {
       const probeResult = simulateKeyProbe(keyItem.maskedKey, provider);
@@ -66,12 +77,14 @@ export function KeyProbeModal({
       });
     }
     setProbing(false);
-  };
+  }, [projectId, provider, keyItem.keyId, keyItem.maskedKey, isDemo]);
 
   useEffect(() => {
-    runProbe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyItem.maskedKey, provider]);
+    void runProbe();
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [runProbe]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">

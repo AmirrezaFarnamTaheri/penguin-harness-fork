@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   CodeGraph,
   type CodeGraphNode,
@@ -31,9 +31,17 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
   const [isLiveSynced, setIsLiveSynced] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
 
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
   const fetchTopology = useCallback(async () => {
+    fetchAbortRef.current?.abort();
+    const abortCtrl = new AbortController();
+    fetchAbortRef.current = abortCtrl;
+
     try {
-      const res = await fetch(`/api/cockpit/topology?project=${encodeURIComponent(projectId)}`);
+      const res = await fetch(`/api/cockpit/topology?project=${encodeURIComponent(projectId)}`, {
+        signal: abortCtrl.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.nodes && Array.isArray(data.nodes) && data.nodes.length > 0) {
@@ -45,15 +53,25 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
       }
       setLiveGraph(null);
       setIsLiveSynced(false);
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
       setLiveGraph(null);
       setIsLiveSynced(false);
     }
   }, [projectId]);
 
   useEffect(() => {
+    setLiveGraph(null);
+    setIsLiveSynced(false);
+    setSelectedNodeId(null);
+    setFromNodeId(null);
+    setToNodeId(null);
+    setImpactNodeIds(new Set());
     void fetchTopology();
-  }, [fetchTopology]);
+    return () => {
+      fetchAbortRef.current?.abort();
+    };
+  }, [projectId, fetchTopology]);
 
   // Fallback factory or live graph
   const defaultGraph = useMemo(() => createPenguinCodeGraph(), []);

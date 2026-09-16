@@ -138,29 +138,41 @@ export function useCockpitTelemetry(
     setLastEventTime(Date.now());
   }, []);
 
-  const fetchRestTelemetry = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/cockpit/telemetry?project=${encodeURIComponent(projectId)}`);
-      if (res.ok) {
-        const json = await res.json();
-        applySnapshot(json.data);
-        setConnected(true);
-        setTransport("http");
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
+  const fetchRestTelemetry = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const res = await fetch(`/api/cockpit/telemetry?project=${encodeURIComponent(projectId)}`, {
+          signal,
+        });
+        if (res.ok) {
+          const json = await res.json();
+          applySnapshot(json.data);
+          setConnected(true);
+          setTransport("http");
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setConnected(false);
+        setTransport("offline");
       }
-    } catch {
-      setConnected(false);
-      setTransport("offline");
-    }
-  }, [projectId, applySnapshot]);
+    },
+    [projectId, applySnapshot],
+  );
 
   useEffect(() => {
     let unmounted = false;
     let reconnectTimer: NodeJS.Timeout | null = null;
+    const abortCtrl = new AbortController();
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = abortCtrl;
 
     // Reset project-scoped telemetry on project switch
     setActiveTaskId(null);
     setTurnSummaries([]);
     setMailboxEntries([]);
+    setKeyFleet({ healthy: false, activeCount: 0, providers: [] });
     setLastEventTime(null);
     setIsDispatching(false);
     setTransport("connecting");
@@ -193,13 +205,13 @@ export function useCockpitTelemetry(
               if (msg.event.type === "task_completed" || msg.event.type === "task_failed") {
                 setActiveTaskId(null);
                 setIsDispatching(false);
-                void fetchRestTelemetry();
+                void fetchRestTelemetry(abortCtrl.signal);
               }
             } else if (msg.type === "swarm_task_accepted") {
               setIsDispatching(true);
             } else if (msg.type === "swarm_task_settled") {
               setIsDispatching(false);
-              void fetchRestTelemetry();
+              void fetchRestTelemetry(abortCtrl.signal);
             } else if (msg.type === "directive_dispatched") {
               setLastEventTime(Date.now());
               if (msg.mailbox) {
@@ -230,16 +242,16 @@ export function useCockpitTelemetry(
           setConnected(false);
           setTransport("http");
           // Fall back to REST polling while disconnected
-          void fetchRestTelemetry();
+          void fetchRestTelemetry(abortCtrl.signal);
           reconnectTimer = setTimeout(connectWs, 5000);
         };
 
         ws.onerror = () => {
           if (unmounted) return;
-          void fetchRestTelemetry();
+          void fetchRestTelemetry(abortCtrl.signal);
         };
       } catch {
-        void fetchRestTelemetry();
+        void fetchRestTelemetry(abortCtrl.signal);
       }
     }
 
@@ -247,6 +259,7 @@ export function useCockpitTelemetry(
 
     return () => {
       unmounted = true;
+      abortCtrl.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socketRef.current) socketRef.current.close();
     };

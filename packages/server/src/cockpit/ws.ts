@@ -21,6 +21,7 @@ import {
   DEFAULT_PROJECT_ID,
   projectDir,
   redactObject,
+  parseApiKeys,
   type SwarmEvent,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
@@ -73,6 +74,7 @@ export interface ProjectCockpitRuntime {
 }
 
 const projectRuntimes = new Map<string, ProjectCockpitRuntime>();
+const projectRuntimePromises = new Map<string, Promise<ProjectCockpitRuntime>>();
 
 export function cancelRuntimeReap(runtime: ProjectCockpitRuntime): void {
   if (runtime.idleTimer) {
@@ -89,6 +91,18 @@ export function scheduleRuntimeReap(
   cancelRuntimeReap(runtime);
   runtime.idleTimer = setTimeout(() => {
     if (runtime.clients.size === 0) {
+      const pendingCount =
+        typeof runtime.coordinator.getPendingTaskCount === "function"
+          ? runtime.coordinator.getPendingTaskCount()
+          : 0;
+      const activeTaskId =
+        typeof runtime.coordinator.getActiveTaskId === "function"
+          ? runtime.coordinator.getActiveTaskId()
+          : null;
+      if (pendingCount > 0 || activeTaskId !== null) {
+        scheduleRuntimeReap(runtime, deps, timeoutMs);
+        return;
+      }
       try {
         runtime.cleanup?.();
         runtime.codeGraphWatcher.close();
@@ -125,6 +139,86 @@ export function resetCockpitRuntimesForTesting(): void {
     rt.clients.clear();
   }
   projectRuntimes.clear();
+  projectRuntimePromises.clear();
+}
+
+/**
+ * Genuine live HTTP provider probe against authentic model discovery endpoints.
+ */
+export async function probeProviderKey(
+  provider: string,
+  key: string,
+): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  const normProv = provider.toLowerCase().trim();
+  const start = performance.now();
+
+  try {
+    let url = "";
+    const headers: Record<string, string> = {};
+
+    if (normProv === "openai") {
+      url = "https://api.openai.com/v1/models";
+      headers.Authorization = `Bearer ${key}`;
+    } else if (normProv === "anthropic") {
+      url = "https://api.anthropic.com/v1/models";
+      headers["x-api-key"] = key;
+      headers["anthropic-version"] = "2023-06-01";
+    } else if (normProv === "google" || normProv === "gemini") {
+      url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
+    } else if (normProv === "groq") {
+      url = "https://api.groq.com/openai/v1/models";
+      headers.Authorization = `Bearer ${key}`;
+    } else if (normProv === "deepseek") {
+      url = "https://api.deepseek.com/models";
+      headers.Authorization = `Bearer ${key}`;
+    } else if (normProv === "openrouter") {
+      url = "https://openrouter.ai/api/v1/models";
+      headers.Authorization = `Bearer ${key}`;
+    } else if (normProv === "mistral") {
+      url = "https://api.mistral.ai/v1/models";
+      headers.Authorization = `Bearer ${key}`;
+    } else {
+      url = "https://api.openai.com/v1/models";
+      headers.Authorization = `Bearer ${key}`;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const latencyMs = Math.max(1, Math.round(performance.now() - start));
+      if (res.ok) {
+        return { ok: true, latencyMs };
+      }
+      return {
+        ok: false,
+        latencyMs,
+        error: `HTTP ${res.status}: ${res.statusText}`,
+      };
+    } catch (fetchErr: unknown) {
+      clearTimeout(timeoutId);
+      const latencyMs = Math.max(1, Math.round(performance.now() - start));
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+      return {
+        ok: false,
+        latencyMs,
+        error: controller.signal.aborted ? "Probe timed out (5s)" : msg,
+      };
+    }
+  } catch (err: unknown) {
+    const latencyMs = Math.max(1, Math.round(performance.now() - start));
+    return {
+      ok: false,
+      latencyMs,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 export async function syncProjectKeyFleet(
@@ -137,34 +231,29 @@ export async function syncProjectKeyFleet(
     const raw = await deps.projectConfigService.readRaw(projectId);
     monitor.clear();
     if (raw && Array.isArray(raw.models)) {
-      const byProvider = new Map<string, { modelId: string; keys: string[] }>();
       for (const m of raw.models) {
-        if (
-          m &&
-          typeof m === "object" &&
-          typeof m.provider === "string" &&
-          typeof m.model_id === "string" &&
-          typeof m.api_key === "string" &&
-          m.api_key.trim() !== ""
-        ) {
-          const prov = m.provider.toLowerCase();
-          const existing = byProvider.get(prov);
-          const rawKey = m.api_key.trim();
-          if (!existing) {
-            byProvider.set(prov, { modelId: m.model_id, keys: [rawKey] });
-          } else if (!existing.keys.includes(rawKey)) {
-            existing.keys.push(rawKey);
-          }
-        }
-      }
-      for (const [provider, data] of byProvider) {
+        if (!m || typeof m !== "object") continue;
+        const provider = typeof m.provider === "string" ? m.provider.toLowerCase().trim() : "";
+        const modelId = typeof m.model_id === "string" ? m.model_id.trim() : "";
+        if (!provider || !modelId) continue;
+        const rawKeysInput =
+          "api_keys" in m && m.api_keys !== undefined
+            ? m.api_keys
+            : "api_key" in m
+              ? m.api_key
+              : undefined;
+        const keys = parseApiKeys(rawKeysInput as string | string[] | undefined);
+        if (keys.length === 0) continue;
+
+        const modelRef = `${provider}/${modelId}`;
         monitor.registerProvider({
           projectId,
           provider,
-          modelId: data.modelId,
-          modelRef: `${provider}/${data.modelId}`,
-          keys: data.keys,
+          modelId,
+          modelRef,
+          keys,
           strategy: "round-robin",
+          probeFn: probeProviderKey,
         });
       }
     }
@@ -173,6 +262,44 @@ export async function syncProjectKeyFleet(
       `[cockpit-ws] error syncing key fleet for project ${projectId}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+export async function refreshProjectRuntimeConfig(
+  runtime: ProjectCockpitRuntime,
+  deps: CockpitWebSocketDeps = {},
+): Promise<void> {
+  if (deps.projectConfigService) {
+    try {
+      const policy = await deps.projectConfigService.getCommandPolicy(runtime.projectId);
+      if (policy.enabled !== false && Array.isArray(policy.rules)) {
+        const customRules: SafetyRule[] = policy.rules
+          .filter((r) => r.enabled !== false)
+          .map((r) => {
+            let regex: RegExp;
+            try {
+              regex = new RegExp(r.pattern, "i");
+            } catch {
+              regex = new RegExp(r.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            }
+            return {
+              id: `policy-${r.name}`,
+              severity: "critical" as const,
+              pattern: regex,
+              description: r.description || `Command policy rule '${r.name}'`,
+              requiresApproval: true,
+            };
+          });
+        runtime.coordinator.shellGuardian.setCustomRules(customRules);
+      } else {
+        runtime.coordinator.shellGuardian.setCustomRules([]);
+      }
+    } catch (err) {
+      deps.log?.(
+        `[cockpit-ws] error updating ShellGuardian rules for project ${runtime.projectId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  await syncProjectKeyFleet(deps, runtime.projectId, runtime.keyFleet);
 }
 
 export async function createProjectShellGuardian(
@@ -223,97 +350,111 @@ export async function getOrCreateProjectRuntime(
   projectId = DEFAULT_PROJECT_ID,
   deps: CockpitWebSocketDeps = {},
 ): Promise<ProjectCockpitRuntime> {
-  let runtime = projectRuntimes.get(projectId);
-  if (runtime) {
-    if (runtime.clients.size === 0) {
-      scheduleRuntimeReap(runtime, deps);
+  const existing = projectRuntimes.get(projectId);
+  if (existing) {
+    if (existing.clients.size === 0) {
+      scheduleRuntimeReap(existing, deps);
     } else {
-      cancelRuntimeReap(runtime);
+      cancelRuntimeReap(existing);
     }
-    return runtime;
+    return existing;
   }
 
-  const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
-  const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
-  void codeGraphWatcher.init();
-
-  const shellGuardian = await createProjectShellGuardian(deps, projectId);
-  const coordinator = new SwarmCoordinator({
-    shellGuardian,
-    sessionId: `swarm-${projectId}-${Date.now()}`,
-  });
-
-  const keyFleet = new KeyFleetMonitor();
-  await syncProjectKeyFleet(deps, projectId, keyFleet);
-
-  const clients = new Set<WebSocket>();
-
-  runtime = {
-    projectId,
-    coordinator,
-    keyFleet,
-    codeGraphWatcher,
-    clients,
-  };
-  projectRuntimes.set(projectId, runtime);
-
-  if (runtime.clients.size === 0) {
-    scheduleRuntimeReap(runtime, deps);
+  const inFlight = projectRuntimePromises.get(projectId);
+  if (inFlight) {
+    return inFlight;
   }
 
-  codeGraphWatcher.on("error", (err) => {
-    deps.log?.(
-      `[cockpit-ws][${projectId}] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
+  const creationPromise = (async () => {
+    try {
+      const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
+      const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
+      void codeGraphWatcher.init();
 
-  const unsubCoordinator = coordinator.subscribe((event: SwarmEvent) => {
-    broadcast(
-      runtime!.clients,
-      JSON.stringify({
-        type: "swarm_event",
+      const shellGuardian = await createProjectShellGuardian(deps, projectId);
+      const coordinator = new SwarmCoordinator({
+        shellGuardian,
+        sessionId: `swarm-${projectId}-${Date.now()}`,
+      });
+
+      const keyFleet = new KeyFleetMonitor();
+      await syncProjectKeyFleet(deps, projectId, keyFleet);
+
+      const clients = new Set<WebSocket>();
+
+      const runtime: ProjectCockpitRuntime = {
         projectId,
-        timestamp: Date.now(),
-        event: redactObject(event),
-      }),
-    );
-  });
+        coordinator,
+        keyFleet,
+        codeGraphWatcher,
+        clients,
+      };
+      projectRuntimes.set(projectId, runtime);
 
-  const unsubKeyFleet = keyFleet.subscribe((_stats) => {
-    broadcast(
-      runtime!.clients,
-      JSON.stringify({
-        type: "key_fleet_update",
-        projectId,
-        timestamp: Date.now(),
-        keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
-        reports: redactObject(keyFleet.getFleetReport()),
-        stats: keyFleet.getFleetStats(),
-      }),
-    );
-  });
+      if (runtime.clients.size === 0) {
+        scheduleRuntimeReap(runtime, deps);
+      }
 
-  const onChange = (ev: unknown) => {
-    broadcast(
-      runtime!.clients,
-      JSON.stringify({
-        type: "topology_change",
-        projectId,
-        timestamp: Date.now(),
-        event: ev,
-        stats: codeGraphWatcher.getStats(),
-      }),
-    );
-  };
-  codeGraphWatcher.on("change", onChange);
+      codeGraphWatcher.on("error", (err) => {
+        deps.log?.(
+          `[cockpit-ws][${projectId}] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
 
-  runtime.cleanup = () => {
-    unsubCoordinator();
-    unsubKeyFleet();
-    codeGraphWatcher.off?.("change", onChange);
-  };
+      const unsubCoordinator = coordinator.subscribe((event: SwarmEvent) => {
+        broadcast(
+          runtime.clients,
+          JSON.stringify({
+            type: "swarm_event",
+            projectId,
+            timestamp: Date.now(),
+            event: redactObject(event),
+          }),
+        );
+      });
 
-  return runtime;
+      const unsubKeyFleet = keyFleet.subscribe((_stats) => {
+        broadcast(
+          runtime.clients,
+          JSON.stringify({
+            type: "key_fleet_update",
+            projectId,
+            timestamp: Date.now(),
+            keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+            reports: redactObject(keyFleet.getFleetReport()),
+            stats: keyFleet.getFleetStats(),
+          }),
+        );
+      });
+
+      const onChange = (ev: unknown) => {
+        broadcast(
+          runtime.clients,
+          JSON.stringify({
+            type: "topology_change",
+            projectId,
+            timestamp: Date.now(),
+            event: ev,
+            stats: codeGraphWatcher.getStats(),
+          }),
+        );
+      };
+      codeGraphWatcher.on("change", onChange);
+
+      runtime.cleanup = () => {
+        unsubCoordinator();
+        unsubKeyFleet();
+        codeGraphWatcher.off?.("change", onChange);
+      };
+
+      return runtime;
+    } finally {
+      projectRuntimePromises.delete(projectId);
+    }
+  })();
+
+  projectRuntimePromises.set(projectId, creationPromise);
+  return creationPromise;
 }
 
 function getOrCreateProjectRuntimeSync(
@@ -446,27 +587,103 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
           if (msg.type === "key_action") {
             const action = msg.action;
-            const provider = typeof msg.provider === "string" ? msg.provider : "";
+            if (!["revive", "cooldown", "evict", "revive_all"].includes(action as string)) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "key_action_rejected",
+                  reason: `Invalid or unsupported action '${action}'. Must be one of: revive, cooldown, evict, revive_all`,
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            if (action === "revive_all") {
+              runtime.keyFleet.reviveAllCooldowns();
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "key_action_acknowledged",
+                  action,
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            const provider =
+              typeof msg.provider === "string" ? msg.provider.trim().toLowerCase() : "";
             const target = resolveKeyTarget(msg);
+
+            if (!provider) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "key_action_rejected",
+                  reason: "Provider is required for key action",
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            if (!target) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "key_action_rejected",
+                  reason: "keyId or maskedKey is required for key action",
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            if (!runtime.keyFleet.hasKey(provider, target)) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "key_action_rejected",
+                  reason: `Key '${target}' not found under provider '${provider}'`,
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
+            let changed = false;
             if (action === "revive") {
-              runtime.keyFleet.reviveKey(provider, target);
+              changed = runtime.keyFleet.reviveKey(provider, target);
             } else if (action === "cooldown") {
-              runtime.keyFleet.cooldownKey(
+              const cooldownMs =
+                typeof msg.cooldownMs === "number" && msg.cooldownMs > 0 ? msg.cooldownMs : 60_000;
+              changed = runtime.keyFleet.cooldownKey(provider, target, cooldownMs);
+            } else if (action === "evict") {
+              changed = runtime.keyFleet.evictKey(provider, target);
+            }
+
+            safeSend(
+              ws,
+              JSON.stringify({
+                type: "key_action_acknowledged",
+                action,
                 provider,
                 target,
-                typeof msg.cooldownMs === "number" ? msg.cooldownMs : 60_000,
-              );
-            } else if (action === "evict") {
-              runtime.keyFleet.evictKey(provider, target);
-            } else if (action === "revive_all") {
-              runtime.keyFleet.reviveAllCooldowns();
-            }
+                changed,
+                timestamp: Date.now(),
+              }),
+            );
             return;
           }
 
           if (msg.type === "send_directive") {
-            const from = typeof msg.from === "string" ? msg.from.slice(0, 64) : "operator";
-            const to = typeof msg.to === "string" ? msg.to.slice(0, 64) : "coder";
+            const from =
+              (typeof msg.from === "string" ? msg.from : "operator").trim().slice(0, 64) ||
+              "operator";
+            const to =
+              (typeof msg.to === "string" ? msg.to : "coder").toLowerCase().trim().slice(0, 64) ||
+              "coder";
             if (!runtime.coordinator.hasAgent(to)) {
               safeSend(
                 ws,
@@ -580,6 +797,20 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 simulate,
               })
               .then((res: unknown) => {
+                if (!simulate && (res as { status?: string })?.status === "unhandled") {
+                  broadcast(
+                    runtime.clients,
+                    JSON.stringify({
+                      type: "swarm_task_error",
+                      taskId,
+                      error:
+                        "Autonomous swarm execution failed: no task handler configured for project and simulation mode was not requested.",
+                      result: redactObject(res),
+                      timestamp: Date.now(),
+                    }),
+                  );
+                  return;
+                }
                 broadcast(
                   runtime.clients,
                   JSON.stringify({
