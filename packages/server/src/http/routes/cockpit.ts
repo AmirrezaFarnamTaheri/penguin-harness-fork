@@ -52,6 +52,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
       runtime.coordinator,
       runtime.keyFleet,
       runtime.codeGraphWatcher,
+      runtime.projectId,
     );
     return c.json(snapshot);
   });
@@ -310,7 +311,10 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
       }
 
       return c.json({
-        success: true,
+        success: result.status === "settled",
+        ...(result.status !== "settled"
+          ? { error: `Swarm task ended with status: ${result.status}` }
+          : {}),
         result,
       });
     } catch (err: unknown) {

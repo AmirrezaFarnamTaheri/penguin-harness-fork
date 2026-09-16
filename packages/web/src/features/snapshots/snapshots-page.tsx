@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Modal } from "../../components/ui/modal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -65,25 +66,6 @@ function DownloadIcon({ size = 14 }: { size?: number }) {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function UploadIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   );
 }
@@ -226,50 +208,57 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
       setSelectedVersion(rollbackConfirmation.targetVersion);
     }
 
-    setStatusMessage(res.message);
+    setStatusMessage(`Local preview only: ${res.message}`);
     setRollbackConfirmation(null);
   };
 
   return (
-    <div className={`flex flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
+    <div className={`flex flex-col gap-6 ${embedded ? "p-3" : "p-4 sm:p-6"}`}>
       {/* Top Header & Banner */}
-      {!embedded && (
+      {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <HistoryIcon size={22} />
-            </div>
+          <div className="flex flex-wrap items-center gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
-                  Session Time-Travel & Snapshot Rewind Studio
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  Checkpoints
                 </h1>
-                <Badge tone="amber">[Preview / Local Studio]</Badge>
+                <Badge tone="amber">Local demo</Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Local preview studio for deterministic agent state checkpoints, cross-version diff
-                inspection, and dual-mode rollback recovery
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Compare sample checkpoints, preview a restore, or export their state. Changes stay
+                in this page and do not affect your workspace.
               </p>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
               onClick={() => {
-                const dummyBlob = new Blob(["agent_state_archive"], { type: "application/gzip" });
+                const dummyBlob = new Blob(
+                  [
+                    JSON.stringify(
+                      { snapshot: currentSnapshot, state: stateDetails[currentSnapshot.version] },
+                      null,
+                      2,
+                    ),
+                  ],
+                  { type: "application/json" },
+                );
                 const url = URL.createObjectURL(dummyBlob);
                 const a = document.createElement("a");
                 a.href = url;
-                a.download = `agent-v${currentSnapshot.version}.tar.gz`;
+                a.download = `agent-v${currentSnapshot.version}.json`;
                 a.click();
-                setStatusMessage(`Exported snapshot v${currentSnapshot.version}.tar.gz`);
+                URL.revokeObjectURL(url);
+                setStatusMessage(`Exported checkpoint v${currentSnapshot.version} as JSON.`);
               }}
             >
               <DownloadIcon size={13} />
-              Export Archive (.tar.gz)
+              Export JSON
             </Button>
 
             <Button variant="primary" size="sm" onClick={() => setIsCreatingModal(true)}>
@@ -278,59 +267,27 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
             </Button>
           </div>
         </div>
-      )}
+      }
 
       {/* Status Alert Notification (if active) */}
       {statusMessage && (
-        <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-600 dark:text-emerald-400">
+        <div className="flex flex-wrap items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-600 dark:text-emerald-400">
           <span>{statusMessage}</span>
           <button
             type="button"
             onClick={() => setStatusMessage(null)}
-            className="text-xs font-semibold hover:underline"
+            className="text-sm font-semibold hover:underline"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Active Version</span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-2xl font-bold text-foreground">
-              v{currentSnapshot.version}
-            </span>
-            <Badge tone="green">Current</Badge>
-          </div>
-          <span className="text-[11px] text-muted-foreground">{currentSnapshot.label}</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Total Checkpoints</span>
-          <span className="font-mono text-2xl font-bold text-primary">{snapshots.length}</span>
-          <span className="text-[11px] text-muted-foreground">Preserved in archive tree</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Archive Footprint</span>
-          <span className="font-mono text-2xl font-bold text-foreground">
-            {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {currentSnapshot.fileCount} state files packaged
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Memory Topics</span>
-          <span className="font-mono text-2xl font-bold text-emerald-500">
-            {currentSnapshot.memoryTopicsCount}
-          </span>
-          <span className="text-[11px] text-muted-foreground">Indexed knowledge files</span>
-        </div>
-      </div>
+      <p className="border-b border-gray-200 pb-4 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
+        Current: v{currentSnapshot.version} · {snapshots.length} checkpoints ·{" "}
+        {currentSnapshot.fileCount} sample files · {currentSnapshot.memoryTopicsCount} memory topics
+        · {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
+      </p>
 
       {/* Main Split Workbench: Timeline on Left, Diff & Time-Travel on Right */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -362,66 +319,55 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
         </div>
       </div>
 
-      {/* Create Checkpoint Modal */}
-      {isCreatingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-foreground">Create Agent State Checkpoint</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Creates an immutable snapshot archive preserving prompt, memory topics, and skill
-              configurations.
-            </p>
-
-            <div className="flex flex-col gap-2 my-4">
-              <span className="text-xs font-medium text-foreground">Checkpoint Tag / Label</span>
-              <Input
-                size="sm"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="e.g. Pre-refactor stable state"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-              <Button variant="secondary" size="sm" onClick={() => setIsCreatingModal(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="sm" onClick={handleCreateCheckpoint}>
-                Save Checkpoint
-              </Button>
-            </div>
+      <Modal
+        open={isCreatingModal}
+        title="Create demo checkpoint"
+        onClose={() => setIsCreatingModal(false)}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setIsCreatingModal(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleCreateCheckpoint}>
+              Save checkpoint
+            </Button>
           </div>
-        </div>
-      )}
-
-      {/* Rollback Confirmation Modal */}
-      {rollbackConfirmation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-base font-bold text-foreground">Confirm Time-Travel Execution</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              {rollbackConfirmation.mode === "in-place"
-                ? `You are reverting the active workspace in-place to version v${rollbackConfirmation.targetVersion}. An automatic pre-rollback safety snapshot will be recorded before rewriting.`
-                : `You are branching a new isolated session fork from checkpoint v${rollbackConfirmation.targetVersion}. Your current session will remain completely intact.`}
-            </p>
-
-            <div className="flex items-center justify-end gap-2 border-t border-border pt-4 mt-5">
-              <Button variant="secondary" size="sm" onClick={() => setRollbackConfirmation(null)}>
-                Cancel
-              </Button>
-              <Button
-                variant={rollbackConfirmation.mode === "in-place" ? "danger" : "primary"}
-                size="sm"
-                onClick={handleExecuteRollback}
-              >
-                {rollbackConfirmation.mode === "in-place"
-                  ? "Confirm In-Place Revert"
-                  : "Confirm Fork Session"}
-              </Button>
-            </div>
+        }
+      >
+        <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+          Copies the current sample state in this page. No archive is written to disk.
+        </p>
+        <label className="block text-sm">
+          Checkpoint label
+          <Input
+            aria-label="Checkpoint label"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Before refactor"
+          />
+        </label>
+      </Modal>
+      <Modal
+        open={rollbackConfirmation !== null}
+        title="Preview checkpoint recovery"
+        onClose={() => setRollbackConfirmation(null)}
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setRollbackConfirmation(null)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleExecuteRollback}>
+              Confirm preview
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <p className="text-sm">
+          {rollbackConfirmation?.mode === "in-place"
+            ? `Set version ${rollbackConfirmation.targetVersion} as the current sample checkpoint. Your workspace will not change.`
+            : `Preview a fork from version ${rollbackConfirmation?.targetVersion}. No real session will be created.`}
+        </p>
+      </Modal>
     </div>
   );
 }

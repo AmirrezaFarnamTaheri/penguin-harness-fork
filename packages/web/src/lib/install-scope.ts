@@ -186,6 +186,12 @@ export const KEY_RULES: readonly KeyRule[] = [
     why: "Recent vs manual ordering — again the mode; the manual order itself is separate and install-scoped.",
   },
   {
+    kind: "family",
+    key: "penguin.sidebarTools.",
+    scope: "browser",
+    why: "Static tool-group disclosure preferences; no Project, Agent, or Session identifiers.",
+  },
+  {
     kind: "exact",
     key: "penguin.sidebarNavGroupCollapsed",
     scope: "browser",

@@ -11,6 +11,7 @@
 
 import type { IncomingMessage, Server as HttpServer } from "node:http";
 import type { Duplex } from "node:stream";
+import path from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import {
   SwarmCoordinator,
@@ -22,6 +23,8 @@ import {
   projectDir,
   redactObject,
   parseApiKeys,
+  resolveModelEnv,
+  catalogEntryFor,
   type SwarmEvent,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
@@ -105,13 +108,17 @@ export function scheduleRuntimeReap(
       }
       try {
         runtime.cleanup?.();
+        runtime.keyFleet.stopAutoProbing();
+        runtime.keyFleet.clear();
         runtime.codeGraphWatcher.close();
       } catch (err) {
         deps.log?.(
           `[cockpit-ws][${runtime.projectId}] error closing watcher: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
-      projectRuntimes.delete(runtime.projectId);
+      for (const [key, stored] of projectRuntimes) {
+        if (stored === runtime) projectRuntimes.delete(key);
+      }
       deps.log?.(`[cockpit-ws][${runtime.projectId}] idle runtime reaped after ${timeoutMs}ms`);
     }
   }, timeoutMs);
@@ -125,6 +132,8 @@ export function resetCockpitRuntimesForTesting(): void {
     cancelRuntimeReap(rt);
     try {
       rt.cleanup?.();
+      rt.keyFleet.stopAutoProbing();
+      rt.keyFleet.clear();
       rt.codeGraphWatcher.close();
     } catch {
       // ignore
@@ -148,6 +157,7 @@ export function resetCockpitRuntimesForTesting(): void {
 export async function probeProviderKey(
   provider: string,
   key: string,
+  options: { baseUrl?: string; clientType?: string } = {},
 ): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
   const normProv = provider.toLowerCase().trim();
   const start = performance.now();
@@ -156,7 +166,33 @@ export async function probeProviderKey(
     let url = "";
     const headers: Record<string, string> = {};
 
-    if (normProv === "openai") {
+    if (options.baseUrl) {
+      const endpoint = new URL(options.baseUrl);
+      if (
+        !["http:", "https:"].includes(endpoint.protocol) ||
+        endpoint.username ||
+        endpoint.password
+      ) {
+        return { ok: false, latencyMs: 0, error: "Invalid configured probe endpoint" };
+      }
+      endpoint.pathname = `${endpoint.pathname.replace(/\/+$/, "")}/models`;
+      endpoint.search = "";
+      endpoint.hash = "";
+      url = endpoint.toString();
+      const protocol = options.clientType?.toLowerCase() ?? normProv;
+      if (
+        protocol.includes("ant-messages") ||
+        protocol.includes("claude") ||
+        protocol === "anthropic"
+      ) {
+        headers["x-api-key"] = key;
+        headers["anthropic-version"] = "2023-06-01";
+      } else if (protocol.includes("gemini") || protocol === "google") {
+        headers["x-goog-api-key"] = key;
+      } else {
+        headers.Authorization = `Bearer ${key}`;
+      }
+    } else if (normProv === "openai") {
       url = "https://api.openai.com/v1/models";
       headers.Authorization = `Bearer ${key}`;
     } else if (normProv === "anthropic") {
@@ -164,7 +200,8 @@ export async function probeProviderKey(
       headers["x-api-key"] = key;
       headers["anthropic-version"] = "2023-06-01";
     } else if (normProv === "google" || normProv === "gemini") {
-      url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
+      url = "https://generativelanguage.googleapis.com/v1beta/models";
+      headers["x-goog-api-key"] = key;
     } else if (normProv === "groq") {
       url = "https://api.groq.com/openai/v1/models";
       headers.Authorization = `Bearer ${key}`;
@@ -178,8 +215,7 @@ export async function probeProviderKey(
       url = "https://api.mistral.ai/v1/models";
       headers.Authorization = `Bearer ${key}`;
     } else {
-      url = "https://api.openai.com/v1/models";
-      headers.Authorization = `Bearer ${key}`;
+      return { ok: false, latencyMs: 0, error: "No probe endpoint configured for provider" };
     }
 
     const controller = new AbortController();
@@ -188,6 +224,7 @@ export async function probeProviderKey(
     try {
       const res = await fetch(url, {
         method: "GET",
+        redirect: "error",
         headers,
         signal: controller.signal,
       });
@@ -199,24 +236,23 @@ export async function probeProviderKey(
       return {
         ok: false,
         latencyMs,
-        error: `HTTP ${res.status}: ${res.statusText}`,
+        error: `HTTP ${res.status}`,
       };
-    } catch (fetchErr: unknown) {
+    } catch {
       clearTimeout(timeoutId);
       const latencyMs = Math.max(1, Math.round(performance.now() - start));
-      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
       return {
         ok: false,
         latencyMs,
-        error: controller.signal.aborted ? "Probe timed out (5s)" : msg,
+        error: controller.signal.aborted ? "Probe timed out (5s)" : "Probe request failed",
       };
     }
-  } catch (err: unknown) {
+  } catch {
     const latencyMs = Math.max(1, Math.round(performance.now() - start));
     return {
       ok: false,
       latencyMs,
-      error: err instanceof Error ? err.message : String(err),
+      error: "Invalid probe configuration",
     };
   }
 }
@@ -246,6 +282,26 @@ export async function syncProjectKeyFleet(
         if (keys.length === 0) continue;
 
         const modelRef = `${provider}/${modelId}`;
+        const catalog = catalogEntryFor(provider, modelId);
+        const clientType = typeof m.client_type === "string" ? m.client_type : catalog?.clientType;
+        const env = resolveModelEnv(modelId, clientType);
+        const groups = raw.group_defaults;
+        const group =
+          groups && typeof groups === "object" && provider in groups
+            ? (groups as Record<string, unknown>)[provider]
+            : undefined;
+        const groupBaseUrl =
+          group &&
+          typeof group === "object" &&
+          "default_base_url" in group &&
+          typeof group.default_base_url === "string"
+            ? group.default_base_url
+            : undefined;
+        const baseUrl =
+          (typeof m.base_url === "string" && m.base_url.trim() ? m.base_url.trim() : undefined) ??
+          groupBaseUrl ??
+          catalog?.baseUrl ??
+          (env ? process.env[env.envBaseUrlKey] : undefined);
         monitor.registerProvider({
           projectId,
           provider,
@@ -253,7 +309,8 @@ export async function syncProjectKeyFleet(
           modelRef,
           keys,
           strategy: "round-robin",
-          probeFn: probeProviderKey,
+          probeFn: (probeProvider, key) =>
+            probeProviderKey(probeProvider, key, { baseUrl, clientType }),
         });
       }
     }
@@ -340,7 +397,7 @@ export async function createProjectShellGuardian(
 }
 
 function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: string): string {
-  if (deps.root && projectId !== DEFAULT_PROJECT_ID) {
+  if (deps.root) {
     return projectDir(deps.root, projectId);
   }
   return deps.workspaceRoot ?? process.cwd();
@@ -350,7 +407,8 @@ export async function getOrCreateProjectRuntime(
   projectId = DEFAULT_PROJECT_ID,
   deps: CockpitWebSocketDeps = {},
 ): Promise<ProjectCockpitRuntime> {
-  const existing = projectRuntimes.get(projectId);
+  const runtimeKey = deps.root ? JSON.stringify([path.resolve(deps.root), projectId]) : projectId;
+  const existing = projectRuntimes.get(runtimeKey);
   if (existing) {
     if (existing.clients.size === 0) {
       scheduleRuntimeReap(existing, deps);
@@ -360,7 +418,7 @@ export async function getOrCreateProjectRuntime(
     return existing;
   }
 
-  const inFlight = projectRuntimePromises.get(projectId);
+  const inFlight = projectRuntimePromises.get(runtimeKey);
   if (inFlight) {
     return inFlight;
   }
@@ -369,7 +427,6 @@ export async function getOrCreateProjectRuntime(
     try {
       const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
       const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
-      void codeGraphWatcher.init();
 
       const shellGuardian = await createProjectShellGuardian(deps, projectId);
       const coordinator = new SwarmCoordinator({
@@ -389,7 +446,7 @@ export async function getOrCreateProjectRuntime(
         codeGraphWatcher,
         clients,
       };
-      projectRuntimes.set(projectId, runtime);
+      projectRuntimes.set(runtimeKey, runtime);
 
       if (runtime.clients.size === 0) {
         scheduleRuntimeReap(runtime, deps);
@@ -447,13 +504,18 @@ export async function getOrCreateProjectRuntime(
         codeGraphWatcher.off?.("change", onChange);
       };
 
+      void codeGraphWatcher.init().catch((err) => {
+        deps.log?.(
+          `[cockpit-ws][${projectId}] topology initialization failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
       return runtime;
     } finally {
-      projectRuntimePromises.delete(projectId);
+      projectRuntimePromises.delete(runtimeKey);
     }
   })();
 
-  projectRuntimePromises.set(projectId, creationPromise);
+  projectRuntimePromises.set(runtimeKey, creationPromise);
   return creationPromise;
 }
 
@@ -473,6 +535,7 @@ function getOrCreateProjectRuntimeSync(
   const coordinator = new SwarmCoordinator();
   const keyFleet = new KeyFleetMonitor();
   const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
+  codeGraphWatcher.on("error", () => {});
   void codeGraphWatcher.init();
   rt = {
     projectId,
@@ -546,6 +609,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
         runtime.coordinator,
         runtime.keyFleet,
         runtime.codeGraphWatcher,
+        projectId,
       );
       safeSend(ws, JSON.stringify(snapshot));
 
@@ -797,14 +861,13 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 simulate,
               })
               .then((res: unknown) => {
-                if (!simulate && (res as { status?: string })?.status === "unhandled") {
+                if ((res as { status?: string })?.status !== "settled") {
                   broadcast(
                     runtime.clients,
                     JSON.stringify({
                       type: "swarm_task_error",
                       taskId,
-                      error:
-                        "Autonomous swarm execution failed: no task handler configured for project and simulation mode was not requested.",
+                      error: `Swarm task ended with status: ${(res as { status?: string })?.status ?? "unknown"}`,
                       result: redactObject(res),
                       timestamp: Date.now(),
                     }),
@@ -859,9 +922,12 @@ export function buildCockpitSnapshot(
   coordinator: SwarmCoordinator = getSharedSwarmCoordinator(),
   keyFleet: KeyFleetMonitor = getSharedKeyFleetMonitor(),
   codeGraphWatcher: CodeGraphWatcher = getSharedCodeGraphWatcher(),
+  projectId = DEFAULT_PROJECT_ID,
 ) {
   return {
     type: "cockpit_init",
+    projectId,
+    scope: "project",
     timestamp: Date.now(),
     data: {
       swarm: {

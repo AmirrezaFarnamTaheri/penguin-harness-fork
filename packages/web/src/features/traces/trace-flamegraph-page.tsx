@@ -1,27 +1,9 @@
 import { useState, useMemo } from "react";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
 import { WaterfallCanvas } from "./waterfall-canvas";
 import { CausalErrorTree } from "./causal-error-tree";
 import { SpanDetailDrawer } from "./span-detail-drawer";
 import { computeWaterfallBounds, formatDurationMs, type ExecutionSpan } from "./flamegraph-types";
-
-function FlameIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
-  );
-}
 
 const SAMPLE_TRACES: Record<string, ExecutionSpan[]> = {
   "trace-autonomous-refactor": [
@@ -236,103 +218,67 @@ export function TraceFlamegraphPage({ embedded = false }: { embedded?: boolean }
   };
 
   return (
-    <div className={`flex h-full flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
+    <div
+      className={`min-w-0 flex flex-col gap-6 text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
+    >
       {/* Top Banner & Header */}
-      {!embedded && (
+      {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FlameIcon size={22} />
-            </div>
+          <div className="flex flex-wrap items-center gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
-                  Deep Execution Waterfall & Flamegraph Profiler
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  Execution traces
                 </h1>
-                <Badge tone="amber">[Demo Studio]</Badge>
+                <Badge tone="amber">Sample traces</Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Sub-millisecond span profiling, time-to-first-token attribution, and root-cause
-                failure causality
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Inspect timings, payloads and failures in sample traces. These are not live session
+                records.
               </p>
             </div>
           </div>
 
           {/* Trace Selection Dropdown */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Active Session:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Sample trace:</span>
             <select
+              aria-label="Sample trace"
               value={selectedTraceKey}
               onChange={(e) => {
                 setSelectedTraceKey(e.target.value);
                 setSelectedSpan(null);
               }}
-              className="rounded-md border border-border bg-card px-3 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
             >
-              <option value="trace-autonomous-refactor">
-                [Demo Session] Task-4819: Autonomous Refactor (1 Error)
-              </option>
-              <option value="trace-codebase-indexing">
-                [Demo Session] Task-4818: Codebase Indexing (Clean)
-              </option>
+              <option value="trace-autonomous-refactor">Refactor — build failed</option>
+              <option value="trace-codebase-indexing">Codebase indexing — completed</option>
             </select>
           </div>
         </div>
-      )}
+      }
 
-      {/* Latency & Telemetry Metric Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Trace Duration</span>
-          <span className="font-mono text-2xl font-bold text-foreground">
-            {formatDurationMs(bounds.totalDuration)}
-          </span>
-          <span className="text-[11px] text-muted-foreground">Wall-clock execution span</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Mean Model TTFT</span>
-          <span className="font-mono text-2xl font-bold text-sky-500">{metrics.meanTtft}ms</span>
-          <span className="text-[11px] text-muted-foreground">Time-to-first-token latency</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Model Streaming</span>
-          <span className="font-mono text-2xl font-bold text-violet-500">
-            {formatDurationMs(metrics.modelDuration)}
-          </span>
-          <span className="text-[11px] text-muted-foreground">Autoregressive generation</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Tool Runtime</span>
-          <span className="font-mono text-2xl font-bold text-amber-500">
-            {formatDurationMs(metrics.toolDuration)}
-          </span>
-          <span className="text-[11px] text-muted-foreground">Shell & plugin execution</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Failing Spans</span>
-          <span
-            className={`font-mono text-2xl font-bold ${
-              metrics.errorSpans > 0 ? "text-red-500" : "text-emerald-500"
-            }`}
-          >
-            {metrics.errorSpans}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            {metrics.errorSpans > 0 ? "Root-cause tree available" : "Clean execution"}
-          </span>
-        </div>
-      </div>
+      <dl className="flex flex-wrap gap-x-8 gap-y-3 border-b border-gray-200 pb-4 text-sm dark:border-gray-800">
+        {[
+          ["Duration", formatDurationMs(bounds.totalDuration)],
+          ["Mean first token", `${metrics.meanTtft} ms`],
+          ["Model time", formatDurationMs(metrics.modelDuration)],
+          ["Tool time", formatDurationMs(metrics.toolDuration)],
+          ["Failed spans", metrics.errorSpans],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-gray-600 dark:text-gray-400">{label}</dt>
+            <dd className="font-medium tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
 
       {/* Causal Error Diagnostics */}
       <CausalErrorTree spans={activeSpans} onSelectSpanId={handleSelectSpanId} />
 
       {/* Main Waterfall and Inspector Split */}
-      <div className="relative flex flex-1 overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex-1 overflow-y-auto p-4">
+      <div className="relative flex min-w-0 flex-col gap-6 xl:flex-row">
+        <div className="min-w-0 flex-1">
           <WaterfallCanvas
             spans={activeSpans}
             selectedSpanId={selectedSpan?.id}

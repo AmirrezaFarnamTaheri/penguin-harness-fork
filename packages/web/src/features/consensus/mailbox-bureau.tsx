@@ -136,24 +136,25 @@ export function MailboxBureau() {
   };
 
   return (
-    <div className="flex flex-col gap-4 font-mono text-xs select-none">
+    <div className="flex flex-col gap-4 text-sm ">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+      <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
-          <h3 className="font-bold text-sm text-gray-100">Inter-Agent Mailbox Bureau</h3>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            Distributed message queues, lease acquisition timeouts, and event brokers across swarm
-            agents.
+          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+            Messages (local demo)
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+            Sample queues and leases. Messages created here stay in this page.
           </p>
         </div>
 
         <Button size="sm" variant="primary" onClick={() => setDispatchOpen(true)}>
-          + Dispatch Agent Event
+          Compose demo message
         </Button>
       </div>
 
       {/* Mailbox Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {mailboxes.map((mb) => {
           const leaseActive = mb.lease && mb.lease.expiresAt > Date.now();
           const remainingSec = mb.lease
@@ -163,32 +164,34 @@ export function MailboxBureau() {
           return (
             <div
               key={mb.agentName}
-              className="p-3 rounded-xl border border-gray-800 bg-gray-950 flex flex-col gap-2"
+              className="p-3 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-2"
             >
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-gray-200 truncate">{mb.agentName}</span>
+              <div className="flex flex-wrap items-center justify-between">
+                <span className="font-semibold text-gray-900 dark:text-gray-100 break-words">
+                  {mb.agentName}
+                </span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded uppercase font-semibold ${
+                  className={`text-sm px-1.5 py-0.2 rounded  font-semibold ${
                     leaseActive
-                      ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
-                      : "bg-gray-800 text-gray-500"
+                      ? "bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30"
+                      : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                   }`}
                 >
                   {leaseActive ? "LEASE HELD" : "IDLE"}
                 </span>
               </div>
 
-              <div className="flex items-center justify-between text-[11px] text-gray-400">
+              <div className="flex flex-wrap items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                 <span>Queue Depth:</span>
-                <span className="font-semibold text-gray-100 tabular-nums">
+                <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
                   {mb.queueDepth} pending
                 </span>
               </div>
 
               {leaseActive && (
-                <div className="flex items-center justify-between text-[10px] text-cyan-400 bg-cyan-950/20 p-1.5 rounded border border-cyan-900/30">
+                <div className="flex flex-wrap items-center justify-between text-sm text-gray-900 dark:text-gray-100 bg-cyan-950/20 p-1.5 rounded border border-cyan-900/30">
                   <span>Lease TTL:</span>
-                  <span className="font-bold tabular-nums">{remainingSec}s remaining</span>
+                  <span className="font-semibold tabular-nums">{remainingSec}s remaining</span>
                 </div>
               )}
             </div>
@@ -197,39 +200,41 @@ export function MailboxBureau() {
       </div>
 
       {/* Messages Queue Stream */}
-      <div className="flex flex-col gap-2 p-3 rounded-xl border border-gray-800 bg-gray-950">
-        <div className="text-xs font-bold text-gray-200">
-          Recent Inter-Agent Dispatches ({messages.length})
+      <div className="flex flex-col gap-2 p-3 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          Recent messages ({messages.length})
         </div>
         <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
           {messages.map((m) => (
             <div
               key={m.id}
-              className="p-2 rounded-lg bg-gray-900/60 border border-gray-800 flex items-center justify-between gap-3"
+              className="p-2 rounded-lg bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3"
             >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="font-bold text-cyan-400">{m.fromAgent}</span>
-                <span className="text-gray-500">→</span>
-                <span className="font-bold text-indigo-300">{m.toAgent}</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-800 text-gray-400">
+              <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                  {m.fromAgent}
+                </span>
+                <span className="text-gray-600 dark:text-gray-400">→</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{m.toAgent}</span>
+                <span className="text-sm px-1.5 py-0.2 rounded bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400">
                   {m.eventType}
                 </span>
-                <span className="text-[11px] text-gray-400 truncate">
+                <span className="text-sm text-gray-600 dark:text-gray-400 break-words">
                   {JSON.stringify(m.payload)}
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                  className={`text-sm px-1.5 py-0.2 rounded font-semibold  ${
                     m.priority === "high"
-                      ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                      : "bg-gray-800 text-gray-400"
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                      : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                   }`}
                 >
                   {m.priority}
                 </span>
-                <span className="text-[10px] text-gray-500 tabular-nums">
+                <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
                   {Math.round((Date.now() - m.createdAt) / 1000)}s ago
                 </span>
               </div>
@@ -241,7 +246,7 @@ export function MailboxBureau() {
       {/* Dispatch Modal */}
       <Modal
         open={dispatchOpen}
-        title="Dispatch Peer-to-Peer Agent Event"
+        title="Compose demo message"
         onClose={() => setDispatchOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
@@ -249,28 +254,43 @@ export function MailboxBureau() {
               Cancel
             </Button>
             <Button size="sm" variant="primary" onClick={handleDispatchMessage}>
-              Dispatch Event
+              Add demo message
             </Button>
           </div>
         }
       >
-        <div className="flex flex-col gap-3 font-mono text-xs text-gray-300">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3 text-sm text-gray-900 dark:text-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block mb-1 text-gray-400 font-medium">From Agent</label>
-              <Input value={fromAgent} onChange={(e) => setFromAgent(e.target.value)} size="sm" />
+              <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
+                From Agent
+              </label>
+              <Input
+                aria-label="From agent"
+                value={fromAgent}
+                onChange={(e) => setFromAgent(e.target.value)}
+                size="sm"
+              />
             </div>
             <div>
-              <label className="block mb-1 text-gray-400 font-medium">To Agent</label>
-              <Input value={toAgent} onChange={(e) => setToAgent(e.target.value)} size="sm" />
+              <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
+                To Agent
+              </label>
+              <Input
+                aria-label="To agent"
+                value={toAgent}
+                onChange={(e) => setToAgent(e.target.value)}
+                size="sm"
+              />
             </div>
           </div>
 
           <div>
-            <label className="block mb-1 text-gray-400 font-medium">
+            <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
               Event Type <RequiredMark />
             </label>
             <Input
+              aria-label="Event type"
               value={eventType}
               onChange={(e) => setEventType(e.target.value)}
               placeholder="e.g. directive:refactor_code"
@@ -279,12 +299,15 @@ export function MailboxBureau() {
           </div>
 
           <div>
-            <label className="block mb-1 text-gray-400 font-medium">JSON Payload</label>
+            <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
+              JSON Payload
+            </label>
             <textarea
+              aria-label="Payload text"
               value={payloadText}
               onChange={(e) => setPayloadText(e.target.value)}
               rows={3}
-              className="w-full bg-gray-900 border border-gray-800 rounded p-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-cyan-500"
+              className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded p-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-cyan-500"
             />
           </div>
         </div>

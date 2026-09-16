@@ -1,136 +1,72 @@
-import { useMemo } from "react";
 import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
-import { Badge } from "../../components/ui/badge";
+import { mutedClass, panelClass } from "../kanban/work-tool-ui";
 
 export interface SpendFlowCardProps {
   report: SpendFlowReport;
   className?: string;
 }
-
 export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
-  const maxModelCost = useMemo(() => {
-    return Math.max(1, ...report.models.map((m) => m.cost));
-  }, [report.models]);
-
-  const maxProjectCost = useMemo(() => {
-    return Math.max(1, ...report.projects.map((p) => p.cost));
-  }, [report.projects]);
-
   return (
-    <div
-      className={`p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xs space-y-4 text-xs ${className}`}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
-              Spend Flow & Cost Attribution
-            </h3>
-            <Badge tone="brand">${report.totalCostUsd.toFixed(2)} USD</Badge>
-          </div>
-          <p className="text-gray-500 dark:text-gray-400 text-[11px] mt-0.5">
-            Active Period: {report.period.label}
-          </p>
-        </div>
+    <section className={`${panelClass} space-y-5 text-sm ${className}`} aria-label="Cost breakdown">
+      <header>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recorded cost</h3>
+        <p className="mt-2 text-2xl font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+          ${report.totalCostUsd.toFixed(4)} <span className="text-sm font-normal">USD</span>
+        </p>
+        <p className={mutedClass}>{report.period.label}</p>
+      </header>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+        {[
+          { title: "By model", rows: report.models },
+          { title: "By project", rows: report.projects },
+        ].map((group) => (
+          <section className="min-w-0" key={group.title}>
+            <h4 className="mb-2 font-semibold text-gray-900 dark:text-gray-100">{group.title}</h4>
+            <dl className="max-h-80 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-800">
+              {group.rows.map((row) => (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-3"
+                >
+                  <dt className="min-w-0 break-all text-gray-700 dark:text-gray-300">
+                    {row.label}
+                  </dt>
+                  <dd className="shrink-0 tabular-nums text-gray-900 dark:text-gray-100">
+                    ${row.cost.toFixed(4)}{" "}
+                    <span className="text-xs text-gray-500">
+                      {report.totalCostUsd > 0
+                        ? `(${Math.round((row.cost / report.totalCostUsd) * 100)}%)`
+                        : ""}
+                    </span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {!group.rows.length && <p className={mutedClass}>No recorded cost for this group.</p>}
+          </section>
+        ))}
       </div>
-
-      {/* Grid: Models & Projects */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Models Column */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
-            Top Models
-          </div>
-          <div className="space-y-2">
-            {report.models.map((node) => {
-              const pct = Math.round((node.cost / (report.totalCostUsd || 1)) * 100);
-              const barWidth = Math.min(100, Math.round((node.cost / maxModelCost) * 100));
-              return (
-                <div key={node.id} className="space-y-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span
-                      className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]"
-                      title={node.label}
-                    >
-                      {node.label}
-                    </span>
-                    <span className="text-gray-500 font-mono">
-                      ${node.cost.toFixed(4)} ({pct}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-indigo-500 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${barWidth}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Projects Column */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
-            Top Workspaces / Projects
-          </div>
-          <div className="space-y-2">
-            {report.projects.map((node) => {
-              const pct = Math.round((node.cost / (report.totalCostUsd || 1)) * 100);
-              const barWidth = Math.min(100, Math.round((node.cost / maxProjectCost) * 100));
-              return (
-                <div key={node.id} className="space-y-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span
-                      className="font-mono text-gray-700 dark:text-gray-300 truncate max-w-[140px]"
-                      title={node.label}
-                    >
-                      {node.label}
-                    </span>
-                    <span className="text-gray-500 font-mono">
-                      ${node.cost.toFixed(4)} ({pct}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                      style={{ width: `${barWidth}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Attribution Links */}
-      {report.links.length > 0 && (
-        <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1.5">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-gray-400">
-            Attribution Matrix ({report.links.length} routes)
-          </div>
-          <div className="max-h-36 overflow-y-auto space-y-1 font-mono text-[11px]">
-            {report.links.map((link, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between py-1 px-2 rounded-sm bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="text-indigo-600 dark:text-indigo-400">{link.model}</span>
-                  <span className="text-gray-400">→</span>
-                  <span className="text-emerald-600 dark:text-emerald-400">{link.project}</span>
-                </div>
-                <span className="font-semibold text-gray-700 dark:text-gray-300 shrink-0">
-                  ${link.cost.toFixed(4)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+      <details className="border-t border-gray-200 pt-4 dark:border-gray-800">
+        <summary className="min-h-10 cursor-pointer font-medium text-gray-900 dark:text-gray-100">
+          Model-to-project detail ({report.links.length})
+        </summary>
+        <ul className="mt-2 max-h-80 overflow-y-auto divide-y divide-gray-200 dark:divide-gray-800">
+          {report.links.map((link, i) => (
+            <li
+              key={`${link.model}:${link.project}:${i}`}
+              className="flex flex-wrap justify-between gap-3 py-3"
+            >
+              <span className="min-w-0 break-all text-gray-600 dark:text-gray-400">
+                {link.model} → {link.project}
+              </span>
+              <span className="tabular-nums text-gray-900 dark:text-gray-100">
+                ${link.cost.toFixed(4)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {!report.links.length && <p className={mutedClass}>No attribution records.</p>}
+      </details>
+    </section>
   );
 }

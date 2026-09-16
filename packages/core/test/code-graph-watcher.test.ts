@@ -145,6 +145,9 @@ export function divide(a: number, b: number): number { return a / b; }
   it("correctly ignores target, .venv, __pycache__, .pytest_cache, .idea, and .vscode directories", () => {
     const watcher = new CodeGraphWatcher(tmpDir);
     expect(watcher.isPathIgnored("target/debug/app.rs")).toBe(true);
+    expect(watcher.isPathIgnored("target")).toBe(true);
+    expect(watcher.isPathIgnored("node_modules")).toBe(true);
+    expect(watcher.isPathIgnored(".git")).toBe(true);
     expect(watcher.isPathIgnored(".venv/lib/python3.11/site-packages/pkg.py")).toBe(true);
     expect(watcher.isPathIgnored("venv/bin/activate.py")).toBe(true);
     expect(watcher.isPathIgnored("src/__pycache__/module.cpython-311.py")).toBe(true);

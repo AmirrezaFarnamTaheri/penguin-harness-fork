@@ -45,12 +45,12 @@ export function SnapshotTimeline({
   const sorted = [...snapshots].sort((a, b) => b.version - a.version);
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center justify-between border-b border-border pb-3">
+    <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 py-4">
+      <div className="flex flex-wrap items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-3">
         <div>
-          <h2 className="text-xs font-semibold text-foreground">Session Checkpoint History</h2>
-          <p className="text-[11px] text-muted-foreground">
-            Select any checkpoint node to inspect state diff or time-travel
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Checkpoints</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Select a checkpoint to compare its prompt, memory and skills.
           </p>
         </div>
         <Badge tone="gray">{snapshots.length} Versions</Badge>
@@ -64,33 +64,39 @@ export function SnapshotTimeline({
           return (
             <div
               key={item.version}
-              onClick={() => onSelectVersion(item.version)}
               className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors ${
                 isSelected
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-border bg-card hover:border-primary/40 hover:bg-muted/30"
+                  ? "border-blue-600 bg-blue-700 ring-1 ring-blue-600"
+                  : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-gray-400 hover:bg-muted/30"
               }`}
             >
               {/* Header: Version Tag, Badges, Timestamp */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-foreground">
+              <div className="flex flex-wrap items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className=" text-sm font-semibold text-gray-900 dark:text-gray-100">
                     v{item.version}
                   </span>
                   <Badge tone={triggerTone(item.trigger)}>{item.trigger}</Badge>
-                  {item.isCurrent && <Badge tone="green">Current Active State</Badge>}
+                  {item.isCurrent && <Badge tone="green">Current</Badge>}
                 </div>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
                   {formatSnapshotTimestamp(item.timestamp)}
                 </span>
               </div>
 
               {/* Label & Description */}
-              <span className="text-xs font-medium text-foreground">{item.label}</span>
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => onSelectVersion(item.version)}
+                className="min-h-10 text-left text-sm font-medium underline underline-offset-4"
+              >
+                {item.label}
+              </button>
 
               {/* Metadata Row: Files, Memory, Archive Size */}
-              <div className="flex items-center justify-between border-t border-border/50 pt-2 text-[11px] text-muted-foreground">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-between border-t border-gray-200 dark:border-gray-800 pt-2 text-sm text-gray-600 dark:text-gray-400">
+                <div className="flex flex-wrap items-center gap-3">
                   <span>{item.fileCount} state files</span>
                   <span>•</span>
                   <span>{item.memoryTopicsCount} memory topics</span>
@@ -107,7 +113,7 @@ export function SnapshotTimeline({
                       onInitiateRollback(item.version);
                     }}
                   >
-                    Time-Travel →
+                    Preview restore
                   </Button>
                 )}
               </div>

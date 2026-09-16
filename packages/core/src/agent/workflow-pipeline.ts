@@ -322,7 +322,8 @@ export class WorkflowPipeline {
     const now = Date.now();
     const runId = `run_${now}_${Math.random().toString(36).slice(2, 8)}`;
     const initialNodes = Array.from(this.nodes.values()).filter((node) => node.kind === "trigger");
-    const nodeStates: Record<string, WorkflowNodeState> = {};
+    // IDs are user-defined; __proto__ must serialize as a node, not become the prototype.
+    const nodeStates: Record<string, WorkflowNodeState> = Object.create(null);
 
     for (const node of this.nodes.values()) {
       nodeStates[node.id] = { nodeId: node.id, status: "pending" };
@@ -386,7 +387,7 @@ export class WorkflowPipeline {
 
     nodeState.status = "succeeded";
     nodeState.output = result.output;
-    if (result.output) Object.assign(run.context, result.output);
+    if (result.output) run.context = { ...run.context, ...result.output };
     if (node.kind === "condition" || node.kind === "gate") {
       nodeState.selectedTargets = this.selectConditionalTargets(run, node);
     }

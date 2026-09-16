@@ -1,24 +1,36 @@
-import { useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
-import { Input } from "../../components/ui/input.js";
-import { BrainIcon, KeyRoundIcon, FlameIcon, HistoryIcon } from "../../components/ui/icons.js";
 import { useDocumentTitle } from "../../lib/use-document-title";
-import { S } from "../../lib/strings";
-import { useProject } from "../../state/project";
-import { TopologyPage } from "../topology/topology-page";
-import { GuardianPage } from "../guardian/guardian-page";
-import { ConsensusPage } from "../consensus/consensus-page";
-import { ContextBreakdownPage } from "../context/context-breakdown-page";
-import { MemoryPage } from "../memory/memory-page";
-import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
-import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
-import { SnapshotsPage } from "../snapshots/snapshots-page";
-import {
-  useCockpitTelemetry,
-  type LiveTurnSummary,
-  type LiveMailboxEntry,
-} from "./use-cockpit-telemetry.js";
+import { useProject, projectDisplayName } from "../../state/project";
+import { useLocale } from "../../state/locale";
+import { useCockpitTelemetry, type LiveTurnSummary } from "./use-cockpit-telemetry.js";
+import { cockpitCopy, cockpitGroups, isCockpitTool, type CockpitTool } from "./cockpit-copy";
+
+const TopologyPage = lazy(() =>
+  import("../topology/topology-page").then((m) => ({ default: m.TopologyPage })),
+);
+const GuardianPage = lazy(() =>
+  import("../guardian/guardian-page").then((m) => ({ default: m.GuardianPage })),
+);
+const ConsensusPage = lazy(() =>
+  import("../consensus/consensus-page").then((m) => ({ default: m.ConsensusPage })),
+);
+const ContextBreakdownPage = lazy(() =>
+  import("../context/context-breakdown-page").then((m) => ({ default: m.ContextBreakdownPage })),
+);
+const MemoryPage = lazy(() =>
+  import("../memory/memory-page").then((m) => ({ default: m.MemoryPage })),
+);
+const ModelsKeyFleetPage = lazy(() =>
+  import("../models/models-key-fleet-page").then((m) => ({ default: m.ModelsKeyFleetPage })),
+);
+const TraceFlamegraphPage = lazy(() =>
+  import("../traces/trace-flamegraph-page").then((m) => ({ default: m.TraceFlamegraphPage })),
+);
+const SnapshotsPage = lazy(() =>
+  import("../snapshots/snapshots-page").then((m) => ({ default: m.SnapshotsPage })),
+);
 
 export interface AgentCockpitProps {
   open?: boolean;
@@ -26,7 +38,6 @@ export interface AgentCockpitProps {
   sessionId?: string;
   embedded?: boolean;
 }
-
 export interface SwarmAgentNode {
   id: string;
   role: "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
@@ -35,813 +46,462 @@ export interface SwarmAgentNode {
   currentTask?: string;
   handoffTarget?: string;
 }
-
 export interface SwarmEdge {
   from: string;
   to: string;
   kind: "directive" | "handoff" | "review_gate";
   activeCount: number;
 }
+const fieldClass =
+  "w-full min-w-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100";
+const muted = "text-sm leading-6 text-gray-600 dark:text-gray-400";
 
-export function AgentCockpit({
-  open,
-  onClose,
-  sessionId = "default-session",
-  embedded = false,
-}: AgentCockpitProps) {
+export function AgentCockpit(props: AgentCockpitProps) {
   const { currentProject } = useProject();
-  const projectId = currentProject?.projectId ?? "default";
-
-  const [tab, setTab] = useState<
-    | "topology"
-    | "guardian"
-    | "consensus"
-    | "context"
-    | "memory"
-    | "keys"
-    | "flamegraph"
-    | "snapshots"
-    | "ledger"
-    | "mailbox"
-    | "loop"
-    | "swarm"
-  >("topology");
-
-  const telemetry = useCockpitTelemetry(projectId, sessionId);
-  const [swarmPrompt, setSwarmPrompt] = useState("");
-
-  // Live Turn Ledger summaries
-  const activeTurn = telemetry.activeTaskId ?? "Idle";
-  const turnSummaries = telemetry.turnSummaries;
-
-  // Live Mailbox entries: fallback to idle agent entries if none received yet
-  const mailboxes: LiveMailboxEntry[] =
-    telemetry.mailboxEntries.length > 0
-      ? telemetry.mailboxEntries
-      : telemetry.swarmAgents.map((a) => ({
-          agentName: a.id,
-          queueDepth: 0,
-          pendingReplies: 0,
-          leaseState: "idle" as const,
-        }));
-
-  const [toAgent, setToAgent] = useState("coder");
-  const [messageText, setMessageText] = useState("");
-  const [dispatchedCount, setDispatchedCount] = useState(0);
-
-  // State: Swarm & Handoff Topology (from live telemetry)
-  const swarmNodes = telemetry.swarmAgents;
-  const swarmEdges = telemetry.swarmEdges;
-
-  const handleSendMessage = async () => {
-    if (!messageText.trim()) return;
-    const ok = await telemetry.dispatchDirective(toAgent, messageText.trim());
-    if (ok) {
-      setDispatchedCount((c) => c + 1);
-      setMessageText("");
-    }
-  };
-
-  const bodyContent = (
-    <div className="flex flex-col gap-4">
-      {/* Live WebSocket Connection Status Banner */}
-      <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-xs">
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              telemetry.transport === "ws"
-                ? "bg-emerald-500 animate-pulse"
-                : telemetry.transport === "http"
-                  ? "bg-cyan-500"
-                  : "bg-amber-500"
-            }`}
-          />
-          <span className="font-medium text-gray-700 dark:text-gray-300">
-            {telemetry.transport === "ws"
-              ? "Live WebSocket Stream Active (/api/cockpit/stream)"
-              : telemetry.transport === "http"
-                ? "Connected via HTTP Telemetry Polling"
-                : "Offline Mode (Reconnecting...)"}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {telemetry.activeTaskId && (
-            <div className="flex items-center gap-1.5 text-cyan-600 dark:text-cyan-400 font-mono text-[11px]">
-              <span className="text-gray-400">Task:</span>
-              <span className="font-semibold">{telemetry.activeTaskId}</span>
-            </div>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => void telemetry.refresh()}
-            className="text-[11px] h-6 px-2"
-          >
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* Live Telemetry Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <button
-          type="button"
-          onClick={() => setTab("memory")}
-          className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
-        >
-          <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
-              Memory Vault
-            </span>
-            <BrainIcon size={16} className="text-purple-500" />
-          </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-            Active Project Memory
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
-            {telemetry.connected ? "● Project Scope Active" : "○ Offline"}
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTab("keys")}
-          className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
-        >
-          <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
-              Model Key Fleet
-            </span>
-            <KeyRoundIcon size={16} className="text-amber-500" />
-          </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-            {telemetry.keyFleet.healthy
-              ? "Healthy"
-              : telemetry.keyFleet.activeCount === 0
-                ? "No Keys"
-                : "Degraded"}{" "}
-            <span className="text-xs font-normal text-gray-400">
-              ({telemetry.keyFleet.activeCount} Active)
-            </span>
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
-            {telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length > 0
-              ? `● ${telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length} in Cooldown`
-              : "● All Keys Ready"}
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTab("flamegraph")}
-          className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
-        >
-          <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
-              Trace Flamegraph
-            </span>
-            <FlameIcon size={16} className="text-orange-500" />
-          </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-            Causal Performance
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
-            {telemetry.transport === "ws"
-              ? "● Streaming via WebSocket"
-              : telemetry.transport === "http"
-                ? "○ Polling via HTTP"
-                : "○ Offline"}
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTab("snapshots")}
-          className="flex flex-col text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-cyan-500/50 dark:hover:border-cyan-500/50 transition-all group shadow-sm"
-        >
-          <div className="flex items-center justify-between w-full mb-1">
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 group-hover:text-cyan-600 dark:group-hover:text-cyan-400">
-              Snapshot Rewind
-            </span>
-            <HistoryIcon size={16} className="text-blue-500" />
-          </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-            Workspace Snapshots
-          </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
-            Project Checkpoints
-          </div>
-        </button>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 gap-1 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setTab("topology")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "topology"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Code Topology
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("guardian")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "guardian"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Shell Guardian
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("consensus")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "consensus"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Quorum Consensus
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("context")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "context"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Context Breakdown
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("memory")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "memory"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Memory Vault
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("keys")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "keys"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Model Key Fleet
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("flamegraph")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "flamegraph"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Trace Flamegraph
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("snapshots")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "snapshots"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Snapshot Rewind
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("ledger")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "ledger"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Turn Ledger ({turnSummaries.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("mailbox")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "mailbox"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Mailbox Bureau ({mailboxes.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("loop")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "loop"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Loop Breaker
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("swarm")}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-            tab === "swarm"
-              ? "border-cyan-500 text-cyan-600 dark:text-cyan-400 font-semibold"
-              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          }`}
-        >
-          Swarm ({swarmNodes.length})
-        </button>
-      </div>
-
-      {/* Tab: Code Topology */}
-      {tab === "topology" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <TopologyPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Shell Guardian */}
-      {tab === "guardian" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <GuardianPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Quorum Consensus */}
-      {tab === "consensus" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <ConsensusPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Context Breakdown */}
-      {tab === "context" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <ContextBreakdownPage embedded sessionId={sessionId} />
-        </div>
-      )}
-
-      {/* Tab: Memory Vault */}
-      {tab === "memory" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <MemoryPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Model Key Fleet */}
-      {tab === "keys" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <ModelsKeyFleetPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Trace Flamegraph */}
-      {tab === "flamegraph" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <TraceFlamegraphPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Snapshot Rewind */}
-      {tab === "snapshots" && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-h-[560px]">
-          <SnapshotsPage embedded />
-        </div>
-      )}
-
-      {/* Tab: Turn Ledger */}
-      {tab === "ledger" && (
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-            <div>
-              <span className="text-xs text-gray-500 dark:text-gray-400">Active Turn:</span>
-              <span className="ml-2 font-mono text-xs font-semibold text-cyan-600 dark:text-cyan-400">
-                {activeTurn}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
-                Status: {telemetry.activeTaskId ? "RUNNING" : "IDLE"}
-              </span>
-              <span className="text-xs text-gray-400 font-mono">Session: {sessionId}</span>
-            </div>
-          </div>
-
-          <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-1">
-            Terminal Turn History & Checkpoint Log
-          </div>
-          {turnSummaries.length === 0 ? (
-            <div className="p-8 text-center rounded-lg border border-dashed border-gray-300 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 text-gray-500 text-xs flex flex-col items-center gap-1.5">
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                No turn checkpoints recorded yet
-              </span>
-              <span className="text-[11px] text-gray-400">
-                Execute a command or launch an autonomous swarm task to generate turn ledger
-                replays.
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-              {turnSummaries.map((turn) => (
-                <div
-                  key={turn.turnId}
-                  className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-gray-800 dark:text-gray-200">
-                        {turn.turnId}
-                      </span>
-                      <span
-                        className={`px-2 py-0.2 rounded text-[10px] font-medium ${
-                          turn.status === "completed"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                            : turn.status === "running"
-                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                              : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
-                        }`}
-                      >
-                        {turn.status}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-gray-400">
-                      Seq #{turn.terminalSeq} • {turn.durationMs}ms • {turn.streamRecords} chunks
-                    </div>
-                  </div>
-                  {turn.outcome && (
-                    <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                      {turn.outcome}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab 2: Mailbox Bureau */}
-      {tab === "mailbox" && (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            {mailboxes.map((mb) => (
-              <div
-                key={mb.agentName}
-                className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-xs text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                    {mb.agentName}
-                  </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      mb.leaseState === "acquired"
-                        ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-500"
-                    }`}
-                  >
-                    Lease: {mb.leaseState}
-                    {mb.leaseRemainingSec ? ` (${mb.leaseRemainingSec}s)` : ""}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                  <span>
-                    Queue Depth:{" "}
-                    <strong className="text-gray-700 dark:text-gray-200">{mb.queueDepth}</strong>
-                  </span>
-                  <span>
-                    Replies:{" "}
-                    <strong className="text-gray-700 dark:text-gray-200">
-                      {mb.pendingReplies}
-                    </strong>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Inter-Agent Dispatch Tester */}
-          <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 flex flex-col gap-2.5">
-            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-              Dispatch Inter-Agent Directive
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={toAgent}
-                onChange={(e) => setToAgent(e.target.value)}
-                className="text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-2.5 py-1.5 text-gray-800 dark:text-gray-200"
-              >
-                {telemetry.swarmAgents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    To: {a.id} ({a.role})
-                  </option>
-                ))}
-              </select>
-              <Input
-                value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                placeholder="Enter directive or subagent instruction..."
-                className="flex-1"
-              />
-              <Button size="sm" onClick={handleSendMessage} disabled={!messageText.trim()}>
-                Send Directive
-              </Button>
-            </div>
-            {dispatchedCount > 0 && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                ✓ {dispatchedCount} live directive(s) queued into destination Mailbox.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 3: Loop & Circuit Breaker */}
-      {tab === "loop" && (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Failed Turns</div>
-              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                {turnSummaries.filter((t) => t.status === "failed").length} / 10
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">Circuit breaker limit: 10</div>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Telemetry Activity</div>
-              <div className="text-xl font-bold text-cyan-600 dark:text-cyan-400 mt-1">
-                {telemetry.lastEventTime
-                  ? `${Math.max(0, Math.round((Date.now() - telemetry.lastEventTime) / 1000))}s ago`
-                  : "Standby"}
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">
-                {telemetry.transport.toUpperCase()} stream
-              </div>
-            </div>
-            <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Circuit Breaker</div>
-              <div
-                className={`text-xl font-bold mt-1 ${
-                  turnSummaries.filter((t) => t.status === "failed").length >= 10
-                    ? "text-red-500"
-                    : "text-emerald-600 dark:text-emerald-400"
-                }`}
-              >
-                {turnSummaries.filter((t) => t.status === "failed").length >= 10
-                  ? "TRIPPED"
-                  : "CLOSED"}
-              </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">
-                {turnSummaries.filter((t) => t.status === "failed").length >= 10
-                  ? "Execution halted on errors"
-                  : "Normal operation"}
-              </div>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col gap-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                Active Goal:{" "}
-                {telemetry.activeTaskId
-                  ? telemetry.activeTaskId
-                  : "System Idle (Awaiting Dispatch)"}
-              </span>
-              <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                {telemetry.activeTaskId || telemetry.isDispatching ? "EXECUTING" : "STANDBY"}
-              </span>
-            </div>
-            {telemetry.activeTaskId ? (
-              <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-cyan-500 h-full rounded-full animate-pulse"
-                  style={{ width: "100%" }}
-                />
-              </div>
-            ) : null}
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between mt-1">
-              <span>
-                Task ID:{" "}
-                <code className="font-mono text-gray-700 dark:text-gray-300">
-                  {telemetry.activeTaskId ?? "None"}
-                </code>
-              </span>
-              <span>{turnSummaries.length} turn checkpoint(s) recorded</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Recent Turn Checkpoint History
-            </div>
-            {turnSummaries.length === 0 ? (
-              <div className="p-4 text-center rounded-lg border border-dashed border-gray-300 dark:border-gray-800 bg-white dark:bg-gray-950 text-gray-400 text-xs font-mono">
-                No recent turn checkpoints recorded. Tasks dispatched to the swarm will log
-                execution turns here.
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {turnSummaries.slice(-15).map((t, idx) => (
-                  <span
-                    key={t.turnId || idx}
-                    className={`px-2 py-1 rounded font-mono text-xs border ${
-                      t.status === "completed"
-                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                        : t.status === "failed"
-                          ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
-                          : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700"
-                    }`}
-                  >
-                    #{idx + 1} {t.turnId} ({t.durationMs}ms)
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Tab 5: Swarm Topology */}
-      {tab === "swarm" && (
-        <div className="flex flex-col gap-4">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            Autonomous Agent Swarm Network (GraphDataPort physics & AIF handoff routing):
-          </div>
-
-          {/* Autonomous Swarm Dispatch Bar */}
-          <div className="p-3 rounded-lg border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-950/20 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-cyan-700 dark:text-cyan-300 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
-                Autonomous Multi-Agent Task Dispatcher
-              </span>
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                {telemetry.transport.toUpperCase()} STREAM
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <Input
-                size="sm"
-                value={swarmPrompt}
-                onChange={(e) => setSwarmPrompt(e.target.value)}
-                placeholder="Enter high-level objective (e.g., 'Refactor database pool and run tests')..."
-                className="flex-1 bg-white dark:bg-gray-950"
-                disabled={telemetry.isDispatching}
-              />
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (swarmPrompt.trim()) {
-                    void telemetry.triggerTask(swarmPrompt.trim());
-                    setSwarmPrompt("");
-                  }
-                }}
-                disabled={telemetry.isDispatching || !swarmPrompt.trim()}
-              >
-                {telemetry.isDispatching ? "Swarm Running..." : "Launch Swarm"}
-              </Button>
-            </div>
-          </div>
-
-          {/* Swarm Agent Nodes Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {swarmNodes.map((node) => (
-              <div
-                key={node.id}
-                className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-xs text-gray-800 dark:text-gray-200 uppercase tracking-wide">
-                      {node.id}
-                    </span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                      {node.role}
-                    </span>
-                  </div>
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                      node.status === "active"
-                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                        : node.status === "handoff"
-                          ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
-                          : node.status === "waiting_approval"
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                            : "bg-gray-100 dark:bg-gray-800 text-gray-500"
-                    }`}
-                  >
-                    {node.status.toUpperCase()}
-                  </span>
-                </div>
-
-                {node.currentTask && (
-                  <div className="text-[11px] text-gray-600 dark:text-gray-400 leading-snug">
-                    {node.currentTask}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between text-[11px] text-gray-400 border-t border-gray-100 dark:border-gray-800/80 pt-1.5 mt-0.5">
-                  <span>
-                    Tasks Completed:{" "}
-                    <strong className="text-gray-700 dark:text-gray-200">
-                      {node.tasksCompleted}
-                    </strong>
-                  </span>
-                  {node.handoffTarget && (
-                    <span className="text-cyan-600 dark:text-cyan-400 font-mono">
-                      → Handoff to: {node.handoffTarget}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Active Handoff & Edge Channels */}
-          <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col gap-2">
-            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
-              Active Coordination Channels ({swarmEdges.length})
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {swarmEdges.map((edge, idx) => (
-                <div
-                  key={idx}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-xs font-mono"
-                >
-                  <span className="font-semibold text-gray-700 dark:text-gray-300">
-                    {edge.from}
-                  </span>
-                  <span className="text-gray-400">→</span>
-                  <span className="font-semibold text-cyan-600 dark:text-cyan-400">{edge.to}</span>
-                  <span className="text-[10px] px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
-                    {edge.kind}
-                  </span>
-                  {edge.activeCount > 0 && (
-                    <span className="text-[10px] px-1 rounded-full bg-cyan-500 text-white font-bold">
-                      {edge.activeCount}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+  const { locale } = useLocale();
+  const c = cockpitCopy(locale);
+  // A closed dialog must not keep a project stream or drafts alive in the background.
+  if (props.open === false && !props.embedded) return null;
+  const content = currentProject ? (
+    <CockpitWorkspace
+      key={`${currentProject.projectId}:${props.sessionId ?? ""}`}
+      projectId={currentProject.projectId}
+      sessionId={props.sessionId}
+    />
+  ) : (
+    <p className="p-6 text-sm text-gray-600 dark:text-gray-400">{c.projectRequired}</p>
   );
-
-  if (embedded || open === undefined) {
-    return (
-      <div className="h-full overflow-y-auto p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
-        <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Agent War Room & Autonomous Cockpit
-          </h2>
-          {onClose && (
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              Close
-            </Button>
-          )}
-        </div>
-        <div className="mt-3">{bodyContent}</div>
-      </div>
-    );
-  }
-
+  if (props.embedded || props.open === undefined) return content;
   return (
     <Modal
-      open={open}
-      onClose={onClose ?? (() => {})}
-      title="Agent War Room & Autonomous Cockpit"
-      widthClass="sm:max-w-5xl"
+      open={true}
+      onClose={props.onClose ?? (() => {})}
+      title={c.title}
+      widthClass="sm:max-w-6xl"
     >
-      {bodyContent}
+      {content}
     </Modal>
   );
 }
 
-export function CockpitPage() {
-  useDocumentTitle(S.nav.cockpit ?? "Agent Cockpit");
+function CockpitWorkspace({ projectId, sessionId }: { projectId: string; sessionId?: string }) {
+  const { currentProject } = useProject();
+  const { locale } = useLocale();
+  const c = cockpitCopy(locale);
+  const id = useId();
+  const [tool, setTool] = useState<CockpitTool>("swarm");
+  const telemetry = useCockpitTelemetry(projectId, sessionId);
+  const [goal, setGoal] = useState("");
+  const [recipient, setRecipient] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [taskFinished, setTaskFinished] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const selectedRecipient = telemetry.swarmAgents.some((agent) => agent.id === recipient)
+    ? recipient
+    : "";
+  const connection =
+    telemetry.transport === "ws"
+      ? c.connected
+      : telemetry.transport === "http"
+        ? c.polling
+        : telemetry.transport === "connecting"
+          ? c.connecting
+          : c.offline;
+  const turns = telemetry.turnSummaries;
+  const turnStatus = (status: LiveTurnSummary["status"]) =>
+    status === "running" ? c.runningStatus : status === "completed" ? c.completedStatus : c[status];
+
+  const history = (
+    <section aria-label={c.history} className="space-y-4">
+      <div>
+        <h3 className="text-base font-semibold">{c.history}</h3>
+        <p className={muted}>{c.historyHint}</p>
+      </div>
+      {turns.length === 0 ? (
+        <p className={`${muted} py-8`}>{c.noHistory}</p>
+      ) : (
+        <ol className="divide-y divide-gray-200 dark:divide-gray-800">
+          {[...turns].reverse().map((turn) => (
+            <li key={`${turn.turnId}:${turn.terminalSeq}`} className="py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="break-all font-mono text-sm">{turn.turnId}</span>
+                <span
+                  className={`text-sm font-medium ${turn.status === "failed" ? "text-red-700 dark:text-red-400" : "text-gray-600 dark:text-gray-300"}`}
+                >
+                  {turnStatus(turn.status)}
+                </span>
+              </div>
+              {turn.outcome && (
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">
+                  {turn.outcome}
+                </p>
+              )}
+              <details className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                <summary className="w-fit cursor-pointer py-2">
+                  {c.duration}: {turn.durationMs.toLocaleString(locale)} ms
+                </summary>
+                <p>
+                  {c.sequence}: {turn.terminalSeq} · {c.records}: {turn.streamRecords}
+                </p>
+              </details>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+
   return (
-    <div className="h-full p-4 overflow-y-auto">
-      <AgentCockpit embedded={true} />
+    <div className="min-h-full min-w-0 bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
+      <header className="space-y-4 border-b border-gray-200 px-4 py-5 dark:border-gray-800 sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight">{c.title}</h1>
+            <p className={`${muted} mt-1`}>{c.description}</p>
+          </div>
+          <Button
+            className="min-h-11"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await telemetry.refresh();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+          >
+            {refreshing ? c.refreshing : c.refresh}
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+          <span className="break-all font-medium text-gray-900 dark:text-gray-100">
+            {currentProject ? projectDisplayName(currentProject) : projectId}
+          </span>
+          <span role="status">{connection}</span>
+          {sessionId && (
+            <span className="break-all">
+              {c.session}: {sessionId}
+            </span>
+          )}
+        </div>
+      </header>
+      <div className="flex min-w-0 flex-col lg:flex-row">
+        <nav
+          aria-label={c.navigation}
+          className="shrink-0 border-b border-gray-200 p-4 dark:border-gray-800 lg:w-52 lg:border-b-0 lg:border-r lg:p-3"
+        >
+          <label
+            className="flex flex-col gap-2 text-sm font-medium lg:hidden"
+            htmlFor={`${id}-tool`}
+          >
+            {c.chooseTool}
+            <select
+              id={`${id}-tool`}
+              className={fieldClass}
+              value={tool}
+              onChange={(event) => {
+                if (isCockpitTool(event.target.value)) setTool(event.target.value);
+              }}
+            >
+              {cockpitGroups.map((group) => (
+                <optgroup key={group.key} label={c[group.key]}>
+                  {group.tools.map((item) => (
+                    <option key={item} value={item}>
+                      {c[item]}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <div className="hidden space-y-5 lg:block">
+            {cockpitGroups.map((group) => (
+              <div key={group.key}>
+                <p className="px-3 pb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  {c[group.key]}
+                </p>
+                {group.tools.map((item) => (
+                  <button
+                    type="button"
+                    key={item}
+                    aria-current={tool === item ? "page" : undefined}
+                    onClick={() => setTool(item)}
+                    className={`flex min-h-11 w-full items-center rounded-md px-3 text-left text-sm focus-visible:outline-2 focus-visible:outline-brand-600 ${tool === item ? "bg-gray-100 font-medium text-gray-950 dark:bg-gray-800 dark:text-white" : "text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-900"}`}
+                  >
+                    {c[item]}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </nav>
+        <div className="min-w-0 flex-1 space-y-6 p-4 sm:p-6">
+          {telemetry.error && (
+            <div
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+            >
+              {telemetry.error}
+            </div>
+          )}
+          {tool === "swarm" && (
+            <div className="space-y-8">
+              <form
+                className="max-w-3xl space-y-3"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!goal.trim() || telemetry.isDispatching) return;
+                  setTaskFinished(false);
+                  if (await telemetry.triggerTask(goal.trim())) {
+                    setGoal("");
+                    setTaskFinished(true);
+                  }
+                }}
+              >
+                <label htmlFor={`${id}-goal`} className="block text-lg font-semibold">
+                  {c.goal}
+                </label>
+                <textarea
+                  id={`${id}-goal`}
+                  rows={4}
+                  className={`${fieldClass} resize-y leading-6`}
+                  placeholder={c.goalPlaceholder}
+                  aria-describedby={`${id}-goal-hint`}
+                  value={goal}
+                  onChange={(event) => setGoal(event.target.value)}
+                  disabled={telemetry.isDispatching}
+                />
+                <p id={`${id}-goal-hint`} className={muted}>
+                  {c.goalHint}
+                </p>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="min-h-11"
+                  disabled={!goal.trim() || telemetry.isDispatching}
+                >
+                  {telemetry.isDispatching ? c.running : c.launch}
+                </Button>
+                {taskFinished && (
+                  <p role="status" className={muted}>
+                    {c.taskSuccess}
+                  </p>
+                )}
+              </form>
+              <section aria-label={c.agents}>
+                <h3 className="mb-3 text-base font-semibold">{c.agents}</h3>
+                {telemetry.swarmAgents.length === 0 ? (
+                  <p className={muted}>{c.noAgents}</p>
+                ) : (
+                  <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {telemetry.swarmAgents.map((agent) => (
+                      <li
+                        key={agent.id}
+                        className="flex flex-wrap items-start justify-between gap-3 py-4"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="break-all text-sm font-medium">
+                            {agent.id}{" "}
+                            <span className="font-normal text-gray-500">· {agent.role}</span>
+                          </p>
+                          {agent.currentTask && (
+                            <p className={`${muted} break-words`}>{agent.currentTask}</p>
+                          )}
+                          {agent.handoffTarget && (
+                            <p className={`${muted} break-all`}>
+                              {c.handoff}: {agent.handoffTarget}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-sm">
+                          <p className="font-medium">{c[agent.status]}</p>
+                          <p className={muted}>
+                            {c.completed}: {agent.tasksCompleted}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <details className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                <summary className="cursor-pointer py-2 text-sm font-medium">
+                  {c.channels} ({telemetry.swarmEdges.length})
+                </summary>
+                {telemetry.swarmEdges.length === 0 ? (
+                  <p className={muted}>{c.noChannels}</p>
+                ) : (
+                  <ul className="space-y-2 py-3">
+                    {telemetry.swarmEdges.map((edge, i) => (
+                      <li
+                        key={`${edge.from}:${edge.to}:${edge.kind}:${i}`}
+                        className="break-all text-sm"
+                      >
+                        {edge.from} → {edge.to}{" "}
+                        <span className="text-gray-500">
+                          · {edge.kind} ({edge.activeCount})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+              {history}
+            </div>
+          )}
+          {tool === "ledger" && history}
+          {tool === "mailbox" && (
+            <section className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold">{c.mailbox}</h2>
+                <p className={muted}>{c.messageHint}</p>
+              </div>
+              <form
+                className="max-w-2xl space-y-4"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!selectedRecipient || !message.trim() || sending) return;
+                  setSending(true);
+                  setSent(false);
+                  try {
+                    if (await telemetry.dispatchDirective(selectedRecipient, message.trim())) {
+                      setMessage("");
+                      setSent(true);
+                    }
+                  } finally {
+                    setSending(false);
+                  }
+                }}
+              >
+                <label className="block space-y-2 text-sm font-medium" htmlFor={`${id}-recipient`}>
+                  <span>{c.recipient}</span>
+                  <select
+                    id={`${id}-recipient`}
+                    className={fieldClass}
+                    value={selectedRecipient}
+                    onChange={(event) => {
+                      setRecipient(event.target.value);
+                      setSent(false);
+                    }}
+                    disabled={sending}
+                  >
+                    <option value="">{c.chooseRecipient}</option>
+                    {telemetry.swarmAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.id} ({agent.role})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-2 text-sm font-medium" htmlFor={`${id}-message`}>
+                  <span>{c.message}</span>
+                  <textarea
+                    id={`${id}-message`}
+                    rows={3}
+                    className={fieldClass}
+                    value={message}
+                    onChange={(event) => {
+                      setMessage(event.target.value);
+                      setSent(false);
+                    }}
+                    disabled={sending}
+                  />
+                </label>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="min-h-11"
+                  disabled={!selectedRecipient || !message.trim() || sending}
+                >
+                  {sending ? c.sending : c.send}
+                </Button>
+                {sent && (
+                  <p role="status" className={muted}>
+                    {c.sent}
+                  </p>
+                )}
+              </form>
+              {telemetry.mailboxEntries.length === 0 ? (
+                <p className={muted}>{c.noMailbox}</p>
+              ) : (
+                <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+                  {telemetry.mailboxEntries.map((box) => (
+                    <li key={box.agentName} className="space-y-2 py-4">
+                      <h3 className="break-all text-sm font-medium">{box.agentName}</h3>
+                      <p className={muted}>
+                        {c.queue}: {box.queueDepth} · {c.replies}: {box.pendingReplies}
+                      </p>
+                      <details className="text-sm text-gray-500">
+                        <summary className="cursor-pointer py-2">
+                          {c.lease}: {box.leaseState}
+                        </summary>
+                        {box.leaseRemainingSec !== undefined && <p>{box.leaseRemainingSec} s</p>}
+                      </details>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+          {tool === "loop" && (
+            <section className="max-w-3xl space-y-6">
+              <h2 className="text-lg font-semibold">{c.loop}</h2>
+              <dl className="divide-y divide-gray-200 text-sm dark:divide-gray-800">
+                {[
+                  [c.task, telemetry.activeTaskId ?? c.noTask],
+                  [c.failures, String(turns.filter((turn) => turn.status === "failed").length)],
+                  [c.protection, c.unknown],
+                  [
+                    c.lastUpdate,
+                    telemetry.lastEventTime
+                      ? new Date(telemetry.lastEventTime).toLocaleString(locale)
+                      : c.notReceived,
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex flex-wrap justify-between gap-3 py-4">
+                    <dt className="text-gray-600 dark:text-gray-400">{label}</dt>
+                    <dd className="break-all font-medium">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className={muted}>{c.healthHint}</p>
+              <Button className="min-h-11" onClick={() => setTool("guardian")}>
+                {c.reviewSafety}
+              </Button>
+              {history}
+            </section>
+          )}
+          <Suspense
+            fallback={
+              <p role="status" className={`${muted} py-6`}>
+                {c.connecting}
+              </p>
+            }
+          >
+            {tool === "topology" && <TopologyPage embedded />}
+            {tool === "guardian" && <GuardianPage embedded />}
+            {tool === "consensus" && <ConsensusPage embedded />}
+            {tool === "context" && <ContextBreakdownPage embedded sessionId={sessionId} />}
+            {tool === "memory" && <MemoryPage embedded />}
+            {tool === "keys" && <ModelsKeyFleetPage embedded />}
+            {tool === "flamegraph" && <TraceFlamegraphPage embedded />}
+            {tool === "snapshots" && <SnapshotsPage embedded />}
+          </Suspense>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CockpitPage() {
+  const { locale } = useLocale();
+  useDocumentTitle(cockpitCopy(locale).title);
+  return (
+    <div className="h-full min-w-0 overflow-y-auto">
+      <AgentCockpit embedded />
     </div>
   );
 }

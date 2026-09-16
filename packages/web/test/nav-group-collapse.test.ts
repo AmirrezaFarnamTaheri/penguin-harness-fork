@@ -14,6 +14,13 @@ import { describe, expect, it } from "vitest";
 import {
   NAV_GROUP_COLLAPSED_KEY,
   NAV_GROUP_KEYS,
+  PRIMARY_NAV_KEYS,
+  NAV_TOOL_GROUPS,
+  NAV_TOOLS_STORAGE_PREFIX,
+  currentNavKey,
+  navPathFor,
+  initialToolGroupExpanded,
+  storeToolGroupExpanded,
   initialNavGroupCollapsed,
   navKeysFor,
   storeNavGroupCollapsed,
@@ -61,7 +68,7 @@ describe("NAV_GROUP_KEYS", () => {
       "benchmark",
     ]);
     // Pin the endpoints by label: a manifest edit that shifts the range shows up here.
-    expect(zh.nav[NAV_GROUP_KEYS[0]]).toBe("驾驶舱");
+    expect(zh.nav[NAV_GROUP_KEYS[0]]).toBe("工作区概览");
     expect(zh.nav[NAV_GROUP_KEYS[NAV_GROUP_KEYS.length - 1]!]).toBe("评估中心");
   });
 
@@ -210,5 +217,54 @@ describe("persisted collapse state (one global localStorage key)", () => {
     } as unknown as NavCollapseStorage;
     expect(() => initialNavGroupCollapsed(hostile)).not.toThrow();
     expect(initialNavGroupCollapsed(hostile)).toBe(false);
+  });
+});
+
+describe("purposeful product navigation", () => {
+  it("keeps three primary destinations and every existing capability exactly once", () => {
+    expect(PRIMARY_NAV_KEYS).toEqual(["cockpit", "agents", "kanban"]);
+    const all = [...PRIMARY_NAV_KEYS, ...NAV_TOOL_GROUPS.flatMap((group) => [...group.keys])];
+    expect([...all].sort()).toEqual([...NAV_GROUP_KEYS].sort());
+    expect(new Set(all).size).toBe(all.length);
+    for (const group of NAV_TOOL_GROUPS) {
+      expect(en.nav.toolGroups[group.key]).toBeTruthy();
+      expect(zh.nav.toolGroups[group.key]).toBeTruthy();
+    }
+  });
+  it("uses existing special routes and exactly one current destination", () => {
+    expect(navPathFor("contextBreakdown")).toBe("/context-breakdown");
+    expect(navPathFor("keyFleet")).toBe("/models/keys");
+    expect(navPathFor("flamegraph")).toBe("/traces/flamegraph");
+    expect(currentNavKey("/models/keys")).toBe("keyFleet");
+    expect(currentNavKey("/agents/example")).toBe("agents");
+    expect(currentNavKey("/benchmark/agent/case")).toBe("benchmark");
+    expect(currentNavKey("/contextBreakdown")).toBe("contextBreakdown");
+    expect(currentNavKey("/models-other")).toBeNull();
+    expect(currentNavKey("/chat/123")).toBeNull();
+    expect(currentNavKey("/machines", false)).toBeNull();
+  });
+  it("starts minimal regardless of the legacy preference and remembers each group independently", () => {
+    const s = memStorage();
+    s.map.set(NAV_GROUP_COLLAPSED_KEY, "expanded");
+    expect(initialToolGroupExpanded("build", s)).toBe(false);
+    storeToolGroupExpanded("build", true, s);
+    expect(initialToolGroupExpanded("build", s)).toBe(true);
+    expect(initialToolGroupExpanded("inspect", s)).toBe(false);
+    storeToolGroupExpanded("build", false, s);
+    expect(initialToolGroupExpanded("build", s)).toBe(false);
+    s.map.set(NAV_TOOLS_STORAGE_PREFIX + "build", "garbage");
+    expect(initialToolGroupExpanded("build", s)).toBe(false);
+  });
+  it("blocked storage does not break navigation", () => {
+    const broken: NavCollapseStorage = {
+      getItem() {
+        throw new Error("denied");
+      },
+      setItem() {
+        throw new Error("denied");
+      },
+    };
+    expect(initialToolGroupExpanded("manage", broken)).toBe(false);
+    expect(() => storeToolGroupExpanded("manage", true, broken)).not.toThrow();
   });
 });

@@ -277,6 +277,9 @@ export function pipelineRoutes(deps: AppDeps): Hono<AppEnv> {
         const raw = item as Record<string, unknown>;
         const from = requireApiId(raw, "from", `edges[${i}].from`);
         const to = requireApiId(raw, "to", `edges[${i}].to`);
+        if (!seenIds.has(from) || !seenIds.has(to)) {
+          throw badRequest(`edges[${i}] must reference existing node IDs.`);
+        }
         const conditionValue =
           typeof raw.conditionValue === "string" ||
           typeof raw.conditionValue === "boolean" ||

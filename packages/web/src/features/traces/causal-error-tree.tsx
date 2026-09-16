@@ -49,13 +49,15 @@ export function CausalErrorTree({ spans, onSelectSpanId }: CausalErrorTreeProps)
 
   if (chain.length === 0) {
     return (
-      <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card p-4 text-xs text-muted-foreground">
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-gray-200 dark:border-gray-800 py-4 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex min-h-9 w-7 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
           <CheckShieldIcon size={16} />
         </div>
         <div>
-          <span className="font-semibold text-foreground">Zero Failure Causality</span>
-          <p className="text-[11px] text-muted-foreground">
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            Zero Failure Causality
+          </span>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
             All execution spans, model invocations, and tool executions terminated successfully.
           </p>
         </div>
@@ -66,49 +68,48 @@ export function CausalErrorTree({ spans, onSelectSpanId }: CausalErrorTreeProps)
   const rootFault = chain[chain.length - 1];
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-red-500/30 bg-red-500/5 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-red-500">
+    <div className="flex flex-col gap-3 rounded-md border border-red-500/30 bg-red-500/5 p-4">
+      <div className="flex flex-wrap items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2 text-red-700 dark:text-red-400">
           <AlertTriangleIcon size={18} />
-          <span className="text-xs font-bold uppercase tracking-wider">
-            Causal Error Diagnostics
-          </span>
+          <span className="text-sm font-semibold  ">Failed spans</span>
         </div>
-        <Badge tone="red">{chain.length} Failure Hops</Badge>
+        <Badge tone="red">{chain.length} failed spans</Badge>
       </div>
 
       {rootFault?.errorMessage && (
-        <div className="rounded-lg border border-red-500/20 bg-background/80 p-3 font-mono text-xs text-red-600 dark:text-red-400">
-          <span className="font-semibold">Root Cause: </span>
+        <div className="rounded-lg border border-red-500/20 bg-white dark:bg-gray-950 p-3 text-sm text-red-600 dark:text-red-400">
+          <span className="font-semibold">Deepest reported error: </span>
           {rootFault.errorMessage}
         </div>
       )}
 
       {/* Chain nodes sequence */}
       <div className="flex flex-col gap-2 pt-1">
-        <span className="text-[11px] font-semibold text-muted-foreground">
-          Causality Sequence (Root Cascade → Termination):
+        <span className="text-sm font-semibold text-gray-600 dark:text-gray-400">
+          Failure path:
         </span>
         <div className="flex flex-col gap-1.5">
           {chain.map((node, index) => (
-            <div
+            <button
+              type="button"
               key={node.spanId}
               onClick={() => onSelectSpanId(node.spanId)}
-              className="flex cursor-pointer items-center justify-between rounded-md border border-border bg-card p-2 text-xs transition-colors hover:border-red-500/40"
+              className="flex cursor-pointer items-center justify-between rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-2 text-sm transition-colors hover:border-red-500/40"
             >
-              <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/10 font-mono text-[11px] font-bold text-red-500">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500/10 text-sm font-semibold text-red-700 dark:text-red-400">
                   {index + 1}
                 </span>
                 <Badge tone="red">{node.kind}</Badge>
-                <span className="font-medium text-foreground">{node.name}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{node.name}</span>
               </div>
 
-              <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                 <span>{formatDurationMs(node.endMs - node.startMs)}</span>
-                <span className="text-primary hover:underline">Inspect →</span>
+                <span className="text-blue-700 dark:text-blue-400 hover:underline">Inspect →</span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>

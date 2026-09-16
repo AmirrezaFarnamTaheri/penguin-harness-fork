@@ -5,6 +5,8 @@ export interface MemoryTopicNode {
   name: string;
   title: string;
   scope: "user" | "workspace";
+  /** Exact scope directory, so equal filenames in different workspaces remain distinct. */
+  scopeKey?: string;
   bytes: number;
   tokens: number;
   tags: string[];
@@ -42,7 +44,27 @@ export function parseMemoryLinks(content: string): string[] {
       }
     }
   }
-  return links;
+  for (const match of content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+    const target = match[1]?.trim();
+    if (target) links.push(target.endsWith(".md") ? target : `${target}.md`);
+  }
+  return [...new Set(links)];
+}
+
+/** Resolve local links inside their scope only; same-named files elsewhere are not targets. */
+export function memoryLinkEdges(
+  topics: MemoryTopicNode[],
+): Array<{ source: string; target: string }> {
+  const byScope = new Map(
+    topics.map((topic) => [`${topic.scopeKey ?? topic.scope}/${topic.name}`, topic]),
+  );
+  return topics.flatMap((topic) =>
+    parseMemoryLinks(topic.content).flatMap((link) => {
+      const name = link.replace(/^\.\//, "").split("#")[0];
+      const target = byScope.get(`${topic.scopeKey ?? topic.scope}/${name}`);
+      return target && target.id !== topic.id ? [{ source: topic.id, target: target.id }] : [];
+    }),
+  );
 }
 
 /**

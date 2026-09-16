@@ -2,6 +2,52 @@ import { describe, expect, it } from "vitest";
 import { WorkflowPipeline } from "../src/agent/workflow-pipeline.js";
 
 describe("WorkflowPipeline", () => {
+  it("preserves prototype-named node IDs across persisted run state", () => {
+    const pipeline = new WorkflowPipeline({
+      id: "prototype_ids",
+      name: "Prototype IDs",
+      nodes: [
+        { id: "__proto__", name: "Start", kind: "trigger" },
+        { id: "constructor", name: "Finish", kind: "output" },
+      ],
+      edges: [{ from: "__proto__", to: "constructor" }],
+    });
+    const run = pipeline.createRun();
+    expect(Object.hasOwn(run.nodeStates, "__proto__")).toBe(true);
+    const persisted = JSON.parse(JSON.stringify(run));
+    const started = pipeline.completeNode(persisted, "__proto__", {});
+    expect(started.currentNodeIds).toEqual(["constructor"]);
+    const done = pipeline.completeNode(started, "constructor", {});
+    expect(done.status).toBe("completed");
+    expect(done.currentNodeIds).toEqual([]);
+  });
+
+  it("does not let output prototype keys supply inherited gate decisions", () => {
+    const pipeline = new WorkflowPipeline({
+      id: "gate_output",
+      name: "Gate output",
+      nodes: [
+        { id: "start", name: "Start", kind: "trigger" },
+        { id: "gate", name: "Gate", kind: "gate", conditionField: "approved" },
+        { id: "deploy", name: "Deploy", kind: "output" },
+        { id: "review", name: "Review", kind: "output" },
+      ],
+      edges: [
+        { from: "start", to: "gate" },
+        { from: "gate", to: "deploy", conditionValue: true },
+        { from: "gate", to: "review" },
+      ],
+    });
+    const run = pipeline.createRun();
+    const output = JSON.parse('{"__proto__":{"approved":true},"artifact":"build"}');
+    const started = pipeline.completeNode(run, "start", { output });
+    expect(started.context.approved).toBeUndefined();
+    expect(Object.hasOwn(started.context, "__proto__")).toBe(true);
+    expect(started.context.artifact).toBe("build");
+    const gated = pipeline.completeNode(started, "gate", {});
+    expect(gated.currentNodeIds).toEqual(["review"]);
+  });
+
   it("builds a DAG pipeline and detects cycle errors", () => {
     const pipeline = new WorkflowPipeline({
       id: "feature_pipeline",
