@@ -5,7 +5,7 @@
  * "agent" is a common noun: lowercase mid-sentence, capitalized only at the start
  * of a label/sentence or in a proper name (Agent State, AgentHub).
  */
-import type { Strings } from "./strings";
+import type { Strings } from "./strings-zh";
 
 export const en: Strings = {
   appName: "PenguinHarness",
@@ -13,9 +13,24 @@ export const en: Strings = {
   nav: {
     chat: "Chat",
     newChat: "New chat",
+    cockpit: "Agent Cockpit",
+    spendFlow: "Spend Flow",
+    topology: "Code Topology",
+    guardian: "Shell Guardian",
+    consensus: "Quorum Consensus",
+    contextBreakdown: "Context Breakdown",
+    memory: "Memory Vault",
+    keyFleet: "Key Fleet",
+    flamegraph: "Trace Flamegraph",
+    snapshots: "Session Snapshots",
     agents: "Agents",
+    kanban: "Task Board",
+    pipelines: "Pipelines",
+    wiki: "Code Graph & Wiki",
+    skills: "Skills Hub",
     plugins: "Plugin library",
     models: "Models",
+    gateway: "Gateway & Quotas",
     machines: "Machines",
     usage: "Cost Center",
     traces: "Trajectories",
@@ -929,6 +944,40 @@ export const en: Strings = {
     syncDone: (added: number, updated: number) =>
       `Presets synced: ${added} added, ${updated} updated`,
     syncUpToDate: "Presets are already up to date",
+    imageBaseUrl: "Image API Base URL",
+    imageBaseUrlPlaceholder: "https://… (leave empty to inherit Base URL)",
+    imageBaseUrlHint:
+      "Separate endpoint for image / vision / multimodal requests (e.g. https://api-images.bynara.id/v1/)",
+    showApiKey: "Show API key",
+    hideApiKey: "Hide API key",
+    revealApiKeyError: "Failed to reveal API key",
+    groupDefaults: "Group defaults",
+    groupDefaultsTitle: "Configure group defaults",
+    groupDefaultsDesc:
+      "Set default base URLs inherited by models in this group that do not specify their own",
+    defaultBaseUrl: "Default Base URL",
+    defaultImageBaseUrl: "Default Image API Base URL",
+    applyToExistingModels: (n: number) => `Apply to all ${n} models in this group`,
+    groupDefaultsSaved: "Group defaults updated",
+    batchSelect: "Select models",
+    batchSelected: (n: number) => `${n} selected`,
+    selectAll: (n: number) => `Select all (${n})`,
+    clearSelection: "Clear selection",
+    batchDelete: (n: number) => `Delete (${n}) models`,
+    batchDeleteTitle: "Delete selected models",
+    batchDeleteConfirm: (group: string, n: number) =>
+      `Delete ${n} selected models from ${group}? This action cannot be undone.`,
+    batchDeleted: (n: number) => `Deleted ${n} models`,
+    pruneFailed: "Prune dead models",
+    pruneFailedTitle: "Prune non-responding models",
+    pruneFailedConfirm: (group: string, n: number) =>
+      `Remove ${n} non-responding models from ${group}?`,
+    prunedFailed: (n: number) => `Removed ${n} non-responding models`,
+    noFailedModels: "All tested models responded successfully",
+    syncCustomGroup: "Discover / sync models",
+    syncCustomGroupTitle: "Sync models from endpoint",
+    syncCustomGroupNoNew: "Endpoint has no new models to add",
+    syncCustomGroupDone: (n: number) => `Added ${n} newly discovered models`,
     aiAddTitle: "Add a model group with AI",
     aiAddIntro:
       "Hand the agent a model listing page or a description of the service, and it adds the models as one group with penguin config commands. For an OpenAI-compatible endpoint that lists its own models, Add group → Import models is faster.",
@@ -1158,6 +1207,30 @@ export const en: Strings = {
     resetKeys: "Reset Keys",
     resettingKeys: "Resetting...",
     keysResetSuccess: "API keys reset successfully",
+    tabCatalog: "Model Catalog",
+    tabKeyPools: "Key Pools & Health",
+    keyPoolsTitle: "API Key Health & Rotation Telemetry",
+    keyPoolsDesc:
+      "Monitor multi-key round-robin rotation, active cooldowns from 429 rate limits, 401 evictions, and failure telemetry.",
+    filterAll: "All Models",
+    filterHealthy: "Healthy Only",
+    filterIssues: "Issues / Cooldown",
+    resetAllKeys: "Reset All Key Pools",
+    refreshHealth: "Refresh Telemetry",
+    activeLeases: "Active Leases",
+    successRate: "Success Rate",
+    failureCount: "Failures",
+    successCount: "Successes",
+    cooldownTimer: "Cooldown Left",
+    lastUsed: "Last Used",
+    neverUsed: "Never",
+    noKeysConfigured: "Using environment fallback or gateway credentials",
+    allKeysHealthy: "All configured keys are healthy",
+    keysInCooldown: (n: number) => `${n} key(s) in 429 cooldown`,
+    keysEvicted: (n: number) => `${n} key(s) evicted (401)`,
+    totalKeysConfigured: "Total Keys Configured",
+    healthyPoolsRatio: "Healthy Ratio",
+    resetSuccess: "Key pool status reset successfully",
   },
 
   memory: {
@@ -2186,6 +2259,7 @@ Scenarios:
     contextWindowUnderThresholdAction: "Open agent settings",
     contextWindowUnderThresholdDismiss: "Dismiss",
     slashHint: "Type / for commands",
+    runningFooterHint: "Press [Enter] to queue, [Ctrl+Enter] to steer immediately",
     switchAgent: "Hand off to another agent — opens a new session on send",
     switchAgentTitle: "Choose agent",
     agentSearchPlaceholder: "Search agents: id / name",

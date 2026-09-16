@@ -55,6 +55,77 @@ describe("MailboxKernel", () => {
     expect(summary.queueDepth).toBe(2);
     expect(summary.pendingReplyCount).toBe(1);
   });
+
+  it("enforces maximum queue capacity to prevent resource exhaustion", () => {
+    const mb = new MailboxKernel({ maxQueueDepth: 3 });
+    mb.send("worker-capped", "caller", "m1", {});
+    mb.send("worker-capped", "caller", "m2", {});
+    mb.send("worker-capped", "caller", "m3", {});
+
+    expect(() => mb.send("worker-capped", "caller", "m4", {})).toThrow(/maximum queue capacity/);
+  });
+
+  it("enforces maximum payload size", () => {
+    const mb = new MailboxKernel({ maxPayloadSizeBytes: 100 });
+    const hugePayload = "x".repeat(200);
+
+    expect(() => mb.send("worker-payload", "caller", "msg", hugePayload)).toThrow(
+      /maximum allowed size/,
+    );
+  });
+
+  it("atomically polls and acquires lease without dropping messages on conflict", () => {
+    const mb = new MailboxKernel();
+    mb.send("worker-atomic", "caller", "work", { job: 1 });
+
+    // Acquire lease first
+    const l1 = mb.acquireLease("worker-atomic", "other-event", 5000);
+    expect(l1.leaseState).toBe("acquired");
+
+    // pollAndLease should return null because lease is already held, message must NOT be dropped
+    const conflict = mb.pollAndLease("worker-atomic", 5000);
+    expect(conflict).toBeNull();
+
+    // Release lease
+    mb.releaseLease("worker-atomic", l1.leaseToken);
+
+    // Now pollAndLease should succeed and return the intact message
+    const success = mb.pollAndLease<{ job: number }>("worker-atomic", 5000);
+    expect(success).not.toBeNull();
+    expect(success?.message.payload.job).toBe(1);
+    expect(success?.lease.leaseState).toBe("acquired");
+  });
+
+  it("supports requeueing messages safely", () => {
+    const mb = new MailboxKernel();
+    mb.send("worker-requeue", "caller", "work", { step: 1 });
+    const msg = mb.poll<{ step: number }>("worker-requeue");
+    expect(msg?.payload.step).toBe(1);
+
+    // Requeue
+    mb.requeue("worker-requeue", msg!);
+    const polledAgain = mb.poll<{ step: number }>("worker-requeue");
+    expect(polledAgain?.payload.step).toBe(1);
+    expect(polledAgain?.attempts).toBe(2);
+  });
+
+  it("enforces maximum mailbox cardinality limit", () => {
+    const mb = new MailboxKernel({ maxMailboxes: 2 });
+    mb.send("agent-1", "caller", "event", {});
+    mb.send("agent-2", "caller", "event", {});
+    expect(() => mb.send("agent-3", "caller", "event", {})).toThrow(
+      /Maximum mailbox cardinality limit reached/,
+    );
+  });
+
+  it("enforces maximum queue capacity on requeue", () => {
+    const mb = new MailboxKernel({ maxQueueDepth: 1 });
+    mb.send("worker-capacity", "caller", "event", { n: 1 });
+    const polled = mb.poll("worker-capacity")!;
+    // Fill queue back to max capacity
+    mb.send("worker-capacity", "caller", "event", { n: 2 });
+    expect(() => mb.requeue("worker-capacity", polled)).toThrow(/reached maximum queue capacity/);
+  });
 });
 
 describe("EventBroker", () => {

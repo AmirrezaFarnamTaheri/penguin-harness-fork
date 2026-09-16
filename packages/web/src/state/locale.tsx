@@ -1,13 +1,12 @@
 /**
  * Language context: zh / en / system (tracks navigator.language, listens for languagechange).
- * On switch, first synchronously calls setActiveStrings (assigned during render, idempotent),
- * then remounts the whole tree keyed on locale so every `S.x` read immediately reflects the
+ * On switch, dynamically loads the target dictionary via loadStrings, calls setActiveStrings,
+ * and remounts the whole tree keyed on locale so every `S.x` read immediately reflects the
  * new language; the preference persists to localStorage.
  */
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { setActiveStrings, zh } from "../lib/strings";
-import { en } from "../lib/strings-en";
+import { loadStrings, setActiveStrings } from "../lib/strings";
 
 export type LangPref = "zh" | "en" | "system";
 export type Locale = "zh" | "en";
@@ -51,20 +50,39 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   const [, setSysTick] = useState(0);
 
   const locale = resolve(lang);
-  // Switch the active dictionary during render (idempotent assignment): children are keyed on
-  // locale and render after this component, so they always read the post-switch dictionary.
-  setActiveStrings(locale === "en" ? en : zh);
+
+  // In case the target dictionary has not loaded yet (e.g. initial mount in tests or fast switch),
+  // load it and set active strings.
+  useEffect(() => {
+    void loadStrings(locale).then((dict) => {
+      setActiveStrings(dict);
+    });
+  }, [locale]);
 
   useEffect(() => {
     if (lang !== "system") return;
-    const onChange = () => setSysTick((t) => t + 1);
+    const onChange = () => {
+      const targetLocale = systemLocale();
+      void loadStrings(targetLocale).then((dict) => {
+        setActiveStrings(dict);
+        setSysTick((t) => t + 1);
+      });
+    };
     window.addEventListener("languagechange", onChange);
     return () => window.removeEventListener("languagechange", onChange);
   }, [lang]);
 
   const setLang = useCallback((next: LangPref) => {
-    localStorage.setItem(STORAGE_KEY, next);
-    setLangState(next);
+    const targetLocale = resolve(next);
+    void loadStrings(targetLocale).then((dict) => {
+      setActiveStrings(dict);
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        // Storage error ignored
+      }
+      setLangState(next);
+    });
   }, []);
 
   return (

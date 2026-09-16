@@ -296,6 +296,11 @@ export class Environment implements EnvironmentInterface {
     return this.mcp?.pendingServerNames() ?? [];
   }
 
+  /** Terminates idle MCP servers that haven't been used in maxIdleMs to reclaim memory and OS processes. */
+  closeIdleMcpServers(maxIdleMs?: number): number {
+    return this.mcp?.closeIdleConnections(maxIdleMs) ?? 0;
+  }
+
   /** Releases runtime resources held by Environment: finalizes all managed background sessions (command and subagent) and closes MCP clients (stdio server processes included). Idempotent. */
   dispose(): void {
     // Suppress completion reports first: dispose kills the remaining background sessions, and

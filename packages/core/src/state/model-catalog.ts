@@ -168,6 +168,8 @@ export interface ModelCatalogEntry {
   clientType?: string;
   /** Preset base URL: inlined into gateway and direct MiniMax entries so only an API key is required. */
   baseUrl?: string;
+  /** Preset image/vision base URL for endpoints separating text and image APIs. */
+  imageBaseUrl?: string;
 }
 
 /**
@@ -2251,6 +2253,7 @@ export function presetModelEntries(): ModelEntry[] {
       // image hand-off, see project-config.ts).
       ...(m.supportsVision ? {} : { vision: false }),
       ...(m.baseUrl !== undefined ? { base_url: m.baseUrl } : {}),
+      ...(m.imageBaseUrl !== undefined ? { image_base_url: m.imageBaseUrl } : {}),
     };
   });
 }

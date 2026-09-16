@@ -50,12 +50,24 @@ export class TaskWatchdog {
     this.config = { ...DEFAULT_WATCHDOG_CONFIG, ...config };
   }
 
+  public getConfig(): WatchdogConfig {
+    return { ...this.config };
+  }
+
   public start(): void {
     const now = Date.now();
     this.startTime = now;
     this.lastHeartbeatTime = now;
     this.currentStep = 0;
     this.currentStepStartedAt = now;
+    this.terminalState = undefined;
+    this.abortReason = undefined;
+    this.warnings.length = 0;
+  }
+
+  public stop(): void {
+    this.startTime = 0;
+    this.currentStep = 0;
     this.terminalState = undefined;
     this.abortReason = undefined;
     this.warnings.length = 0;

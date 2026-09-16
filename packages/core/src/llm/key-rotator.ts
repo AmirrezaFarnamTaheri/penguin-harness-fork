@@ -12,6 +12,24 @@ import type { SubagentKeyStrategy } from "../interfaces/environment.js";
 
 export type KeyHealth = "healthy" | "cooldown" | "evicted";
 
+export type KeyRotatorEventType =
+  | "lease_acquired"
+  | "lease_released"
+  | "success"
+  | "failure"
+  | "cooldown"
+  | "evicted"
+  | "revived"
+  | "keys_updated";
+
+export interface KeyRotatorEvent {
+  type: KeyRotatorEventType;
+  key?: string;
+  rotator: ApiKeyRotator;
+  timestamp: number;
+  details?: Record<string, unknown>;
+}
+
 export interface KeyStatus {
   key: string;
   /** High-level health status: healthy, cooldown (transient), or evicted (auth failure). */
@@ -65,6 +83,38 @@ export class ApiKeyRotator {
   private currentIndex: number = -1;
   private readonly cooldownMs: number;
   private leasedKey?: KeyStatus;
+  private readonly listeners = new Set<(event: KeyRotatorEvent) => void>();
+
+  /**
+   * Subscribes to key rotation and inference telemetry events. Returns an unsubscribe callback.
+   */
+  public onChange(listener: (event: KeyRotatorEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emitChange(
+    type: KeyRotatorEventType,
+    key?: string,
+    details?: Record<string, unknown>,
+  ): void {
+    const event: KeyRotatorEvent = {
+      type,
+      key,
+      rotator: this,
+      timestamp: Date.now(),
+      details,
+    };
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // ignore subscriber errors
+      }
+    }
+  }
 
   constructor(keys: string[] | string | KeyStatus[], opts: ApiKeyRotatorOptions = {}) {
     this.cooldownMs = opts.cooldownMs ?? opts.rateLimitCooldownMs ?? 60_000;
@@ -145,6 +195,7 @@ export class ApiKeyRotator {
           candidate.activeLeases = (candidate.activeLeases ?? 0) + 1;
           this.leasedKey = candidate;
         }
+        this.emitChange("lease_acquired", candidate.key);
         return candidate.key;
       }
     }
@@ -209,7 +260,33 @@ export class ApiKeyRotator {
     if (target) {
       target.successCount++;
       target.cooldownUntil = 0;
+      this.emitChange("success", target.key);
     }
+  }
+
+  /**
+   * Explicitly revives a key, clearing failure/eviction status and resetting cooldown.
+   */
+  reviveKey(key?: string): void {
+    if (!key) return;
+    const target = this.keys.find((k) => k.key === key);
+    if (target) {
+      target.isFailed = false;
+      target.cooldownUntil = 0;
+      this.emitChange("revived", target.key);
+    }
+  }
+
+  /**
+   * Resets cooldown for all non-failed keys without mutating success counts.
+   */
+  resetAllCooldowns(): void {
+    for (const k of this.keys) {
+      if (!k.isFailed && k.cooldownUntil > 0) {
+        k.cooldownUntil = 0;
+      }
+    }
+    this.emitChange("revived");
   }
 
   /**
@@ -234,6 +311,12 @@ export class ApiKeyRotator {
       const ms = customCooldownMs ?? this.cooldownMs;
       target.cooldownUntil = Date.now() + ms;
     }
+    const evType: KeyRotatorEventType =
+      errorType === "auth" ? "evicted" : errorType === "rate_limit" ? "cooldown" : "failure";
+    this.emitChange(evType, target.key, {
+      errorType,
+      cooldownMs: target.cooldownUntil > Date.now() ? target.cooldownUntil - Date.now() : 0,
+    });
   }
 
   /**
@@ -275,6 +358,7 @@ export class ApiKeyRotator {
       }
     }
     this.currentIndex = -1;
+    this.emitChange("keys_updated");
   }
 
   /**
@@ -322,6 +406,7 @@ export class ApiKeyRotator {
       k.lastUsedAt = undefined;
     }
     this.currentIndex = -1;
+    this.emitChange("revived");
   }
 
   /**
@@ -350,8 +435,10 @@ export class ApiKeyRotator {
    */
   releaseLease(): void {
     if (this.leasedKey) {
+      const k = this.leasedKey.key;
       this.leasedKey.activeLeases = Math.max(0, (this.leasedKey.activeLeases ?? 0) - 1);
       this.leasedKey = undefined;
+      this.emitChange("lease_released", k);
     }
   }
 
@@ -491,14 +578,18 @@ export class KeyRotatorRegistry {
 
   /**
    * Retrieves or creates an ApiKeyRotator for a given scope.
-   * If `keys` is provided and non-empty, updates the rotator's keys.
+   * If `keys` is provided and non-empty, updates the rotator's keys unless `options.updateExisting === false`.
    */
-  static get(scope: string, keys?: string[]): ApiKeyRotator {
+  static get(
+    scope: string,
+    keys?: string[],
+    options?: { updateExisting?: boolean },
+  ): ApiKeyRotator {
     let rotator = this.instances.get(scope);
     if (!rotator) {
       rotator = new ApiKeyRotator(keys ?? []);
       this.instances.set(scope, rotator);
-    } else if (keys !== undefined && keys.length > 0) {
+    } else if (keys !== undefined && keys.length > 0 && options?.updateExisting !== false) {
       rotator.updateKeys(keys);
     }
     return rotator;

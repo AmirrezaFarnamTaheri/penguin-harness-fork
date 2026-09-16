@@ -21,8 +21,9 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { S } from "../../lib/strings";
-import { CopyButton } from "../../components/ui/copy-button";
+import { CodeToolbar } from "../../components/ui/code-toolbar";
+import { DiffBlock } from "../../components/ui/diff-block";
+import { ArtifactPreviewDrawer } from "./artifact-preview-drawer";
 
 /**
  * The highlighted code, with no box around it.
@@ -143,18 +144,51 @@ export function CodeBlock({
   code: string;
   highlight?: boolean;
 }) {
+  const [wrapped, setWrapped] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const lang = (language || "").toLowerCase().trim();
+  const isDiff =
+    lang === "diff" ||
+    (code.startsWith("--- a/") && code.includes("+++ b/")) ||
+    (code.startsWith("diff --git") && code.includes("@@"));
+
+  if (isDiff) {
+    return <DiffBlock diffString={code} className="my-2" />;
+  }
+
+  const previewable = ["html", "htm", "svg"].includes(lang);
+  const previewKind: "html" | "svg" | "code" =
+    lang === "html" || lang === "htm" ? "html" : lang === "svg" ? "svg" : "code";
+
   return (
-    <div className="code-block my-2 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-1 dark:border-gray-800 dark:bg-gray-900">
-        <span className="font-mono text-xs lowercase text-gray-500 dark:text-gray-400">
-          {language || "text"}
-        </span>
-        {/* Always visible — the header bar has no hover-gated container. */}
-        <CopyButton text={code} label={S.chat.copyCode} />
+    <>
+      <div className="code-block my-2 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+        <CodeToolbar
+          language={language || "text"}
+          code={code}
+          previewable={previewable}
+          onPreview={previewable ? () => setPreviewOpen(true) : undefined}
+          onToggleWrap={(w) => setWrapped(w)}
+        />
+        <div
+          className={`overflow-x-auto bg-white text-[13px] leading-relaxed dark:bg-gray-950 ${
+            wrapped ? "whitespace-pre-wrap break-words" : ""
+          }`}
+        >
+          <CodeSurface language={language} code={code} highlight={highlight} wrap={wrapped} />
+        </div>
       </div>
-      <div className="overflow-x-auto bg-white text-[13px] leading-relaxed dark:bg-gray-950">
-        <CodeSurface language={language} code={code} highlight={highlight} />
-      </div>
-    </div>
+
+      {previewable && previewOpen && (
+        <ArtifactPreviewDrawer
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={`${(language || "Artifact").toUpperCase()} Preview`}
+          kind={previewKind}
+          content={code}
+        />
+      )}
+    </>
   );
 }

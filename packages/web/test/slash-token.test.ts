@@ -3,7 +3,11 @@
  * boundary, no URL/path false positives) and token removal on command run.
  */
 import { describe, expect, it } from "vitest";
-import { matchSlash, removeSlashToken } from "../src/features/chat/slash-token";
+import {
+  filterSlashCommands,
+  matchSlash,
+  removeSlashToken,
+} from "../src/features/chat/slash-token";
 
 describe("matchSlash", () => {
   it("matches at the start of the text", () => {
@@ -49,5 +53,55 @@ describe("removeSlashToken", () => {
     expect(removeSlashToken(text, matchSlash(text, text.length)!)).toBe(
       "steps:\n  - one\n    - nested\n",
     );
+  });
+});
+
+describe("filterSlashCommands", () => {
+  const commands = [
+    { cmd: "/compact", desc: "Compress context" },
+    { cmd: "/goal", desc: "Goal mode" },
+    { cmd: "/model", desc: "Switch model" },
+    { cmd: "/agent", desc: "Handoff to agent" },
+    { cmd: "/skills", desc: "Skills selection" },
+    {
+      cmd: "/ai-research-skills-creative-thinking-for-research",
+      desc: "Brainstorm research ideas",
+    },
+    { cmd: "/penguin-sdk", desc: "Develop with SDK" },
+  ];
+
+  it("returns all commands when query is empty", () => {
+    expect(filterSlashCommands(commands, "")).toEqual(commands);
+    expect(filterSlashCommands(commands, "   ")).toEqual(commands);
+  });
+
+  it("matches exact command with highest priority", () => {
+    const res = filterSlashCommands(commands, "skills");
+    expect(res[0]?.cmd).toBe("/skills");
+  });
+
+  it("matches prefix commands", () => {
+    const res = filterSlashCommands(commands, "com");
+    expect(res[0]?.cmd).toBe("/compact");
+  });
+
+  it("matches word boundary in long skill commands (e.g. creative inside skill name)", () => {
+    const res = filterSlashCommands(commands, "creative");
+    expect(res.map((c) => c.cmd)).toContain("/ai-research-skills-creative-thinking-for-research");
+  });
+
+  it("matches substring in command name", () => {
+    const res = filterSlashCommands(commands, "sdk");
+    expect(res.map((c) => c.cmd)).toEqual(["/penguin-sdk"]);
+  });
+
+  it("matches terms in description", () => {
+    const res = filterSlashCommands(commands, "compress");
+    expect(res.map((c) => c.cmd)).toEqual(["/compact"]);
+  });
+
+  it("handles leading slashes in query", () => {
+    const res = filterSlashCommands(commands, "/goal");
+    expect(res[0]?.cmd).toBe("/goal");
   });
 });

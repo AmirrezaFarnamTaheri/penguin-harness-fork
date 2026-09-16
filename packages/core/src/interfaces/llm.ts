@@ -32,6 +32,8 @@ export interface GenerativeModelConfig {
   /** Optional pre-configured key rotator instance (e.g. from shared registry). */
   keyRotator?: ApiKeyRotator;
   baseUrl?: string;
+  /** Custom image/vision base URL for platforms with separate text and image APIs (e.g. router.bynara.id vs api-images.bynara.id). */
+  imageBaseUrl?: string;
   /**
    * AgentHub client protocol (`openai-chat` / `openai-responses` / `claude-4-8` /
    * `deepseek-v4` / …; the bare `openai` spelling is a deprecated alias of `openai-chat`). If

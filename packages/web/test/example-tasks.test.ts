@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { EXAMPLE_FOLDERS, EXAMPLE_TASKS } from "../src/features/chat/example-tasks";
 import { buildSkillsMessage } from "../src/features/chat/skill-use";
 import { en } from "../src/lib/strings-en";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 
 describe("draft example tasks", () => {
   it.each(["agentBenchmarkBuild", "agentOptimization"] as const)(

@@ -457,6 +457,7 @@ export interface ModelPricingDto {
 export interface CredentialInfo {
   apiKeyMasked?: string;
   baseUrl?: string;
+  imageBaseUrl?: string;
   createdAt?: string;
 }
 
@@ -510,6 +511,11 @@ export interface ModelInfo {
   isDefault: boolean;
 }
 
+export interface ModelGroupDefaultsDto {
+  defaultBaseUrl?: string;
+  defaultImageBaseUrl?: string;
+}
+
 export interface ModelsResponse {
   /** Paired reference to the default Model. */
   defaultModel?: ModelRefDto;
@@ -522,6 +528,7 @@ export interface ModelsResponse {
    * (the key was fixed since). Absent when the Project has no config file yet.
    */
   updatedAt?: string;
+  groupDefaults?: Record<string, ModelGroupDefaultsDto>;
   models: ModelInfo[];
 }
 
@@ -560,6 +567,8 @@ export interface ModelUpdateEntry {
   clearApiKey?: boolean;
   /** null clears it; omitted keeps the existing value. */
   baseUrl?: string | null;
+  /** Endpoint for image/multimodal operations when distinct from text API; null clears it. */
+  imageBaseUrl?: string | null;
 }
 
 export interface ModelsUpdateRequest {
@@ -567,6 +576,7 @@ export interface ModelsUpdateRequest {
   defaultModel?: ModelRefDto;
   /** Vision model used as a proxy reader for read_file: must be included in models and not annotated vision=false; omitted keeps the existing value. */
   visionModel?: ModelRefDto;
+  groupDefaults?: Record<string, ModelGroupDefaultsDto>;
   models: ModelUpdateEntry[];
 }
 
@@ -593,6 +603,8 @@ export interface ModelTestRequest {
    * `undefined` means fall back to the stored value only when not provided.
    */
   baseUrl?: string | null;
+  /** Image API base URL when distinct from text base URL; null means explicitly clear it. */
+  imageBaseUrl?: string | null;
   /** AgentHub client protocol; required for unsaved custom models (otherwise the id can't be auto-routed). */
   clientType?: string;
   /**
@@ -621,6 +633,8 @@ export interface ModelVisionDetectRequest {
   clearApiKey?: boolean;
   /** Form's current base URL; null means "explicitly none" (as in the connectivity test). */
   baseUrl?: string | null;
+  /** Form's current image base URL; null means "explicitly none". */
+  imageBaseUrl?: string | null;
   /** Protocol to speak, when the form has one; otherwise the stored/auto-routed client. */
   clientType?: string;
 }
@@ -656,7 +670,14 @@ export interface ModelTestResponse {
    * rather than the model. Callers render TTFT alone in that case.
    */
   tps?: number;
+  /** Model context window limit in tokens when detected from catalog or endpoint. */
+  contextWindow?: number;
   message?: string;
+}
+
+/** Response containing decrypted/revealed API key for owner display. */
+export interface ModelKeyResponse {
+  apiKey: string;
 }
 
 /**
@@ -2557,6 +2578,10 @@ export interface SessionContextResponse extends SessionContextParts {
    * or when the derived threshold is not below the window — nothing to mark inside the gauge.
    */
   compactionThreshold: number | null;
+  /**
+   * Total context window capacity (tokens) of the active model backing this Session, or null if unknown.
+   */
+  contextWindow?: number | null;
 }
 
 export interface TraceEventsResponse {

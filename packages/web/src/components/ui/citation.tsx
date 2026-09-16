@@ -24,6 +24,24 @@ export function Citation({
   className = "",
 }: CitationProps) {
   if (compact) {
+    if (url && !onOpen) {
+      return (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          title={snippet ?? title}
+          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-gray-300 bg-gray-50 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors cursor-pointer ${className}`}
+        >
+          {index !== undefined && (
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white shrink-0">
+              {index}
+            </span>
+          )}
+          <span className="truncate max-w-[140px] font-medium">{title}</span>
+        </a>
+      );
+    }
     return (
       <button
         type="button"

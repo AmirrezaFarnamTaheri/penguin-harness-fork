@@ -21,7 +21,7 @@ import {
 } from "../src/lib/nav-group-collapse";
 import type { NavCollapseStorage } from "../src/lib/nav-group-collapse";
 import { NAV_ICONS } from "../src/components/ui/icons";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 /** In-memory storage (vitest runs in a Node environment, no localStorage; draft-cache.test.ts convention). */
@@ -35,19 +35,33 @@ function memStorage(): NavCollapseStorage & { map: Map<string, string> } {
 }
 
 describe("NAV_GROUP_KEYS", () => {
-  it("covers exactly the 智能体 → 评估中心 range, in rendered order", () => {
+  it("covers exactly the 驾驶舱 → 评估中心 range, in rendered order", () => {
     // Traces is deliberately absent: the Trace panel moved into the chat toolbar's panel
     // switcher (features/dock), and /traces stays reachable through its deep links only.
     expect([...NAV_GROUP_KEYS]).toEqual([
+      "cockpit",
+      "topology",
+      "guardian",
+      "consensus",
+      "contextBreakdown",
+      "memory",
+      "keyFleet",
+      "flamegraph",
+      "snapshots",
       "agents",
+      "kanban",
+      "pipelines",
+      "wiki",
+      "skills",
       "plugins",
       "models",
+      "gateway",
       "machines",
       "usage",
       "benchmark",
     ]);
     // Pin the endpoints by label: a manifest edit that shifts the range shows up here.
-    expect(zh.nav[NAV_GROUP_KEYS[0]]).toBe("智能体");
+    expect(zh.nav[NAV_GROUP_KEYS[0]]).toBe("驾驶舱");
     expect(zh.nav[NAV_GROUP_KEYS[NAV_GROUP_KEYS.length - 1]!]).toBe("评估中心");
   });
 
@@ -72,10 +86,50 @@ describe("navKeysFor", () => {
   it("hides the admin-only entries from a member, and nothing else", () => {
     // /api/machines is admin-gated server-side (it spawns ssh with the server account's
     // keys), so offering a member the row would only ever produce a 403.
-    expect([...navKeysFor(false)]).toEqual(["agents", "plugins", "models", "usage", "benchmark"]);
+    expect([...navKeysFor(false)]).toEqual([
+      "cockpit",
+      "topology",
+      "guardian",
+      "consensus",
+      "contextBreakdown",
+      "memory",
+      "keyFleet",
+      "flamegraph",
+      "snapshots",
+      "agents",
+      "kanban",
+      "pipelines",
+      "wiki",
+      "skills",
+      "plugins",
+      "models",
+      "gateway",
+      "usage",
+      "benchmark",
+    ]);
     // An admin sees the manifest minus what is built but not yet offered — `machines` today,
     // which is why neither answer contains it and the two are equal for now.
-    expect([...navKeysFor(true)]).toEqual(["agents", "plugins", "models", "usage", "benchmark"]);
+    expect([...navKeysFor(true)]).toEqual([
+      "cockpit",
+      "topology",
+      "guardian",
+      "consensus",
+      "contextBreakdown",
+      "memory",
+      "keyFleet",
+      "flamegraph",
+      "snapshots",
+      "agents",
+      "kanban",
+      "pipelines",
+      "wiki",
+      "skills",
+      "plugins",
+      "models",
+      "gateway",
+      "usage",
+      "benchmark",
+    ]);
     expect(NAV_GROUP_KEYS as readonly string[]).toContain("machines");
   });
 });

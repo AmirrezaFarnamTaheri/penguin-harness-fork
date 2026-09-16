@@ -10,7 +10,8 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { en } from "../src/lib/strings-en";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { compactionBadgeLabel } from "../src/features/traces/trace-file-view";
 
 // S is a live binding shared across the suite: always hand it back the default.

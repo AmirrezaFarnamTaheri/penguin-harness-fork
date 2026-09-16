@@ -11,7 +11,8 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { BUILTIN_TOOL_FACTORIES } from "@prismshadow/penguin-core";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 import { toolDisplayName } from "../src/lib/tool-alias";
 

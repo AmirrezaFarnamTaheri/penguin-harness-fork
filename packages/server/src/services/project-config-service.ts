@@ -61,6 +61,7 @@ import type {
   CommandPolicyRuleDto,
   EndpointModelListRequest,
   EndpointModelListResponse,
+  ModelGroupDefaultsDto,
   ModelInfo,
   ModelPricingDto,
   ModelProtocolDetectRequest,
@@ -695,6 +696,10 @@ export class ProjectConfigService {
     const apiKey = req.clearApiKey ? undefined : (req.apiKey ?? savedKey);
     const savedBaseUrl = optStr(entry.base_url);
     const baseUrl = req.baseUrl === null ? undefined : (req.baseUrl ?? savedBaseUrl);
+    const savedImageBaseUrl = optStr(entry.image_base_url);
+    const imageBaseUrl =
+      req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
+    const effectiveVisionUrl = imageBaseUrl ?? baseUrl;
     const clientType = canonicalClientType(req.clientType ?? optStr(entry.client_type));
     try {
       // Inside the try for the same reason as testModel: the SDK throws on a missing
@@ -702,7 +707,7 @@ export class ProjectConfigService {
       const llm = new GenerativeModel({
         modelId: req.modelId,
         ...(apiKey ? { apiKey } : {}),
-        ...(baseUrl ? { baseUrl } : {}),
+        ...(effectiveVisionUrl ? { baseUrl: effectiveVisionUrl } : {}),
         ...(clientType ? { clientType } : {}),
         tools: [],
         // The lowest real level, not "none": several reasoning endpoints reject a request
@@ -792,6 +797,9 @@ export class ProjectConfigService {
     const apiKey = req.clearApiKey ? undefined : (req.apiKey ?? savedKey);
     const savedBaseUrl = optStr(entry.base_url);
     const baseUrl = req.baseUrl === null ? undefined : (req.baseUrl ?? savedBaseUrl);
+    const savedImageBaseUrl = optStr(entry.image_base_url);
+    const imageBaseUrl =
+      req.imageBaseUrl === null ? undefined : (req.imageBaseUrl ?? savedImageBaseUrl);
     // The pre-0.4.2 "openai" spelling (request or stored entry) is normalized to the
     // canonical "openai-chat" (deprecated upstream alias; see canonicalClientType).
     const clientType = canonicalClientType(req.clientType ?? optStr(entry.client_type));
@@ -813,6 +821,7 @@ export class ProjectConfigService {
         modelId: req.modelId,
         ...(apiKey ? { apiKey } : {}),
         ...(baseUrl ? { baseUrl } : {}),
+        ...(imageBaseUrl ? { imageBaseUrl } : {}),
         ...(clientType ? { clientType } : {}),
         ...(fastMode ? { fastMode: true } : {}),
         tools: [],
@@ -837,7 +846,16 @@ export class ProjectConfigService {
         if (step.done) {
           const verdict = probeVerdict(step.value, sawContent);
           if (!verdict.ok) return verdict;
-          const res: ModelTestResponse = { ok: true, latencyMs: Date.now() - startedAt };
+          const detectedContextWindow =
+            optNum(entry.context_window) ??
+            catalogEntryFor(req.provider, req.modelId)?.contextWindow;
+          const res: ModelTestResponse = {
+            ok: true,
+            latencyMs: Date.now() - startedAt,
+            ...(detectedContextWindow !== undefined
+              ? { contextWindow: detectedContextWindow }
+              : {}),
+          };
           if (firstContentAt !== null) {
             res.ttftMs = firstContentAt - startedAt;
             // Output rate over the streaming window (first content -> stream end), dropped
@@ -953,6 +971,19 @@ export class ProjectConfigService {
     const raw = await this.readRaw(projectId);
     const defaultRef = optRef(raw.default_model);
     const visionRef = optRef(raw.vision_model);
+    const groupDefaultsRaw = asTable(raw.group_defaults);
+    const groupDefaults: Record<string, ModelGroupDefaultsDto> = {};
+    for (const [provider, def] of Object.entries(groupDefaultsRaw)) {
+      const table = asTable(def);
+      const defaultBaseUrl = optStr(table.default_base_url);
+      const defaultImageBaseUrl = optStr(table.default_image_base_url);
+      if (defaultBaseUrl !== undefined || defaultImageBaseUrl !== undefined) {
+        groupDefaults[provider] = {
+          ...(defaultBaseUrl !== undefined ? { defaultBaseUrl } : {}),
+          ...(defaultImageBaseUrl !== undefined ? { defaultImageBaseUrl } : {}),
+        };
+      }
+    }
     const models: ModelInfo[] = asArray(raw.models)
       // An entry is valid only if both provider and model_id are strings (an entry in the old concatenated format lacks provider and is ignored).
       .filter((m) => typeof m.provider === "string" && typeof m.model_id === "string")
@@ -998,6 +1029,7 @@ export class ProjectConfigService {
         // credential is inlined on the entry: a credential block is emitted if either api_key or base_url is present.
         const apiKey = optStr(m.api_key);
         const credBaseUrl = optStr(m.base_url);
+        const credImageBaseUrl = optStr(m.image_base_url);
         const createdAt = optStr(m.created_at);
         // Masked env-fallback preview, first-party entries only (see envFallbackFirstParty):
         // presence is implied by the field, the plaintext never leaves the server, and an
@@ -1020,7 +1052,9 @@ export class ProjectConfigService {
             defaultRef.model_id === modelId,
           ...(optNum(m.context_window) !== undefined
             ? { contextWindow: optNum(m.context_window)! }
-            : {}),
+            : cat?.contextWindow !== undefined
+              ? { contextWindow: cat.contextWindow }
+              : {}),
           ...(clientType ? { clientType } : {}),
           ...(vision !== undefined ? { vision } : {}),
           ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -1028,11 +1062,12 @@ export class ProjectConfigService {
           ...(envKey ? { envKey } : {}),
           ...(envKeyMasked !== undefined ? { envKeyMasked } : {}),
           ...(pricingDto ? { pricing: pricingDto } : {}),
-          ...(apiKey !== undefined || credBaseUrl !== undefined
+          ...(apiKey !== undefined || credBaseUrl !== undefined || credImageBaseUrl !== undefined
             ? {
                 credential: {
                   ...(apiKey !== undefined ? { apiKeyMasked: maskApiKey(apiKey) } : {}),
                   ...(credBaseUrl !== undefined ? { baseUrl: credBaseUrl } : {}),
+                  ...(credImageBaseUrl !== undefined ? { imageBaseUrl: credImageBaseUrl } : {}),
                   ...(createdAt !== undefined ? { createdAt } : {}),
                 },
               }
@@ -1049,6 +1084,7 @@ export class ProjectConfigService {
       ...(defaultRef !== undefined ? { defaultModel: toDto(defaultRef) } : {}),
       ...(visionRef !== undefined ? { visionModel: toDto(visionRef) } : {}),
       ...(updatedAt !== undefined ? { updatedAt } : {}),
+      ...(Object.keys(groupDefaults).length > 0 ? { groupDefaults } : {}),
       models,
     };
   }
@@ -1158,6 +1194,8 @@ export class ProjectConfigService {
       }
       if (entry.baseUrl === null) delete next.base_url;
       else if (entry.baseUrl !== undefined) next.base_url = entry.baseUrl;
+      if (entry.imageBaseUrl === null) delete next.image_base_url;
+      else if (entry.imageBaseUrl !== undefined) next.image_base_url = entry.imageBaseUrl;
       nextModels.push(next);
     }
 
@@ -1218,6 +1256,17 @@ export class ProjectConfigService {
       model_id: ref.modelId,
     });
     const next: RawTable = { ...raw, models: nextModels };
+    if (req.groupDefaults !== undefined) {
+      const gd: RawTable = {};
+      for (const [provider, def] of Object.entries(req.groupDefaults)) {
+        const block: RawTable = {};
+        if (def.defaultBaseUrl) block.default_base_url = def.defaultBaseUrl;
+        if (def.defaultImageBaseUrl) block.default_image_base_url = def.defaultImageBaseUrl;
+        if (Object.keys(block).length > 0) gd[provider] = block;
+      }
+      if (Object.keys(gd).length > 0) next.group_defaults = gd;
+      else delete next.group_defaults;
+    }
     if (defaultModel !== undefined) next.default_model = toRaw(defaultModel);
     else delete next.default_model;
     if (visionModel !== undefined) next.vision_model = toRaw(visionModel);
@@ -1246,6 +1295,74 @@ export class ProjectConfigService {
     if (applied === 0) return 0;
     await this.writeRaw(projectId, { ...raw, models: nextModels });
     return applied;
+  }
+
+  /**
+   * Reveal saved API key for a specific model (requires project ownership).
+   */
+  async getModelApiKey(projectId: string, provider: string, modelId: string): Promise<string> {
+    const raw = await this.readRaw(projectId);
+    const entry = asArray(raw.models).find((m) => entryMatches(m, provider, modelId));
+    if (!entry) {
+      throw badRequest(`Model not found: ${provider}/${modelId}`);
+    }
+    return optStr(entry.api_key) ?? "";
+  }
+
+  /**
+   * Set provider group defaults (default_base_url, default_image_base_url) and optionally
+   * propagate to existing models in the group.
+   */
+  async setGroupDefaults(
+    projectId: string,
+    provider: string,
+    defaults: ModelGroupDefaultsDto,
+    applyToExisting = false,
+  ): Promise<void> {
+    const raw = await this.readRaw(projectId);
+    const groupDefaults = { ...asTable(raw.group_defaults) };
+    const groupTable: RawTable = { ...asTable(groupDefaults[provider]) };
+    if (defaults.defaultBaseUrl !== undefined) {
+      if (defaults.defaultBaseUrl) groupTable.default_base_url = defaults.defaultBaseUrl;
+      else delete groupTable.default_base_url;
+    }
+    if (defaults.defaultImageBaseUrl !== undefined) {
+      if (defaults.defaultImageBaseUrl)
+        groupTable.default_image_base_url = defaults.defaultImageBaseUrl;
+      else delete groupTable.default_image_base_url;
+    }
+    if (Object.keys(groupTable).length > 0) {
+      groupDefaults[provider] = groupTable;
+    } else {
+      delete groupDefaults[provider];
+    }
+
+    let nextModels = asArray(raw.models);
+    if (applyToExisting) {
+      nextModels = nextModels.map((m) => {
+        if (m.provider !== provider) return m;
+        const updated = { ...m };
+        if (defaults.defaultBaseUrl !== undefined) {
+          if (defaults.defaultBaseUrl) updated.base_url = defaults.defaultBaseUrl;
+          else delete updated.base_url;
+        }
+        if (defaults.defaultImageBaseUrl !== undefined) {
+          if (defaults.defaultImageBaseUrl) updated.image_base_url = defaults.defaultImageBaseUrl;
+          else delete updated.image_base_url;
+        }
+        return updated;
+      });
+    }
+
+    const next: RawTable = {
+      ...raw,
+      models: nextModels,
+      ...(Object.keys(groupDefaults).length > 0 ? { group_defaults: groupDefaults } : {}),
+    };
+    if (Object.keys(groupDefaults).length === 0) {
+      delete next.group_defaults;
+    }
+    await this.writeRaw(projectId, next);
   }
 }
 

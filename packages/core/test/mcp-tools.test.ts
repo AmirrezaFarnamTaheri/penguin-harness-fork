@@ -1489,6 +1489,33 @@ describe("Session first-run bootstrap events", () => {
       await provider.close();
     }
   });
+
+  it("closes idle connections beyond maxIdleMs and closes server explicitly", async () => {
+    const provider = new McpToolProvider([fixtureEntry()], { warn: () => {} });
+    try {
+      const initialTools = await provider.listTools();
+      expect(initialTools.length).toBeGreaterThan(0);
+      expect(provider.pendingServerNames()).toHaveLength(0);
+
+      // No idle connections swept when under idle threshold
+      const closedNone = provider.closeIdleConnections(60_000, Date.now());
+      expect(closedNone).toBe(0);
+
+      // Swept when over idle threshold
+      const closed = provider.closeIdleConnections(10, Date.now() + 20_000);
+      expect(closed).toBe(1);
+      expect(provider.pendingServerNames()).toEqual(["fx"]);
+
+      // Explicit closeServer on reconnected server
+      const reconnected = await provider.listTools();
+      expect(reconnected.length).toBeGreaterThan(0);
+      const closedExplicit = await provider.closeServer("fx");
+      expect(closedExplicit).toBe(true);
+      expect(provider.pendingServerNames()).toEqual(["fx"]);
+    } finally {
+      await provider.close();
+    }
+  });
 });
 
 describe("MCP over Streamable HTTP", () => {

@@ -198,4 +198,14 @@ describe("packaged layout", () => {
     const builderConfig = fs.readFileSync(path.join(pkgDir, "electron-builder.yml"), "utf8");
     expect(builderConfig).toContain("- dist/node_modules/**/*");
   });
+
+  it("prunes foreign-platform native prebuilds from each installer target", () => {
+    const builderConfig = fs.readFileSync(path.join(pkgDir, "electron-builder.yml"), "utf8");
+    // macOS installers exclude Windows binaries
+    expect(builderConfig).toContain('"!dist/node_modules/node-pty/build/Release/conpty{,/**/*}"');
+    expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/win32*/**"');
+    // Windows installers exclude macOS binaries and foreign ARM64 Windows binaries
+    expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/darwin*/**"');
+    expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/win32-arm64/**"');
+  });
 });

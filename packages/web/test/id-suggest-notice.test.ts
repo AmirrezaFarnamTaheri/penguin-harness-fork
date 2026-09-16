@@ -10,7 +10,7 @@ import type {
   SemanticIdSuggestResponse,
 } from "@prismshadow/penguin-server/api";
 import { idSuggestNotice } from "../src/features/company/id-suggest-notice";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 const REASONS = Object.keys({

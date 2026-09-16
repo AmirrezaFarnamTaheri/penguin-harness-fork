@@ -25,7 +25,8 @@ import {
   type MessagingChannelFacts,
 } from "../src/features/messaging/messaging-binding-editor";
 import { emptyMessagingForm } from "../src/features/messaging/messaging-binding-form";
-import { S, setActiveStrings, zh } from "../src/lib/strings";
+import { S, setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 import { formatDateTime } from "../src/lib/format";
 

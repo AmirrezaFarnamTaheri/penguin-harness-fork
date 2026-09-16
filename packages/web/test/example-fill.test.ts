@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { buildExampleFill } from "../src/features/chat/example-fill";
 import { buildSkillsMessage } from "../src/features/chat/skill-use";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 
 const PROMPT = "Build a cute penguin sledding game.";
 

@@ -31,7 +31,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, shell } from "electron";
-import { resolveRoot } from "@prismshadow/penguin-core";
+import { resolveRoot } from "@prismshadow/penguin-core/paths";
 import { liveServerLock } from "@prismshadow/penguin-server/lock";
 import { appIdentity, desktopDataRoot } from "./app-identity.js";
 import { embeddedCliEntry } from "./launcher.js";
@@ -51,6 +51,8 @@ import {
   MAX_SERVER_RESTARTS,
   restartDelayMs,
 } from "./util.js";
+import { registerCockpitShortcut, setupDesktopTray, unregisterCockpitShortcut } from "./tray.js";
+import type { DesktopTrayManager } from "./tray.js";
 
 // Identity first: the name decides the userData directory, which also keys the
 // single-instance lock requested below — a dev (unpackaged) run takes a dev-suffixed
@@ -69,8 +71,10 @@ let server: EmbeddedServer | null = null;
 /** App origin (embedded or attached); null until boot resolves. */
 let appOrigin: string | null = null;
 let quitting = false;
+let isRestarting = false;
 let stopPromise: Promise<void> | null = null;
 let restartAttempts = 0;
+let trayManager: DesktopTrayManager | null = null;
 
 // app.name, not a literal: a dev run raises this box while the installed build may be
 // running beside it, and a dialog titled "PenguinHarness" cannot be attributed to either.
@@ -78,6 +82,25 @@ function fatal(context: string, err: unknown): void {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
   dialog.showErrorBox(app.name, `${context}\n\n${detail}`);
   app.exit(1);
+}
+
+function toggleCockpitWindow(): void {
+  if (win === null) {
+    if (appOrigin !== null) {
+      createWindow(`${appOrigin}/`);
+    }
+    return;
+  }
+  if (!win.isVisible() || win.isMinimized()) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  } else if (win.isFocused()) {
+    win.hide();
+  } else {
+    win.focus();
+  }
+  trayManager?.updateStatus();
 }
 
 function createWindow(url: string): void {
@@ -97,9 +120,17 @@ function createWindow(url: string): void {
       sandbox: true,
     },
   });
-  win.once("ready-to-show", () => win?.show());
+  win.once("ready-to-show", () => {
+    win?.show();
+    trayManager?.updateStatus();
+  });
+  win.on("show", () => trayManager?.updateStatus());
+  win.on("hide", () => trayManager?.updateStatus());
+  win.on("minimize", () => trayManager?.updateStatus());
+  win.on("restore", () => trayManager?.updateStatus());
   win.on("closed", () => {
     win = null;
+    trayManager?.updateStatus();
   });
   // "Open in a new tab" (Workspace HTML previews) is an app-origin link that mints a
   // token and 302s to the preview origin — it needs the session cookie, so it must open
@@ -196,12 +227,16 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
   });
   server = started;
   appOrigin = started.origin;
+  trayManager?.updateStatus();
   wireUpdaterRelay(started.child);
   // A run that stays up for a minute is healthy: reset the restart budget so a crash
   // days later starts a fresh 1s/2s/4s ladder instead of hitting the cap immediately.
   const healthyTimer = setTimeout(() => {
     restartAttempts = 0;
   }, 60_000);
+  if (typeof healthyTimer.unref === "function") {
+    healthyTimer.unref();
+  }
   started.child.on("exit", (code) => {
     clearTimeout(healthyTimer);
     void handleServerExit(dataRoot, code);
@@ -211,10 +246,39 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
   else void win.loadURL(url);
 }
 
+function resolveDataRoot(): string {
+  return desktopDataRoot({
+    envHome: process.env.PENGUIN_HOME,
+    isPackaged: app.isPackaged,
+    homedir: os.homedir(),
+    releaseRoot: resolveRoot,
+  });
+}
+
+/** Explicitly restart the embedded server (e.g. from the system tray menu). */
+async function restartServer(): Promise<void> {
+  isRestarting = true;
+  try {
+    if (server !== null) {
+      const running = server;
+      server = null;
+      trayManager?.updateStatus();
+      await stopEmbeddedServer(running);
+    }
+    restartAttempts = 0;
+    const dataRoot = resolveDataRoot();
+    await startServerAndWindow(dataRoot);
+    trayManager?.updateStatus();
+  } finally {
+    isRestarting = false;
+  }
+}
+
 /** Unexpected server death: restart with backoff; give up with an error dialog at the cap. */
 async function handleServerExit(dataRoot: string, code: number): Promise<void> {
-  if (quitting) return;
+  if (quitting || isRestarting) return;
   server = null;
+  trayManager?.updateStatus();
   if (restartAttempts >= MAX_SERVER_RESTARTS) {
     fatal(`The embedded server keeps exiting (last exit code ${code}).`, "Giving up.");
     return;
@@ -223,7 +287,7 @@ async function handleServerExit(dataRoot: string, code: number): Promise<void> {
   restartAttempts += 1;
   process.stdout.write(`[shell] server exited (code ${code}); restarting in ${wait}ms\n`);
   await new Promise((resolve) => setTimeout(resolve, wait));
-  if (quitting) return;
+  if (quitting || isRestarting) return;
   try {
     await startServerAndWindow(dataRoot);
   } catch (err) {
@@ -234,12 +298,7 @@ async function handleServerExit(dataRoot: string, code: number): Promise<void> {
 async function boot(): Promise<void> {
   // Explicit PENGUIN_HOME wins; otherwise a release build shares the CLI's data root and
   // a dev run takes the repo's dev root (the rule, and why, live in app-identity.ts).
-  const dataRoot = desktopDataRoot({
-    envHome: process.env.PENGUIN_HOME,
-    isPackaged: app.isPackaged,
-    homedir: os.homedir(),
-    releaseRoot: resolveRoot,
-  });
+  const dataRoot = resolveDataRoot();
   if (!app.isPackaged) {
     process.stdout.write(`[shell] dev instance '${app.name}' on data root ${dataRoot}\n`);
   }
@@ -248,6 +307,7 @@ async function boot(): Promise<void> {
     // Attach mode: the one-shot token only works against a server this shell spawned,
     // so the window goes through the normal login page of the existing instance.
     appOrigin = `http://localhost:${existing.port}`;
+    trayManager?.updateStatus();
     process.stdout.write(`[shell] attaching to the running server at ${appOrigin}\n`);
     createWindow(`${appOrigin}/`);
     return;
@@ -280,6 +340,9 @@ if (!app.requestSingleInstanceLock()) {
   // then let the quit proceed. Attach mode has no child to stop.
   app.on("before-quit", (event) => {
     quitting = true;
+    unregisterCockpitShortcut();
+    trayManager?.destroy();
+    trayManager = null;
     if (server !== null && stopPromise === null) {
       event.preventDefault();
       const running = server;
@@ -305,8 +368,20 @@ if (!app.requestSingleInstanceLock()) {
         includeCliInstall: currentCliInstallKind() !== null,
         onInstallCli: () => void installCliCommand(win),
       });
+      trayManager = setupDesktopTray({
+        appPath: app.getAppPath(),
+        platform: process.platform,
+        getAppOrigin: () => appOrigin,
+        isServerRunning: () => server !== null,
+        getWindow: () => win,
+        onToggleWindow: toggleCockpitWindow,
+        onRestartServer: () => void restartServer(),
+        onQuit: () => app.quit(),
+      });
+      registerCockpitShortcut(toggleCockpitWindow);
       initUpdater(() => win);
       await boot();
+      trayManager?.updateStatus();
       // Install or repair the bundled 'penguin' command. Runs every launch: that is what
       // carries it across an update and repairs a link a moved app left dangling. Skipped
       // in smoke mode — the macOS administrator prompt would hang the automated run.

@@ -64,4 +64,28 @@ describe("SandboxManager", () => {
     expect(manager.getSandbox(sbx.id)?.status).toBe("terminated");
     fs.rmSync(cwd, { recursive: true, force: true });
   });
+
+  it("isolates child environment from parent process.env secrets", async () => {
+    process.env.TEST_SECRET_KEY = "super-secret-parent-token";
+    try {
+      const manager = new SandboxManager();
+      const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-sandbox-env-"));
+      const sbx = manager.createSandbox({
+        provider: "local_process",
+        workingDirectory: cwd,
+        env: { CUSTOM_EXPLICIT_VAR: "allowed" },
+      });
+
+      const script =
+        'node -e "console.log(JSON.stringify({ secret: process.env.TEST_SECRET_KEY, custom: process.env.CUSTOM_EXPLICIT_VAR }))"';
+      const result = await manager.exec(sbx.id, script);
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.secret).toBeUndefined();
+      expect(parsed.custom).toBe("allowed");
+      fs.rmSync(cwd, { recursive: true, force: true });
+    } finally {
+      delete process.env.TEST_SECRET_KEY;
+    }
+  });
 });

@@ -92,4 +92,25 @@ describe("TurnLedger", () => {
     expect(ledger.getSummaries().length).toBe(1); // Summary retained
     expect(ledger.metrics.compactions).toBe(1);
   });
+
+  it("bounds in-memory records and summaries to configured capacities", () => {
+    const ledger = new TurnLedger("sess-bounded", { maxRecords: 5, maxSummaries: 2 });
+
+    for (let i = 1; i <= 4; i++) {
+      ledger.begin();
+      ledger.append("turn_status", null, "running");
+      ledger.append("text", `step ${i}`);
+      ledger.append("turn_done", `finished ${i}`, "completed");
+    }
+
+    // 4 turns * 3 events = 12 events total, but maxRecords is 5
+    const replay = ledger.replay(0);
+    expect(replay.events.length).toBeLessThanOrEqual(5);
+
+    // 4 completed turns, but maxSummaries is 2
+    const summaries = ledger.getSummaries();
+    expect(summaries.length).toBe(2);
+    expect(summaries[0]!.outcome).toBe("finished 3");
+    expect(summaries[1]!.outcome).toBe("finished 4");
+  });
 });

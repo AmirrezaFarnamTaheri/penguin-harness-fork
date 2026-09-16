@@ -31,7 +31,7 @@ import {
   storeWorkMode,
 } from "../src/lib/work-mode";
 import type { WorkModeStorage } from "../src/lib/work-mode";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 function memStorage(): WorkModeStorage & { map: Map<string, string> } {

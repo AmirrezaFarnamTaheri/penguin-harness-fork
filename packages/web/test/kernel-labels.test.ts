@@ -5,7 +5,8 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { kernelTabLabel } from "../src/features/agents/kernel-labels";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 /** Every tab core's KERNEL_TABS manages, in the settings page's tab order. */

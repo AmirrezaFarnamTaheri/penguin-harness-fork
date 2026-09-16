@@ -38,6 +38,7 @@ export function AgentsGlyph({ size = ICON_SIZE.iconButton }: { size?: number }) 
 }
 
 const API_TRACKER_ICON = "M22 12h-4l-3 9L9 3l-3 9H2";
+const COCKPIT_ICON = "M12 14l3.5-3.5M20.49 17A10 10 0 1 0 3.5 17";
 
 /** The panel's short display name (read at call time — `S` is a live locale binding). */
 export function panelLabel(kind: PanelKind): string {
@@ -56,6 +57,24 @@ export function panelLabel(kind: PanelKind): string {
       return S.schedule.panelTitle;
     case "apiTracker":
       return S.apiTracker?.panelTitle ?? "API Tracker";
+    case "cockpit":
+      return S.nav.cockpit ?? "Agent Cockpit";
+    case "spendFlow":
+      return S.nav.spendFlow ?? "Spend Flow";
+    case "topology":
+      return S.nav.topology ?? "Code Topology";
+    case "guardian":
+      return S.nav.guardian ?? "Shell Guardian";
+    case "consensus":
+      return S.nav.consensus ?? "Quorum Consensus";
+    case "contextBreakdown":
+      return S.nav.contextBreakdown ?? "Context Breakdown";
+    case "keyFleet":
+      return S.nav.keyFleet ?? "Key Fleet";
+    case "flamegraph":
+      return S.nav.flamegraph ?? "Flamegraph";
+    case "snapshots":
+      return S.nav.snapshots ?? "Snapshots";
   }
 }
 
@@ -75,5 +94,23 @@ export function panelGlyph(kind: PanelKind, size: number = ICON_SIZE.iconButton)
       return <GlyphIcon d={SCHEDULE_ICON} size={size} />;
     case "apiTracker":
       return <GlyphIcon d={API_TRACKER_ICON} size={size} />;
+    case "cockpit":
+      return <GlyphIcon d={COCKPIT_ICON} size={size} />;
+    case "spendFlow":
+      return <GlyphIcon d={NAV_ICONS.gateway} size={size} />;
+    case "topology":
+      return <GlyphIcon d={NAV_ICONS.topology} size={size} />;
+    case "guardian":
+      return <GlyphIcon d={NAV_ICONS.guardian} size={size} />;
+    case "consensus":
+      return <GlyphIcon d={NAV_ICONS.consensus} size={size} />;
+    case "contextBreakdown":
+      return <GlyphIcon d={NAV_ICONS.contextBreakdown} size={size} />;
+    case "keyFleet":
+      return <GlyphIcon d={NAV_ICONS.keyFleet} size={size} />;
+    case "flamegraph":
+      return <GlyphIcon d={NAV_ICONS.flamegraph} size={size} />;
+    case "snapshots":
+      return <GlyphIcon d={NAV_ICONS.snapshots} size={size} />;
   }
 }

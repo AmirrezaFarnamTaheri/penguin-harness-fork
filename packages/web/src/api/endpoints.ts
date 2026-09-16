@@ -193,6 +193,19 @@ import type {
   WorkspaceSearchResponse,
 } from "@prismshadow/penguin-server/api";
 import type { MCPServerConfig } from "@prismshadow/penguin-core/interfaces";
+import type {
+  KanbanTask,
+  KanbanTaskPriority,
+  KanbanTaskState,
+  TriageDraft,
+  WorkflowNode,
+  WorkflowEdge,
+  WorkflowRunState,
+  ModelCombo,
+  SessionCostRecord,
+  SpendFlowReport,
+  PersonaMask,
+} from "@prismshadow/penguin-core/browser";
 import { apiFetch, apiFetchWithMeta } from "./client";
 
 // Auth & user -----------------------------------------------------------------
@@ -382,6 +395,27 @@ export const resetModelKeys = (projectId: string, provider?: string, modelId?: s
   }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`, {
     method: "POST",
     body: provider && modelId ? { provider, modelId } : {},
+  });
+
+/** Reveals the saved plaintext API key for a model (project owner only). */
+export const getModelApiKey = (projectId: string, provider: string, modelId: string) =>
+  apiFetch<{ provider: string; modelId: string; apiKey: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/key?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`,
+  );
+
+/** Configures group-level defaults for base_url and image_base_url with optional bulk propagation. */
+export const putModelGroupDefaults = (
+  projectId: string,
+  body: {
+    provider: string;
+    defaultBaseUrl?: string;
+    defaultImageBaseUrl?: string;
+    applyToExisting?: boolean;
+  },
+) =>
+  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`, {
+    method: "PUT",
+    body,
   });
 
 // Provider key minting (owner) ----------------------------------------------------------
@@ -1731,3 +1765,240 @@ export const getOrgFinance = (projectId: string, orgId: string, period?: string)
 
 export const getOrgSessions = (projectId: string, orgId: string) =>
   apiFetch<OrgSessionsResponse>(`${orgBase(projectId, orgId)}/sessions`);
+
+// Kanban ----------------------------------------------------------------------
+
+export const listKanbanTasks = (
+  projectId: string,
+  params?: { state?: KanbanTaskState; priority?: KanbanTaskPriority; assignee?: string },
+) =>
+  apiFetch<{ tasks: KanbanTask[]; total: number }>(`/api/projects/${projectId}/kanban/tasks`, {
+    query: params as Record<string, string | undefined>,
+  });
+
+export const createKanbanTask = (
+  projectId: string,
+  body: {
+    title: string;
+    description?: string;
+    priority?: KanbanTaskPriority;
+    assignee?: string;
+    labels?: string[];
+  },
+) =>
+  apiFetch<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks`, {
+    method: "POST",
+    body,
+  });
+
+export const updateKanbanTask = (
+  projectId: string,
+  taskId: string,
+  body: {
+    state?: KanbanTaskState;
+    priority?: KanbanTaskPriority;
+    assignee?: string;
+    title?: string;
+    description?: string;
+  },
+) =>
+  apiFetch<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks/${taskId}`, {
+    method: "PATCH",
+    body,
+  });
+
+export const claimKanbanTask = (projectId: string, taskId: string, assignee: string) =>
+  apiFetch<{ ok: boolean; task: KanbanTask }>(
+    `/api/projects/${projectId}/kanban/tasks/${taskId}/claim`,
+    {
+      method: "POST",
+      body: { assignee },
+    },
+  );
+
+export const listTriageDrafts = (projectId: string) =>
+  apiFetch<{ drafts: TriageDraft[] }>(`/api/projects/${projectId}/kanban/drafts`);
+
+export const launchTriageDraft = (projectId: string, draftId: string) =>
+  apiFetch<{ ok: boolean; task: KanbanTask }>(
+    `/api/projects/${projectId}/kanban/drafts/${draftId}/launch`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+
+export const getKanbanStats = (projectId: string) =>
+  apiFetch<{ totalTasks: number; byState: Record<string, number>; activeDrafts: number }>(
+    `/api/projects/${projectId}/kanban/stats`,
+  );
+
+// Pipelines & Personas --------------------------------------------------------
+
+export interface PipelineRecord {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+export const listPipelines = (projectId: string) =>
+  apiFetch<{ pipelines: PipelineRecord[] }>(`/api/projects/${projectId}/pipelines`);
+
+export const createPipeline = (
+  projectId: string,
+  body: {
+    id: string;
+    name: string;
+    description?: string;
+    nodes: WorkflowNode[];
+    edges: WorkflowEdge[];
+  },
+) =>
+  apiFetch<{ ok: boolean; pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines`, {
+    method: "POST",
+    body,
+  });
+
+export const getPipeline = (projectId: string, pipelineId: string) =>
+  apiFetch<{ pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines/${pipelineId}`);
+
+export const deletePipeline = (projectId: string, pipelineId: string) =>
+  apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/pipelines/${pipelineId}`, {
+    method: "DELETE",
+  });
+
+export const runPipeline = (
+  projectId: string,
+  pipelineId: string,
+  input?: Record<string, unknown>,
+) =>
+  apiFetch<{ runId: string; run: WorkflowRunState }>(
+    `/api/projects/${projectId}/pipelines/${pipelineId}/run`,
+    {
+      method: "POST",
+      body: { input },
+    },
+  );
+
+export const getPipelineRun = (projectId: string, pipelineId: string, runId: string) =>
+  apiFetch<{ run: WorkflowRunState }>(
+    `/api/projects/${projectId}/pipelines/${pipelineId}/runs/${runId}`,
+  );
+
+export const stepPipelineRun = (projectId: string, pipelineId: string, runId: string) =>
+  apiFetch<{ run: WorkflowRunState }>(
+    `/api/projects/${projectId}/pipelines/${pipelineId}/runs/${runId}/step`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+
+export const listPersonas = () => apiFetch<{ personas: PersonaMask[] }>("/api/personas");
+
+// Knowledge Wiki & Code Graph -------------------------------------------------
+
+export interface WikiPageItem {
+  id: string;
+  filePath?: string;
+  updatedAt: string;
+  links: string[];
+}
+
+export interface WikiGraphData {
+  nodes: Array<{ id: string; linkCount: number }>;
+  edges: Array<{ from: string; to: string }>;
+}
+
+export const listWikiNodes = (projectId: string, q?: string) =>
+  apiFetch<{
+    nodes?: WikiPageItem[];
+    matches?: Array<{ id: string; snippet: string; score: number }>;
+  }>(`/api/projects/${projectId}/wiki/nodes`, { query: { q } });
+
+export const getWikiGraph = (projectId: string) =>
+  apiFetch<WikiGraphData>(`/api/projects/${projectId}/wiki/graph`);
+
+export const getWikiNode = (projectId: string, nodeId: string) =>
+  apiFetch<{
+    node: { id: string; content: string; filePath?: string; updatedAt: string; links: string[] };
+  }>(`/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}`);
+
+export const createWikiNode = (
+  projectId: string,
+  body: { id: string; content: string; filePath?: string },
+) =>
+  apiFetch<{ node: unknown }>(`/api/projects/${projectId}/wiki/nodes`, {
+    method: "POST",
+    body,
+  });
+
+export const deleteWikiNode = (projectId: string, nodeId: string) =>
+  apiFetch<{ deleted: boolean }>(
+    `/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+export const getWikiNeighbors = (projectId: string, nodeId: string, maxHops = 1) =>
+  apiFetch<{ nodeId: string; neighbors: string[] }>(
+    `/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}/neighbors`,
+    { query: { maxHops } },
+  );
+
+export const getWikiPath = (projectId: string, from: string, to: string) =>
+  apiFetch<{ path: string[] | null; hops?: number }>(`/api/projects/${projectId}/wiki/path`, {
+    query: { start: from, end: to, from, to },
+  });
+
+export const lintWikiGraph = (projectId: string) =>
+  apiFetch<{ brokenLinks: Array<{ from: string; to: string }>; orphanNodes: string[] }>(
+    `/api/projects/${projectId}/wiki/lint`,
+  );
+
+// Gateway & Quotas ------------------------------------------------------------
+
+export interface GatewayQuotaPayload {
+  activeQuota: {
+    sessionUsedPct: number | null;
+    weeklyUsedPct: number | null;
+    resetsIn: string | null;
+    status: string;
+  };
+  models: Array<{ provider: string; modelId: string; isCooling: boolean | null }>;
+}
+
+export const getGatewayQuota = (projectId: string) =>
+  apiFetch<GatewayQuotaPayload>(`/api/projects/${projectId}/gateway/quota`);
+
+export const getGatewayCombos = (projectId: string) =>
+  apiFetch<{ combos: ModelCombo[] }>(`/api/projects/${projectId}/gateway/combos`);
+
+export const putGatewayCombo = (projectId: string, body: ModelCombo) =>
+  apiFetch<{ ok: boolean; combo: ModelCombo }>(`/api/projects/${projectId}/gateway/combos`, {
+    method: "PUT",
+    body,
+  });
+
+export const deleteGatewayCombo = (projectId: string, id: string) =>
+  apiFetch<{ ok: boolean; deleted: boolean }>(
+    `/api/projects/${projectId}/gateway/combos/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+export const getGatewayPricing = (projectId: string) =>
+  apiFetch<{ catalog: unknown }>(`/api/projects/${projectId}/gateway/pricing`);
+
+export const computeGatewaySpendFlow = (
+  projectId: string,
+  body: { sessions?: SessionCostRecord[]; limit?: number },
+) =>
+  apiFetch<{ report: SpendFlowReport }>(`/api/projects/${projectId}/gateway/spend-flow`, {
+    method: "POST",
+    body,
+  });

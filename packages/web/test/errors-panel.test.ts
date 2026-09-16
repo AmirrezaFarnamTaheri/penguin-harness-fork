@@ -17,7 +17,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { UsageErrorItem, UsageErrors } from "@prismshadow/penguin-server/api";
 import { ErrorsPanel, errorsClearScopeText } from "../src/features/usage/errors-panel";
 import type { ErrorsFilters } from "../src/features/usage/errors-panel";
-import { S, setActiveStrings, zh } from "../src/lib/strings";
+import { S, setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 afterEach(() => setActiveStrings(zh));

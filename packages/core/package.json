@@ -45,6 +45,14 @@
       "types": "./dist/kernel/index.d.ts",
       "import": "./dist/kernel/index.js",
       "default": "./dist/kernel/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./paths": {
+      "types": "./dist/state/paths.d.ts",
+      "import": "./dist/state/paths.js"
     }
   },
   "main": "./dist/index.js",
@@ -52,7 +60,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "test:e2e": "node ../../scripts/run-with-env.mjs PENGUIN_E2E=1 -- vitest run test/llm.e2e.test.ts",
+    "test:e2e": "node ../../scripts/run-with-env.mjs PENGUIN_E2E=1 -- vitest run test/llm.e2e.test.ts test/agent-stream.e2e.test.ts",
     "build": "tsup"
   },
   "dependencies": {

@@ -21,7 +21,7 @@ export interface ShellSafetyAssessment {
   suggestedAction?: "allow" | "prompt_user" | "block";
 }
 
-interface SafetyRule {
+export interface SafetyRule {
   id: string;
   severity: ShellRiskLevel;
   pattern: RegExp;
@@ -158,6 +158,14 @@ export class ShellGuardian {
 
   constructor(additionalRules: SafetyRule[] = []) {
     this.customRules = [...additionalRules];
+  }
+
+  public setCustomRules(rules: SafetyRule[]): void {
+    this.customRules = [...rules];
+  }
+
+  public getCustomRules(): readonly SafetyRule[] {
+    return this.customRules;
   }
 
   /**

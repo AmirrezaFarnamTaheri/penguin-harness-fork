@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { QuorumConsensusEngine } from "../src/agent/quorum-consensus.js";
 
 describe("QuorumConsensusEngine", () => {
-  it("proposes, endorses with grounded evidence, and settles consensus", () => {
+  it("proposes, endorses with grounded evidence, and settles consensus upon reaching peer threshold", () => {
     const engine = new QuorumConsensusEngine({ threshold: 2, requireGrounded: true });
 
     const topic = engine.proposeTopic({
@@ -18,15 +18,31 @@ describe("QuorumConsensusEngine", () => {
       /explicit grounds/,
     );
 
-    const settled = engine.endorseTopic(
+    // Proposer cannot peer-endorse own topic
+    expect(() =>
+      engine.endorseTopic(topic.topicId, "architect-1", "I reiterate my grounds"),
+    ).toThrow(/cannot peer-endorse/);
+
+    // First peer endorsement -> status is still debating (1 / 2 required peers)
+    const debating = engine.endorseTopic(
       topic.topicId,
       "peer-agent-2",
       "Verified locally: tests pass and pnpm install takes 4s instead of 18s",
     );
+    expect(debating.status).toBe("debating");
+    expect(debating.settledAt).toBeUndefined();
+    expect(debating.supporters.length).toBe(2);
+
+    // Second peer endorsement -> reaches threshold of 2 peers -> settled
+    const settled = engine.endorseTopic(
+      topic.topicId,
+      "peer-agent-3",
+      "Benchmark independently reproduced in staging environment",
+    );
 
     expect(settled.status).toBe("settled");
     expect(settled.settledAt).toBeDefined();
-    expect(settled.supporters.length).toBe(2);
+    expect(settled.supporters.length).toBe(3);
   });
 
   it("refutes topic when contradictory evidence threshold is met", () => {

@@ -63,17 +63,23 @@ export interface TurnLedgerMetrics {
 
 export interface TurnLedgerOptions {
   maxReplayPageSize?: number;
+  maxRecords?: number;
+  maxSummaries?: number;
 }
 
 /**
- * TurnLedger manages an in-memory, ordered, durable lifecycle ledger for turns and events.
- * It provides sequence allocation, paged replay, terminal summaries, and projection acknowledgement.
+ * TurnLedger manages an in-memory, ordered lifecycle ledger for turns and events within an active session.
+ * Note: TurnLedger is retained in process memory for the lifetime of the session/runtime; it provides sequence
+ * allocation, bounded paged replay, terminal summaries, and projection acknowledgement during process execution,
+ * but does not persist across process restarts unless serialized to an external store.
  */
 export class TurnLedger {
   public static readonly SCHEMA_VERSION = 2;
 
   public readonly sessionId: string;
   private readonly maxReplayPageSize: number;
+  private readonly maxRecords: number;
+  private readonly maxSummaries: number;
 
   private nextSeq = 1;
   private activeTurnId: string | null = null;
@@ -104,7 +110,9 @@ export class TurnLedger {
 
   constructor(sessionId: string, options: TurnLedgerOptions = {}) {
     this.sessionId = sessionId;
-    this.maxReplayPageSize = options.maxReplayPageSize ?? 512;
+    this.maxReplayPageSize = Math.max(1, options.maxReplayPageSize ?? 512);
+    this.maxRecords = Math.max(1, options.maxRecords ?? 5000);
+    this.maxSummaries = Math.max(1, options.maxSummaries ?? 1000);
   }
 
   public begin(submissionId = "", runtimeEpoch = ""): string {
@@ -187,6 +195,21 @@ export class TurnLedger {
       this.metrics.streamRecords++;
     }
 
+    // Bound in-memory records to prevent heap leaks during long-running sessions
+    if (this.records.length > this.maxRecords) {
+      if (this.projectionCommittedThroughSeq > this.compactedThroughSeq) {
+        this.compact(this.projectionCommittedThroughSeq);
+      }
+      if (this.records.length > this.maxRecords) {
+        const excess = this.records.length - this.maxRecords;
+        const lastDroppedSeq = this.records[excess - 1]?.seq ?? 0;
+        this.records.splice(0, excess);
+        if (lastDroppedSeq > this.compactedThroughSeq) {
+          this.compactedThroughSeq = lastDroppedSeq;
+        }
+      }
+    }
+
     if (isTerminalStatus(this.currentStatus)) {
       this.isTerminal = true;
       const durationMs = Math.max(0, now - this.turnStartedAt);
@@ -201,6 +224,9 @@ export class TurnLedger {
         transcriptRevision: this.transcriptRevision,
         transcriptDigest: this.transcriptDigest,
       });
+      if (this.summaries.length > this.maxSummaries) {
+        this.summaries.splice(0, this.summaries.length - this.maxSummaries);
+      }
     }
 
     return env;

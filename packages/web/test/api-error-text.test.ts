@@ -10,7 +10,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError } from "../src/api/client";
 import { apiErrorText } from "../src/lib/api-error";
-import { S, setActiveStrings, zh as ZH } from "../src/lib/strings";
+import { S, setActiveStrings } from "../src/lib/strings";
+import { zh as ZH } from "../src/lib/strings-zh";
 import { en as EN } from "../src/lib/strings-en";
 
 /** The English message the server actually sends, so an unmapped code is visibly distinguishable. */

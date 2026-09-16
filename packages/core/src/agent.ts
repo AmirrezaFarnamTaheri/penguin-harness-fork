@@ -19,6 +19,7 @@ import {
   assertValidId,
   assembleSystemPrompt,
   buildToolConfig,
+  catalogEntryFor,
   selectBuiltinToolsForModel,
   DEFAULT_COMPACTION_PROMPT,
   formatModelRef,
@@ -260,6 +261,7 @@ interface SessionSpec {
   keyRotator?: ApiKeyRotator;
   onDispose?: () => void;
   baseUrl: string | undefined;
+  imageBaseUrl?: string;
   /**
    * The Session's thinking-level pin, the tri-state of {@link CreateSessionOptions.thinkingLevel}:
    * a value pins every context opened from now on; `null` runs them without a level;
@@ -532,10 +534,10 @@ export class Agent {
     // Compaction config: this context's baseline. It is no longer the last word — the engine
     // re-reads the section at every compaction checkpoint through `compactionReader` — but a
     // context still opens on the configuration that was on disk when it opened.
-    const compaction = resolveCompaction(
-      state.systemConfig.compaction,
-      spec.modelEntry.context_window,
-    );
+    const resolvedContextWindow =
+      spec.modelEntry.context_window ??
+      catalogEntryFor(spec.modelEntry.provider, spec.modelEntry.model_id)?.contextWindow;
+    const compaction = resolveCompaction(state.systemConfig.compaction, resolvedContextWindow);
 
     // session_meta: this context's runtime configuration — the assembled prompt goes both to
     // the LLM and in here, so the Trace can audit the actual effective value and a resume
@@ -545,7 +547,7 @@ export class Agent {
       session_id: spec.sessionId,
       provider: spec.modelEntry.provider,
       model_id: spec.modelEntry.model_id,
-      model_context_window: spec.modelEntry.context_window ?? "unknown",
+      model_context_window: resolvedContextWindow ?? "unknown",
       system_prompt: systemPrompt,
       agent_state: state.stateDir,
       workspace: spec.workspaceDir,
@@ -616,7 +618,9 @@ export class Agent {
       (opts.apiKey ? parseApiKeys(opts.apiKey) : undefined) ??
       modelEntry.api_keys ??
       (apiKey ? parseApiKeys(apiKey) : undefined);
-    const baseUrl = opts.baseUrl ?? modelEntry.base_url;
+    const groupDef = this.projectConfig.group_defaults?.[modelEntry.provider];
+    const baseUrl = opts.baseUrl ?? modelEntry.base_url ?? groupDef?.default_base_url;
+    const imageBaseUrl = modelEntry.image_base_url ?? groupDef?.default_image_base_url;
 
     // An explicit Workspace must already exist as a directory: if it
     // doesn't, throw rather than auto-create (to avoid a typo silently working in
@@ -650,6 +654,7 @@ export class Agent {
       apiKey,
       ...(apiKeys && apiKeys.length > 0 ? { apiKeys } : {}),
       baseUrl,
+      ...(imageBaseUrl !== undefined ? { imageBaseUrl } : {}),
       thinkingLevel: opts.thinkingLevel,
       subagentDepth: opts.subagentDepth ?? 0,
       ...(opts.keyRotator !== undefined ? { keyRotator: opts.keyRotator } : {}),
@@ -741,7 +746,9 @@ export class Agent {
       (opts.apiKey ? parseApiKeys(opts.apiKey) : undefined) ??
       modelEntry.api_keys ??
       (apiKey ? parseApiKeys(apiKey) : undefined);
-    const baseUrl = opts.baseUrl ?? modelEntry.base_url;
+    const groupDef = this.projectConfig.group_defaults?.[modelEntry.provider];
+    const baseUrl = opts.baseUrl ?? modelEntry.base_url ?? groupDef?.default_base_url;
+    const imageBaseUrl = modelEntry.image_base_url ?? groupDef?.default_image_base_url;
 
     // No level at resume: the host re-applies its stored value (Session.thinkingLevel) when it holds one,
     // and contexts opened without a pin read the Agent config's chain (the same chain
@@ -756,6 +763,7 @@ export class Agent {
       apiKey,
       ...(apiKeys && apiKeys.length > 0 ? { apiKeys } : {}),
       baseUrl,
+      ...(imageBaseUrl !== undefined ? { imageBaseUrl } : {}),
       thinkingLevel: undefined,
       subagentDepth: 0,
       ...(meta.source === "subagent" || meta.source === "schedule" ? { source: meta.source } : {}),
@@ -875,7 +883,9 @@ export class Agent {
   private compactionReader(spec: SessionSpec): () => Promise<CompactionSettings> {
     const { root, projectId, agentId } = this.state;
     const configPath = systemConfigPath(root, projectId, agentId);
-    const contextWindow = spec.modelEntry.context_window;
+    const contextWindow =
+      spec.modelEntry.context_window ??
+      catalogEntryFor(spec.modelEntry.provider, spec.modelEntry.model_id)?.contextWindow;
     let cachedKey: string | null = null;
     let cached: CompactionSettings | null = null;
     return async (): Promise<CompactionSettings> => {
@@ -947,7 +957,16 @@ export class Agent {
    * around the context it starts in — see {@link SessionRuntime} for what each part does.
    */
   private buildRuntime(spec: SessionSpec, initial: AssembledContext): SessionRuntime {
-    const { sessionId, workspaceDir, modelEntry, apiKey, apiKeys, baseUrl, subagentDepth } = spec;
+    const {
+      sessionId,
+      workspaceDir,
+      modelEntry,
+      apiKey,
+      apiKeys,
+      baseUrl,
+      imageBaseUrl,
+      subagentDepth,
+    } = spec;
     // The context the Session is running: the initial one, then whatever `openNextContext` last
     // assembled.
     let current = initial;
@@ -1201,6 +1220,12 @@ export class Agent {
       const visionRef = this.projectConfig.vision_model;
       const visionEntry = visionRef ? getModel(this.projectConfig, visionRef) : undefined;
       if (visionEntry && visionEntry.vision !== false) {
+        const visionGroupDef = this.projectConfig.group_defaults?.[visionEntry.provider];
+        const visionBaseUrl =
+          visionEntry.image_base_url ??
+          visionGroupDef?.default_image_base_url ??
+          visionEntry.base_url ??
+          visionGroupDef?.default_base_url;
         visionDescriber = {
           // The model attribution in the tool output matches the request's source: both are the entry's upstream model_id.
           modelId: visionEntry.model_id,
@@ -1212,7 +1237,7 @@ export class Agent {
                 : visionEntry.api_key !== undefined
                   ? { apiKey: visionEntry.api_key }
                   : {}),
-              ...(visionEntry.base_url !== undefined ? { baseUrl: visionEntry.base_url } : {}),
+              ...(visionBaseUrl !== undefined ? { baseUrl: visionBaseUrl } : {}),
               ...(visionEntry.client_type !== undefined
                 ? { clientType: visionEntry.client_type }
                 : {}),
@@ -1291,6 +1316,10 @@ export class Agent {
           ? KeyRotatorRegistry.get(rotatorScope, effectiveKeys)
           : undefined);
 
+      const resolvedContextWindow =
+        modelEntry.context_window ??
+        catalogEntryFor(modelEntry.provider, modelEntry.model_id)?.contextWindow;
+
       return new GenerativeModel({
         modelId: modelEntry.model_id,
         toolCallIds,
@@ -1301,12 +1330,11 @@ export class Agent {
             : {}),
         ...(keyRotator ? { keyRotator } : {}),
         ...(baseUrl !== undefined ? { baseUrl } : {}),
+        ...(imageBaseUrl !== undefined ? { imageBaseUrl } : {}),
         ...(modelEntry.client_type !== undefined ? { clientType: modelEntry.client_type } : {}),
         tools,
         systemPrompt: context.systemPrompt,
-        ...(modelEntry.context_window !== undefined
-          ? { contextWindow: modelEntry.context_window }
-          : {}),
+        ...(resolvedContextWindow !== undefined ? { contextWindow: resolvedContextWindow } : {}),
         ...(context.maxTokens !== undefined ? { maxTokens: context.maxTokens } : {}),
         // Fast mode is a session-request annotation: it rides every context's LLM object,
         // while the bare/meta LLM below and the vision describer deliberately skip it — their
@@ -1370,8 +1398,12 @@ export class Agent {
     // Bare LLM for one-off out-of-band requests (meta requests like generateTitle):
     // same Model/credentials, no tools, no system prompt, thinking disabled, a small
     // output cap, and an independent timeout.
-    const createBareLLM = (): GenerativeModel =>
-      new GenerativeModel({
+    const createBareLLM = (): GenerativeModel => {
+      const resolvedContextWindow =
+        modelEntry.context_window ??
+        catalogEntryFor(modelEntry.provider, modelEntry.model_id)?.contextWindow;
+
+      return new GenerativeModel({
         modelId: modelEntry.model_id,
         ...(apiKeys !== undefined && apiKeys.length > 0
           ? { apiKeys }
@@ -1379,6 +1411,7 @@ export class Agent {
             ? { apiKey }
             : {}),
         ...(baseUrl !== undefined ? { baseUrl } : {}),
+        ...(imageBaseUrl !== undefined ? { imageBaseUrl } : {}),
         ...(modelEntry.client_type !== undefined ? { clientType: modelEntry.client_type } : {}),
         tools: [],
         thinkingLevel: "none",
@@ -1386,11 +1419,10 @@ export class Agent {
         maxTokens: metaMaxTokens(300, modelEntry.max_tokens),
         // Same window derivation as ordinary requests (a formality here: the meta budget
         // is far below any real window, so the clamp never binds).
-        ...(modelEntry.context_window !== undefined
-          ? { contextWindow: modelEntry.context_window }
-          : {}),
+        ...(resolvedContextWindow !== undefined ? { contextWindow: resolvedContextWindow } : {}),
         requestTimeoutMs: 30_000,
       });
+    };
 
     // Credential validation stays at Session-creation time even though the session LLM is
     // built lazily now: provider SDKs throw at **client construction** when a credential

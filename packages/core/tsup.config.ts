@@ -21,6 +21,10 @@ export default defineConfig({
     "src/llm/context-limits.ts",
     // Hot-update kernel: zero-dependency subpath so web can bundle it directly.
     "src/kernel/index.ts",
+    // Browser-safe SDK entrypoint: pure types and zero-Node utilities for web bundling.
+    "src/browser.ts",
+    // Pure filesystem path helpers: zero-dependency subpath so desktop/cli can import resolveRoot without pulling core SDK.
+    "src/state/paths.ts",
   ],
   format: ["esm"],
   target: "node24",

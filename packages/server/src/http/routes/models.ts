@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import type {
   DefaultModelResponse,
   EndpointModelListRequest,
+  ModelGroupDefaultsDto,
   ModelProtocolDetectRequest,
   ModelRefDto,
   ModelsUpdateRequest,
@@ -169,6 +170,12 @@ function parseModelsUpdate(body: Record<string, unknown>): ModelsUpdateRequest {
       }
       entry.baseUrl = m.baseUrl as string | null;
     }
+    if (m.imageBaseUrl !== undefined) {
+      if (m.imageBaseUrl !== null && typeof m.imageBaseUrl !== "string") {
+        throw badRequest(`models[${i}].imageBaseUrl must be a string or null.`);
+      }
+      entry.imageBaseUrl = m.imageBaseUrl as string | null;
+    }
     return entry;
   });
   const req: ModelsUpdateRequest = { models };
@@ -177,6 +184,27 @@ function parseModelsUpdate(body: Record<string, unknown>): ModelsUpdateRequest {
   }
   if (body.visionModel !== undefined) {
     req.visionModel = parseRef(body.visionModel, "visionModel");
+  }
+  if (body.groupDefaults !== undefined) {
+    if (
+      typeof body.groupDefaults !== "object" ||
+      body.groupDefaults === null ||
+      Array.isArray(body.groupDefaults)
+    ) {
+      throw badRequest("groupDefaults must be an object.");
+    }
+    const gd: Record<string, ModelGroupDefaultsDto> = {};
+    for (const [provider, def] of Object.entries(body.groupDefaults as Record<string, unknown>)) {
+      if (typeof def === "object" && def !== null && !Array.isArray(def)) {
+        const d = def as Record<string, unknown>;
+        gd[provider] = {
+          defaultBaseUrl: typeof d.defaultBaseUrl === "string" ? d.defaultBaseUrl : undefined,
+          defaultImageBaseUrl:
+            typeof d.defaultImageBaseUrl === "string" ? d.defaultImageBaseUrl : undefined,
+        };
+      }
+    }
+    req.groupDefaults = gd;
   }
   return req;
 }
@@ -245,12 +273,17 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
       if (typeof body.speed !== "boolean") throw badRequest("speed must be a boolean.");
       req.speed = body.speed;
     }
-    // null = explicit clear (test against the draft, don't fall back to the stored value); empty string is treated as null.
     if (body.baseUrl !== undefined) {
       if (body.baseUrl !== null && typeof body.baseUrl !== "string") {
         throw badRequest("baseUrl must be a string or null.");
       }
       req.baseUrl = body.baseUrl ? body.baseUrl : null;
+    }
+    if (body.imageBaseUrl !== undefined) {
+      if (body.imageBaseUrl !== null && typeof body.imageBaseUrl !== "string") {
+        throw badRequest("imageBaseUrl must be a string or null.");
+      }
+      req.imageBaseUrl = body.imageBaseUrl ? body.imageBaseUrl : null;
     }
     if (body.clientType !== undefined) {
       if (typeof body.clientType !== "string") throw badRequest("clientType must be a string.");
@@ -345,12 +378,17 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
       if (typeof body.clearApiKey !== "boolean") throw badRequest("clearApiKey must be a boolean.");
       req.clearApiKey = body.clearApiKey;
     }
-    // null is meaningful (explicitly no base URL), so it is kept distinct from absent.
     if (body.baseUrl !== undefined) {
       if (body.baseUrl !== null && typeof body.baseUrl !== "string") {
         throw badRequest("baseUrl must be a string or null.");
       }
       req.baseUrl = body.baseUrl as string | null;
+    }
+    if (body.imageBaseUrl !== undefined) {
+      if (body.imageBaseUrl !== null && typeof body.imageBaseUrl !== "string") {
+        throw badRequest("imageBaseUrl must be a string or null.");
+      }
+      req.imageBaseUrl = body.imageBaseUrl as string | null;
     }
     if (body.clientType !== undefined) {
       if (typeof body.clientType !== "string") throw badRequest("clientType must be a string.");
@@ -439,6 +477,48 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
     }
 
     return c.json({ ok: true });
+  });
+
+  /**
+   * Reveal saved API key for a specific model (owner only).
+   * GET /api/projects/:projectId/models/key?provider=...&modelId=...
+   */
+  app.get("/key", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const provider = c.req.query("provider");
+    const modelId = c.req.query("modelId");
+    if (!provider || !modelId) {
+      throw badRequest("provider and modelId query parameters are required.");
+    }
+    const apiKey = await deps.projectConfigService.getModelApiKey(projectId, provider, modelId);
+    return c.json({ apiKey });
+  });
+
+  /**
+   * Set provider group defaults (default_base_url, default_image_base_url) and optionally
+   * propagate to existing models in the group (owner only).
+   * PUT /api/projects/:projectId/models/group-defaults
+   */
+  app.put("/group-defaults", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const body = await readJson(c);
+    const provider = requireString(body, "provider", { minLen: 1, maxLen: 64 });
+    const defaultBaseUrl =
+      typeof body.defaultBaseUrl === "string" ? body.defaultBaseUrl : undefined;
+    const defaultImageBaseUrl =
+      typeof body.defaultImageBaseUrl === "string" ? body.defaultImageBaseUrl : undefined;
+    const applyToExisting = body.applyToExisting === true;
+
+    await deps.projectConfigService.setGroupDefaults(
+      projectId,
+      provider,
+      { defaultBaseUrl, defaultImageBaseUrl },
+      applyToExisting,
+    );
+    modelConfigChanged(deps, projectId);
+    return c.json(await deps.projectConfigService.getModels(projectId));
   });
 
   return app;

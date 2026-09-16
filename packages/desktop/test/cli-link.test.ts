@@ -46,7 +46,7 @@ function packApp(name: string): string {
 }
 
 describe("syncSymlink (the macOS form)", () => {
-  it("installs when nothing is there", () => {
+  itPosix("installs when nothing is there", () => {
     const desired = packApp("PenguinHarness.app");
     const link = path.join(tmp, "usr-local-bin", "penguin");
 
@@ -57,7 +57,7 @@ describe("syncSymlink (the macOS form)", () => {
     expect(fs.readlinkSync(link)).toBe(desired);
   });
 
-  it("does nothing when it already points at this app", () => {
+  itPosix("does nothing when it already points at this app", () => {
     const desired = packApp("PenguinHarness.app");
     const link = path.join(tmp, "bin", "penguin");
     syncSymlink(link, desired, false);
@@ -83,7 +83,7 @@ describe("syncSymlink (the macOS form)", () => {
     expect(fs.readlinkSync(link)).toBe(desired);
   });
 
-  it("repairs a link pointing at an older install of this app", () => {
+  itPosix("repairs a link pointing at an older install of this app", () => {
     const stale = packApp("Old.app");
     const link = path.join(tmp, "bin", "penguin");
     fs.mkdirSync(path.dirname(link), { recursive: true });
@@ -108,7 +108,7 @@ describe("syncSymlink (the macOS form)", () => {
     expect(fs.lstatSync(link).isSymbolicLink()).toBe(false);
   });
 
-  it("never follows a foreign symlink either", () => {
+  itPosix("never follows a foreign symlink either", () => {
     const desired = packApp("PenguinHarness.app");
     const theirs = path.join(tmp, "dot-penguin", "bin", "penguin");
     fs.mkdirSync(path.dirname(theirs), { recursive: true });
@@ -121,7 +121,7 @@ describe("syncSymlink (the macOS form)", () => {
     expect(fs.readlinkSync(link)).toBe(theirs);
   });
 
-  it("replaces a foreign command only when forced, which only the menu item does", () => {
+  itPosix("replaces a foreign command only when forced, which only the menu item does", () => {
     const desired = packApp("PenguinHarness.app");
     const link = path.join(tmp, "bin", "penguin");
     fs.mkdirSync(path.dirname(link), { recursive: true });
@@ -166,7 +166,7 @@ describe("syncWrapper (the Linux AppImage form)", () => {
     expect(fs.readFileSync(target, "utf8")).toBe(script);
   });
 
-  it("never replaces the symlink install.sh puts at this exact path", () => {
+  itPosix("never replaces the symlink install.sh puts at this exact path", () => {
     // install.sh does `ln -sf ~/.penguin/bin/penguin ~/.local/bin/penguin`, unconditionally,
     // at the very path this form uses. Ours is the side that has to give way.
     const theirs = path.join(tmp, "dot-penguin", "bin", "penguin");

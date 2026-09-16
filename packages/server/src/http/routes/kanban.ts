@@ -95,13 +95,12 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
     }
 
     const assignee = c.req.query("assignee");
-    return c.json({
-      tasks: board.listTasks({
-        state,
-        priority,
-        assignee: assignee !== undefined ? assignee : undefined,
-      }),
+    const tasks = board.listTasks({
+      state,
+      priority,
+      assignee: assignee !== undefined ? assignee : undefined,
     });
+    return c.json({ tasks, total: tasks.length });
   });
 
   app.post("/tasks", async (c) => {
@@ -137,6 +136,18 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
       state = value;
     }
 
+    const assignee =
+      typeof body.assignee === "string" && body.assignee.trim().length > 0
+        ? body.assignee.trim()
+        : undefined;
+    const metadata: Record<string, unknown> =
+      typeof body.metadata === "object" && body.metadata !== null && !Array.isArray(body.metadata)
+        ? { ...(body.metadata as Record<string, unknown>) }
+        : {};
+    if (Array.isArray(body.labels)) {
+      metadata.labels = body.labels.map(String);
+    }
+
     const parentTaskId = typeof body.parentTaskId === "string" ? body.parentTaskId : undefined;
     const dependencies = Array.isArray(body.dependencies)
       ? body.dependencies.map(String)
@@ -150,12 +161,90 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
           description,
           state,
           priority,
+          assignee,
           parentTaskId,
           dependencies,
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         });
         return { value: board.exportState(), result: created };
       });
-      return c.json({ task }, 201);
+      return c.json({ ok: true, task }, 201);
+    } catch (error) {
+      throw badRequest((error as Error).message);
+    }
+  });
+
+  app.patch("/tasks/:taskId", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    const taskId = requireValidId(c, "taskId");
+    const body = await readJson(c);
+
+    let state: KanbanTaskState | undefined;
+    if (body.state !== undefined) {
+      const value = requireString(body, "state", {
+        minLen: 1,
+        maxLen: 30,
+        label: "state",
+      }) as KanbanTaskState;
+      if (!ALLOWED_STATES.includes(value)) {
+        throw badRequest(`Invalid state '${value}'. Allowed: ${ALLOWED_STATES.join(", ")}`);
+      }
+      state = value;
+    }
+
+    let priority: KanbanTaskPriority | undefined;
+    if (body.priority !== undefined) {
+      const value = requireString(body, "priority", {
+        minLen: 1,
+        maxLen: 30,
+        label: "priority",
+      }) as KanbanTaskPriority;
+      if (!ALLOWED_PRIORITIES.includes(value)) {
+        throw badRequest(`Invalid priority '${value}'. Allowed: ${ALLOWED_PRIORITIES.join(", ")}`);
+      }
+      priority = value;
+    }
+
+    const title = typeof body.title === "string" ? body.title : undefined;
+    const description = typeof body.description === "string" ? body.description : undefined;
+    const assignee =
+      typeof body.assignee === "string" ? body.assignee : body.assignee === null ? null : undefined;
+    const metadata =
+      typeof body.metadata === "object" && body.metadata !== null && !Array.isArray(body.metadata)
+        ? (body.metadata as Record<string, unknown>)
+        : undefined;
+
+    const force = body.force === true;
+    if (force) deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    else deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+
+    try {
+      const task = await store.update(projectId, (current) => {
+        const board = hydrateBoard(projectId, current);
+        const existing = board.getTask(taskId);
+        if (!existing) throw new Error(`Task with id '${taskId}' not found`);
+
+        let workerId: string | undefined;
+        let generation: number | undefined;
+        if (!force && state && (existing.assignee || (existing.leaseGeneration ?? 0) > 0)) {
+          workerId = typeof body.workerId === "string" ? body.workerId : undefined;
+          generation = typeof body.generation === "number" ? body.generation : undefined;
+        }
+        const updated = board.updateTask(
+          taskId,
+          {
+            title,
+            description,
+            priority,
+            assignee,
+            state,
+            metadata,
+          },
+          { force, workerId, generation },
+        );
+        return { value: board.exportState(), result: updated };
+      });
+      return c.json({ ok: true, task });
     } catch (error) {
       throw badRequest((error as Error).message);
     }
@@ -196,7 +285,7 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
         const updated = board.updateTaskState(taskId, nextState, { force, workerId, generation });
         return { value: board.exportState(), result: updated };
       });
-      return c.json({ task });
+      return c.json({ ok: true, task });
     } catch (error) {
       throw badRequest((error as Error).message);
     }
@@ -221,7 +310,7 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
         const claimed = board.claimTask(taskId, assignee, { leaseDurationMs, workerPid });
         return { value: board.exportState(), result: claimed };
       });
-      return c.json({ task });
+      return c.json({ ok: true, task });
     } catch (error) {
       throw badRequest((error as Error).message);
     }
@@ -243,7 +332,7 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
         const updated = board.heartbeat(taskId, { workerId, generation, leaseDurationMs });
         return { value: board.exportState(), result: updated };
       });
-      return c.json({ task });
+      return c.json({ ok: true, task });
     } catch (error) {
       throw badRequest((error as Error).message);
     }
@@ -263,10 +352,31 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
         const released = board.releaseTask(taskId, { workerId, generation });
         return { value: board.exportState(), result: released };
       });
-      return c.json({ task });
+      return c.json({ ok: true, task });
     } catch (error) {
       throw badRequest((error as Error).message);
     }
+  });
+
+  app.get("/drafts", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const board = hydrateBoard(projectId, await store.read(projectId));
+    return c.json({ drafts: board.listTriageDrafts() });
+  });
+
+  app.get("/triage/drafts", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const board = hydrateBoard(projectId, await store.read(projectId));
+    return c.json({ drafts: board.listTriageDrafts() });
+  });
+
+  app.get("/stats", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const board = hydrateBoard(projectId, await store.read(projectId));
+    return c.json(board.getStats());
   });
 
   app.post("/triage/draft", async (c) => {
@@ -286,10 +396,10 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
       });
       return { value: board.exportState(), result: created };
     });
-    return c.json({ draft }, 201);
+    return c.json({ ok: true, draft }, 201);
   });
 
-  app.post("/triage/drafts/:draftId/launch", async (c) => {
+  const handleLaunchDraft = async (c: import("hono").Context<AppEnv>) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const draftId = requireValidId(c, "draftId");
@@ -299,11 +409,14 @@ export function kanbanRoutes(deps: AppDeps): Hono<AppEnv> {
         const result = board.launchTriage(draftId);
         return { value: board.exportState(), result };
       });
-      return c.json(launched);
+      return c.json({ ok: true, ...launched });
     } catch (error) {
       throw notFound((error as Error).message);
     }
-  });
+  };
+
+  app.post("/drafts/:draftId/launch", handleLaunchDraft);
+  app.post("/triage/drafts/:draftId/launch", handleLaunchDraft);
 
   return app;
 }
