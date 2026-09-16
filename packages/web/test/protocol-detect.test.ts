@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { resolveModelEnv } from "@prismshadow/penguin-core/model-catalog";
-import { zh as ZH } from "../src/lib/strings";
+import { zh as ZH } from "../src/lib/strings-zh";
 import { en as EN } from "../src/lib/strings-en";
 import { clientTypeAfterProviderChange, rowToEntry } from "../src/features/models/models-page";
 import type { RowState } from "../src/features/models/models-page";

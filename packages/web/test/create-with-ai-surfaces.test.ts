@@ -11,7 +11,7 @@
  * key-names-only ask leads and no card hands the user a secret-shaped placeholder to fill.
  */
 import { describe, expect, it } from "vitest";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 import { composeAiPrompt } from "../src/features/ai-create/ai-create-prompt";
 import type { AiExample } from "../src/features/ai-create/ai-create-panel";

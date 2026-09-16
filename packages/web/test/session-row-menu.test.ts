@@ -31,7 +31,8 @@ import {
 import type { SessionRowAction } from "../src/components/ui/session-row-menu";
 import { MESSAGING_RELAY_ICON } from "../src/components/ui/icons";
 import { STAT_ICONS } from "../src/lib/stat-icons";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 /** Every test that switches locale puts the default (zh) back. */

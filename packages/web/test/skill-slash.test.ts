@@ -20,7 +20,7 @@ import {
   localizedText,
   skillSlashItems,
 } from "../src/features/chat/skill-use";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 describe("localizedText (copy selection by UI language)", () => {

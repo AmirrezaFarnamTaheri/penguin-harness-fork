@@ -10,7 +10,7 @@ import {
   toStoredUsd,
   unitLabel,
 } from "../src/features/company/budget-input";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 describe("toStoredUsd", () => {

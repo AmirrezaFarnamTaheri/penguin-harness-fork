@@ -5,7 +5,7 @@
  * "agent" is a common noun: lowercase mid-sentence, capitalized only at the start
  * of a label/sentence or in a proper name (Agent State, AgentHub).
  */
-import type { Strings } from "./strings";
+import type { Strings } from "./strings-zh";
 
 export const en: Strings = {
   appName: "PenguinHarness",

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ORG_EXAMPLES } from "../src/features/company/org-examples";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 describe("organization mission examples", () => {

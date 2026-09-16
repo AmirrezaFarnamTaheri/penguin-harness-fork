@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { OrgChannelNotice } from "@prismshadow/penguin-server/api";
 import { NOTICE_KINDS, noticeText } from "../src/features/company/channel-notices";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 const names = new Map([

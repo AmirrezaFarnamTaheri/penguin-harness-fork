@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CHAT_THINKING_LEVELS } from "@prismshadow/penguin-core";
 import { en } from "../src/lib/strings-en";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import {
   SELECTABLE_THINKING_LEVELS,
   THINKING_LEVELS,

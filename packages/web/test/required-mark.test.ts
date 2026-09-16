@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { Input } from "../src/components/ui/input";
 import { RequiredMark } from "../src/components/ui/field";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 const SRC = fileURLToPath(new URL("../src", import.meta.url));

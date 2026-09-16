@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { en } from "../src/lib/strings-en";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { compactionResultVisible, compactionSummaryText } from "../src/lib/omni/compaction-summary";
 
 describe("compactionSummaryText", () => {

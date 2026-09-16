@@ -11,7 +11,8 @@ import {
   hookImportLead,
   hookImportTail,
 } from "../src/features/agents/hook-import";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 /** What the agent has to get right, whichever language the tail is in. */

@@ -29,7 +29,7 @@ import {
 } from "../src/components/ui/group-list";
 import type { GroupMode } from "../src/components/ui/group-list";
 import type { SessionSortMode } from "../src/lib/session-order";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 describe("newEntityForGroupMode", () => {

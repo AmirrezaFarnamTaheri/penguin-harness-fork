@@ -12,7 +12,7 @@ import type { OrgHandbookFile } from "@prismshadow/penguin-server/api";
 import { HandbookExplorer } from "../src/features/company/handbook-explorer";
 import { HANDBOOK_INDEX, buildHandbookTree } from "../src/features/company/handbook-tree";
 import { formatBytes, formatDateTime } from "../src/lib/format";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 
 const UPDATED = "2026-09-02T10:00:00.000Z";
 const file = (path: string, size: number): OrgHandbookFile => ({ path, size, updatedAt: UPDATED });

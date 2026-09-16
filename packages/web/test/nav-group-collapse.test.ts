@@ -21,7 +21,7 @@ import {
 } from "../src/lib/nav-group-collapse";
 import type { NavCollapseStorage } from "../src/lib/nav-group-collapse";
 import { NAV_ICONS } from "../src/components/ui/icons";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 /** In-memory storage (vitest runs in a Node environment, no localStorage; draft-cache.test.ts convention). */

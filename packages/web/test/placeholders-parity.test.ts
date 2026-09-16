@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defaultSystemConfig } from "@prismshadow/penguin-core";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 const dictionaries = { zh, en };

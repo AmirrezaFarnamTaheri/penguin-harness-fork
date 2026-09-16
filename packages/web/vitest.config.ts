@@ -10,5 +10,6 @@ export default defineConfig({
     environment: "node",
     // Only run unit tests under test/; e2e/ (Playwright, has its own test:e2e) is excluded from vitest.
     include: ["test/**/*.test.ts"],
+    setupFiles: ["test/setup.ts"],
   },
 });

@@ -12,7 +12,8 @@ import {
   describeSchedule,
   periodMinutes,
 } from "../src/features/schedules/schedule-describe";
-import { setActiveStrings, zh } from "../src/lib/strings";
+import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 afterEach(() => setActiveStrings(zh));

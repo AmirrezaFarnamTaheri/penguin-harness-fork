@@ -12,7 +12,7 @@ import {
   ChannelMessageBody,
   ChannelReaderProvider,
 } from "../src/features/company/channel-markdown";
-import { zh } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 
 const reader = {
   names: new Map([["ceo", "Ada CEO"]]),

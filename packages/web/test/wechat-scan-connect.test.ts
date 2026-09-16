@@ -23,7 +23,8 @@ import type { WeChatBindingInfo, WeChatScanPollResponse } from "@prismshadow/pen
 import { ApiError } from "../src/api/client";
 import { WeChatScanConnect, wechatScanStep } from "../src/features/messaging/wechat-scan-connect";
 import type { WeChatScanTally } from "../src/features/messaging/wechat-scan-connect";
-import { S, zh } from "../src/lib/strings";
+import { S } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 import { en } from "../src/lib/strings-en";
 
 describe("WeChatScanConnect", () => {

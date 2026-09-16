@@ -23,8 +23,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
 import { bootInstallScope, watchInstallScope } from "./lib/install-scope";
-import { zh } from "./lib/strings";
-import { en } from "./lib/strings-en";
+import { loadStrings, setActiveStrings } from "./lib/strings";
+import { resolveSystemLocale } from "./state/locale";
 // KaTeX's stylesheet and its woff2 faces, resolved out of node_modules so Vite emits them as local
 // assets: the desktop app has to render math with no network, and a CDN <link> would leave every
 // formula as unstyled markup offline. Imported before styles.css so the app's own `.katex` rules
@@ -37,22 +37,23 @@ if (!container) throw new Error("#root mount point not found");
 
 const root = createRoot(container);
 
-function BootStatus() {
+function resolveInitialLocale(): "zh" | "en" {
   let preference: string | null = null;
   try {
     preference = localStorage.getItem("penguin.lang");
   } catch {
-    // Blocked site storage falls back to the browser language, as the app does.
+    // Blocked site storage falls back to the browser language.
   }
-  const strings =
-    preference === "zh" ||
-    (preference !== "en" && navigator.language.toLowerCase().startsWith("zh"))
-      ? zh
-      : en;
+  if (preference === "zh" || preference === "en") return preference;
+  return resolveSystemLocale(typeof navigator !== "undefined" ? navigator.language : undefined);
+}
+
+function BootStatus() {
+  const isZh = resolveInitialLocale() === "zh";
   return (
     <main className="flex min-h-screen items-center justify-center bg-white text-gray-700 dark:bg-gray-950 dark:text-gray-200">
       <p role="status" aria-live="polite">
-        {strings.common.loading}
+        {isZh ? "加载中..." : "Loading..."}
       </p>
     </main>
   );
@@ -75,9 +76,18 @@ watchInstallScope();
 // application initializers before the reload.
 root.render(<BootStatus />);
 
+// Preload the resolved initial dictionary concurrently with install-scope reconciliation.
+const initialLocale = resolveInitialLocale();
+const localePromise = loadStrings(initialLocale).then((dict) => {
+  setActiveStrings(dict);
+});
+
 // The rejection handler mounts too: bootInstallScope already swallows everything it can, and
 // the app must mount even if it somehow does not.
-void bootInstallScope().then((action) => {
-  if (action === "reload") location.reload();
-  else mount();
-}, mount);
+void Promise.all([bootInstallScope(), localePromise]).then(
+  ([action]) => {
+    if (action === "reload") location.reload();
+    else mount();
+  },
+  () => void localePromise.finally(mount),
+);
