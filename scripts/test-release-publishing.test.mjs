@@ -16,7 +16,7 @@ const publishing = workflow.slice(workflow.indexOf("          package_version_ex
 const validator = /node -e '([\s\S]*?)' "\$versions" "\$version"/.exec(publishing)?.[1];
 assert.ok(validator, "release workflow must expose its registry-response validator");
 
-function validate(response, version = "0.2.12") {
+function validate(response, version = "0.2.14") {
   let exitCode;
   runInNewContext(validator, {
     process: {
@@ -31,9 +31,9 @@ function validate(response, version = "0.2.12") {
 }
 
 test("published versions are skipped only on an exact match", () => {
-  assert.equal(validate('["0.2.11","0.2.12"]'), 0);
-  assert.equal(validate('"0.2.12"'), 0);
-  assert.equal(validate('["0.2.120","0.2.12-rc.1"]'), 1);
+  assert.equal(validate('["0.2.11","0.2.14"]'), 0);
+  assert.equal(validate('"0.2.14"'), 0);
+  assert.equal(validate('["0.2.140","0.2.14-rc.1"]'), 1);
   assert.equal(validate("[]"), 1);
 });
 
