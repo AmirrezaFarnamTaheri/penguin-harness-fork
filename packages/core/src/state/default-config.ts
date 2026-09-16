@@ -856,6 +856,10 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
             description:
               "Required, and emit it first, before the other arguments: it is shown to the user while the call runs. One short sentence describing what this call is doing and why, written in the user's language.",
           },
+          agent_description: {
+            type: "string",
+            description: "Describe this dispatched agent and its current assignment for peers. Written by you; unrelated to its decorative name.",
+          },
           prompt: {
             type: "string",
             description:
@@ -928,6 +932,10 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
             type: "string",
             description:
               "Required, and emit it first, before the other arguments: it is shown to the user while the call runs. One short sentence describing what this call is doing and why, written in the user's language.",
+          },
+          agent_description: {
+            type: "string",
+            description: "Optional explicit update to the agent description when its assignment genuinely changes. Omit on ordinary messages and polls to retain it.",
           },
           subagent_id: {
             type: "string",

@@ -85,6 +85,9 @@ interface PendingApproval {
 }
 
 export class ManagedSubagentSession {
+  name?: string;
+  description?: string;
+
   /** Timestamp of the last access (used for the eviction policy). */
   lastUsed: number = Date.now();
 

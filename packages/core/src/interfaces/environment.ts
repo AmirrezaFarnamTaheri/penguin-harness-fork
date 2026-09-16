@@ -486,6 +486,8 @@ export interface BackgroundCommandInfo {
  * whether a round is currently running.
  */
 export interface BackgroundSubagentInfo {
+  name?: string;
+  description?: string;
   sessionId: string;
   subagentId: string | null;
   running: boolean;
