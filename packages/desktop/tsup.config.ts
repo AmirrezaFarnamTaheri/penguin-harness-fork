@@ -48,6 +48,11 @@ export default defineConfig({
   // `noExternal: [/.*/]` gets you. Everything else is bundled by default: tsup externalizes
   // this package's `dependencies`, and the only ones it declares are the data-only plugin
   // packages, which nothing imports.
+  // Safe bundle minification: strips comments, blank lines, and redundant syntax
+  // without mangling local identifier names, preserving function/class reflection and stack traces.
+  minifyWhitespace: true,
+  minifySyntax: true,
+  keepNames: true,
   external: ["electron"],
   define: buildGitDefine(),
 });

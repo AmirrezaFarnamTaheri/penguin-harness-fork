@@ -87,10 +87,8 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
 
-          if (id.includes("react") || id.includes("react-dom") || id.includes("react-router")) {
-            return "vendor-react";
-          }
           if (
+            id.includes("react-markdown") ||
             id.includes("remark") ||
             id.includes("rehype") ||
             id.includes("katex") ||
@@ -99,6 +97,9 @@ export default defineConfig({
             id.includes("micromark")
           ) {
             return "vendor-markdown";
+          }
+          if (id.includes("react") || id.includes("react-dom") || id.includes("react-router")) {
+            return "vendor-react";
           }
           if (id.includes("@xterm")) {
             return "vendor-terminal";

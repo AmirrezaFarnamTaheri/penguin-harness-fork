@@ -79,6 +79,11 @@ mac:
   # the OSS mirror manifest can address every installer by a stable name — and GitHub's
   # `releases/latest/download/<name>` stays a working static link across releases.
   artifactName: penguin-desktop-darwin-${arch}.${ext}
+  # Target-specific payload pruning: node-pty stages multi-platform prebuilds into dist/node_modules/node-pty.
+  # Drop Windows native binaries from macOS installers (~6 MB saved).
+  files:
+    - "!dist/node_modules/node-pty/build/Release/conpty{,/**/*}"
+    - "!dist/node_modules/node-pty/prebuilds/win32*/**"
   target:
     - target: dmg
       arch: [arm64, x64]
@@ -90,6 +95,9 @@ win:
   # exe (>=256px required).
   icon: build/icon.png
   artifactName: penguin-desktop-win32-${arch}.${ext}
+  # Target-specific payload pruning: drop macOS binaries from Windows installers (~1 MB saved).
+  files:
+    - "!dist/node_modules/node-pty/prebuilds/darwin*/**"
   verifyUpdateCodeSignature: true
   signExts:
     - PenguinHarness.exe
@@ -137,6 +145,11 @@ linux:
   # Pinned rather than derived from the app name, which the deb postinst templates also
   # interpolate (build/linux/*.tpl).
   executableName: penguin-harness
+  # Target-specific payload pruning: drop macOS and Windows binaries from Linux installers (~6 MB saved).
+  files:
+    - "!dist/node_modules/node-pty/build/Release/conpty{,/**/*}"
+    - "!dist/node_modules/node-pty/prebuilds/darwin*/**"
+    - "!dist/node_modules/node-pty/prebuilds/win32*/**"
   # ${arch} expands to each Linux target's own convention — x86_64 for AppImage, amd64
   # for deb — so the published names are penguin-desktop-linux-x86_64.AppImage and
   # penguin-desktop-linux-amd64.deb; the OSS mirror manifest and the landing download
