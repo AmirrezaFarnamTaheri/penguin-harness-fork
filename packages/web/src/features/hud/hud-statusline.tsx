@@ -8,7 +8,10 @@ import type {
 import { Button } from "../../components/ui/button";
 
 export interface HudStatuslineProps {
+  /** Latest main request context occupancy, never cumulative session usage. */
   tokensUsed?: number;
+  /** Successful compaction invalidates occupancy until the next main request reports. */
+  contextStale?: boolean;
   contextWindow?: number;
   speed?: HudSpeedMetrics;
   promptCache?: HudPromptCacheMetrics;
@@ -23,6 +26,7 @@ export interface HudStatuslineProps {
 }
 export function HudStatusline({
   tokensUsed,
+  contextStale = false,
   contextWindow,
   speed,
   promptCache,
@@ -37,6 +41,7 @@ export function HudStatusline({
 }: HudStatuslineProps) {
   const [expanded, setExpanded] = useState(false);
   const validContext =
+    !contextStale &&
     tokensUsed !== undefined &&
     Number.isFinite(tokensUsed) &&
     tokensUsed >= 0 &&

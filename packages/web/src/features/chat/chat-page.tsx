@@ -2170,14 +2170,9 @@ export function ChatPage() {
 
       {selected && (
         <HudStatusline
-          tokensUsed={
-            usageBuckets
-              ? usageBuckets.cacheRead + usageBuckets.cacheWrite + usageBuckets.output
-              : stream.model.stats.taskOutput +
-                stream.model.stats.taskCacheRead +
-                stream.model.stats.taskCacheWrite
-          }
-          contextWindow={contextWindow ? Number(contextWindow) : 200000}
+          tokensUsed={stream.loading ? undefined : stream.model.stats.contextNow}
+          contextStale={stream.model.stats.contextStale}
+          contextWindow={contextWindow !== undefined ? Number(contextWindow) : undefined}
           speed={
             stream.taskState === "running" && stream.model.stats.taskOutput > 0
               ? {
