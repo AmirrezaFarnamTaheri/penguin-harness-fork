@@ -9,6 +9,7 @@ import {
   getSharedKeyFleetMonitor,
   buildCockpitSnapshot,
   attachCockpitWebSocket,
+  getOrCreateProjectRuntime,
 } from "../src/cockpit/ws.js";
 import type { AuthService } from "../src/auth/service.js";
 
@@ -420,5 +421,25 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     expect(Array.isArray(actionJson.reports)).toBe(true);
     expect(actionJson.stats).toBeDefined();
     expect(actionJson.snapshot).toBeDefined();
+  });
+
+  it("schedules and tracks runtime lifecycle when project clients disconnect", async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit?project=proj-reap`, {
+      headers: { Cookie: "penguin_session=valid-session-secret" },
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () => {
+        ws.close();
+      });
+      ws.on("close", () => {
+        resolve();
+      });
+      ws.on("error", reject);
+    });
+
+    const rt = await getOrCreateProjectRuntime("proj-reap");
+    expect(rt).toBeDefined();
+    expect(rt.clients.size).toBe(0);
   });
 });

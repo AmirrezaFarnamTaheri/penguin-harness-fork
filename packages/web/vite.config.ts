@@ -81,4 +81,33 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("react") || id.includes("react-dom") || id.includes("react-router")) {
+              return "vendor-react";
+            }
+            if (
+              id.includes("remark") ||
+              id.includes("rehype") ||
+              id.includes("katex") ||
+              id.includes("mdast") ||
+              id.includes("unist") ||
+              id.includes("micromark")
+            ) {
+              return "vendor-markdown";
+            }
+            if (id.includes("@xterm")) {
+              return "vendor-terminal";
+            }
+            if (id.includes("zustand")) {
+              return "vendor-state";
+            }
+          }
+        },
+      },
+    },
+  },
 });

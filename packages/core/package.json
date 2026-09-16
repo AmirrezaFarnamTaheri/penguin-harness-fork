@@ -49,6 +49,10 @@
     "./browser": {
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
+    },
+    "./paths": {
+      "types": "./dist/state/paths.d.ts",
+      "import": "./dist/state/paths.js"
     }
   },
   "main": "./dist/index.js",

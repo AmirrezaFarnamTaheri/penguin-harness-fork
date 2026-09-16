@@ -37,6 +37,8 @@ function safeSend(ws: WebSocket, payload: string): void {
   }
 }
 
+export const RUNTIME_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
 export interface CockpitWebSocketDeps {
   authService?: AuthService;
   projectService?: ProjectService;
@@ -44,6 +46,7 @@ export interface CockpitWebSocketDeps {
   root?: string;
   log?: (line: string) => void;
   workspaceRoot?: string;
+  idleTimeoutMs?: number;
 }
 
 export interface ProjectCockpitRuntime {
@@ -52,12 +55,48 @@ export interface ProjectCockpitRuntime {
   keyFleet: KeyFleetMonitor;
   codeGraphWatcher: CodeGraphWatcher;
   clients: Set<WebSocket>;
+  idleTimer?: NodeJS.Timeout | null;
 }
 
 const projectRuntimes = new Map<string, ProjectCockpitRuntime>();
 
+export function cancelRuntimeReap(runtime: ProjectCockpitRuntime): void {
+  if (runtime.idleTimer) {
+    clearTimeout(runtime.idleTimer);
+    runtime.idleTimer = null;
+  }
+}
+
+export function scheduleRuntimeReap(
+  runtime: ProjectCockpitRuntime,
+  deps: CockpitWebSocketDeps,
+  timeoutMs = deps.idleTimeoutMs ?? RUNTIME_IDLE_TIMEOUT_MS,
+): void {
+  cancelRuntimeReap(runtime);
+  runtime.idleTimer = setTimeout(() => {
+    if (runtime.clients.size === 0) {
+      try {
+        runtime.codeGraphWatcher.close();
+      } catch {
+        // ignore
+      }
+      projectRuntimes.delete(runtime.projectId);
+      deps.log?.(`[cockpit-ws][${runtime.projectId}] idle runtime reaped after ${timeoutMs}ms`);
+    }
+  }, timeoutMs);
+  if (typeof runtime.idleTimer.unref === "function") {
+    runtime.idleTimer.unref();
+  }
+}
+
 export function resetCockpitRuntimesForTesting(): void {
   for (const rt of projectRuntimes.values()) {
+    cancelRuntimeReap(rt);
+    try {
+      rt.codeGraphWatcher.close();
+    } catch {
+      // ignore
+    }
     for (const ws of rt.clients) {
       try {
         ws.close();
@@ -166,6 +205,10 @@ export async function getOrCreateProjectRuntime(
   deps: CockpitWebSocketDeps = {},
 ): Promise<ProjectCockpitRuntime> {
   let runtime = projectRuntimes.get(projectId);
+  if (runtime) {
+    cancelRuntimeReap(runtime);
+    return runtime;
+  }
   if (!runtime) {
     const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
     const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
@@ -254,6 +297,8 @@ export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): Swarm
       clients: new Set(),
     };
     projectRuntimes.set(projectId, rt);
+  } else {
+    cancelRuntimeReap(rt);
   }
   return rt.coordinator;
 }
@@ -273,6 +318,8 @@ export function getSharedKeyFleetMonitor(projectId = DEFAULT_PROJECT_ID): KeyFle
       clients: new Set(),
     };
     projectRuntimes.set(projectId, rt);
+  } else {
+    cancelRuntimeReap(rt);
   }
   return rt.keyFleet;
 }
@@ -295,6 +342,8 @@ export function getSharedCodeGraphWatcher(
       clients: new Set(),
     };
     projectRuntimes.set(projectId, rt);
+  } else {
+    cancelRuntimeReap(rt);
   }
   return rt.codeGraphWatcher;
 }
@@ -334,6 +383,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const runtime = await getOrCreateProjectRuntime(projectId, deps);
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+      cancelRuntimeReap(runtime);
       runtime.clients.add(ws);
 
       // Send initial cockpit telemetry snapshot for this project
@@ -525,11 +575,17 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
       ws.on("close", () => {
         runtime.clients.delete(ws);
+        if (runtime.clients.size === 0) {
+          scheduleRuntimeReap(runtime, deps);
+        }
       });
 
       ws.on("error", (err) => {
         deps.log?.(`[cockpit-ws][${projectId}] socket error: ${err.message}`);
         runtime.clients.delete(ws);
+        if (runtime.clients.size === 0) {
+          scheduleRuntimeReap(runtime, deps);
+        }
       });
     });
   });

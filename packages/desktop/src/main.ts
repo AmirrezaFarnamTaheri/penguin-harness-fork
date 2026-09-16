@@ -31,7 +31,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, dialog, shell } from "electron";
-import { resolveRoot } from "@prismshadow/penguin-core";
+import { resolveRoot } from "@prismshadow/penguin-core/paths";
 import { liveServerLock } from "@prismshadow/penguin-server/lock";
 import { appIdentity, desktopDataRoot } from "./app-identity.js";
 import { embeddedCliEntry } from "./launcher.js";

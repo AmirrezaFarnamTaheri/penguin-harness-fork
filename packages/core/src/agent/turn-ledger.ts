@@ -63,6 +63,8 @@ export interface TurnLedgerMetrics {
 
 export interface TurnLedgerOptions {
   maxReplayPageSize?: number;
+  maxRecords?: number;
+  maxSummaries?: number;
 }
 
 /**
@@ -74,6 +76,8 @@ export class TurnLedger {
 
   public readonly sessionId: string;
   private readonly maxReplayPageSize: number;
+  private readonly maxRecords: number;
+  private readonly maxSummaries: number;
 
   private nextSeq = 1;
   private activeTurnId: string | null = null;
@@ -105,6 +109,8 @@ export class TurnLedger {
   constructor(sessionId: string, options: TurnLedgerOptions = {}) {
     this.sessionId = sessionId;
     this.maxReplayPageSize = options.maxReplayPageSize ?? 512;
+    this.maxRecords = options.maxRecords ?? 5000;
+    this.maxSummaries = options.maxSummaries ?? 1000;
   }
 
   public begin(submissionId = "", runtimeEpoch = ""): string {
@@ -187,6 +193,21 @@ export class TurnLedger {
       this.metrics.streamRecords++;
     }
 
+    // Bound in-memory records to prevent heap leaks during long-running sessions
+    if (this.records.length > this.maxRecords) {
+      if (this.projectionCommittedThroughSeq > this.compactedThroughSeq) {
+        this.compact(this.projectionCommittedThroughSeq);
+      }
+      if (this.records.length > this.maxRecords) {
+        const excess = this.records.length - this.maxRecords;
+        const dropped = this.records.splice(0, excess);
+        const lastDroppedSeq = dropped[dropped.length - 1]?.seq ?? 0;
+        if (lastDroppedSeq > this.compactedThroughSeq) {
+          this.compactedThroughSeq = lastDroppedSeq;
+        }
+      }
+    }
+
     if (isTerminalStatus(this.currentStatus)) {
       this.isTerminal = true;
       const durationMs = Math.max(0, now - this.turnStartedAt);
@@ -201,6 +222,9 @@ export class TurnLedger {
         transcriptRevision: this.transcriptRevision,
         transcriptDigest: this.transcriptDigest,
       });
+      if (this.summaries.length > this.maxSummaries) {
+        this.summaries.splice(0, this.summaries.length - this.maxSummaries);
+      }
     }
 
     return env;

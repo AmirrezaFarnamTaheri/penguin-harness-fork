@@ -23,6 +23,8 @@ export default defineConfig({
     "src/kernel/index.ts",
     // Browser-safe SDK entrypoint: pure types and zero-Node utilities for web bundling.
     "src/browser.ts",
+    // Pure filesystem path helpers: zero-dependency subpath so desktop/cli can import resolveRoot without pulling core SDK.
+    "src/state/paths.ts",
   ],
   format: ["esm"],
   target: "node24",
