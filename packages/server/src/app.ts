@@ -24,6 +24,7 @@ import path from "node:path";
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import { bodyLimitBytes, toAttachmentLimits } from "./services/attachment-limits.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { ServerConfig } from "./config.js";
@@ -494,6 +495,29 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
     return capped.mw(c, next);
   });
   app.use("/api/*", jsonOnlyWrites);
+
+  // Negotiated dynamic compression for API responses (JSON-only above 1KB).
+  // Source: https://hono.dev/docs/middleware/builtin/compress
+  // Strictly filters on application/json so that text/event-stream (SSE, /api/events)
+  // and WebSocket upgrades remain unbuffered and uncompressed.
+  app.use(
+    "/api/*",
+    compress({
+      threshold: 1024,
+      contentTypeFilter: (contentType) => contentType.startsWith("application/json"),
+    }),
+  );
+  // Ensure discrete JSON responses have an accurate Content-Length for threshold evaluation,
+  // while strictly bypassing streaming responses (SSE, chunked transfers).
+  app.use("/api/*", async (c, next) => {
+    await next();
+    const ct = c.res.headers.get("content-type");
+    if (ct?.startsWith("application/json") && !c.res.headers.has("content-length") && c.res.body) {
+      const buf = await c.res.arrayBuffer();
+      c.res = new Response(buf, c.res);
+      c.res.headers.set("content-length", String(buf.byteLength));
+    }
+  });
 
   // Public routes (no login required).
   app.route("/api/auth", authRoutes(deps));
