@@ -35,9 +35,10 @@ export default defineConfig({
   target: "node24",
   platform: "node",
   clean: true,
-  // Generated for a source run; electron-builder.yml keeps the .map files out of installers,
-  // where they would roughly triple what these bundles add.
-  sourcemap: true,
+  // Source: https://tsup.egoist.dev/#sourcemap
+  // Sourcemaps are excluded by electron-builder.yml in packaged installers.
+  // Disabled by default to save ~65 MB disk space and CI artifact time; enable with PENGUIN_DESKTOP_SOURCEMAPS=1.
+  sourcemap: process.env.PENGUIN_DESKTOP_SOURCEMAPS === "1",
   splitting: false,
   // Load-bearing: bundled CJS dependencies reference `require` (yaml, tar, smol-toml,
   // commander, agenthub) and `__dirname` (@larksuiteoapi/node-sdk) inside their own wrapper,

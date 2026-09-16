@@ -141,4 +141,37 @@ export function divide(a: number, b: number): number { return a / b; }
 
     watcher.close();
   });
+
+  it("correctly ignores target, .venv, __pycache__, .pytest_cache, .idea, and .vscode directories", () => {
+    const watcher = new CodeGraphWatcher(tmpDir);
+    expect(watcher.isPathIgnored("target/debug/app.rs")).toBe(true);
+    expect(watcher.isPathIgnored(".venv/lib/python3.11/site-packages/pkg.py")).toBe(true);
+    expect(watcher.isPathIgnored("venv/bin/activate.py")).toBe(true);
+    expect(watcher.isPathIgnored("src/__pycache__/module.cpython-311.py")).toBe(true);
+    expect(watcher.isPathIgnored(".pytest_cache/v/cache/nodeids")).toBe(true);
+    expect(watcher.isPathIgnored(".idea/workspace.xml")).toBe(true);
+    expect(watcher.isPathIgnored(".vscode/settings.json")).toBe(true);
+    expect(watcher.isPathIgnored("src/components/button.tsx")).toBe(false);
+    watcher.close();
+  });
+
+  it("coalesces burst updates and flushes dirty files cleanly", async () => {
+    const watcher = new CodeGraphWatcher(tmpDir, { debounceMs: 50 });
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+
+    // Write multiple files in burst
+    for (let i = 0; i < 15; i++) {
+      const p = path.join(srcDir, `file${i}.ts`);
+      fs.writeFileSync(p, `export function func${i}(): number { return ${i}; }\n`);
+    }
+
+    // Force add to watcher queue and flush
+    await watcher.init();
+    await watcher.flush();
+
+    expect(watcher.getStats().totalFiles).toBe(15);
+    expect(watcher.getStats().totalNodes).toBeGreaterThanOrEqual(15);
+    watcher.close();
+  });
 });

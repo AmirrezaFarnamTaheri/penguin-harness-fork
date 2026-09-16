@@ -56,11 +56,18 @@ const DEFAULT_IGNORES: Array<string | RegExp> = [
   ".git",
   "dist",
   "build",
+  "target",
   ".next",
   ".turbo",
   ".cache",
   ".gemini",
   "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".pytest_cache",
+  ".idea",
+  ".vscode",
 ];
 
 export class CodeGraphWatcher extends EventEmitter {
@@ -72,7 +79,10 @@ export class CodeGraphWatcher extends EventEmitter {
   private readonly debounceMs: number;
 
   private fsWatcher: fs.FSWatcher | null = null;
-  private pendingUpdates = new Map<string, NodeJS.Timeout>();
+  // Coalesced dirty paths set to prevent timer starvation and handle burst writes efficiently
+  private dirtyPaths = new Set<string>();
+  private flushTimer: NodeJS.Timeout | null = null;
+  private isFlushing: boolean = false;
   private trackedFiles = new Set<string>();
   private lastUpdated: number = Date.now();
   private isClosed: boolean = false;
@@ -268,20 +278,16 @@ export class CodeGraphWatcher extends EventEmitter {
           if (!this.hasSupportedExtension(relPath)) return;
 
           const fullPath = path.join(this.rootDir, filename);
+          this.dirtyPaths.add(fullPath);
 
-          const existingTimer = this.pendingUpdates.get(fullPath);
-          if (existingTimer) clearTimeout(existingTimer);
-
-          const timer = setTimeout(() => {
-            this.pendingUpdates.delete(fullPath);
-            if (fs.existsSync(fullPath)) {
-              this.processFile(fullPath);
-            } else {
-              this.removeFile(fullPath);
-            }
-          }, this.debounceMs);
-
-          this.pendingUpdates.set(fullPath, timer);
+          // Schedule a single flush worker if none is currently scheduled
+          // Source: https://nodejs.org/api/timers.html#setimmediatecallback-args
+          if (!this.flushTimer && !this.isFlushing) {
+            this.flushTimer = setTimeout(() => {
+              this.flushTimer = null;
+              void this.flushDirtyPaths();
+            }, this.debounceMs);
+          }
         },
       );
 
@@ -294,14 +300,69 @@ export class CodeGraphWatcher extends EventEmitter {
   }
 
   /**
+   * Processes queued dirty file paths in bounded slices, yielding to the event loop
+   * between slices using setImmediate to prevent thread starvation under continuous writes.
+   */
+  public async flushDirtyPaths(): Promise<void> {
+    if (this.isClosed || this.isFlushing) return;
+    this.isFlushing = true;
+    const BATCH_SIZE = 10;
+
+    try {
+      while (this.dirtyPaths.size > 0 && !this.isClosed) {
+        const slice: string[] = [];
+        for (const p of this.dirtyPaths) {
+          slice.push(p);
+          this.dirtyPaths.delete(p);
+          if (slice.length >= BATCH_SIZE) break;
+        }
+
+        for (const fullPath of slice) {
+          if (this.isClosed) break;
+          if (fs.existsSync(fullPath)) {
+            this.processFile(fullPath);
+          } else {
+            this.removeFile(fullPath);
+          }
+        }
+
+        if (this.dirtyPaths.size > 0 && !this.isClosed) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      }
+    } finally {
+      this.isFlushing = false;
+      // If new dirty paths arrived while processing the final slice, schedule next pass
+      if (this.dirtyPaths.size > 0 && !this.flushTimer && !this.isClosed) {
+        this.flushTimer = setTimeout(() => {
+          this.flushTimer = null;
+          void this.flushDirtyPaths();
+        }, this.debounceMs);
+      }
+    }
+  }
+
+  /**
+   * Explicitly flushes any queued dirty paths immediately.
+   */
+  public async flush(): Promise<void> {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    await this.flushDirtyPaths();
+  }
+
+  /**
    * Closes watcher and cancels pending timers.
    */
   public close(): void {
     this.isClosed = true;
-    for (const timer of this.pendingUpdates.values()) {
-      clearTimeout(timer);
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
-    this.pendingUpdates.clear();
+    this.dirtyPaths.clear();
 
     if (this.fsWatcher) {
       try {
