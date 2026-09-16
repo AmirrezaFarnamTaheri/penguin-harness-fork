@@ -209,143 +209,116 @@ export async function getOrCreateProjectRuntime(
     cancelRuntimeReap(runtime);
     return runtime;
   }
-  if (!runtime) {
-    const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
-    const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
-    void codeGraphWatcher.init();
 
-    const shellGuardian = await createProjectShellGuardian(deps, projectId);
-    const coordinator = new SwarmCoordinator({
-      shellGuardian,
-      sessionId: `swarm-${projectId}-${Date.now()}`,
-    });
+  const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
+  const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
+  void codeGraphWatcher.init();
 
-    const keyFleet = new KeyFleetMonitor();
-    await syncProjectKeyFleet(deps, projectId, keyFleet);
+  const shellGuardian = await createProjectShellGuardian(deps, projectId);
+  const coordinator = new SwarmCoordinator({
+    shellGuardian,
+    sessionId: `swarm-${projectId}-${Date.now()}`,
+  });
 
-    const clients = new Set<WebSocket>();
+  const keyFleet = new KeyFleetMonitor();
+  await syncProjectKeyFleet(deps, projectId, keyFleet);
 
-    runtime = {
+  const clients = new Set<WebSocket>();
+
+  runtime = {
+    projectId,
+    coordinator,
+    keyFleet,
+    codeGraphWatcher,
+    clients,
+  };
+  projectRuntimes.set(projectId, runtime);
+
+  codeGraphWatcher.on("error", (err) => {
+    deps.log?.(
+      `[cockpit-ws][${projectId}] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+
+  coordinator.subscribe((event: SwarmEvent) => {
+    const payload = JSON.stringify({
+      type: "swarm_event",
       projectId,
-      coordinator,
-      keyFleet,
-      codeGraphWatcher,
-      clients,
-    };
-    projectRuntimes.set(projectId, runtime);
-
-    codeGraphWatcher.on("error", (err) => {
-      deps.log?.(
-        `[cockpit-ws][${projectId}] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      timestamp: Date.now(),
+      event: redactObject(event),
     });
+    for (const ws of runtime!.clients) {
+      safeSend(ws, payload);
+    }
+  });
 
-    coordinator.subscribe((event: SwarmEvent) => {
-      const payload = JSON.stringify({
-        type: "swarm_event",
-        projectId,
-        timestamp: Date.now(),
-        event: redactObject(event),
-      });
-      for (const ws of runtime!.clients) {
-        safeSend(ws, payload);
-      }
+  keyFleet.subscribe((_stats) => {
+    const payload = JSON.stringify({
+      type: "key_fleet_update",
+      projectId,
+      timestamp: Date.now(),
+      keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+      reports: redactObject(keyFleet.getFleetReport()),
+      stats: keyFleet.getFleetStats(),
     });
+    for (const ws of runtime!.clients) {
+      safeSend(ws, payload);
+    }
+  });
 
-    keyFleet.subscribe((_stats) => {
-      const payload = JSON.stringify({
-        type: "key_fleet_update",
-        projectId,
-        timestamp: Date.now(),
-        keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
-        reports: redactObject(keyFleet.getFleetReport()),
-        stats: keyFleet.getFleetStats(),
-      });
-      for (const ws of runtime!.clients) {
-        safeSend(ws, payload);
-      }
+  codeGraphWatcher.on("change", (ev) => {
+    const payload = JSON.stringify({
+      type: "topology_change",
+      projectId,
+      timestamp: Date.now(),
+      event: ev,
+      stats: codeGraphWatcher.getStats(),
     });
+    for (const ws of runtime!.clients) {
+      safeSend(ws, payload);
+    }
+  });
 
-    codeGraphWatcher.on("change", (ev) => {
-      const payload = JSON.stringify({
-        type: "topology_change",
-        projectId,
-        timestamp: Date.now(),
-        event: ev,
-        stats: codeGraphWatcher.getStats(),
-      });
-      for (const ws of runtime!.clients) {
-        safeSend(ws, payload);
-      }
-    });
-  }
   return runtime;
 }
 
-export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): SwarmCoordinator {
+function getOrCreateProjectRuntimeSync(
+  projectId = DEFAULT_PROJECT_ID,
+  workspaceRoot = process.cwd(),
+): ProjectCockpitRuntime {
   let rt = projectRuntimes.get(projectId);
-  if (!rt) {
-    const coordinator = new SwarmCoordinator();
-    const keyFleet = new KeyFleetMonitor();
-    const codeGraphWatcher = new CodeGraphWatcher(process.cwd());
-    void codeGraphWatcher.init();
-    rt = {
-      projectId,
-      coordinator,
-      keyFleet,
-      codeGraphWatcher,
-      clients: new Set(),
-    };
-    projectRuntimes.set(projectId, rt);
-  } else {
+  if (rt) {
     cancelRuntimeReap(rt);
+    return rt;
   }
-  return rt.coordinator;
+  const coordinator = new SwarmCoordinator();
+  const keyFleet = new KeyFleetMonitor();
+  const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
+  void codeGraphWatcher.init();
+  rt = {
+    projectId,
+    coordinator,
+    keyFleet,
+    codeGraphWatcher,
+    clients: new Set(),
+  };
+  projectRuntimes.set(projectId, rt);
+  return rt;
+}
+
+export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): SwarmCoordinator {
+  return getOrCreateProjectRuntimeSync(projectId).coordinator;
 }
 
 export function getSharedKeyFleetMonitor(projectId = DEFAULT_PROJECT_ID): KeyFleetMonitor {
-  let rt = projectRuntimes.get(projectId);
-  if (!rt) {
-    const coordinator = new SwarmCoordinator();
-    const keyFleet = new KeyFleetMonitor();
-    const codeGraphWatcher = new CodeGraphWatcher(process.cwd());
-    void codeGraphWatcher.init();
-    rt = {
-      projectId,
-      coordinator,
-      keyFleet,
-      codeGraphWatcher,
-      clients: new Set(),
-    };
-    projectRuntimes.set(projectId, rt);
-  } else {
-    cancelRuntimeReap(rt);
-  }
-  return rt.keyFleet;
+  return getOrCreateProjectRuntimeSync(projectId).keyFleet;
 }
 
 export function getSharedCodeGraphWatcher(
   workspaceRoot = process.cwd(),
   projectId = DEFAULT_PROJECT_ID,
 ): CodeGraphWatcher {
-  let rt = projectRuntimes.get(projectId);
-  if (!rt) {
-    const coordinator = new SwarmCoordinator();
-    const keyFleet = new KeyFleetMonitor();
-    const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
-    void codeGraphWatcher.init();
-    rt = {
-      projectId,
-      coordinator,
-      keyFleet,
-      codeGraphWatcher,
-      clients: new Set(),
-    };
-    projectRuntimes.set(projectId, rt);
-  } else {
-    cancelRuntimeReap(rt);
-  }
-  return rt.codeGraphWatcher;
+  return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).codeGraphWatcher;
 }
 
 export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocketDeps = {}): void {
@@ -573,19 +546,18 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
         }
       });
 
-      ws.on("close", () => {
+      const removeClient = () => {
         runtime.clients.delete(ws);
         if (runtime.clients.size === 0) {
           scheduleRuntimeReap(runtime, deps);
         }
-      });
+      };
+
+      ws.on("close", removeClient);
 
       ws.on("error", (err) => {
         deps.log?.(`[cockpit-ws][${projectId}] socket error: ${err.message}`);
-        runtime.clients.delete(ws);
-        if (runtime.clients.size === 0) {
-          scheduleRuntimeReap(runtime, deps);
-        }
+        removeClient();
       });
     });
   });

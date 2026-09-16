@@ -200,8 +200,8 @@ export class TurnLedger {
       }
       if (this.records.length > this.maxRecords) {
         const excess = this.records.length - this.maxRecords;
-        const dropped = this.records.splice(0, excess);
-        const lastDroppedSeq = dropped[dropped.length - 1]?.seq ?? 0;
+        const lastDroppedSeq = this.records[excess - 1]?.seq ?? 0;
+        this.records.splice(0, excess);
         if (lastDroppedSeq > this.compactedThroughSeq) {
           this.compactedThroughSeq = lastDroppedSeq;
         }

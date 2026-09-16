@@ -243,6 +243,15 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
   else void win.loadURL(url);
 }
 
+function resolveDataRoot(): string {
+  return desktopDataRoot({
+    envHome: process.env.PENGUIN_HOME,
+    isPackaged: app.isPackaged,
+    homedir: os.homedir(),
+    releaseRoot: resolveRoot,
+  });
+}
+
 /** Explicitly restart the embedded server (e.g. from the system tray menu). */
 async function restartServer(): Promise<void> {
   isRestarting = true;
@@ -254,12 +263,7 @@ async function restartServer(): Promise<void> {
       await stopEmbeddedServer(running);
     }
     restartAttempts = 0;
-    const dataRoot = desktopDataRoot({
-      envHome: process.env.PENGUIN_HOME,
-      isPackaged: app.isPackaged,
-      homedir: os.homedir(),
-      releaseRoot: resolveRoot,
-    });
+    const dataRoot = resolveDataRoot();
     await startServerAndWindow(dataRoot);
     trayManager?.updateStatus();
   } finally {
@@ -291,12 +295,7 @@ async function handleServerExit(dataRoot: string, code: number): Promise<void> {
 async function boot(): Promise<void> {
   // Explicit PENGUIN_HOME wins; otherwise a release build shares the CLI's data root and
   // a dev run takes the repo's dev root (the rule, and why, live in app-identity.ts).
-  const dataRoot = desktopDataRoot({
-    envHome: process.env.PENGUIN_HOME,
-    isPackaged: app.isPackaged,
-    homedir: os.homedir(),
-    releaseRoot: resolveRoot,
-  });
+  const dataRoot = resolveDataRoot();
   if (!app.isPackaged) {
     process.stdout.write(`[shell] dev instance '${app.name}' on data root ${dataRoot}\n`);
   }

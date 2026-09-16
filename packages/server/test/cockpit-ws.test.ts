@@ -416,7 +416,12 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
       }),
     });
     expect(actionRes.status).toBe(200);
-    const actionJson = (await actionRes.json()) as any;
+    const actionJson = (await actionRes.json()) as {
+      success: boolean;
+      reports: unknown[];
+      stats?: unknown;
+      snapshot?: unknown;
+    };
     expect(actionJson.success).toBe(true);
     expect(Array.isArray(actionJson.reports)).toBe(true);
     expect(actionJson.stats).toBeDefined();
