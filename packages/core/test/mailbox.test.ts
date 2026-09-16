@@ -73,6 +73,41 @@ describe("MailboxKernel", () => {
       /maximum allowed size/,
     );
   });
+
+  it("atomically polls and acquires lease without dropping messages on conflict", () => {
+    const mb = new MailboxKernel();
+    mb.send("worker-atomic", "caller", "work", { job: 1 });
+
+    // Acquire lease first
+    const l1 = mb.acquireLease("worker-atomic", "other-event", 5000);
+    expect(l1.leaseState).toBe("acquired");
+
+    // pollAndLease should return null because lease is already held, message must NOT be dropped
+    const conflict = mb.pollAndLease("worker-atomic", 5000);
+    expect(conflict).toBeNull();
+
+    // Release lease
+    mb.releaseLease("worker-atomic", l1.leaseToken);
+
+    // Now pollAndLease should succeed and return the intact message
+    const success = mb.pollAndLease<{ job: number }>("worker-atomic", 5000);
+    expect(success).not.toBeNull();
+    expect(success?.message.payload.job).toBe(1);
+    expect(success?.lease.leaseState).toBe("acquired");
+  });
+
+  it("supports requeueing messages safely", () => {
+    const mb = new MailboxKernel();
+    mb.send("worker-requeue", "caller", "work", { step: 1 });
+    const msg = mb.poll<{ step: number }>("worker-requeue");
+    expect(msg?.payload.step).toBe(1);
+
+    // Requeue
+    mb.requeue("worker-requeue", msg!);
+    const polledAgain = mb.poll<{ step: number }>("worker-requeue");
+    expect(polledAgain?.payload.step).toBe(1);
+    expect(polledAgain?.attempts).toBe(2);
+  });
 });
 
 describe("EventBroker", () => {

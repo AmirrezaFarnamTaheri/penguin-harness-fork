@@ -89,7 +89,7 @@ function RefreshIcon({ size = 14 }: { size?: number }) {
   );
 }
 
-const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
+const DEMO_FLEET_REPORTS: ModelKeyFleetReport[] = [
   {
     modelRef: "openai/gpt-4o",
     provider: "openai",
@@ -102,6 +102,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
     activeLeases: 5,
     keys: [
       {
+        keyId: "openai-key-1",
         maskedKey: "sk-proj-...8a1c",
         status: "healthy",
         isFailed: false,
@@ -112,6 +113,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 15_000,
       },
       {
+        keyId: "openai-key-2",
         maskedKey: "sk-proj-...9f2e",
         status: "healthy",
         isFailed: false,
@@ -122,6 +124,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 45_000,
       },
       {
+        keyId: "openai-key-3",
         maskedKey: "sk-proj-...3b7d",
         status: "cooldown",
         isFailed: false,
@@ -132,6 +135,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 5_000,
       },
       {
+        keyId: "openai-key-4",
         maskedKey: "sk-proj-...1c4a",
         status: "healthy",
         isFailed: false,
@@ -155,6 +159,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
     activeLeases: 2,
     keys: [
       {
+        keyId: "anthropic-key-1",
         maskedKey: "sk-ant-...7b1a",
         status: "healthy",
         isFailed: false,
@@ -165,6 +170,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 8_000,
       },
       {
+        keyId: "anthropic-key-2",
         maskedKey: "sk-ant-...4c9d",
         status: "healthy",
         isFailed: false,
@@ -175,6 +181,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 85_000,
       },
       {
+        keyId: "anthropic-key-3",
         maskedKey: "sk-ant-...0e2f",
         status: "evicted",
         isFailed: true,
@@ -198,6 +205,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
     activeLeases: 1,
     keys: [
       {
+        keyId: "google-key-1",
         maskedKey: "AIza...4g9x",
         status: "healthy",
         isFailed: false,
@@ -208,6 +216,7 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
         lastUsedAt: Date.now() - 22_000,
       },
       {
+        keyId: "google-key-2",
         maskedKey: "AIza...8p2k",
         status: "healthy",
         isFailed: false,
@@ -222,7 +231,9 @@ const INITIAL_FLEET_REPORTS: ModelKeyFleetReport[] = [
 ];
 
 export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const [reports, setReports] = useState<ModelKeyFleetReport[]>(INITIAL_FLEET_REPORTS);
+  const [reports, setReports] = useState<ModelKeyFleetReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "healthy" | "cooldown" | "evicted">("all");
   const [probingTarget, setProbingTarget] = useState<{
@@ -231,17 +242,24 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     modelId: string;
   } | null>(null);
 
+  const activeReports = useMemo(() => {
+    return isDemo ? DEMO_FLEET_REPORTS : reports;
+  }, [isDemo, reports]);
+
   const fetchLiveFleet = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/cockpit/keys");
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.reports) && data.reports.length > 0) {
+        if (Array.isArray(data.reports)) {
           setReports(data.reports);
         }
       }
     } catch {
       // offline / standalone fallback
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -249,13 +267,13 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     void fetchLiveFleet();
   }, [fetchLiveFleet]);
 
-  const stats = useMemo(() => calculateFleetHealth(reports), [reports]);
+  const stats = useMemo(() => calculateFleetHealth(activeReports), [activeReports]);
 
   const filteredReports = useMemo(() => {
-    return filterKeyFleetReports(reports, filterMode, searchQuery);
-  }, [reports, filterMode, searchQuery]);
+    return filterKeyFleetReports(activeReports, filterMode, searchQuery);
+  }, [activeReports, filterMode, searchQuery]);
 
-  const handleKeyAction = (
+  const handleKeyAction = async (
     action: KeyActionType,
     item: KeyHealthItem,
     modelRef: string,
@@ -267,103 +285,115 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       return;
     }
 
-    void fetch("/api/cockpit/keys/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action,
-        provider,
-        maskedKey: item.maskedKey,
-        cooldownMs: 60_000,
-      }),
-    }).catch(() => {});
-
-    setReports((prev) =>
-      prev.map((rep) => {
-        if (rep.modelRef !== modelRef) return rep;
-
-        const updatedKeys = rep.keys.map((k) => {
-          if (k.maskedKey !== item.maskedKey) return k;
-
-          if (action === "revive") {
-            return {
-              ...k,
-              status: "healthy" as const,
-              isFailed: false,
-              cooldownRemainingMs: 0,
-            };
-          }
-          if (action === "cooldown") {
-            return {
-              ...k,
-              status: "cooldown" as const,
-              cooldownRemainingMs: 60_000,
-            };
-          }
-          if (action === "evict") {
-            return {
-              ...k,
-              status: "evicted" as const,
-              isFailed: true,
-              cooldownRemainingMs: 0,
-              activeLeases: 0,
-            };
-          }
-          return k;
+    if (isDemo) {
+      setReports((prev) => {
+        const source = prev.length > 0 ? prev : DEMO_FLEET_REPORTS;
+        return source.map((rep) => {
+          if (rep.modelRef !== modelRef) return rep;
+          const updatedKeys = rep.keys.map((k) => {
+            if (k.maskedKey !== item.maskedKey) return k;
+            if (action === "revive") {
+              return { ...k, status: "healthy" as const, isFailed: false, cooldownRemainingMs: 0 };
+            }
+            if (action === "cooldown") {
+              return { ...k, status: "cooldown" as const, cooldownRemainingMs: 60_000 };
+            }
+            if (action === "evict") {
+              return {
+                ...k,
+                status: "evicted" as const,
+                isFailed: true,
+                cooldownRemainingMs: 0,
+                activeLeases: 0,
+              };
+            }
+            return k;
+          });
+          return {
+            ...rep,
+            keys: updatedKeys,
+            healthyCount: updatedKeys.filter((k) => k.status === "healthy").length,
+            cooldownCount: updatedKeys.filter((k) => k.status === "cooldown").length,
+            evictedCount: updatedKeys.filter((k) => k.status === "evicted").length,
+          };
         });
+      });
+      return;
+    }
 
-        const healthyCount = updatedKeys.filter((k) => k.status === "healthy").length;
-        const cooldownCount = updatedKeys.filter((k) => k.status === "cooldown").length;
-        const evictedCount = updatedKeys.filter((k) => k.status === "evicted").length;
-
-        return {
-          ...rep,
-          keys: updatedKeys,
-          healthyCount,
-          cooldownCount,
-          evictedCount,
-        };
-      }),
-    );
+    try {
+      const res = await fetch("/api/cockpit/keys/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          provider,
+          keyId: item.keyId,
+          maskedKey: item.maskedKey,
+          cooldownMs: 60_000,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.reports)) {
+          setReports(data.reports);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    void fetchLiveFleet();
   };
 
-  const handleReviveAllCooldowns = () => {
-    void fetch("/api/cockpit/keys/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "revive_all" }),
-    }).catch(() => {});
-
-    setReports((prev) =>
-      prev.map((rep) => {
-        const updatedKeys = rep.keys.map((k) => {
-          if (k.status === "cooldown") {
-            return {
-              ...k,
-              status: "healthy" as const,
-              cooldownRemainingMs: 0,
-            };
-          }
-          return k;
+  const handleReviveAllCooldowns = async () => {
+    if (isDemo) {
+      setReports((prev) => {
+        const source = prev.length > 0 ? prev : DEMO_FLEET_REPORTS;
+        return source.map((rep) => {
+          const updatedKeys = rep.keys.map((k) => {
+            if (k.status === "cooldown") {
+              return { ...k, status: "healthy" as const, cooldownRemainingMs: 0 };
+            }
+            return k;
+          });
+          return {
+            ...rep,
+            keys: updatedKeys,
+            healthyCount: updatedKeys.filter((k) => k.status === "healthy").length,
+            cooldownCount: 0,
+          };
         });
-        const healthyCount = updatedKeys.filter((k) => k.status === "healthy").length;
-        const cooldownCount = 0;
-        return {
-          ...rep,
-          keys: updatedKeys,
-          healthyCount,
-          cooldownCount,
-        };
-      }),
-    );
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/cockpit/keys/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "revive_all" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.reports)) {
+          setReports(data.reports);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    void fetchLiveFleet();
   };
 
   const handleChangeStrategy = (modelRef: string, newStrategy: RotationStrategy) => {
-    setReports((prev) =>
-      prev.map((rep) =>
+    setReports((prev) => {
+      const source = prev.length > 0 ? prev : activeReports;
+      return source.map((rep) =>
         rep.modelRef === modelRef ? { ...rep, rotationStrategy: newStrategy } : rep,
-      ),
-    );
+      );
+    });
   };
 
   return (
@@ -376,9 +406,16 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
               <KeyIcon size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-foreground">
-                Model Key Fleet & Resilient Failover Console
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                  Model Key Fleet & Resilient Failover Console
+                </h1>
+                {isDemo ? (
+                  <Badge tone="amber">DEMO SIMULATION</Badge>
+                ) : (
+                  <Badge tone="green">LIVE TELEMETRY</Badge>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease
                 routing
@@ -387,12 +424,31 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={() => void fetchLiveFleet()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (isDemo) {
+                  setIsDemo(false);
+                  void fetchLiveFleet();
+                } else {
+                  setIsDemo(true);
+                }
+              }}
+            >
+              {isDemo ? "Exit Demo Mode" : "Demo Mode"}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void fetchLiveFleet()}
+              disabled={loading}
+            >
               <RefreshIcon size={13} />
-              Refresh
+              {loading ? "Refreshing..." : "Refresh"}
             </Button>
             {stats.cooldownCount > 0 && (
-              <Button variant="secondary" size="sm" onClick={handleReviveAllCooldowns}>
+              <Button variant="secondary" size="sm" onClick={() => void handleReviveAllCooldowns()}>
                 Revive All Cooldowns ({stats.cooldownCount})
               </Button>
             )}
@@ -406,7 +462,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           <span className="text-xs text-muted-foreground">Total Fleet Keys</span>
           <span className="font-mono text-2xl font-bold text-foreground">{stats.totalKeys}</span>
           <span className="text-[11px] text-muted-foreground">
-            Across {reports.length} model pools
+            Across {activeReports.length} model pools
           </span>
         </div>
 
@@ -459,64 +515,57 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
             size="sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search provider, model, or masked key..."
+            placeholder="Filter by model, provider, or key suffix..."
             className="pl-9"
           />
         </div>
 
-        {/* Filter Mode Tabs */}
-        <div className="flex items-center gap-1 rounded-lg bg-muted p-1 text-xs">
-          <button
-            type="button"
-            onClick={() => setFilterMode("all")}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              filterMode === "all"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            All Keys ({stats.totalKeys})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterMode("healthy")}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              filterMode === "healthy"
-                ? "bg-card text-emerald-500 shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Healthy ({stats.healthyCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterMode("cooldown")}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              filterMode === "cooldown"
-                ? "bg-card text-amber-500 shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Cooldown ({stats.cooldownCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterMode("evicted")}
-            className={`rounded-md px-3 py-1 font-medium transition-colors ${
-              filterMode === "evicted"
-                ? "bg-card text-red-500 shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Evicted ({stats.evictedCount})
-          </button>
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {(["all", "healthy", "cooldown", "evicted"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setFilterMode(mode)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                filterMode === mode
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Model Key Fleet Groups */}
+      {/* Main Content Area */}
       <div className="flex flex-col gap-6">
-        {filteredReports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+        {loading && !isDemo && reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card/40 p-12 text-center">
+            <RefreshIcon size={24} />
+            <span className="mt-3 text-sm font-semibold text-foreground">
+              Loading key fleet telemetry...
+            </span>
+          </div>
+        ) : !isDemo && reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-12 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+              <KeyIcon size={24} />
+            </div>
+            <h3 className="text-base font-semibold text-foreground">No API key pools configured</h3>
+            <p className="mt-1 max-w-md text-xs text-muted-foreground">
+              No active model credentials were found for this project in .project_config.toml.
+              Configure API keys in Project Settings to enable live rotation, health tracking, and
+              sparkline latency telemetry.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setIsDemo(true)}>
+                Preview with Demo Simulation
+              </Button>
+            </div>
+          </div>
+        ) : filteredReports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-12 text-center">
             <KeyIcon size={36} />
             <span className="mt-3 text-sm font-semibold text-foreground">
               No keys match your filter criteria
@@ -583,7 +632,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
                     provider={report.provider}
                     modelId={report.modelId}
                     onAction={(action, item) =>
-                      handleKeyAction(
+                      void handleKeyAction(
                         action,
                         item,
                         report.modelRef,
@@ -605,7 +654,11 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           keyItem={probingTarget.keyItem}
           provider={probingTarget.provider}
           modelId={probingTarget.modelId}
-          onClose={() => setProbingTarget(null)}
+          isDemo={isDemo}
+          onClose={() => {
+            setProbingTarget(null);
+            void fetchLiveFleet();
+          }}
         />
       )}
     </div>

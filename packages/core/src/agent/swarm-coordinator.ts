@@ -83,9 +83,20 @@ export interface SwarmEvent {
   payload: Record<string, unknown>;
 }
 
+export interface SwarmHandlerContext {
+  signal: AbortSignal;
+}
+
 export interface SwarmExecutionResult {
   taskId: string;
-  status: "settled" | "refuted" | "max_rounds_exceeded" | "loop_aborted" | "error" | "unhandled";
+  status:
+    | "settled"
+    | "refuted"
+    | "max_rounds_exceeded"
+    | "loop_aborted"
+    | "error"
+    | "unhandled"
+    | "timed_out";
   rounds: number;
   standing?: TopicStanding;
   terminalSummary?: TerminalSummary;
@@ -95,11 +106,15 @@ export interface SwarmExecutionResult {
 }
 
 export interface SwarmRoleHandlers {
-  onPlan?: (task: SwarmTaskDefinition) => Promise<{ steps: string[]; targetFiles: string[] }>;
+  onPlan?: (
+    task: SwarmTaskDefinition,
+    context?: SwarmHandlerContext,
+  ) => Promise<{ steps: string[]; targetFiles?: string[] }>;
   onExecute?: (
     task: SwarmTaskDefinition,
     step: string,
     round: number,
+    context?: SwarmHandlerContext,
   ) => Promise<{
     artifacts: SwarmArtifact[];
     proposedCommands?: string[];
@@ -109,6 +124,7 @@ export interface SwarmRoleHandlers {
     task: SwarmTaskDefinition,
     artifacts: SwarmArtifact[],
     round: number,
+    context?: SwarmHandlerContext,
   ) => Promise<{
     approved: boolean;
     grounds: string;
@@ -138,6 +154,7 @@ export class SwarmCoordinator {
     watchdogConfig?: Partial<WatchdogConfig>;
     sessionId?: string;
     sandboxRunner?: SandboxedCommandRunner;
+    shellGuardian?: ShellGuardian;
   }) {
     const sessionId = options?.sessionId ?? `swarm-session-${Date.now()}`;
     this.mailbox = new MailboxKernel();
@@ -147,7 +164,7 @@ export class SwarmCoordinator {
     this.ledger = new TurnLedger(sessionId);
     this.loopOptions = options?.loopOptions ?? { maxRepeats: 4, timeoutSeconds: 300 };
     this.loopDetector = new LoopDetector(this.loopOptions);
-    this.shellGuardian = new ShellGuardian();
+    this.shellGuardian = options?.shellGuardian ?? new ShellGuardian();
     this.sandboxRunner =
       options?.sandboxRunner ?? new SandboxedCommandRunner({ guardian: this.shellGuardian });
     this.watchdog = new TaskWatchdog(options?.watchdogConfig ?? { maxStepCount: 40 });
@@ -349,6 +366,29 @@ export class SwarmCoordinator {
     const activeTurnId = this.ledger.begin(taskId);
     let turnClosed = false;
 
+    const watchdogConfig = this.watchdog.getConfig();
+    const stepTimeoutMs = watchdogConfig.stepTimeoutMs || 60_000;
+    const taskAbortController = new AbortController();
+
+    const runWithDeadline = async <T>(
+      promise: Promise<T>,
+      actionName: string,
+      timeoutMs: number,
+    ): Promise<T> => {
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          taskAbortController.abort();
+          reject(new Error(`Swarm task step '${actionName}' timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      });
+      try {
+        return await Promise.race([promise, timeoutPromise]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
+    };
+
     try {
       this.emit("task_started", taskId, "orchestrator", { goal: task.goal });
 
@@ -379,7 +419,11 @@ export class SwarmCoordinator {
       // Plan steps
       let steps = ["implement_solution", "run_verification"];
       if (handlers?.onPlan) {
-        const planRes = await handlers.onPlan(task);
+        const planRes = await runWithDeadline(
+          handlers.onPlan(task, { signal: taskAbortController.signal }),
+          "orchestrator_plan",
+          stepTimeoutMs,
+        );
         if (planRes.steps.length > 0) steps = planRes.steps;
       }
 
@@ -433,16 +477,11 @@ export class SwarmCoordinator {
         coder.currentTask = `Coding round ${currentRound}`;
         this.watchdog.heartbeat({ action: `coder_round_${currentRound}` });
 
-        const coderMsg = this.mailbox.poll<{ goal: string; steps: string[] }>("coder");
-        let leaseToken: string | null = null;
-        if (coderMsg) {
-          try {
-            const lease = this.mailbox.acquireLease("coder", coderMsg.id, 15000);
-            leaseToken = lease.leaseToken;
-          } catch {
-            // Lease busy or already held
-          }
-        }
+        const coderPoll = this.mailbox.pollAndLease<{ goal: string; steps: string[] }>(
+          "coder",
+          15000,
+        );
+        let leaseToken: string | null = coderPoll?.lease.leaseToken ?? null;
 
         // Check safety of proposed commands (ensure strings)
         const rawCommands = Array.isArray(task.proposedCommands) ? task.proposedCommands : [];
@@ -479,7 +518,13 @@ export class SwarmCoordinator {
         let summary = `Implementation generated for ${task.goal}`;
 
         if (handlers?.onExecute) {
-          const execRes = await handlers.onExecute(task, steps[0] ?? "implement", currentRound);
+          const execRes = await runWithDeadline(
+            handlers.onExecute(task, steps[0] ?? "implement", currentRound, {
+              signal: taskAbortController.signal,
+            }),
+            `coder_round_${currentRound}`,
+            stepTimeoutMs,
+          );
           artifacts = execRes.artifacts;
           summary = execRes.summary;
         } else if (task.simulate === true) {
@@ -555,22 +600,23 @@ export class SwarmCoordinator {
         reviewer.currentTask = `Reviewing round ${currentRound}`;
         this.watchdog.heartbeat({ action: `reviewer_round_${currentRound}` });
 
-        const revMsg = this.mailbox.poll<{ round: number; artifacts: SwarmArtifact[] }>("reviewer");
-        let revLeaseToken: string | null = null;
-        if (revMsg) {
-          try {
-            const lease = this.mailbox.acquireLease("reviewer", revMsg.id, 15000);
-            revLeaseToken = lease.leaseToken;
-          } catch {
-            // ignore
-          }
-        }
+        const revPoll = this.mailbox.pollAndLease<{ round: number; artifacts: SwarmArtifact[] }>(
+          "reviewer",
+          15000,
+        );
+        let revLeaseToken: string | null = revPoll?.lease.leaseToken ?? null;
 
         let reviewPassed = true;
         let reviewGrounds = `Verified invariants and types for round ${currentRound} across ${artifacts.length} file(s)`;
 
         if (handlers?.onReview) {
-          const revRes = await handlers.onReview(task, artifacts, currentRound);
+          const revRes = await runWithDeadline(
+            handlers.onReview(task, artifacts, currentRound, {
+              signal: taskAbortController.signal,
+            }),
+            `reviewer_round_${currentRound}`,
+            stepTimeoutMs,
+          );
           reviewPassed = revRes.approved;
           reviewGrounds = revRes.grounds;
         } else if (task.simulate === true) {
@@ -647,6 +693,28 @@ export class SwarmCoordinator {
         taskId,
         status: finalStatus,
         rounds: currentRound,
+        standing: this.consensus.getStanding(taskId),
+        terminalSummary: this.ledger.getSummaries().find((s) => s.turnId === activeTurnId),
+        artifacts: collectedArtifacts,
+        safetyFindings,
+        log: this.logMessages,
+      };
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isTimeout = errMsg.includes("timed out");
+      log(`Swarm task failure: ${errMsg}`);
+      this.watchdog.abort(errMsg);
+      this.ledger.append("turn_done", errMsg, isTimeout ? "interrupted" : "failed");
+      turnClosed = true;
+      const finalStatus: SwarmExecutionResult["status"] = isTimeout ? "timed_out" : "error";
+      this.emit("task_failed", taskId, "orchestrator", {
+        reason: errMsg,
+        status: finalStatus,
+      });
+      return {
+        taskId,
+        status: finalStatus,
+        rounds: 0,
         standing: this.consensus.getStanding(taskId),
         terminalSummary: this.ledger.getSummaries().find((s) => s.turnId === activeTurnId),
         artifacts: collectedArtifacts,

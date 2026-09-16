@@ -16,10 +16,16 @@ import {
   SwarmCoordinator,
   KeyFleetMonitor,
   CodeGraphWatcher,
+  ShellGuardian,
+  type SafetyRule,
+  DEFAULT_PROJECT_ID,
+  projectDir,
   redactObject,
   type SwarmEvent,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
+import type { ProjectService } from "../services/project-service.js";
+import type { ProjectConfigService } from "../services/project-config-service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
 
 const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
@@ -33,90 +39,270 @@ function safeSend(ws: WebSocket, payload: string): void {
 
 export interface CockpitWebSocketDeps {
   authService?: AuthService;
+  projectService?: ProjectService;
+  projectConfigService?: ProjectConfigService;
+  root?: string;
   log?: (line: string) => void;
   workspaceRoot?: string;
 }
 
-let sharedCoordinator: SwarmCoordinator | null = null;
-let sharedKeyFleet: KeyFleetMonitor | null = null;
-let sharedCodeGraphWatcher: CodeGraphWatcher | null = null;
-
-export function getSharedSwarmCoordinator(): SwarmCoordinator {
-  if (!sharedCoordinator) {
-    sharedCoordinator = new SwarmCoordinator();
-  }
-  return sharedCoordinator;
+export interface ProjectCockpitRuntime {
+  projectId: string;
+  coordinator: SwarmCoordinator;
+  keyFleet: KeyFleetMonitor;
+  codeGraphWatcher: CodeGraphWatcher;
+  clients: Set<WebSocket>;
 }
 
-export function getSharedKeyFleetMonitor(): KeyFleetMonitor {
-  if (!sharedKeyFleet) {
-    sharedKeyFleet = new KeyFleetMonitor();
+const projectRuntimes = new Map<string, ProjectCockpitRuntime>();
+
+export function resetCockpitRuntimesForTesting(): void {
+  for (const rt of projectRuntimes.values()) {
+    for (const ws of rt.clients) {
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+    }
+    rt.clients.clear();
   }
-  return sharedKeyFleet;
+  projectRuntimes.clear();
 }
 
-export function getSharedCodeGraphWatcher(workspaceRoot = process.cwd()): CodeGraphWatcher {
-  if (!sharedCodeGraphWatcher) {
-    sharedCodeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
-    void sharedCodeGraphWatcher.init();
+export async function syncProjectKeyFleet(
+  deps: CockpitWebSocketDeps,
+  projectId: string,
+  monitor: KeyFleetMonitor,
+): Promise<void> {
+  if (!deps.projectConfigService) return;
+  try {
+    const raw = await deps.projectConfigService.readRaw(projectId);
+    monitor.clear();
+    if (raw && Array.isArray(raw.models)) {
+      const byProvider = new Map<string, { modelId: string; keys: string[] }>();
+      for (const m of raw.models) {
+        if (
+          m &&
+          typeof m === "object" &&
+          typeof m.provider === "string" &&
+          typeof m.model_id === "string" &&
+          typeof m.api_key === "string" &&
+          m.api_key.trim() !== ""
+        ) {
+          const prov = m.provider.toLowerCase();
+          const existing = byProvider.get(prov);
+          const rawKey = m.api_key.trim();
+          if (!existing) {
+            byProvider.set(prov, { modelId: m.model_id, keys: [rawKey] });
+          } else if (!existing.keys.includes(rawKey)) {
+            existing.keys.push(rawKey);
+          }
+        }
+      }
+      for (const [provider, data] of byProvider) {
+        monitor.registerProvider({
+          provider,
+          modelId: data.modelId,
+          modelRef: `${provider}/${data.modelId}`,
+          keys: data.keys,
+          strategy: "round-robin",
+        });
+      }
+    }
+  } catch (err) {
+    deps.log?.(
+      `[cockpit-ws] error syncing key fleet for project ${projectId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
-  return sharedCodeGraphWatcher;
+}
+
+export async function createProjectShellGuardian(
+  deps: CockpitWebSocketDeps,
+  projectId: string,
+): Promise<ShellGuardian> {
+  const guardian = new ShellGuardian();
+  if (deps.projectConfigService) {
+    try {
+      const policy = await deps.projectConfigService.getCommandPolicy(projectId);
+      if (policy.enabled !== false && Array.isArray(policy.rules)) {
+        const customRules: SafetyRule[] = policy.rules
+          .filter((r) => r.enabled !== false)
+          .map((r) => {
+            let regex: RegExp;
+            try {
+              regex = new RegExp(r.pattern, "i");
+            } catch {
+              regex = new RegExp(r.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+            }
+            return {
+              id: `policy-${r.name}`,
+              severity: "critical" as const,
+              pattern: regex,
+              description: r.description || `Command policy rule '${r.name}'`,
+              requiresApproval: true,
+            };
+          });
+        guardian.setCustomRules(customRules);
+      }
+    } catch (err) {
+      deps.log?.(
+        `[cockpit-ws] error configuring ShellGuardian for project ${projectId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return guardian;
+}
+
+function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: string): string {
+  if (deps.root && projectId !== DEFAULT_PROJECT_ID) {
+    return projectDir(deps.root, projectId);
+  }
+  return deps.workspaceRoot ?? process.cwd();
+}
+
+export async function getOrCreateProjectRuntime(
+  projectId = DEFAULT_PROJECT_ID,
+  deps: CockpitWebSocketDeps = {},
+): Promise<ProjectCockpitRuntime> {
+  let runtime = projectRuntimes.get(projectId);
+  if (!runtime) {
+    const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
+    const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
+    void codeGraphWatcher.init();
+
+    const shellGuardian = await createProjectShellGuardian(deps, projectId);
+    const coordinator = new SwarmCoordinator({
+      shellGuardian,
+      sessionId: `swarm-${projectId}-${Date.now()}`,
+    });
+
+    const keyFleet = new KeyFleetMonitor();
+    await syncProjectKeyFleet(deps, projectId, keyFleet);
+
+    const clients = new Set<WebSocket>();
+
+    runtime = {
+      projectId,
+      coordinator,
+      keyFleet,
+      codeGraphWatcher,
+      clients,
+    };
+    projectRuntimes.set(projectId, runtime);
+
+    codeGraphWatcher.on("error", (err) => {
+      deps.log?.(
+        `[cockpit-ws][${projectId}] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+
+    coordinator.subscribe((event: SwarmEvent) => {
+      const payload = JSON.stringify({
+        type: "swarm_event",
+        projectId,
+        timestamp: Date.now(),
+        event: redactObject(event),
+      });
+      for (const ws of runtime!.clients) {
+        safeSend(ws, payload);
+      }
+    });
+
+    keyFleet.subscribe((_stats) => {
+      const payload = JSON.stringify({
+        type: "key_fleet_update",
+        projectId,
+        timestamp: Date.now(),
+        keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+        reports: redactObject(keyFleet.getFleetReport()),
+        stats: keyFleet.getFleetStats(),
+      });
+      for (const ws of runtime!.clients) {
+        safeSend(ws, payload);
+      }
+    });
+
+    codeGraphWatcher.on("change", (ev) => {
+      const payload = JSON.stringify({
+        type: "topology_change",
+        projectId,
+        timestamp: Date.now(),
+        event: ev,
+        stats: codeGraphWatcher.getStats(),
+      });
+      for (const ws of runtime!.clients) {
+        safeSend(ws, payload);
+      }
+    });
+  }
+  return runtime;
+}
+
+export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): SwarmCoordinator {
+  let rt = projectRuntimes.get(projectId);
+  if (!rt) {
+    const coordinator = new SwarmCoordinator();
+    const keyFleet = new KeyFleetMonitor();
+    const codeGraphWatcher = new CodeGraphWatcher(process.cwd());
+    void codeGraphWatcher.init();
+    rt = {
+      projectId,
+      coordinator,
+      keyFleet,
+      codeGraphWatcher,
+      clients: new Set(),
+    };
+    projectRuntimes.set(projectId, rt);
+  }
+  return rt.coordinator;
+}
+
+export function getSharedKeyFleetMonitor(projectId = DEFAULT_PROJECT_ID): KeyFleetMonitor {
+  let rt = projectRuntimes.get(projectId);
+  if (!rt) {
+    const coordinator = new SwarmCoordinator();
+    const keyFleet = new KeyFleetMonitor();
+    const codeGraphWatcher = new CodeGraphWatcher(process.cwd());
+    void codeGraphWatcher.init();
+    rt = {
+      projectId,
+      coordinator,
+      keyFleet,
+      codeGraphWatcher,
+      clients: new Set(),
+    };
+    projectRuntimes.set(projectId, rt);
+  }
+  return rt.keyFleet;
+}
+
+export function getSharedCodeGraphWatcher(
+  workspaceRoot = process.cwd(),
+  projectId = DEFAULT_PROJECT_ID,
+): CodeGraphWatcher {
+  let rt = projectRuntimes.get(projectId);
+  if (!rt) {
+    const coordinator = new SwarmCoordinator();
+    const keyFleet = new KeyFleetMonitor();
+    const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
+    void codeGraphWatcher.init();
+    rt = {
+      projectId,
+      coordinator,
+      keyFleet,
+      codeGraphWatcher,
+      clients: new Set(),
+    };
+    projectRuntimes.set(projectId, rt);
+  }
+  return rt.codeGraphWatcher;
 }
 
 export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocketDeps = {}): void {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
-  const coordinator = getSharedSwarmCoordinator();
-  const keyFleet = getSharedKeyFleetMonitor();
-  const codeGraphWatcher = getSharedCodeGraphWatcher(deps.workspaceRoot);
-  const connectedClients = new Set<WebSocket>();
 
-  // Attach error handler to prevent unhandled EventEmitter exceptions from crashing process
-  codeGraphWatcher.on("error", (err) => {
-    deps.log?.(
-      `[cockpit-ws] code graph watcher error: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
-
-  // Subscribe coordinator events and broadcast to all connected cockpit clients
-  coordinator.subscribe((event: SwarmEvent) => {
-    const payload = JSON.stringify({
-      type: "swarm_event",
-      timestamp: Date.now(),
-      event: redactObject(event),
-    });
-    for (const ws of connectedClients) {
-      safeSend(ws, payload);
-    }
-  });
-
-  // Subscribe key fleet updates and broadcast to cockpit clients
-  keyFleet.subscribe((_stats) => {
-    const payload = JSON.stringify({
-      type: "key_fleet_update",
-      timestamp: Date.now(),
-      keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
-      reports: redactObject(keyFleet.getFleetReport()),
-      stats: keyFleet.getFleetStats(),
-    });
-    for (const ws of connectedClients) {
-      safeSend(ws, payload);
-    }
-  });
-
-  // Subscribe code graph changes and broadcast to cockpit clients
-  codeGraphWatcher.on("change", (ev) => {
-    const payload = JSON.stringify({
-      type: "topology_change",
-      timestamp: Date.now(),
-      event: ev,
-      stats: codeGraphWatcher.getStats(),
-    });
-    for (const ws of connectedClients) {
-      safeSend(ws, payload);
-    }
-  });
-
-  server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+  server.on("upgrade", async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!COCKPIT_STREAM_PATH.test(url.pathname)) return;
 
@@ -124,20 +310,38 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       return refuse(socket, 403, "Forbidden");
     }
 
-    // Strict authentication if authService is provided
+    let authedUser: { userId: string } | null = null;
     if (deps.authService) {
       const token = readCookie(req.headers.cookie, SESSION_COOKIE);
       const authed = token ? deps.authService.authenticateWithMeta(token) : null;
       if (!authed) {
         return refuse(socket, 401, "Unauthorized");
       }
+      authedUser = authed.user;
     }
 
-    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-      connectedClients.add(ws);
+    const projectId =
+      url.searchParams.get("project") || url.searchParams.get("projectId") || DEFAULT_PROJECT_ID;
 
-      // Send initial cockpit telemetry snapshot
-      const snapshot = buildCockpitSnapshot(coordinator, keyFleet, codeGraphWatcher);
+    if (deps.projectService && authedUser) {
+      try {
+        deps.projectService.requireProjectAccess(authedUser.userId, projectId);
+      } catch {
+        return refuse(socket, 404, "Project Not Found");
+      }
+    }
+
+    const runtime = await getOrCreateProjectRuntime(projectId, deps);
+
+    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+      runtime.clients.add(ws);
+
+      // Send initial cockpit telemetry snapshot for this project
+      const snapshot = buildCockpitSnapshot(
+        runtime.coordinator,
+        runtime.keyFleet,
+        runtime.codeGraphWatcher,
+      );
       safeSend(ws, JSON.stringify(snapshot));
 
       ws.on("message", async (raw: Buffer | string) => {
@@ -150,8 +354,13 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
           if (msg.type === "probe_key") {
             const provider = typeof msg.provider === "string" ? msg.provider : "anthropic";
-            const maskedKey = typeof msg.maskedKey === "string" ? msg.maskedKey : "";
-            const result = await keyFleet.probeKey(provider, maskedKey);
+            const target =
+              typeof msg.keyId === "string" && msg.keyId.trim()
+                ? msg.keyId.trim()
+                : typeof msg.maskedKey === "string"
+                  ? msg.maskedKey
+                  : "";
+            const result = await runtime.keyFleet.probeKey(provider, target);
             safeSend(
               ws,
               JSON.stringify({
@@ -164,7 +373,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           }
 
           if (msg.type === "probe_fleet") {
-            const results = await keyFleet.probeFleet();
+            const results = await runtime.keyFleet.probeFleet();
             safeSend(
               ws,
               JSON.stringify({
@@ -179,19 +388,24 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           if (msg.type === "key_action") {
             const action = msg.action;
             const provider = typeof msg.provider === "string" ? msg.provider : "";
-            const maskedKey = typeof msg.maskedKey === "string" ? msg.maskedKey : "";
+            const target =
+              typeof msg.keyId === "string" && msg.keyId.trim()
+                ? msg.keyId.trim()
+                : typeof msg.maskedKey === "string"
+                  ? msg.maskedKey
+                  : "";
             if (action === "revive") {
-              keyFleet.reviveKey(provider, maskedKey);
+              runtime.keyFleet.reviveKey(provider, target);
             } else if (action === "cooldown") {
-              keyFleet.cooldownKey(
+              runtime.keyFleet.cooldownKey(
                 provider,
-                maskedKey,
+                target,
                 typeof msg.cooldownMs === "number" ? msg.cooldownMs : 60_000,
               );
             } else if (action === "evict") {
-              keyFleet.evictKey(provider, maskedKey);
+              runtime.keyFleet.evictKey(provider, target);
             } else if (action === "revive_all") {
-              keyFleet.reviveAllCooldowns();
+              runtime.keyFleet.reviveAllCooldowns();
             }
             return;
           }
@@ -202,8 +416,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             const content = typeof msg.content === "string" ? msg.content : "";
             const trimmed = content.trim();
             if (trimmed && trimmed.length <= 8192) {
-              // Bound mailbox queue depth (< 100 pending messages)
-              const summaries = coordinator.getMailboxSummaries();
+              const summaries = runtime.coordinator.getMailboxSummaries();
               const targetSummary = summaries[to];
               if (targetSummary && targetSummary.queueDepth >= 100) {
                 safeSend(
@@ -216,14 +429,14 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 );
                 return;
               }
-              const directive = coordinator.dispatchDirective(from, to, trimmed);
+              const directive = runtime.coordinator.dispatchDirective(from, to, trimmed);
               const confirmPayload = JSON.stringify({
                 type: "directive_dispatched",
                 directive: redactObject(directive),
-                mailbox: coordinator.getMailboxSummaries(),
+                mailbox: runtime.coordinator.getMailboxSummaries(),
                 timestamp: Date.now(),
               });
-              for (const client of connectedClients) {
+              for (const client of runtime.clients) {
                 safeSend(client, confirmPayload);
               }
             } else if (trimmed.length > 8192) {
@@ -240,6 +453,10 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           }
 
           if (msg.type === "trigger_swarm") {
+            const taskId =
+              typeof msg.id === "string" && msg.id.trim()
+                ? msg.id.trim()
+                : `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             const goal =
               typeof msg.goal === "string"
                 ? msg.goal.slice(0, 4096)
@@ -262,14 +479,16 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
               ws,
               JSON.stringify({
                 type: "swarm_task_accepted",
+                taskId,
                 goal,
                 timestamp: Date.now(),
               }),
             );
 
-            // Execute task asynchronously
-            void coordinator
+            // Execute task asynchronously on this project's coordinator
+            void runtime.coordinator
               .runTask({
+                id: taskId,
                 goal,
                 files,
                 proposedCommands,
@@ -279,20 +498,22 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
               .then((res: unknown) => {
                 const payload = JSON.stringify({
                   type: "swarm_task_settled",
+                  taskId,
                   result: redactObject(res),
                   timestamp: Date.now(),
                 });
-                for (const client of connectedClients) {
+                for (const client of runtime.clients) {
                   safeSend(client, payload);
                 }
               })
               .catch((err: unknown) => {
                 const payload = JSON.stringify({
                   type: "swarm_task_error",
+                  taskId,
                   error: err instanceof Error ? err.message : String(err),
                   timestamp: Date.now(),
                 });
-                for (const client of connectedClients) {
+                for (const client of runtime.clients) {
                   safeSend(client, payload);
                 }
               });
@@ -303,12 +524,12 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       });
 
       ws.on("close", () => {
-        connectedClients.delete(ws);
+        runtime.clients.delete(ws);
       });
 
       ws.on("error", (err) => {
-        deps.log?.(`[cockpit-ws] socket error: ${err.message}`);
-        connectedClients.delete(ws);
+        deps.log?.(`[cockpit-ws][${projectId}] socket error: ${err.message}`);
+        runtime.clients.delete(ws);
       });
     });
   });

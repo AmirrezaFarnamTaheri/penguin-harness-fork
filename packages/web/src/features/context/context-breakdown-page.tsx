@@ -1,11 +1,13 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import type { SessionContextResponse } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { useProject } from "../../state/project";
+import { useSessions } from "../../state/sessions";
 import { ContextAllocationBar } from "./context-allocation-bar";
 import { TopConsumersCard } from "./top-consumers-card";
 import { CompactionAnchorsCard } from "./compaction-anchors-card";
-import { toastSuccess } from "../../components/ui/toast";
+import { Button } from "../../components/ui/button";
+import { toastSuccess, toastError } from "../../components/ui/toast";
 
 export interface ContextBreakdownPageProps {
   sessionId?: string;
@@ -13,83 +15,87 @@ export interface ContextBreakdownPageProps {
 }
 
 export function ContextBreakdownPage({
-  sessionId = "current-session",
+  sessionId: explicitSessionId,
   embedded = false,
 }: ContextBreakdownPageProps) {
   const { currentProject } = useProject();
+  const { sessions } = useSessions();
+
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
+    explicitSessionId && explicitSessionId !== "current-session" ? explicitSessionId : null,
+  );
   const [data, setData] = useState<SessionContextResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [compacting, setCompacting] = useState(false);
 
+  // Synchronize initial session selection from available project sessions
+  useEffect(() => {
+    if (!selectedSessionId && sessions.length > 0) {
+      const first = sessions[0];
+      if (first) {
+        setSelectedSessionId(first.sessionId);
+      }
+    }
+  }, [sessions, selectedSessionId]);
+
+  // If explicit sessionId prop changes and is valid, update selection
+  useEffect(() => {
+    if (explicitSessionId && explicitSessionId !== "current-session") {
+      setSelectedSessionId(explicitSessionId);
+    }
+  }, [explicitSessionId]);
+
+  const activeSessionId = selectedSessionId;
+
   const loadContext = useCallback(async () => {
-    if (!sessionId) return;
+    if (!activeSessionId) {
+      setData(null);
+      setError(null);
+      return;
+    }
     setLoading(true);
+    setError(null);
     try {
-      const res = await api.getSessionContext(sessionId);
+      const res = await api.getSessionContext(activeSessionId);
       setData(res);
-    } catch {
-      // Fallback telemetry snapshot
-      setData({
-        systemPrompt: 4200,
-        toolDefs: 12400,
-        userMessages: 6800,
-        assistantMessages: 18900,
-        toolRequests: 9400,
-        toolResults: 34100,
-        total: 89800,
-        compactionThreshold: 160000,
-        contextClosed: false,
-        topTools: [
-          { name: "read_file", tokens: 24500 },
-          { name: "run_command", tokens: 12800 },
-          { name: "grep_search", tokens: 8400 },
-          { name: "view_file", tokens: 6200 },
-          { name: "replace_file_content", tokens: 4900 },
-        ],
-        topFiles: [
-          {
-            path: "packages/web/src/features/chat/chat-page.tsx",
-            tokens: 18400,
-            ops: { read: 4, edit: 2, write: 0 },
-          },
-          {
-            path: "packages/core/src/agent/code-graph.ts",
-            tokens: 9200,
-            ops: { read: 3, edit: 0, write: 0 },
-          },
-          {
-            path: "packages/server/src/api/types.ts",
-            tokens: 6500,
-            ops: { read: 2, edit: 0, write: 0 },
-          },
-        ],
-      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load session context telemetry");
+      setData(null);
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [activeSessionId]);
 
   useEffect(() => {
     void loadContext();
   }, [loadContext]);
 
-  const handleManualCompact = () => {
+  const handleManualCompact = async () => {
+    if (!activeSessionId) return;
     setCompacting(true);
-    setTimeout(() => {
+    try {
+      await api.postCompact(activeSessionId);
+      toastSuccess("Context compaction requested. Scheduled pruning task on session.");
+      await loadContext();
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Failed to execute context compaction");
+    } finally {
       setCompacting(false);
-      toastSuccess("Context compaction completed. Freed 48,200 tokens into compaction anchor.");
-      void loadContext();
-    }, 1200);
+    }
   };
 
-  const totalTokens = data
-    ? data.systemPrompt +
+  const totalTokens = useMemo(() => {
+    if (!data) return 0;
+    return (
+      data.systemPrompt +
       data.toolDefs +
       data.userMessages +
       data.assistantMessages +
       data.toolRequests +
       data.toolResults
-    : 0;
+    );
+  }, [data]);
 
   return (
     <div
@@ -111,7 +117,26 @@ export function ContextBreakdownPage({
             </p>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs">
+          {/* Session Selector & Status */}
+          <div className="flex items-center gap-3 font-mono text-xs">
+            {sessions.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400 text-[11px]">Session:</span>
+                <select
+                  value={activeSessionId ?? ""}
+                  onChange={(e) => setSelectedSessionId(e.target.value)}
+                  className="rounded-md border border-gray-800 bg-gray-900 px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                >
+                  {sessions.map((s) => (
+                    <option key={s.sessionId} value={s.sessionId}>
+                      {s.title
+                        ? `${s.title.slice(0, 28)} (${s.sessionId.slice(0, 6)})`
+                        : s.sessionId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <span className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
               WINDOW: 200,000 TOKENS
             </span>
@@ -123,13 +148,13 @@ export function ContextBreakdownPage({
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Active Occupancy</span>
             <span className="text-base font-bold text-gray-100 tabular-nums">
-              {totalTokens.toLocaleString()} tok
+              {data ? `${totalTokens.toLocaleString()} tok` : "—"}
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Window Capacity</span>
             <span className="text-base font-bold text-cyan-400 tabular-nums">
-              {Math.min(100, Math.round((totalTokens / 200000) * 100))}%
+              {data ? `${Math.min(100, Math.round((totalTokens / 200000) * 100))}%` : "—"}
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
@@ -141,14 +166,41 @@ export function ContextBreakdownPage({
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Avg Purge Volume</span>
-            <span className="text-base font-bold text-emerald-400 tabular-nums">~68% freed</span>
+            <span className="text-[10px] text-gray-500 uppercase">Status</span>
+            <span className="text-base font-bold text-emerald-400 tabular-nums">
+              {loading ? "Loading..." : data ? (data.contextClosed ? "Closed" : "Active") : "Idle"}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Main Breakdown Content */}
-      {data && (
+      {loading && !data ? (
+        <div className="flex flex-col items-center justify-center p-12 rounded-xl border border-gray-800 bg-gray-900/40 text-center font-mono text-xs">
+          <span className="text-cyan-400 animate-pulse">
+            Loading context breakdown telemetry...
+          </span>
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center p-12 rounded-xl border border-red-900/50 bg-red-950/20 text-center font-mono text-xs">
+          <span className="text-red-400 font-semibold mb-2">{error}</span>
+          <p className="text-gray-400 mb-4 max-w-md text-[11px]">
+            Unable to retrieve context occupancy for session &apos;{activeSessionId}&apos;. The
+            session may have expired, or no telemetry has been recorded yet.
+          </p>
+          <Button variant="secondary" size="sm" onClick={() => void loadContext()}>
+            Retry Telemetry Fetch
+          </Button>
+        </div>
+      ) : !activeSessionId ? (
+        <div className="flex flex-col items-center justify-center p-12 rounded-xl border border-dashed border-gray-800 bg-gray-900/40 text-center font-mono text-xs">
+          <span className="text-gray-400 font-semibold mb-1">No active conversation session</span>
+          <p className="text-gray-500 max-w-md text-[11px]">
+            Please select an active session from the menu above or start a conversation in Chat to
+            inspect token partition allocation and trigger compaction.
+          </p>
+        </div>
+      ) : data ? (
         <div className="flex flex-col gap-4">
           <ContextAllocationBar data={data} contextWindow={200000} />
           <TopConsumersCard tools={data.topTools} files={data.topFiles} />
@@ -157,7 +209,7 @@ export function ContextBreakdownPage({
             compacting={compacting || loading}
           />
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

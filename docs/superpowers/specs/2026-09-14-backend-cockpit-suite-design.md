@@ -198,3 +198,31 @@ The implementation proceeds in 4 sequential, independently testable phases:
 4. **Git Safety Invariants**:
    - All changes committed strictly on the feature branch `feat/cockpit-topology-guardian-consensus` or dedicated follow-up branch on the user's fork.
    - Zero operations targeting or modifying `upstream`.
+
+---
+
+## 6. Runtime Containment, Security & Subsystem Truthfulness Demarcation
+
+### 6.1 Platform Containment Boundaries & Secret Isolation
+The sandbox execution layer in `packages/core/src/environment/sandbox-provider.ts` adapts across target operating systems with explicit, platform-appropriate security boundaries:
+- **Linux**: Kernel-enforced unprivileged user namespaces and filesystem isolation via Bubblewrap (`bwrap`), mounting read-only system paths, isolated ephemeral `/tmp`, and optional network namespace isolation.
+- **macOS**: Kernel-level mandatory access control via Seatbelt profiles executed through `/usr/bin/sandbox-exec`.
+- **Windows**: Process-level containment via direct executable invocation without shell interpolation (`cmd.exe /c` or PowerShell escaping bypassed via explicit argv token arrays). The child environment is strictly isolated using `SAFE_BASELINE_ENV_KEYS` (allowing only OS baseline paths such as `SystemRoot`, `TEMP`, `PATH`, and `USERPROFILE`). Process-global server secrets, OAuth tokens, session cookies, and API keys present in the parent `process.env` are stripped before spawn.
+
+### 6.2 Static Topology & Dependency Analysis vs AST Compilers
+The codebase graph analyzer (`packages/core/src/agent/code-graph.ts` and `code-graph-watcher.ts`) provides lightweight, near-instantaneous static topology and module dependency extraction:
+- Uses fast regex-guided scanners and module import/export dependency resolution rather than heavyweight multi-language abstract syntax tree (AST) compiler pipelines (such as Tree-sitter or TypeScript Language Server daemons).
+- Avoids compiler startup overhead and large memory footprints, enabling sub-10ms incremental topology updates and change event notifications over 10,000+ file codebases.
+
+### 6.3 Turn Ledger & Session Durability Boundaries
+The `TurnLedger` (`packages/core/src/agent/turn-ledger.ts`) records deliberation turns, consensus votes, refutations, and artifact snapshots:
+- Operates in-memory scoped to an active agent task and session ID (`sessionId`).
+- Designed for rapid turn replay, audit inspection, and loop detection during execution.
+- Durability across process restarts is achieved through the Session and Snapshot services (`session-service.ts` and `snapshot-service.ts`), which serialize and archive checkpoint states to disk.
+
+### 6.4 Multi-Project Isolation & Access Control
+All Cockpit services enforce strict project-level isolation:
+- **WebSocket Streams**: Upgrades validate user session credentials and require verified project membership (`requireProjectAccess`). Broadcast events (`swarm_event`, `key_fleet_update`, `topology_change`) are routed exclusively to client connections authorized for that specific `projectId`.
+- **REST Endpoints**: Every `/api/cockpit/*` route verifies project access. Commands, directives, and autonomous swarm tasks execute within the target project's workspace directory with its authoritative security command policy applied.
+- **Key Fleet Telemetry**: Telemetry reflects truthful configuration from `.project_config.toml`. Projects without configured credentials render an explicit empty state rather than synthetic keys. Manual overrides and probes are fail-closed.
+

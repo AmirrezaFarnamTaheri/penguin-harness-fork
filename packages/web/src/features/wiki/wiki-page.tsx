@@ -4,7 +4,7 @@
  * Provides bidirectional wikilink graph exploration, AST symbol mapping,
  * BFS path finding, neighbor discovery, and Markdown document authoring.
  */
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import type {
   WikiNode,
   WikiNodeType,
@@ -34,17 +34,23 @@ const TYPE_TONES: Record<WikiNodeType, string> = {
 };
 
 export function WikiPage() {
-  useDocumentTitle(S.nav.wiki ?? "Code Graph & Wiki");
+  useDocumentTitle(S.nav.wiki ?? "Project Wiki");
   const { currentProject } = useProject();
   const projectId = currentProject?.projectId;
 
+  const [activeTab, setActiveTab] = useState<WikiTab>("editor");
   const [nodes, setNodes] = useState<WikiNode[]>([]);
   const [graph, setGraph] = useState<WikiGraph | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<WikiTab>("editor");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+
+  // Stable refs to prevent fetch loops when setNodes updates
+  const nodesRef = useRef<WikiNode[]>([]);
+  nodesRef.current = nodes;
+  const graphRef = useRef<WikiGraph | null>(null);
+  graphRef.current = graph;
 
   // Editor state
   const [editContent, setEditContent] = useState("");
@@ -88,13 +94,15 @@ export function WikiPage() {
             tags: raw.tags || n.links || [],
             aliases: raw.aliases || [],
             rawContent: raw.rawContent || "",
-            filePath: n.filePath,
+            filePath: raw.filePath,
             metadata: raw.metadata || {},
           };
         });
+        setNodes(loadedNodes);
+      } else {
+        setNodes([]);
       }
 
-      setNodes(loadedNodes);
       if (graphRes && Array.isArray(graphRes.nodes)) {
         setGraph({
           nodes: loadedNodes,
@@ -136,76 +144,80 @@ export function WikiPage() {
   }, [nodes, selectedNodeId]);
 
   useEffect(() => {
-    if (selectedNode) {
-      setEditContent(selectedNode.rawContent || "");
-      setIsEditing(false);
-
-      if (projectId && selectedNode.id) {
-        // Authoritatively fetch full node content from server
-        void api
-          .getWikiNode(projectId, selectedNode.id)
-          .then((res) => {
-            if (res?.node) {
-              const raw = res.node as unknown as WikiNode & { content?: string; links?: string[] };
-              const fetchedContent = raw.rawContent ?? raw.content ?? "";
-              setEditContent(fetchedContent);
-              setNodes((curr) =>
-                curr.map((n) =>
-                  n.id === selectedNode.id
-                    ? {
-                        ...n,
-                        rawContent: fetchedContent,
-                        title: raw.title ?? n.title,
-                        tags: raw.tags ?? (raw.links || n.tags),
-                        type: raw.type ?? n.type,
-                      }
-                    : n,
-                ),
-              );
-            }
-          })
-          .catch(() => {
-            // Keep existing local content if fetch encounters transient issue
-          });
-
-        // Load neighbors
-        void api
-          .getWikiNeighbors(projectId, selectedNode.id)
-          .then((res) => {
-            if (res && Array.isArray(res.neighbors)) {
-              const matched = nodes.filter((n) => res.neighbors.includes(n.id));
-              setNeighbors(
-                matched.length > 0
-                  ? matched
-                  : res.neighbors.map((id) => ({
-                      id,
-                      title: id,
-                      type: "concept" as WikiNodeType,
-                      tags: [],
-                      aliases: [],
-                      rawContent: "",
-                      metadata: {},
-                    })),
-              );
-            }
-          })
-          .catch(() => {
-            // Local graph fallback
-            if (graph) {
-              const neighborIds = new Set(
-                graph.edges
-                  .filter((e) => e.from === selectedNode.id || e.to === selectedNode.id)
-                  .map((e) => (e.from === selectedNode.id ? e.to : e.from)),
-              );
-              setNeighbors(nodes.filter((n) => neighborIds.has(n.id)));
-            }
-          });
-      }
-    } else {
+    if (!selectedNodeId) {
       setEditContent("");
       setNeighbors([]);
+      return;
     }
-  }, [selectedNode?.id, projectId, graph, nodes]);
+
+    const currentMatch = nodesRef.current.find((n) => n.id === selectedNodeId);
+    if (currentMatch) {
+      setEditContent(currentMatch.rawContent || "");
+    }
+    setIsEditing(false);
+
+    if (projectId && selectedNodeId) {
+      // Authoritatively fetch full node content from server without depending on nodes array in effect
+      void api
+        .getWikiNode(projectId, selectedNodeId)
+        .then((res) => {
+          if (res?.node) {
+            const raw = res.node as unknown as WikiNode & { content?: string; links?: string[] };
+            const fetchedContent = raw.rawContent ?? raw.content ?? "";
+            setEditContent(fetchedContent);
+            setNodes((curr) =>
+              curr.map((n) =>
+                n.id === selectedNodeId
+                  ? {
+                      ...n,
+                      rawContent: fetchedContent,
+                      title: raw.title ?? n.title,
+                      tags: raw.tags ?? (raw.links || n.tags),
+                      type: raw.type ?? n.type,
+                    }
+                  : n,
+              ),
+            );
+          }
+        })
+        .catch(() => {
+          // Keep existing local content if fetch encounters transient issue
+        });
+
+      // Load neighbors
+      void api
+        .getWikiNeighbors(projectId, selectedNodeId)
+        .then((res) => {
+          if (res && Array.isArray(res.neighbors)) {
+            const matched = nodesRef.current.filter((n) => res.neighbors.includes(n.id));
+            setNeighbors(
+              matched.length > 0
+                ? matched
+                : res.neighbors.map((id) => ({
+                    id,
+                    title: id,
+                    type: "concept" as WikiNodeType,
+                    tags: [],
+                    aliases: [],
+                    rawContent: "",
+                    metadata: {},
+                  })),
+            );
+          }
+        })
+        .catch(() => {
+          // Local graph fallback
+          if (graphRef.current) {
+            const neighborIds = new Set(
+              graphRef.current.edges
+                .filter((e) => e.from === selectedNodeId || e.to === selectedNodeId)
+                .map((e) => (e.from === selectedNodeId ? e.to : e.from)),
+            );
+            setNeighbors(nodesRef.current.filter((n) => neighborIds.has(n.id)));
+          }
+        });
+    }
+  }, [selectedNodeId, projectId]);
 
   const handleSaveNode = async () => {
     if (!projectId || !selectedNode) return;
@@ -236,7 +248,8 @@ export function WikiPage() {
       const res = await api.getWikiPath(projectId, selectedNode.id, pathToId);
       if (res && Array.isArray(res.path) && res.path.length > 0) {
         setPathResult(res.path);
-        toastSuccess(`Path found: ${res.path.length} hops`);
+        const hops = Math.max(0, res.path.length - 1);
+        toastSuccess(`Path found: ${hops} hop${hops === 1 ? "" : "s"}`);
       } else {
         setPathResult(null);
         toastError("No path exists between the selected concepts");

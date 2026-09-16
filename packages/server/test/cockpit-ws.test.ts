@@ -326,4 +326,99 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
       ws.on("error", (err) => reject(err));
     });
   });
+
+  it("isolates WebSocket telemetry and events between different projects", async () => {
+    const wsAlpha = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit?project=proj-alpha`, {
+      headers: { Cookie: "penguin_session=valid-session-secret" },
+    });
+    const wsBeta = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit?project=proj-beta`, {
+      headers: { Cookie: "penguin_session=valid-session-secret" },
+    });
+
+    let betaReceivedAlphaDirective = false;
+    let alphaReceivedDirective = false;
+
+    await new Promise<void>((resolve, reject) => {
+      let openCount = 0;
+      const onOpen = () => {
+        openCount++;
+        if (openCount === 2) {
+          // Send a directive specifically to proj-alpha
+          wsAlpha.send(
+            JSON.stringify({
+              type: "send_directive",
+              from: "operator",
+              to: "coder",
+              content: "Directive exclusively for proj-alpha",
+            }),
+          );
+        }
+      };
+
+      wsAlpha.on("open", onOpen);
+      wsBeta.on("open", onOpen);
+
+      wsAlpha.on("message", (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "directive_dispatched") {
+          alphaReceivedDirective = true;
+          // Give beta a short window to verify it doesn't receive this event
+          setTimeout(() => {
+            wsAlpha.close();
+            wsBeta.close();
+            expect(alphaReceivedDirective).toBe(true);
+            expect(betaReceivedAlphaDirective).toBe(false);
+            resolve();
+          }, 100);
+        }
+      });
+
+      wsBeta.on("message", (raw) => {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === "directive_dispatched" && msg.directive?.content?.includes("proj-alpha")) {
+          betaReceivedAlphaDirective = true;
+        }
+      });
+
+      wsAlpha.on("error", reject);
+      wsBeta.on("error", reject);
+    });
+  });
+
+  it("synchronizes taskId on async /swarm/run and returns reports on /keys/action", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    // 1. Async swarm run taskId synchronization
+    const customTaskId = "custom-task-sync-id-12345";
+    const asyncRes = await app.request("/api/cockpit/swarm/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: customTaskId,
+        goal: "Synchronized async task",
+        async: true,
+      }),
+    });
+    expect(asyncRes.status).toBe(202);
+    const asyncJson = (await asyncRes.json()) as any;
+    expect(asyncJson.success).toBe(true);
+    expect(asyncJson.accepted).toBe(true);
+    expect(asyncJson.taskId).toBe(customTaskId);
+
+    // 2. /keys/action returns reports in response
+    const actionRes = await app.request("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "revive_all",
+      }),
+    });
+    expect(actionRes.status).toBe(200);
+    const actionJson = (await actionRes.json()) as any;
+    expect(actionJson.success).toBe(true);
+    expect(Array.isArray(actionJson.reports)).toBe(true);
+    expect(actionJson.stats).toBeDefined();
+    expect(actionJson.snapshot).toBeDefined();
+  });
 });

@@ -1332,7 +1332,7 @@ export function createApp(
 
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
   app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));
-  app.route("/api/cockpit", cockpitRoutes());
+  app.route("/api/cockpit", cockpitRoutes(deps));
   app.route("/api/me", meRoutes(deps));
   app.route("/api/version", versionRoutes(deps));
   app.route("/api/admin/users", adminUsersRoutes(deps));

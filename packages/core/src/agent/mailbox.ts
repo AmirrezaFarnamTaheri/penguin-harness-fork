@@ -180,6 +180,14 @@ export class MailboxKernel {
     lease.leaseState = "idle";
   }
 
+  public requeue<T = unknown>(agentName: string, message: MailboxMessage<T>): void {
+    const name = normalizeMailboxOwnerName(agentName);
+    const queue = this.queues.get(name) ?? [];
+    queue.unshift(message as MailboxMessage);
+    this.queues.set(name, queue);
+    this.lastActivity.set(name, Date.now());
+  }
+
   public poll<T = unknown>(agentName: string): MailboxMessage<T> | null {
     const name = normalizeMailboxOwnerName(agentName);
     const queue = this.queues.get(name);
@@ -189,6 +197,37 @@ export class MailboxKernel {
     msg.attempts++;
     this.lastActivity.set(name, Date.now());
     return msg;
+  }
+
+  public pollAndLease<T = unknown>(
+    agentName: string,
+    ttlMs = 30000,
+  ): { message: MailboxMessage<T>; lease: MailboxLease } | null {
+    const name = normalizeMailboxOwnerName(agentName);
+    const queue = this.queues.get(name);
+    if (!queue || queue.length === 0) return null;
+
+    const existing = this.leases.get(name);
+    const now = Date.now();
+    if (existing && existing.leaseState === "acquired" && existing.expiresAt > now) {
+      // Lease currently held, do not pop or consume the message
+      return null;
+    }
+
+    const msg = queue.shift() as MailboxMessage<T>;
+    msg.attempts++;
+    this.lastActivity.set(name, now);
+
+    const lease: MailboxLease = {
+      agentName: name,
+      inboundEventId: msg.id,
+      leaseToken: generateId(),
+      leaseState: "acquired",
+      acquiredAt: now,
+      expiresAt: now + ttlMs,
+    };
+    this.leases.set(name, lease);
+    return { message: msg, lease };
   }
 
   public deadLetter(agentName: string, message: MailboxMessage, reason: string): void {

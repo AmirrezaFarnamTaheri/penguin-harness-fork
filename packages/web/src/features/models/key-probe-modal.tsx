@@ -7,10 +7,17 @@ export interface KeyProbeModalProps {
   keyItem: KeyHealthItem;
   provider: string;
   modelId: string;
+  isDemo?: boolean;
   onClose: () => void;
 }
 
-export function KeyProbeModal({ keyItem, provider, modelId, onClose }: KeyProbeModalProps) {
+export function KeyProbeModal({
+  keyItem,
+  provider,
+  modelId,
+  isDemo = false,
+  onClose,
+}: KeyProbeModalProps) {
   const [probing, setProbing] = useState(true);
   const [result, setResult] = useState<KeyProbeResult | null>(null);
 
@@ -20,7 +27,11 @@ export function KeyProbeModal({ keyItem, provider, modelId, onClose }: KeyProbeM
       const res = await fetch("/api/cockpit/keys/probe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, maskedKey: keyItem.maskedKey }),
+        body: JSON.stringify({
+          provider,
+          keyId: keyItem.keyId,
+          maskedKey: keyItem.maskedKey,
+        }),
       });
       if (res.ok) {
         const json = await res.json();
@@ -31,10 +42,26 @@ export function KeyProbeModal({ keyItem, provider, modelId, onClose }: KeyProbeM
         }
       }
     } catch {
-      // network fallback
+      // network / server error
     }
-    const probeResult = simulateKeyProbe(keyItem.maskedKey, provider);
-    setResult(probeResult);
+
+    if (isDemo) {
+      const probeResult = simulateKeyProbe(keyItem.maskedKey, provider);
+      setResult({ ...probeResult, isSimulated: true });
+    } else {
+      setResult({
+        keyId: keyItem.keyId,
+        maskedKey: keyItem.maskedKey,
+        provider,
+        latencyMs: 0,
+        status: "error",
+        timestamp: Date.now(),
+        sparkline: [],
+        details:
+          "Handshake probe failed: backend endpoint unreachable, unauthorized (401), rate limited (429), or returned an error status.",
+        isSimulated: false,
+      });
+    }
     setProbing(false);
   };
 

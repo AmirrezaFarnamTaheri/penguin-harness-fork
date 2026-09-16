@@ -247,10 +247,7 @@ class PenguinServer {
       (info) => this.onListening(info.port),
     );
     attachTerminalWebSocket(this.httpServer as unknown as HttpServer, this.terminalWebSocketDeps());
-    attachCockpitWebSocket(this.httpServer as unknown as HttpServer, {
-      authService: this.deps.authService,
-      log: (line) => console.log(line),
-    });
+    attachCockpitWebSocket(this.httpServer as unknown as HttpServer, this.cockpitWebSocketDeps());
   }
 
   /**
@@ -396,10 +393,7 @@ class PenguinServer {
     // handler — it has to be bound on each Node listener, this one included, or the
     // terminal only works on whichever address the browser happened to resolve.
     attachTerminalWebSocket(loopback as unknown as HttpServer, this.terminalWebSocketDeps());
-    attachCockpitWebSocket(loopback as unknown as HttpServer, {
-      authService: this.deps.authService,
-      log: (line) => console.log(line),
-    });
+    attachCockpitWebSocket(loopback as unknown as HttpServer, this.cockpitWebSocketDeps());
   }
 
   /** Terminal WebSocket wiring, shared by every listener this process opens. */
@@ -407,6 +401,17 @@ class PenguinServer {
     return {
       hmr: this.deps.hmr,
       authService: this.deps.authService,
+      log: (line: string) => console.log(line),
+    };
+  }
+
+  /** Cockpit WebSocket wiring with project isolation and config access. */
+  private cockpitWebSocketDeps() {
+    return {
+      authService: this.deps.authService,
+      projectService: this.deps.projectService,
+      projectConfigService: this.deps.projectConfigService,
+      root: this.config.root,
       log: (line: string) => console.log(line),
     };
   }

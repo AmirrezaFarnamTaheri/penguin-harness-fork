@@ -9,6 +9,7 @@ export type RotationStrategy = "round-robin" | "least-leases" | "priority-weight
 export type KeyActionType = "revive" | "cooldown" | "evict" | "probe";
 
 export interface KeyHealthItem {
+  keyId?: string;
   maskedKey: string;
   status: KeyHealthStatus;
   isFailed: boolean;
@@ -43,6 +44,7 @@ export interface FleetHealthStats {
 }
 
 export interface KeyProbeResult {
+  keyId?: string;
   maskedKey: string;
   provider: string;
   latencyMs: number;
@@ -50,6 +52,7 @@ export interface KeyProbeResult {
   timestamp: number;
   sparkline: number[];
   details?: string;
+  isSimulated?: boolean;
 }
 
 /**

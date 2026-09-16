@@ -50,6 +50,10 @@ export class TaskWatchdog {
     this.config = { ...DEFAULT_WATCHDOG_CONFIG, ...config };
   }
 
+  public getConfig(): WatchdogConfig {
+    return { ...this.config };
+  }
+
   public start(): void {
     const now = Date.now();
     this.startTime = now;

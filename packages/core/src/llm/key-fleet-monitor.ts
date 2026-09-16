@@ -160,6 +160,12 @@ export class KeyFleetMonitor {
     return this.rotators.get(provider.toLowerCase());
   }
 
+  public clear(): void {
+    this.rotators.clear();
+    this.providerMeta.clear();
+    this.notifyListeners();
+  }
+
   /**
    * Executes a synthetic or live latency probe for a specific key under a provider.
    */
