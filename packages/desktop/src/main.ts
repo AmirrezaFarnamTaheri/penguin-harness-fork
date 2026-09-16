@@ -234,6 +234,9 @@ async function startServerAndWindow(dataRoot: string): Promise<void> {
   const healthyTimer = setTimeout(() => {
     restartAttempts = 0;
   }, 60_000);
+  if (typeof healthyTimer.unref === "function") {
+    healthyTimer.unref();
+  }
   started.child.on("exit", (code) => {
     clearTimeout(healthyTimer);
     void handleServerExit(dataRoot, code);

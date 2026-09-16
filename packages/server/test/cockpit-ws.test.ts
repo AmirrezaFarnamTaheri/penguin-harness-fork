@@ -10,6 +10,7 @@ import {
   buildCockpitSnapshot,
   attachCockpitWebSocket,
   getOrCreateProjectRuntime,
+  scheduleRuntimeReap,
 } from "../src/cockpit/ws.js";
 import type { AuthService } from "../src/auth/service.js";
 
@@ -428,7 +429,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     expect(actionJson.snapshot).toBeDefined();
   });
 
-  it("schedules and tracks runtime lifecycle when project clients disconnect", async () => {
+  it("schedules and executes runtime cleanup when project clients disconnect", async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit?project=proj-reap`, {
       headers: { Cookie: "penguin_session=valid-session-secret" },
     });
@@ -446,5 +447,19 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     const rt = await getOrCreateProjectRuntime("proj-reap");
     expect(rt).toBeDefined();
     expect(rt.clients.size).toBe(0);
+
+    let cleanedUp = false;
+    rt.cleanup = () => {
+      cleanedUp = true;
+    };
+
+    // Explicitly test the reap execution with a short timeout
+    scheduleRuntimeReap(rt, {}, 25);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(cleanedUp).toBe(true);
+
+    // After reap, getOrCreateProjectRuntime instantiates a fresh runtime
+    const rtFresh = await getOrCreateProjectRuntime("proj-reap");
+    expect(rtFresh).not.toBe(rt);
   });
 });

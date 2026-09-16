@@ -56,6 +56,7 @@ export interface ProjectCockpitRuntime {
   codeGraphWatcher: CodeGraphWatcher;
   clients: Set<WebSocket>;
   idleTimer?: NodeJS.Timeout | null;
+  cleanup?: () => void;
 }
 
 const projectRuntimes = new Map<string, ProjectCockpitRuntime>();
@@ -69,16 +70,19 @@ export function cancelRuntimeReap(runtime: ProjectCockpitRuntime): void {
 
 export function scheduleRuntimeReap(
   runtime: ProjectCockpitRuntime,
-  deps: CockpitWebSocketDeps,
+  deps: CockpitWebSocketDeps = {},
   timeoutMs = deps.idleTimeoutMs ?? RUNTIME_IDLE_TIMEOUT_MS,
 ): void {
   cancelRuntimeReap(runtime);
   runtime.idleTimer = setTimeout(() => {
     if (runtime.clients.size === 0) {
       try {
+        runtime.cleanup?.();
         runtime.codeGraphWatcher.close();
-      } catch {
-        // ignore
+      } catch (err) {
+        deps.log?.(
+          `[cockpit-ws][${runtime.projectId}] error closing watcher: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       projectRuntimes.delete(runtime.projectId);
       deps.log?.(`[cockpit-ws][${runtime.projectId}] idle runtime reaped after ${timeoutMs}ms`);
@@ -93,6 +97,7 @@ export function resetCockpitRuntimesForTesting(): void {
   for (const rt of projectRuntimes.values()) {
     cancelRuntimeReap(rt);
     try {
+      rt.cleanup?.();
       rt.codeGraphWatcher.close();
     } catch {
       // ignore
@@ -240,7 +245,7 @@ export async function getOrCreateProjectRuntime(
     );
   });
 
-  coordinator.subscribe((event: SwarmEvent) => {
+  const unsubCoordinator = coordinator.subscribe((event: SwarmEvent) => {
     const payload = JSON.stringify({
       type: "swarm_event",
       projectId,
@@ -252,7 +257,7 @@ export async function getOrCreateProjectRuntime(
     }
   });
 
-  keyFleet.subscribe((_stats) => {
+  const unsubKeyFleet = keyFleet.subscribe((_stats) => {
     const payload = JSON.stringify({
       type: "key_fleet_update",
       projectId,
@@ -266,7 +271,7 @@ export async function getOrCreateProjectRuntime(
     }
   });
 
-  codeGraphWatcher.on("change", (ev) => {
+  const onChange = (ev: unknown) => {
     const payload = JSON.stringify({
       type: "topology_change",
       projectId,
@@ -277,7 +282,14 @@ export async function getOrCreateProjectRuntime(
     for (const ws of runtime!.clients) {
       safeSend(ws, payload);
     }
-  });
+  };
+  codeGraphWatcher.on("change", onChange);
+
+  runtime.cleanup = () => {
+    unsubCoordinator();
+    unsubKeyFleet();
+    codeGraphWatcher.off?.("change", onChange);
+  };
 
   return runtime;
 }

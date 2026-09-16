@@ -108,9 +108,9 @@ export class TurnLedger {
 
   constructor(sessionId: string, options: TurnLedgerOptions = {}) {
     this.sessionId = sessionId;
-    this.maxReplayPageSize = options.maxReplayPageSize ?? 512;
-    this.maxRecords = options.maxRecords ?? 5000;
-    this.maxSummaries = options.maxSummaries ?? 1000;
+    this.maxReplayPageSize = Math.max(1, options.maxReplayPageSize ?? 512);
+    this.maxRecords = Math.max(1, options.maxRecords ?? 5000);
+    this.maxSummaries = Math.max(1, options.maxSummaries ?? 1000);
   }
 
   public begin(submissionId = "", runtimeEpoch = ""): string {
