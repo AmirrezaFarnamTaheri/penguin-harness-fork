@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import type { CodeGraphNode, CodeGraphEdge, CodeNodeKind } from "@prismshadow/penguin-core/browser";
 
 export interface TopologyGraphCanvasProps {
@@ -35,6 +35,15 @@ export function TopologyGraphCanvas({
   const [isPanning, setIsPanning] = useState(false);
   const [startPan, setStartPan] = useState({ x: 0, y: 0 });
   const [hoveredNode, setHoveredNode] = useState<CodeGraphNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   // Compute layout positions for nodes deterministically
   const nodePositions = useMemo(() => {
@@ -92,17 +101,28 @@ export function TopologyGraphCanvas({
     }
   };
 
+  // Throttle pan state updates to display refresh rate via requestAnimationFrame
+  // Source: https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isPanning) {
-      setPan({
-        x: e.clientX - startPan.x,
-        y: e.clientY - startPan.y,
+      const nextX = e.clientX - startPan.x;
+      const nextY = e.clientY - startPan.y;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      rafRef.current = requestAnimationFrame(() => {
+        setPan({ x: nextX, y: nextY });
+        rafRef.current = null;
       });
     }
   };
 
   const handleMouseUp = () => {
     setIsPanning(false);
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
   };
 
   return (
@@ -227,113 +247,126 @@ export function TopologyGraphCanvas({
             </filter>
           </defs>
 
-          {/* Edges */}
-          {edges.map((edge, idx) => {
-            const p1 = nodePositions.get(edge.source);
-            const p2 = nodePositions.get(edge.target);
-            if (!p1 || !p2) return null;
-
-            const isHighlighted =
-              highlightedPathNodeIds?.has(edge.source) && highlightedPathNodeIds?.has(edge.target);
-
-            const isImpacted =
-              highlightedImpactNodeIds?.has(edge.source) &&
-              highlightedImpactNodeIds?.has(edge.target);
-
-            const color = isHighlighted
-              ? "#10b981"
-              : isImpacted
-                ? "#f43f5e"
-                : edge.kind === "calls"
-                  ? "#06b6d4"
-                  : edge.kind === "imports"
-                    ? "#6366f1"
-                    : "#334155";
-
-            const marker =
-              edge.kind === "calls"
-                ? "url(#arrow-calls)"
-                : edge.kind === "imports"
-                  ? "url(#arrow-imports)"
-                  : "url(#arrow-contains)";
-
-            // Slightly curved cubic bezier path
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const cx1 = p1.x + dx * 0.25 - dy * 0.05;
-            const cy1 = p1.y + dy * 0.25 + dx * 0.05;
-            const cx2 = p1.x + dx * 0.75 - dy * 0.05;
-            const cy2 = p1.y + dy * 0.75 + dx * 0.05;
-
+          {/* Level of Detail threshold: skip heavy filters, markers, and text labels at low zoom */}
+          {(() => {
+            const isLowDetail = zoom < 0.6;
             return (
-              <path
-                key={idx}
-                d={`M ${p1.x} ${p1.y} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p2.x} ${p2.y}`}
-                fill="none"
-                stroke={color}
-                strokeWidth={isHighlighted ? 2.5 : isImpacted ? 2 : 1.2}
-                strokeDasharray={edge.kind === "imports" ? "4,4" : undefined}
-                markerEnd={marker}
-                className="transition-all duration-300 opacity-70 hover:opacity-100"
-              />
+              <>
+                {/* Edges */}
+                {edges.map((edge, idx) => {
+                  const p1 = nodePositions.get(edge.source);
+                  const p2 = nodePositions.get(edge.target);
+                  if (!p1 || !p2) return null;
+
+                  const isHighlighted =
+                    highlightedPathNodeIds?.has(edge.source) &&
+                    highlightedPathNodeIds?.has(edge.target);
+
+                  const isImpacted =
+                    highlightedImpactNodeIds?.has(edge.source) &&
+                    highlightedImpactNodeIds?.has(edge.target);
+
+                  const color = isHighlighted
+                    ? "#10b981"
+                    : isImpacted
+                      ? "#f43f5e"
+                      : edge.kind === "calls"
+                        ? "#06b6d4"
+                        : edge.kind === "imports"
+                          ? "#6366f1"
+                          : "#334155";
+
+                  const marker =
+                    isLowDetail && !isHighlighted && !isImpacted
+                      ? undefined
+                      : edge.kind === "calls"
+                        ? "url(#arrow-calls)"
+                        : edge.kind === "imports"
+                          ? "url(#arrow-imports)"
+                          : "url(#arrow-contains)";
+
+                  // Slightly curved cubic bezier path
+                  const dx = p2.x - p1.x;
+                  const dy = p2.y - p1.y;
+                  const cx1 = p1.x + dx * 0.25 - dy * 0.05;
+                  const cy1 = p1.y + dy * 0.25 + dx * 0.05;
+                  const cx2 = p1.x + dx * 0.75 - dy * 0.05;
+                  const cy2 = p1.y + dy * 0.75 + dx * 0.05;
+
+                  return (
+                    <path
+                      key={idx}
+                      d={`M ${p1.x} ${p1.y} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p2.x} ${p2.y}`}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth={isHighlighted ? 2.5 : isImpacted ? 2 : 1.2}
+                      strokeDasharray={edge.kind === "imports" ? "4,4" : undefined}
+                      markerEnd={marker}
+                      className="transition-all duration-300 opacity-70 hover:opacity-100"
+                    />
+                  );
+                })}
+
+                {/* Nodes */}
+                {nodes.map((node) => {
+                  const pos = nodePositions.get(node.id);
+                  if (!pos) return null;
+
+                  const isSelected = selectedNodeId === node.id;
+                  const isPathNode = highlightedPathNodeIds?.has(node.id);
+                  const isImpactNode = highlightedImpactNodeIds?.has(node.id);
+                  const style = KIND_COLORS[node.kind] ?? KIND_COLORS.file;
+
+                  const radius = node.kind === "file" ? 14 : node.kind === "class" ? 16 : 12;
+
+                  return (
+                    <g
+                      key={node.id}
+                      transform={`translate(${pos.x}, ${pos.y})`}
+                      className="cursor-pointer transition-transform duration-150"
+                      onClick={() => onSelectNode(node.id)}
+                      onMouseEnter={() => setHoveredNode(node)}
+                      onMouseLeave={() => setHoveredNode(null)}
+                    >
+                      {/* Node Outer Halo for Selected / Path / Impact */}
+                      {(isSelected || isPathNode || isImpactNode) && (
+                        <circle
+                          r={radius + 6}
+                          fill="none"
+                          stroke={isSelected ? "#06b6d4" : isPathNode ? "#10b981" : "#f43f5e"}
+                          strokeWidth={2}
+                          className={isLowDetail ? undefined : "animate-pulse"}
+                          filter={isLowDetail ? undefined : "url(#glow-selected)"}
+                        />
+                      )}
+
+                      {/* Node Circle */}
+                      <circle
+                        r={radius}
+                        fill={style.bg}
+                        stroke={isSelected ? "#38bdf8" : style.border}
+                        strokeWidth={isSelected ? 2.5 : 1.5}
+                      />
+
+                      {/* Node Label (hidden at low zoom level unless selected to improve SVG render throughput) */}
+                      {(!isLowDetail || isSelected) && (
+                        <text
+                          dy={radius + 14}
+                          textAnchor="middle"
+                          fill={isSelected ? "#ffffff" : style.text}
+                          fontSize="11"
+                          fontFamily="monospace"
+                          className="pointer-events-none font-medium tracking-tight"
+                        >
+                          {node.name.length > 20 ? `${node.name.slice(0, 18)}…` : node.name}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </>
             );
-          })}
-
-          {/* Nodes */}
-          {nodes.map((node) => {
-            const pos = nodePositions.get(node.id);
-            if (!pos) return null;
-
-            const isSelected = selectedNodeId === node.id;
-            const isPathNode = highlightedPathNodeIds?.has(node.id);
-            const isImpactNode = highlightedImpactNodeIds?.has(node.id);
-            const style = KIND_COLORS[node.kind] ?? KIND_COLORS.file;
-
-            const radius = node.kind === "file" ? 14 : node.kind === "class" ? 16 : 12;
-
-            return (
-              <g
-                key={node.id}
-                transform={`translate(${pos.x}, ${pos.y})`}
-                className="cursor-pointer transition-transform duration-150"
-                onClick={() => onSelectNode(node.id)}
-                onMouseEnter={() => setHoveredNode(node)}
-                onMouseLeave={() => setHoveredNode(null)}
-              >
-                {/* Node Outer Halo for Selected / Path / Impact */}
-                {(isSelected || isPathNode || isImpactNode) && (
-                  <circle
-                    r={radius + 6}
-                    fill="none"
-                    stroke={isSelected ? "#06b6d4" : isPathNode ? "#10b981" : "#f43f5e"}
-                    strokeWidth={2}
-                    className="animate-pulse"
-                    filter="url(#glow-selected)"
-                  />
-                )}
-
-                {/* Node Circle */}
-                <circle
-                  r={radius}
-                  fill={style.bg}
-                  stroke={isSelected ? "#38bdf8" : style.border}
-                  strokeWidth={isSelected ? 2.5 : 1.5}
-                />
-
-                {/* Node Label */}
-                <text
-                  dy={radius + 14}
-                  textAnchor="middle"
-                  fill={isSelected ? "#ffffff" : style.text}
-                  fontSize="11"
-                  fontFamily="monospace"
-                  className="pointer-events-none font-medium tracking-tight"
-                >
-                  {node.name.length > 20 ? `${node.name.slice(0, 18)}…` : node.name}
-                </text>
-              </g>
-            );
-          })}
+          })()}
         </g>
       </svg>
     </div>
