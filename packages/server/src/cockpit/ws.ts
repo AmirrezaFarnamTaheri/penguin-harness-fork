@@ -159,6 +159,7 @@ export async function syncProjectKeyFleet(
       }
       for (const [provider, data] of byProvider) {
         monitor.registerProvider({
+          projectId,
           provider,
           modelId: data.modelId,
           modelRef: `${provider}/${data.modelId}`,
@@ -224,7 +225,11 @@ export async function getOrCreateProjectRuntime(
 ): Promise<ProjectCockpitRuntime> {
   let runtime = projectRuntimes.get(projectId);
   if (runtime) {
-    cancelRuntimeReap(runtime);
+    if (runtime.clients.size === 0) {
+      scheduleRuntimeReap(runtime, deps);
+    } else {
+      cancelRuntimeReap(runtime);
+    }
     return runtime;
   }
 
@@ -251,6 +256,10 @@ export async function getOrCreateProjectRuntime(
     clients,
   };
   projectRuntimes.set(projectId, runtime);
+
+  if (runtime.clients.size === 0) {
+    scheduleRuntimeReap(runtime, deps);
+  }
 
   codeGraphWatcher.on("error", (err) => {
     deps.log?.(
@@ -313,7 +322,11 @@ function getOrCreateProjectRuntimeSync(
 ): ProjectCockpitRuntime {
   let rt = projectRuntimes.get(projectId);
   if (rt) {
-    cancelRuntimeReap(rt);
+    if (rt.clients.size === 0) {
+      scheduleRuntimeReap(rt);
+    } else {
+      cancelRuntimeReap(rt);
+    }
     return rt;
   }
   const coordinator = new SwarmCoordinator();
@@ -328,6 +341,9 @@ function getOrCreateProjectRuntimeSync(
     clients: new Set(),
   };
   projectRuntimes.set(projectId, rt);
+  if (rt.clients.size === 0) {
+    scheduleRuntimeReap(rt);
+  }
   return rt;
 }
 
@@ -451,6 +467,18 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           if (msg.type === "send_directive") {
             const from = typeof msg.from === "string" ? msg.from.slice(0, 64) : "operator";
             const to = typeof msg.to === "string" ? msg.to.slice(0, 64) : "coder";
+            if (!runtime.coordinator.hasAgent(to)) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "directive_rejected",
+                  reason: `Recipient agent '${to}' is not registered in swarm`,
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
             const content = typeof msg.content === "string" ? msg.content : "";
             const trimmed = content.trim();
             if (trimmed && trimmed.length <= 8192) {
@@ -500,18 +528,36 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 ? msg.goal.slice(0, 4096)
                 : "Autonomous local coding task";
             const files = Array.isArray(msg.files)
-              ? (msg.files.filter((f: unknown) => typeof f === "string" && f.trim()) as string[])
+              ? (msg.files
+                  .filter((f: unknown) => typeof f === "string" && f.trim())
+                  .map((f: string) => f.slice(0, 1024))
+                  .slice(0, 50) as string[])
               : undefined;
             const proposedCommands = Array.isArray(msg.proposedCommands)
-              ? (msg.proposedCommands.filter(
-                  (c: unknown) => typeof c === "string" && c.trim(),
-                ) as string[])
+              ? (msg.proposedCommands
+                  .filter((c: unknown) => typeof c === "string" && c.trim())
+                  .map((c: string) => c.slice(0, 4096))
+                  .slice(0, 20) as string[])
               : undefined;
             const maxRounds =
               typeof msg.maxRounds === "number"
                 ? Math.min(Math.max(1, Math.floor(msg.maxRounds)), 10)
                 : 3;
             const simulate = msg.simulate === true;
+
+            if (runtime.coordinator.getPendingTaskCount() >= 10) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "swarm_task_rejected",
+                  taskId,
+                  reason: "Swarm task queue limit reached (10). Project is under backpressure.",
+                  status: 429,
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
 
             safeSend(
               ws,

@@ -23,8 +23,8 @@ describe("key-fleet-monitor", () => {
     expect(stats.totalKeys).toBe(0);
     expect(stats.healthyCount).toBe(0);
     expect(stats.cooldownCount).toBe(0);
-    expect(stats.evictedCount).toBe(0);
-    expect(stats.healthPercentage).toBe(100);
+    expect(stats.healthPercentage).toBeNull();
+    expect(stats.availabilityState).toBe("empty");
 
     const snapshot = monitor.getCockpitSnapshot();
     expect(snapshot.healthy).toBe(false);
@@ -135,12 +135,39 @@ describe("key-fleet-monitor", () => {
     expect(notificationCount).toBe(3);
 
     // Revive single
-    monitor.reviveKey("openai", key1);
+    const revived = monitor.reviveKey("openai", key1);
+    expect(revived).toBe(true);
     stats = monitor.getFleetStats();
     expect(stats.evictedCount).toBe(0);
     expect(notificationCount).toBe(4);
 
+    // Revive unknown key returns false
+    expect(monitor.reviveKey("openai", "non-existent-key")).toBe(false);
+    expect(monitor.hasKey("openai", key1)).toBe(true);
+    expect(monitor.hasKey("openai", "non-existent-key")).toBe(false);
+    expect(monitor.hasKey("unknown-provider", key1)).toBe(false);
+
     unsubscribe();
+  });
+
+  it("binds to authoritative KeyRotatorRegistry when projectId is provided", () => {
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "anthropic",
+        modelId: "claude-3-5-sonnet",
+        projectId: "test-proj",
+        keys: ["sk-ant-sample-key-1", "sk-ant-sample-key-2"],
+      },
+    ]);
+
+    expect(monitor.hasKey("anthropic", "anthropic-key-1")).toBe(true);
+    const rotator = monitor.getRotator("anthropic");
+    expect(rotator).toBeDefined();
+
+    // Key operations mutate the rotator directly
+    const cooldownSuccess = monitor.cooldownKey("anthropic", "anthropic-key-1", 30_000);
+    expect(cooldownSuccess).toBe(true);
+    expect(rotator!.getKeys()[0]?.cooldownUntil).toBeGreaterThan(0);
   });
 
   it("starts and stops periodic auto-probing ticker", () => {

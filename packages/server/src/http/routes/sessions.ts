@@ -18,6 +18,7 @@ import {
   stripLeadingMarkerBlocks,
   userText,
 } from "@prismshadow/penguin-core";
+import { catalogEntryFor } from "@prismshadow/penguin-core/model-catalog";
 import type { OmniMessage } from "@prismshadow/penguin-core";
 import type {
   ApprovalMode,
@@ -178,6 +179,20 @@ async function sessionCompactionThreshold(deps: AppDeps, row: SessionRow): Promi
       (m) => m.provider === row.provider && m.model_id === row.modelId,
     );
     return compactionThresholdFor(agent.config.compaction?.maxContextLength, entry?.context_window);
+  } catch {
+    return null;
+  }
+}
+
+async function sessionContextWindow(deps: AppDeps, row: SessionRow): Promise<number | null> {
+  try {
+    const project = await deps.projectConfigService.loadConfig(row.projectId);
+    const entry = (project.models ?? []).find(
+      (m) => m.provider === row.provider && m.model_id === row.modelId,
+    );
+    return (
+      entry?.context_window ?? catalogEntryFor(row.provider, row.modelId)?.contextWindow ?? null
+    );
   } catch {
     return null;
   }
@@ -1458,9 +1473,14 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       row.agentId,
       row.sessionId,
     );
+    const [compactionThreshold, contextWindow] = await Promise.all([
+      sessionCompactionThreshold(deps, row),
+      sessionContextWindow(deps, row),
+    ]);
     return c.json({
       ...parts,
-      compactionThreshold: await sessionCompactionThreshold(deps, row),
+      compactionThreshold,
+      contextWindow,
     } satisfies SessionContextResponse);
   });
 

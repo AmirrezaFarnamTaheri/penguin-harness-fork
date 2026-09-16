@@ -68,8 +68,10 @@ export interface TurnLedgerOptions {
 }
 
 /**
- * TurnLedger manages an in-memory, ordered, durable lifecycle ledger for turns and events.
- * It provides sequence allocation, paged replay, terminal summaries, and projection acknowledgement.
+ * TurnLedger manages an in-memory, ordered lifecycle ledger for turns and events within an active session.
+ * Note: TurnLedger is retained in process memory for the lifetime of the session/runtime; it provides sequence
+ * allocation, bounded paged replay, terminal summaries, and projection acknowledgement during process execution,
+ * but does not persist across process restarts unless serialized to an external store.
  */
 export class TurnLedger {
   public static readonly SCHEMA_VERSION = 2;

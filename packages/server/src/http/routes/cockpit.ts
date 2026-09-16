@@ -94,31 +94,71 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
         : getProjectId(c);
     const runtime = await getRuntime(c, projectId);
     const action = body.action;
-    const provider = typeof body.provider === "string" ? body.provider : "";
+
+    if (!["revive", "cooldown", "evict", "revive_all"].includes(action)) {
+      return c.json(
+        {
+          success: false,
+          error: `Invalid or unsupported action '${action}'. Must be one of: revive, cooldown, evict, revive_all`,
+        },
+        400,
+      );
+    }
+
+    const provider = typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
     const target =
       typeof body.keyId === "string" && body.keyId.trim()
         ? body.keyId.trim()
         : typeof body.maskedKey === "string"
-          ? body.maskedKey
+          ? body.maskedKey.trim()
           : "";
     const monitor = runtime.keyFleet;
 
-    if (action === "revive") {
-      monitor.reviveKey(provider, target);
-    } else if (action === "cooldown") {
-      monitor.cooldownKey(
-        provider,
-        target,
-        typeof body.cooldownMs === "number" ? body.cooldownMs : 60_000,
-      );
-    } else if (action === "evict") {
-      monitor.evictKey(provider, target);
-    } else if (action === "revive_all") {
+    if (action === "revive_all") {
       monitor.reviveAllCooldowns();
+      return c.json({
+        success: true,
+        changed: true,
+        stats: monitor.getFleetStats(),
+        snapshot: monitor.getCockpitSnapshot(),
+        reports: monitor.getFleetReport(),
+      });
+    }
+
+    if (!provider) {
+      return c.json({ success: false, error: "Provider is required for key action" }, 400);
+    }
+    if (!target) {
+      return c.json(
+        { success: false, error: "keyId or maskedKey is required for key action" },
+        400,
+      );
+    }
+
+    if (!monitor.hasKey(provider, target)) {
+      return c.json(
+        {
+          success: false,
+          error: `Key '${target}' not found under provider '${provider}'`,
+        },
+        404,
+      );
+    }
+
+    let changed = false;
+    if (action === "revive") {
+      changed = monitor.reviveKey(provider, target);
+    } else if (action === "cooldown") {
+      const cooldownMs =
+        typeof body.cooldownMs === "number" && body.cooldownMs > 0 ? body.cooldownMs : 60_000;
+      changed = monitor.cooldownKey(provider, target, cooldownMs);
+    } else if (action === "evict") {
+      changed = monitor.evictKey(provider, target);
     }
 
     return c.json({
       success: true,
+      changed,
       stats: monitor.getFleetStats(),
       snapshot: monitor.getCockpitSnapshot(),
       reports: monitor.getFleetReport(),
@@ -148,6 +188,13 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     }
 
     const coordinator = runtime.coordinator;
+    if (!coordinator.hasAgent(to)) {
+      return c.json(
+        { success: false, error: `Recipient agent '${to}' is not registered in swarm` },
+        400,
+      );
+    }
+
     const summaries = coordinator.getMailboxSummaries();
     const targetSummary = summaries[to];
     if (targetSummary && targetSummary.queueDepth >= 100) {
@@ -178,13 +225,28 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
         : getProjectId(c);
     const runtime = await getRuntime(c, projectId);
     const goal = typeof body.goal === "string" ? body.goal.slice(0, 4096) : "Autonomous local task";
+
+    if (Array.isArray(body.files) && body.files.length > 50) {
+      return c.json({ success: false, error: "Too many files provided (maximum 50)" }, 400);
+    }
+    if (Array.isArray(body.proposedCommands) && body.proposedCommands.length > 20) {
+      return c.json(
+        { success: false, error: "Too many proposed commands provided (maximum 20)" },
+        400,
+      );
+    }
+
     const files = Array.isArray(body.files)
-      ? (body.files.filter((f: unknown) => typeof f === "string" && f.trim()) as string[])
+      ? (body.files
+          .filter((f: unknown) => typeof f === "string" && f.trim())
+          .map((f: string) => f.slice(0, 1024))
+          .slice(0, 50) as string[])
       : undefined;
     const proposedCommands = Array.isArray(body.proposedCommands)
-      ? (body.proposedCommands.filter(
-          (p: unknown) => typeof p === "string" && p.trim(),
-        ) as string[])
+      ? (body.proposedCommands
+          .filter((p: unknown) => typeof p === "string" && p.trim())
+          .map((p: string) => p.slice(0, 4096))
+          .slice(0, 20) as string[])
       : undefined;
     const maxRounds =
       typeof body.maxRounds === "number"
@@ -194,35 +256,63 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
 
     const coordinator = runtime.coordinator;
 
+    if (coordinator.getPendingTaskCount() >= 10) {
+      return c.json(
+        {
+          success: false,
+          error: "Swarm task queue limit reached (10). Project is under backpressure.",
+        },
+        429,
+      );
+    }
+
     if (body.async === true) {
       const taskId =
         typeof body.id === "string" && body.id.trim()
           ? body.id.trim()
           : `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      void coordinator.runTask({
-        id: taskId,
+      void coordinator
+        .runTask({
+          id: taskId,
+          goal,
+          files,
+          proposedCommands,
+          maxRounds,
+          simulate,
+        })
+        .catch(() => {});
+      return c.json({ success: true, accepted: true, taskId }, 202);
+    }
+
+    try {
+      const result = await coordinator.runTask({
+        id: typeof body.id === "string" && body.id.trim() ? body.id.trim() : undefined,
         goal,
         files,
         proposedCommands,
         maxRounds,
         simulate,
       });
-      return c.json({ success: true, accepted: true, taskId }, 202);
+
+      return c.json({
+        success: true,
+        result,
+      });
+    } catch (err: unknown) {
+      const isBackpressure =
+        (typeof err === "object" &&
+          err !== null &&
+          "status" in err &&
+          (err as { status: number }).status === 429) ||
+        (err instanceof Error && err.message.includes("backpressure"));
+      return c.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        isBackpressure ? 429 : 500,
+      );
     }
-
-    const result = await coordinator.runTask({
-      id: typeof body.id === "string" && body.id.trim() ? body.id.trim() : undefined,
-      goal,
-      files,
-      proposedCommands,
-      maxRounds,
-      simulate,
-    });
-
-    return c.json({
-      success: true,
-      result,
-    });
   });
 
   return app;

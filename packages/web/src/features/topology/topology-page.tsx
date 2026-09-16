@@ -19,6 +19,8 @@ export interface TopologyPageProps {
 
 export function TopologyPage({ embedded = false }: TopologyPageProps) {
   const { currentProject } = useProject();
+  const projectId = currentProject?.projectId ?? "default";
+
   const [viewMode, setViewMode] = useState<TopologyViewMode>("studio");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>("core/code-graph");
   const [fromNodeId, setFromNodeId] = useState<string | null>("web/chat-page");
@@ -27,22 +29,27 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
 
   const [liveGraph, setLiveGraph] = useState<CodeGraph | null>(null);
   const [isLiveSynced, setIsLiveSynced] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
 
   const fetchTopology = useCallback(async () => {
     try {
-      const res = await fetch("/api/cockpit/topology");
+      const res = await fetch(`/api/cockpit/topology?project=${encodeURIComponent(projectId)}`);
       if (res.ok) {
         const data = await res.json();
         if (data.nodes && Array.isArray(data.nodes) && data.nodes.length > 0) {
           const constructed = CodeGraph.fromJSON(data);
           setLiveGraph(constructed);
           setIsLiveSynced(true);
+          return;
         }
       }
+      setLiveGraph(null);
+      setIsLiveSynced(false);
     } catch {
-      // offline or standalone mode: fallback to static factory
+      setLiveGraph(null);
+      setIsLiveSynced(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void fetchTopology();
@@ -50,11 +57,12 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
 
   // Fallback factory or live graph
   const defaultGraph = useMemo(() => createPenguinCodeGraph(), []);
-  const graph = liveGraph ?? defaultGraph;
+  const graph = liveGraph ?? (showDemo ? defaultGraph : null);
 
-  const allNodes = useMemo(() => graph.getAllNodes(), [graph]);
+  const allNodes = useMemo(() => graph?.getAllNodes() ?? [], [graph]);
 
   const allEdges = useMemo(() => {
+    if (!graph) return [];
     const edges: CodeGraphEdge[] = [];
     for (const node of allNodes) {
       edges.push(...graph.getOutgoingEdges(node.id));
@@ -63,20 +71,21 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
   }, [graph, allNodes]);
 
   // Telemetry metrics
-  const hubNodes = useMemo(() => graph.getHubNodes(3), [graph]);
-  const bridgeNodes = useMemo(() => graph.getBridgeNodes(), [graph]);
+  const hubNodes = useMemo(() => (graph ? graph.getHubNodes(3) : []), [graph]);
+  const bridgeNodes = useMemo(() => (graph ? graph.getBridgeNodes() : []), [graph]);
   const deadCode = useMemo(() => {
+    if (!graph) return [];
     return allNodes.filter((n) => n.kind !== "file" && graph.getIncomingEdges(n.id).length === 0);
   }, [graph, allNodes]);
 
   // Selected node object
   const selectedNode = useMemo(() => {
-    return selectedNodeId ? (graph.getNode(selectedNodeId) ?? null) : null;
+    return selectedNodeId && graph ? (graph.getNode(selectedNodeId) ?? null) : null;
   }, [graph, selectedNodeId]);
 
   // Shortest path tracing
   const tracedPath = useMemo(() => {
-    if (!fromNodeId || !toNodeId) return null;
+    if (!fromNodeId || !toNodeId || !graph) return null;
     return graph.findShortestPath(fromNodeId, toNodeId);
   }, [graph, fromNodeId, toNodeId]);
 
@@ -99,24 +108,47 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 font-mono">
               <span
-                className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : "bg-cyan-400 animate-pulse"}`}
+                className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : showDemo ? "bg-amber-400 animate-pulse" : "bg-gray-500"}`}
               />
-              CodeGraph & AST Symbol Topology
+              CodeGraph & Syntactic Symbol / Dependency Graph
             </h1>
             <p className="text-xs text-gray-400 font-mono mt-0.5">
               Architectural knowledge graph, relational call paths, and blast-radius analysis for{" "}
-              {currentProject?.name ?? "Penguin"}
+              {currentProject?.name ?? projectId}
             </p>
           </div>
 
-          {/* Sync badge, refresh & view mode switcher */}
+          {/* Sync badge, demo toggle, refresh & view mode switcher */}
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono bg-gray-900 border border-gray-800 text-gray-400">
               <span
-                className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : "bg-gray-500"}`}
+                className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : showDemo ? "bg-amber-400" : "bg-gray-500"}`}
               />
-              {isLiveSynced ? "Live AST Stream" : "AST Static"}
+              {isLiveSynced
+                ? "Live Symbol Stream"
+                : showDemo
+                  ? "Demo Architecture"
+                  : "Project Topology"}
             </span>
+            {showDemo ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowDemo(false)}
+                className="text-xs h-7 px-2"
+              >
+                Exit Demo
+              </Button>
+            ) : !isLiveSynced ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowDemo(true)}
+                className="text-xs h-7 px-2"
+              >
+                View Sample
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="ghost"
@@ -149,7 +181,7 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">AST Edges</span>
+            <span className="text-[10px] text-gray-500 uppercase">Dependencies / Edges</span>
             <span className="text-base font-bold text-cyan-400 tabular-nums">
               {allEdges.length}
             </span>
@@ -179,11 +211,11 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-gray-400 font-semibold">Path Finder:</span>
             <span className="px-2 py-0.5 rounded bg-gray-800 text-cyan-300 truncate max-w-[160px]">
-              {fromNodeId ? (graph.getNode(fromNodeId)?.name ?? fromNodeId) : "Select Start"}
+              {fromNodeId ? (graph?.getNode(fromNodeId)?.name ?? fromNodeId) : "Select Start"}
             </span>
             <span className="text-gray-500">→</span>
             <span className="px-2 py-0.5 rounded bg-gray-800 text-indigo-300 truncate max-w-[160px]">
-              {toNodeId ? (graph.getNode(toNodeId)?.name ?? toNodeId) : "Select Target"}
+              {toNodeId ? (graph?.getNode(toNodeId)?.name ?? toNodeId) : "Select Target"}
             </span>
             {tracedPath && (
               <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
@@ -209,53 +241,93 @@ export function TopologyPage({ embedded = false }: TopologyPageProps) {
 
       {/* Main Workspace Body */}
       <div className="flex-1 min-h-0">
-        {viewMode === "studio" && (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-full">
-            <div className="md:col-span-8 h-full">
-              <TopologyGraphCanvas
-                nodes={allNodes}
-                edges={allEdges}
-                selectedNodeId={selectedNodeId}
-                onSelectNode={(id) => setSelectedNodeId(id)}
-                highlightedPathNodeIds={pathNodeIds}
-                highlightedImpactNodeIds={impactNodeIds}
-              />
+        {!graph ? (
+          <div className="flex flex-col items-center justify-center h-full rounded-xl border border-dashed border-gray-800 bg-gray-900/40 p-12 text-center font-mono">
+            <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-3">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="m4.93 4.93 14.14 14.14" />
+              </svg>
             </div>
-            <div className="md:col-span-4 h-full">
-              <TopologyInspector
-                graph={graph}
-                selectedNode={selectedNode}
-                onSelectNode={(id) => setSelectedNodeId(id)}
-                onSetPathFrom={(id) => setFromNodeId(id)}
-                onSetPathTo={(id) => setToNodeId(id)}
-                onUpdateImpact={handleUpdateImpact}
-              />
+            <h3 className="text-base font-semibold text-gray-100">
+              No symbol dependencies extracted for this project
+            </h3>
+            <p className="mt-1 max-w-md text-xs text-gray-400">
+              The current project ({currentProject?.name ?? projectId}) has not indexed or generated
+              a syntactic symbol graph yet. Dispatched agent swarm tasks or workspace indexing will
+              populate live symbol relationships here.
+            </p>
+            <div className="mt-4 flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowDemo(true)}
+                className="text-xs"
+              >
+                View Sample Architecture
+              </Button>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {viewMode === "studio" && (
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-full">
+                <div className="md:col-span-8 h-full">
+                  <TopologyGraphCanvas
+                    nodes={allNodes}
+                    edges={allEdges}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={(id) => setSelectedNodeId(id)}
+                    highlightedPathNodeIds={pathNodeIds}
+                    highlightedImpactNodeIds={impactNodeIds}
+                  />
+                </div>
+                <div className="md:col-span-4 h-full">
+                  <TopologyInspector
+                    graph={graph}
+                    selectedNode={selectedNode}
+                    onSelectNode={(id) => setSelectedNodeId(id)}
+                    onSetPathFrom={(id) => setFromNodeId(id)}
+                    onSetPathTo={(id) => setToNodeId(id)}
+                    onUpdateImpact={handleUpdateImpact}
+                  />
+                </div>
+              </div>
+            )}
 
-        {viewMode === "canvas" && (
-          <div className="h-full">
-            <TopologyGraphCanvas
-              nodes={allNodes}
-              edges={allEdges}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={(id) => setSelectedNodeId(id)}
-              highlightedPathNodeIds={pathNodeIds}
-              highlightedImpactNodeIds={impactNodeIds}
-            />
-          </div>
-        )}
+            {viewMode === "canvas" && (
+              <div className="h-full">
+                <TopologyGraphCanvas
+                  nodes={allNodes}
+                  edges={allEdges}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={(id) => setSelectedNodeId(id)}
+                  highlightedPathNodeIds={pathNodeIds}
+                  highlightedImpactNodeIds={impactNodeIds}
+                />
+              </div>
+            )}
 
-        {viewMode === "matrix" && (
-          <div className="h-full">
-            <TopologyMatrix
-              graph={graph}
-              nodes={allNodes}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={(id) => setSelectedNodeId(id)}
-            />
-          </div>
+            {viewMode === "matrix" && (
+              <div className="h-full">
+                <TopologyMatrix
+                  graph={graph}
+                  nodes={allNodes}
+                  selectedNodeId={selectedNodeId}
+                  onSelectNode={(id) => setSelectedNodeId(id)}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

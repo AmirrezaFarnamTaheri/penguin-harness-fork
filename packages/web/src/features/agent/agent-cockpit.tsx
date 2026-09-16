@@ -5,6 +5,7 @@ import { Input } from "../../components/ui/input.js";
 import { BrainIcon, KeyRoundIcon, FlameIcon, HistoryIcon } from "../../components/ui/icons.js";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
+import { useProject } from "../../state/project";
 import { TopologyPage } from "../topology/topology-page";
 import { GuardianPage } from "../guardian/guardian-page";
 import { ConsensusPage } from "../consensus/consensus-page";
@@ -48,6 +49,9 @@ export function AgentCockpit({
   sessionId = "default-session",
   embedded = false,
 }: AgentCockpitProps) {
+  const { currentProject } = useProject();
+  const projectId = currentProject?.projectId ?? "default";
+
   const [tab, setTab] = useState<
     | "topology"
     | "guardian"
@@ -63,7 +67,7 @@ export function AgentCockpit({
     | "swarm"
   >("topology");
 
-  const telemetry = useCockpitTelemetry(sessionId);
+  const telemetry = useCockpitTelemetry(projectId, sessionId);
   const [swarmPrompt, setSwarmPrompt] = useState("");
 
   // Live Turn Ledger summaries
@@ -84,20 +88,6 @@ export function AgentCockpit({
   const [toAgent, setToAgent] = useState("coder");
   const [messageText, setMessageText] = useState("");
   const [dispatchedCount, setDispatchedCount] = useState(0);
-
-  // State: Loop & Circuit Breaker
-  const [consecutiveErrors] = useState(0);
-  const [timeSinceLastProgress] = useState(0);
-  const [currentFile] = useState("packages/core/src/agent/turn-ledger.ts");
-  const [recentTools] = useState([
-    "view_file",
-    "write_to_file",
-    "run_command",
-    "replace_file_content",
-  ]);
-  const [progressPhase] = useState("Cluster 3 Batch 3 Porting");
-  const [filesCompleted] = useState(28);
-  const [totalFiles] = useState(40);
 
   // State: Swarm & Handoff Topology (from live telemetry)
   const swarmNodes = telemetry.swarmAgents;
@@ -168,8 +158,8 @@ export function AgentCockpit({
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
             Active Project Memory
           </div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-            ● Synchronized
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
+            {telemetry.connected ? "● Project Scope Active" : "○ Offline"}
           </div>
         </button>
 
@@ -185,13 +175,19 @@ export function AgentCockpit({
             <KeyRoundIcon size={16} className="text-amber-500" />
           </div>
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
-            {telemetry.keyFleet.healthy ? "100% Healthy" : "Degraded"}{" "}
+            {telemetry.keyFleet.healthy
+              ? "Healthy"
+              : telemetry.keyFleet.activeCount === 0
+                ? "No Keys"
+                : "Degraded"}{" "}
             <span className="text-xs font-normal text-gray-400">
               ({telemetry.keyFleet.activeCount} Active)
             </span>
           </div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-            ● {telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length} Cooldowns
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
+            {telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length > 0
+              ? `● ${telemetry.keyFleet.providers.filter((p) => p.status === "cooldown").length} in Cooldown`
+              : "● All Keys Ready"}
           </div>
         </button>
 
@@ -209,8 +205,12 @@ export function AgentCockpit({
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
             Causal Performance
           </div>
-          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-mono">
-            ● Telemetry Streaming
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
+            {telemetry.transport === "ws"
+              ? "● Streaming via WebSocket"
+              : telemetry.transport === "http"
+                ? "○ Polling via HTTP"
+                : "○ Offline"}
           </div>
         </button>
 
@@ -228,8 +228,8 @@ export function AgentCockpit({
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
             Workspace Snapshots
           </div>
-          <div className="text-[11px] text-cyan-600 dark:text-cyan-400 mt-1 font-mono">
-            ● Time-Travel Ready
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 font-mono">
+            Project Checkpoints
           </div>
         </button>
       </div>
@@ -578,67 +578,102 @@ export function AgentCockpit({
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-3 text-center">
             <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Consecutive Errors</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">Failed Turns</div>
               <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                {consecutiveErrors} / 10
+                {turnSummaries.filter((t) => t.status === "failed").length} / 10
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">Healthy threshold</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">Circuit breaker limit: 10</div>
             </div>
             <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400">Forward Progress</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">Telemetry Activity</div>
               <div className="text-xl font-bold text-cyan-600 dark:text-cyan-400 mt-1">
-                {timeSinceLastProgress}s ago
+                {telemetry.lastEventTime
+                  ? `${Math.max(0, Math.round((Date.now() - telemetry.lastEventTime) / 1000))}s ago`
+                  : "Standby"}
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">Stall limit: 300s</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {telemetry.transport.toUpperCase()} stream
+              </div>
             </div>
             <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
               <div className="text-[11px] text-gray-500 dark:text-gray-400">Circuit Breaker</div>
-              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                CLOSED
+              <div
+                className={`text-xl font-bold mt-1 ${
+                  turnSummaries.filter((t) => t.status === "failed").length >= 10
+                    ? "text-red-500"
+                    : "text-emerald-600 dark:text-emerald-400"
+                }`}
+              >
+                {turnSummaries.filter((t) => t.status === "failed").length >= 10
+                  ? "TRIPPED"
+                  : "CLOSED"}
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">Zero cycle loops detected</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                {turnSummaries.filter((t) => t.status === "failed").length >= 10
+                  ? "Execution halted on errors"
+                  : "Normal operation"}
+              </div>
             </div>
           </div>
 
           <div className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col gap-2">
             <div className="flex justify-between items-center text-xs">
               <span className="font-semibold text-gray-700 dark:text-gray-300">
-                Phase: {progressPhase}
+                Active Goal:{" "}
+                {telemetry.activeTaskId
+                  ? telemetry.activeTaskId
+                  : "System Idle (Awaiting Dispatch)"}
               </span>
               <span className="font-mono text-cyan-600 dark:text-cyan-400 font-bold">
-                {filesCompleted} / {totalFiles} ({Math.round((filesCompleted / totalFiles) * 100)}
-                %)
+                {telemetry.activeTaskId || telemetry.isDispatching ? "EXECUTING" : "STANDBY"}
               </span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-              <div
-                className="bg-cyan-500 h-full rounded-full transition-all duration-300"
-                style={{ width: `${(filesCompleted / totalFiles) * 100}%` }}
-              />
-            </div>
+            {telemetry.activeTaskId ? (
+              <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                <div
+                  className="bg-cyan-500 h-full rounded-full animate-pulse"
+                  style={{ width: "100%" }}
+                />
+              </div>
+            ) : null}
             <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center justify-between mt-1">
               <span>
-                Active File:{" "}
-                <code className="font-mono text-gray-700 dark:text-gray-300">{currentFile}</code>
+                Task ID:{" "}
+                <code className="font-mono text-gray-700 dark:text-gray-300">
+                  {telemetry.activeTaskId ?? "None"}
+                </code>
               </span>
-              <span>Est. remaining: ~4 mins</span>
+              <span>{turnSummaries.length} turn checkpoint(s) recorded</span>
             </div>
           </div>
 
           <div>
             <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Recent Tool Call Sequence (Rolling 20-call buffer)
+              Recent Turn Checkpoint History
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {recentTools.map((t, idx) => (
-                <span
-                  key={idx}
-                  className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 font-mono text-xs text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-                >
-                  #{idx + 1} {t}
-                </span>
-              ))}
-            </div>
+            {turnSummaries.length === 0 ? (
+              <div className="p-4 text-center rounded-lg border border-dashed border-gray-300 dark:border-gray-800 bg-white dark:bg-gray-950 text-gray-400 text-xs font-mono">
+                No recent turn checkpoints recorded. Tasks dispatched to the swarm will log
+                execution turns here.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {turnSummaries.slice(-15).map((t, idx) => (
+                  <span
+                    key={t.turnId || idx}
+                    className={`px-2 py-1 rounded font-mono text-xs border ${
+                      t.status === "completed"
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : t.status === "failed"
+                          ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
+                          : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700"
+                    }`}
+                  >
+                    #{idx + 1} {t.turnId} ({t.durationMs}ms)
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -147,6 +147,8 @@ export class SwarmCoordinator {
   private logMessages: string[] = [];
   private taskQueue: Promise<unknown> = Promise.resolve();
   private loopOptions: LoopDetectorOptions;
+  private readonly maxPendingTasks: number;
+  private pendingTaskCount = 0;
 
   constructor(options?: {
     quorumPolicy?: Partial<QuorumPolicy>;
@@ -155,6 +157,7 @@ export class SwarmCoordinator {
     sessionId?: string;
     sandboxRunner?: SandboxedCommandRunner;
     shellGuardian?: ShellGuardian;
+    maxPendingTasks?: number;
   }) {
     const sessionId = options?.sessionId ?? `swarm-session-${Date.now()}`;
     this.mailbox = new MailboxKernel();
@@ -168,8 +171,18 @@ export class SwarmCoordinator {
     this.sandboxRunner =
       options?.sandboxRunner ?? new SandboxedCommandRunner({ guardian: this.shellGuardian });
     this.watchdog = new TaskWatchdog(options?.watchdogConfig ?? { maxStepCount: 40 });
+    this.maxPendingTasks = options?.maxPendingTasks ?? 10;
 
     this.registerStandardSwarmAgents();
+  }
+
+  public getPendingTaskCount(): number {
+    return this.pendingTaskCount;
+  }
+
+  public hasAgent(id: string): boolean {
+    const norm = normalizeMailboxOwnerName(id);
+    return this.agents.has(norm);
   }
 
   /**
@@ -319,6 +332,9 @@ export class SwarmCoordinator {
   public dispatchDirective(from: string, to: string, content: string): MailboxMessage {
     const fromId = from.trim() || "operator";
     const toId = to.trim() || "coder";
+    if (!this.hasAgent(toId)) {
+      throw new Error(`Recipient agent '${toId}' is not registered in swarm`);
+    }
     const msg = this.mailbox.send(toId, fromId, "directive", { content });
     this.addEdge(fromId, toId, "directive");
     this.incrementEdge(fromId, toId);
@@ -339,8 +355,20 @@ export class SwarmCoordinator {
     task: SwarmTaskDefinition,
     handlers?: SwarmRoleHandlers,
   ): Promise<SwarmExecutionResult> {
+    if (this.pendingTaskCount >= this.maxPendingTasks) {
+      const err = new Error(
+        `Swarm task queue limit reached (${this.maxPendingTasks}). Project is under backpressure.`,
+      ) as Error & { status?: number; statusCode?: number };
+      err.status = 429;
+      err.statusCode = 429;
+      throw err;
+    }
+
+    this.pendingTaskCount++;
     const run = () => this.executeTask(task, handlers);
-    const queued = this.taskQueue.then(run, run);
+    const queued = this.taskQueue.then(run, run).finally(() => {
+      this.pendingTaskCount = Math.max(0, this.pendingTaskCount - 1);
+    });
     this.taskQueue = queued;
     return queued as Promise<SwarmExecutionResult>;
   }
@@ -424,6 +452,9 @@ export class SwarmCoordinator {
           "orchestrator_plan",
           stepTimeoutMs,
         );
+        if (taskAbortController.signal.aborted) {
+          throw new Error("Swarm task step 'orchestrator_plan' was aborted");
+        }
         if (planRes.steps.length > 0) steps = planRes.steps;
       }
 
@@ -525,6 +556,9 @@ export class SwarmCoordinator {
             `coder_round_${currentRound}`,
             stepTimeoutMs,
           );
+          if (taskAbortController.signal.aborted) {
+            throw new Error(`Swarm task step 'coder_round_${currentRound}' was aborted`);
+          }
           artifacts = execRes.artifacts;
           summary = execRes.summary;
         } else if (task.simulate === true) {
@@ -557,6 +591,12 @@ export class SwarmCoordinator {
             safetyFindings,
             log: this.logMessages,
           };
+        }
+
+        if (taskAbortController.signal.aborted) {
+          throw new Error(
+            `Swarm task was aborted before artifact settlement in round ${currentRound}`,
+          );
         }
 
         for (const art of artifacts) {
@@ -617,6 +657,9 @@ export class SwarmCoordinator {
             `reviewer_round_${currentRound}`,
             stepTimeoutMs,
           );
+          if (taskAbortController.signal.aborted) {
+            throw new Error(`Swarm task step 'reviewer_round_${currentRound}' was aborted`);
+          }
           reviewPassed = revRes.approved;
           reviewGrounds = revRes.grounds;
         } else if (task.simulate === true) {
@@ -628,7 +671,7 @@ export class SwarmCoordinator {
           reviewGrounds = "No review handler provided and simulation mode is disabled";
         }
 
-        if (reviewPassed) {
+        if (reviewPassed && !taskAbortController.signal.aborted) {
           log(`Reviewer endorsed topic: ${reviewGrounds}`);
           const updatedStanding = this.consensus.endorseTopic(taskId, "reviewer", reviewGrounds);
           this.emit("consensus_endorsed", taskId, "reviewer", { grounds: reviewGrounds });
@@ -701,7 +744,10 @@ export class SwarmCoordinator {
       };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      const isTimeout = errMsg.includes("timed out");
+      const isTimeout =
+        errMsg.includes("timed out") ||
+        errMsg.includes("aborted") ||
+        taskAbortController.signal.aborted;
       log(`Swarm task failure: ${errMsg}`);
       this.watchdog.abort(errMsg);
       this.ledger.append("turn_done", errMsg, isTimeout ? "interrupted" : "failed");

@@ -51,7 +51,10 @@ export interface CockpitTelemetryState {
   refresh: () => Promise<void>;
 }
 
-export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTelemetryState {
+export function useCockpitTelemetry(
+  projectId = "default",
+  _sessionId = "default-session",
+): CockpitTelemetryState {
   const [connected, setConnected] = useState(false);
   const [transport, setTransport] = useState<"ws" | "http" | "connecting" | "offline">(
     "connecting",
@@ -137,7 +140,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
 
   const fetchRestTelemetry = useCallback(async () => {
     try {
-      const res = await fetch("/api/cockpit/telemetry");
+      const res = await fetch(`/api/cockpit/telemetry?project=${encodeURIComponent(projectId)}`);
       if (res.ok) {
         const json = await res.json();
         applySnapshot(json.data);
@@ -148,16 +151,25 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
       setConnected(false);
       setTransport("offline");
     }
-  }, [applySnapshot]);
+  }, [projectId, applySnapshot]);
 
   useEffect(() => {
     let unmounted = false;
     let reconnectTimer: NodeJS.Timeout | null = null;
 
+    // Reset project-scoped telemetry on project switch
+    setActiveTaskId(null);
+    setTurnSummaries([]);
+    setMailboxEntries([]);
+    setLastEventTime(null);
+    setIsDispatching(false);
+    setTransport("connecting");
+    setConnected(false);
+
     function connectWs() {
       if (typeof window === "undefined") return;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${protocol}//${window.location.host}/api/cockpit/stream`;
+      const url = `${protocol}//${window.location.host}/api/cockpit/stream?project=${encodeURIComponent(projectId)}`;
 
       try {
         const ws = new WebSocket(url);
@@ -238,7 +250,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (socketRef.current) socketRef.current.close();
     };
-  }, [applySnapshot, fetchRestTelemetry]);
+  }, [projectId, applySnapshot, fetchRestTelemetry]);
 
   const triggerTask = useCallback(
     async (goal: string, files?: string[]) => {
@@ -248,6 +260,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
         ws.send(
           JSON.stringify({
             type: "trigger_swarm",
+            projectId,
             goal,
             files,
             maxRounds: 3,
@@ -256,11 +269,14 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
       } else {
         // Fall back to REST endpoint
         try {
-          const res = await fetch("/api/cockpit/swarm/run", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ goal, files, maxRounds: 3 }),
-          });
+          const res = await fetch(
+            `/api/cockpit/swarm/run?project=${encodeURIComponent(projectId)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId, goal, files, maxRounds: 3 }),
+            },
+          );
           const json = await res.json();
           if (json.success) {
             void fetchRestTelemetry();
@@ -270,7 +286,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
         }
       }
     },
-    [fetchRestTelemetry],
+    [projectId, fetchRestTelemetry],
   );
 
   const dispatchDirective = useCallback(
@@ -280,6 +296,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
         ws.send(
           JSON.stringify({
             type: "send_directive",
+            projectId,
             from,
             to,
             content,
@@ -288,11 +305,14 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
         return true;
       }
       try {
-        const res = await fetch("/api/cockpit/mailbox/send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from, to, content }),
-        });
+        const res = await fetch(
+          `/api/cockpit/mailbox/send?project=${encodeURIComponent(projectId)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, from, to, content }),
+          },
+        );
         if (res.ok) {
           void fetchRestTelemetry();
           return true;
@@ -302,7 +322,7 @@ export function useCockpitTelemetry(_sessionId = "default-session"): CockpitTele
         return false;
       }
     },
-    [fetchRestTelemetry],
+    [projectId, fetchRestTelemetry],
   );
 
   return {

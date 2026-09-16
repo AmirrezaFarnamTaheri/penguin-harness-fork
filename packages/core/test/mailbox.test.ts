@@ -108,6 +108,24 @@ describe("MailboxKernel", () => {
     expect(polledAgain?.payload.step).toBe(1);
     expect(polledAgain?.attempts).toBe(2);
   });
+
+  it("enforces maximum mailbox cardinality limit", () => {
+    const mb = new MailboxKernel({ maxMailboxes: 2 });
+    mb.send("agent-1", "caller", "event", {});
+    mb.send("agent-2", "caller", "event", {});
+    expect(() => mb.send("agent-3", "caller", "event", {})).toThrow(
+      /Maximum mailbox cardinality limit reached/,
+    );
+  });
+
+  it("enforces maximum queue capacity on requeue", () => {
+    const mb = new MailboxKernel({ maxQueueDepth: 1 });
+    mb.send("worker-capacity", "caller", "event", { n: 1 });
+    const polled = mb.poll("worker-capacity")!;
+    // Fill queue back to max capacity
+    mb.send("worker-capacity", "caller", "event", { n: 2 });
+    expect(() => mb.requeue("worker-capacity", polled)).toThrow(/reached maximum queue capacity/);
+  });
 });
 
 describe("EventBroker", () => {

@@ -8,6 +8,7 @@ export interface KeyProbeModalProps {
   provider: string;
   modelId: string;
   isDemo?: boolean;
+  projectId?: string;
   onClose: () => void;
 }
 
@@ -16,6 +17,7 @@ export function KeyProbeModal({
   provider,
   modelId,
   isDemo = false,
+  projectId = "default",
   onClose,
 }: KeyProbeModalProps) {
   const [probing, setProbing] = useState(true);
@@ -24,10 +26,11 @@ export function KeyProbeModal({
   const runProbe = async () => {
     setProbing(true);
     try {
-      const res = await fetch("/api/cockpit/keys/probe", {
+      const res = await fetch(`/api/cockpit/keys/probe?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId,
           provider,
           keyId: keyItem.keyId,
           maskedKey: keyItem.maskedKey,

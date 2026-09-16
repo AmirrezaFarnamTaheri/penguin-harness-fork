@@ -146,6 +146,15 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
   });
 
   it("modifies key states via POST /keys/action", async () => {
+    const monitor = getSharedKeyFleetMonitor();
+    monitor.registerProvider({
+      provider: "openai",
+      modelId: "gpt-4o",
+      modelRef: "openai:gpt-4o",
+      keys: ["sk-proj-sample-prod-key-1c4a"],
+      strategy: "round-robin",
+    });
+
     const app = new Hono();
     app.route("/api/cockpit", cockpitRoutes());
 
@@ -155,7 +164,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
       body: JSON.stringify({
         action: "cooldown",
         provider: "openai",
-        maskedKey: "sk-proj-...1c4a",
+        keyId: "openai-key-1",
         cooldownMs: 30000,
       }),
     });
@@ -163,8 +172,62 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as any;
     expect(json.success).toBe(true);
+    expect(json.changed).toBe(true);
     expect(json.stats).toBeDefined();
     expect(json.snapshot).toBeDefined();
+  });
+
+  it("returns 400 for invalid action or missing parameters in POST /keys/action", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const badActionRes = await app.request("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "invalid_action" }),
+    });
+    expect(badActionRes.status).toBe(400);
+
+    const missingKeyRes = await app.request("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "cooldown", provider: "openai" }),
+    });
+    expect(missingKeyRes.status).toBe(400);
+  });
+
+  it("returns 404 for unknown provider or key in POST /keys/action", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const notFoundRes = await app.request("/api/cockpit/keys/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "cooldown",
+        provider: "unknown_provider",
+        keyId: "nonexistent-key",
+      }),
+    });
+    expect(notFoundRes.status).toBe(404);
+  });
+
+  it("rejects directive to unregistered agent in POST /mailbox/send with 400", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    const res = await app.request("/api/cockpit/mailbox/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "operator",
+        to: "nonexistent_agent",
+        content: "test message",
+      }),
+    });
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as any;
+    expect(json.error).toContain("Recipient agent 'nonexistent_agent' is not registered");
   });
 });
 
@@ -461,5 +524,41 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     // After reap, getOrCreateProjectRuntime instantiates a fresh runtime
     const rtFresh = await getOrCreateProjectRuntime("proj-reap");
     expect(rtFresh).not.toBe(rt);
+  });
+
+  it("proves complete project isolation on A -> B project switching", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+
+    // 1. Dispatch directive into project-A mailbox
+    const resA = await app.request("/api/cockpit/mailbox/send?project=project-A", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-A",
+        from: "operator",
+        to: "coder",
+        content: "Directive exclusively for Project A",
+      }),
+    });
+    expect(resA.status).toBe(200);
+
+    // 2. Query project-A telemetry and verify mailbox depth for coder is 1
+    const resTelemA = await app.request("/api/cockpit/telemetry?project=project-A");
+    expect(resTelemA.status).toBe(200);
+    const jsonA = (await resTelemA.json()) as any;
+    expect(jsonA.data.mailbox["coder"].queueDepth).toBe(1);
+
+    // 3. Switch to project-B and query telemetry: mailbox for coder must be 0 (no cross-project leakage)
+    const resTelemB = await app.request("/api/cockpit/telemetry?project=project-B");
+    expect(resTelemB.status).toBe(200);
+    const jsonB = (await resTelemB.json()) as any;
+    expect(jsonB.data.mailbox["coder"].queueDepth).toBe(0);
+
+    // 4. Verify keys endpoint respects project-A vs project-B scoping
+    const resKeysA = await app.request("/api/cockpit/keys?project=project-A");
+    const resKeysB = await app.request("/api/cockpit/keys?project=project-B");
+    expect(resKeysA.status).toBe(200);
+    expect(resKeysB.status).toBe(200);
   });
 });

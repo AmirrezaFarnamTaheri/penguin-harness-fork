@@ -97,6 +97,8 @@ export function ContextBreakdownPage({
     );
   }, [data]);
 
+  const contextWindow = data?.contextWindow ?? 200_000;
+
   return (
     <div
       className={`flex flex-col h-full gap-4 ${
@@ -138,7 +140,7 @@ export function ContextBreakdownPage({
               </div>
             )}
             <span className="px-2 py-1 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-semibold">
-              WINDOW: 200,000 TOKENS
+              WINDOW: {contextWindow.toLocaleString()} TOKENS
             </span>
           </div>
         </div>
@@ -154,7 +156,7 @@ export function ContextBreakdownPage({
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
             <span className="text-[10px] text-gray-500 uppercase">Window Capacity</span>
             <span className="text-base font-bold text-cyan-400 tabular-nums">
-              {data ? `${Math.min(100, Math.round((totalTokens / 200000) * 100))}%` : "—"}
+              {data ? `${Math.min(100, Math.round((totalTokens / contextWindow) * 100))}%` : "—"}
             </span>
           </div>
           <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
@@ -202,7 +204,7 @@ export function ContextBreakdownPage({
         </div>
       ) : data ? (
         <div className="flex flex-col gap-4">
-          <ContextAllocationBar data={data} contextWindow={200000} />
+          <ContextAllocationBar data={data} contextWindow={contextWindow} />
           <TopConsumersCard tools={data.topTools} files={data.topFiles} />
           <CompactionAnchorsCard
             onManualCompact={handleManualCompact}

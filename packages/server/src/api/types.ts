@@ -2578,6 +2578,10 @@ export interface SessionContextResponse extends SessionContextParts {
    * or when the derived threshold is not below the window — nothing to mark inside the gauge.
    */
   compactionThreshold: number | null;
+  /**
+   * Total context window capacity (tokens) of the active model backing this Session, or null if unknown.
+   */
+  contextWindow?: number | null;
 }
 
 export interface TraceEventsResponse {

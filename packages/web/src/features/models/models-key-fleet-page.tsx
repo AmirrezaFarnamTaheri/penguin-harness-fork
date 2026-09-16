@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useProject } from "../../state/project";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
@@ -231,6 +232,9 @@ const DEMO_FLEET_REPORTS: ModelKeyFleetReport[] = [
 ];
 
 export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } = {}) {
+  const { currentProject } = useProject();
+  const projectId = currentProject?.projectId ?? "default";
+
   const [reports, setReports] = useState<ModelKeyFleetReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
@@ -249,7 +253,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   const fetchLiveFleet = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/cockpit/keys");
+      const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.reports)) {
@@ -261,7 +265,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void fetchLiveFleet();
@@ -322,10 +326,11 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     }
 
     try {
-      const res = await fetch("/api/cockpit/keys/action", {
+      const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId,
           action,
           provider,
           keyId: item.keyId,
@@ -369,10 +374,10 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     }
 
     try {
-      const res = await fetch("/api/cockpit/keys/action", {
+      const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "revive_all" }),
+        body: JSON.stringify({ projectId, action: "revive_all" }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -470,14 +475,16 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           <span className="text-xs text-muted-foreground">Fleet Health</span>
           <div className="flex items-baseline gap-1">
             <span className="font-mono text-2xl font-bold text-emerald-500">
-              {stats.healthPercentage}%
+              {stats.healthPercentage !== null ? `${stats.healthPercentage}%` : "—"}
             </span>
-            <span className="text-xs text-muted-foreground">available</span>
+            <span className="text-xs text-muted-foreground">
+              {stats.healthPercentage !== null ? "available" : "no keys"}
+            </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full bg-emerald-500 transition-all duration-300"
-              style={{ width: `${stats.healthPercentage}%` }}
+              style={{ width: `${stats.healthPercentage ?? 0}%` }}
             />
           </div>
         </div>
@@ -603,17 +610,27 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span>Rotation:</span>
-                    <select
-                      value={report.rotationStrategy}
-                      onChange={(e) =>
-                        handleChangeStrategy(report.modelRef, e.target.value as RotationStrategy)
-                      }
-                      className="rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="round-robin">Round Robin</option>
-                      <option value="least-leases">Least Leases</option>
-                      <option value="priority-weighted">Priority Weighted</option>
-                    </select>
+                    {isDemo ? (
+                      <select
+                        value={report.rotationStrategy}
+                        onChange={(e) =>
+                          handleChangeStrategy(report.modelRef, e.target.value as RotationStrategy)
+                        }
+                        className="rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="round-robin">Round Robin</option>
+                        <option value="least-leases">Least Leases</option>
+                        <option value="priority-weighted">Priority Weighted</option>
+                      </select>
+                    ) : (
+                      <Badge tone="gray">
+                        {report.rotationStrategy === "priority-weighted"
+                          ? "Priority Weighted"
+                          : report.rotationStrategy === "least-leases"
+                            ? "Least Leases"
+                            : "Round Robin"}
+                      </Badge>
+                    )}
                   </div>
 
                   <Badge tone={report.healthyCount === report.totalKeys ? "green" : "amber"}>
@@ -655,6 +672,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           provider={probingTarget.provider}
           modelId={probingTarget.modelId}
           isDemo={isDemo}
+          projectId={projectId}
           onClose={() => {
             setProbingTarget(null);
             void fetchLiveFleet();

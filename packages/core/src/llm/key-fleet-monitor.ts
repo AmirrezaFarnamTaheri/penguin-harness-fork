@@ -6,7 +6,12 @@
  * cooldown timers, failover states, and real-time fleet health statistics.
  */
 
-import { ApiKeyRotator, type KeyStatus, type KeyHealth } from "./key-rotator.js";
+import {
+  ApiKeyRotator,
+  KeyRotatorRegistry,
+  type KeyStatus,
+  type KeyHealth,
+} from "./key-rotator.js";
 
 export type KeyHealthStatus = "healthy" | "cooldown" | "evicted";
 export type KeyFleetRotationStrategy = "round-robin" | "least-leases" | "priority-weighted";
@@ -43,7 +48,8 @@ export interface FleetHealthStats {
   cooldownCount: number;
   evictedCount: number;
   activeLeases: number;
-  healthPercentage: number;
+  healthPercentage: number | null;
+  availabilityState?: "healthy" | "degraded" | "critical" | "empty";
 }
 
 export interface KeyProbeResult {
@@ -80,6 +86,8 @@ export interface ProviderRegistration {
   keys: string[];
   strategy?: KeyFleetRotationStrategy;
   probeFn?: ProbeFunction;
+  rotator?: ApiKeyRotator;
+  projectId?: string;
 }
 
 export function maskApiKey(key: string): string {
@@ -124,7 +132,11 @@ export class KeyFleetMonitor {
 
   public registerProvider(reg: ProviderRegistration): void {
     const provider = reg.provider.toLowerCase();
-    const rotator = new ApiKeyRotator(reg.keys);
+    const rotator =
+      reg.rotator ??
+      (reg.projectId
+        ? KeyRotatorRegistry.get(`${reg.projectId}/${provider}/${reg.modelId}`, reg.keys)
+        : new ApiKeyRotator(reg.keys));
     this.rotators.set(provider, rotator);
 
     const keyById = new Map<string, { keyId: string; maskedKey: string; rawKey: string }>();
@@ -250,9 +262,9 @@ export class KeyFleetMonitor {
   }
 
   /**
-   * Revives a key from cooldown or eviction.
+   * Revives a key from cooldown or eviction. Returns true if key was found and updated.
    */
-  public reviveKey(provider: string, keyIdOrMask: string): void {
+  public reviveKey(provider: string, keyIdOrMask: string): boolean {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
     const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
@@ -260,13 +272,15 @@ export class KeyFleetMonitor {
     if (rawKey && rotator) {
       rotator.reviveKey(rawKey);
       this.notifyListeners();
+      return true;
     }
+    return false;
   }
 
   /**
-   * Places a key in temporary cooldown.
+   * Places a key in temporary cooldown. Returns true if key was found and updated.
    */
-  public cooldownKey(provider: string, keyIdOrMask: string, cooldownMs = 60_000): void {
+  public cooldownKey(provider: string, keyIdOrMask: string, cooldownMs = 60_000): boolean {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
     const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
@@ -274,13 +288,15 @@ export class KeyFleetMonitor {
     if (rawKey && rotator) {
       rotator.recordFailure(rawKey, "rate_limit", cooldownMs);
       this.notifyListeners();
+      return true;
     }
+    return false;
   }
 
   /**
-   * Evicts a key permanently (e.g. auth failure).
+   * Evicts a key permanently (e.g. auth failure). Returns true if key was found and updated.
    */
-  public evictKey(provider: string, keyIdOrMask: string): void {
+  public evictKey(provider: string, keyIdOrMask: string): boolean {
     const meta = this.providerMeta.get(provider.toLowerCase());
     const rotator = this.rotators.get(provider.toLowerCase());
     const entry = meta?.keyById.get(keyIdOrMask) ?? meta?.keyByMask.get(keyIdOrMask);
@@ -288,7 +304,18 @@ export class KeyFleetMonitor {
     if (rawKey && rotator) {
       rotator.recordFailure(rawKey, "auth");
       this.notifyListeners();
+      return true;
     }
+    return false;
+  }
+
+  /**
+   * Checks whether a key identifier or mask exists for a provider.
+   */
+  public hasKey(provider: string, keyIdOrMask: string): boolean {
+    const meta = this.providerMeta.get(provider.toLowerCase());
+    if (!meta) return false;
+    return meta.keyById.has(keyIdOrMask) || meta.keyByMask.has(keyIdOrMask);
   }
 
   /**
@@ -391,7 +418,18 @@ export class KeyFleetMonitor {
     }
 
     const healthPercentage =
-      totalKeys === 0 ? 100 : Math.round(((healthyCount + cooldownCount * 0.5) / totalKeys) * 100);
+      totalKeys === 0 ? null : Math.round(((healthyCount + cooldownCount * 0.5) / totalKeys) * 100);
+
+    let availabilityState: FleetHealthStats["availabilityState"] = "empty";
+    if (totalKeys > 0) {
+      if (healthyCount === totalKeys) {
+        availabilityState = "healthy";
+      } else if (healthyCount > 0) {
+        availabilityState = "degraded";
+      } else {
+        availabilityState = "critical";
+      }
+    }
 
     return {
       totalKeys,
@@ -400,6 +438,7 @@ export class KeyFleetMonitor {
       evictedCount,
       activeLeases,
       healthPercentage,
+      availabilityState,
     };
   }
 

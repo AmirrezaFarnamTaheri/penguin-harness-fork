@@ -40,7 +40,8 @@ export interface FleetHealthStats {
   cooldownCount: number;
   evictedCount: number;
   activeLeases: number;
-  healthPercentage: number;
+  healthPercentage: number | null;
+  availabilityState: "healthy" | "degraded" | "critical" | "empty";
 }
 
 export interface KeyProbeResult {
@@ -66,7 +67,8 @@ export function calculateFleetHealth(reports: ModelKeyFleetReport[]): FleetHealt
       cooldownCount: 0,
       evictedCount: 0,
       activeLeases: 0,
-      healthPercentage: 100,
+      healthPercentage: null,
+      availabilityState: "empty",
     };
   }
 
@@ -84,7 +86,15 @@ export function calculateFleetHealth(reports: ModelKeyFleetReport[]): FleetHealt
     activeLeases += report.activeLeases;
   }
 
-  const healthPercentage = totalKeys === 0 ? 100 : Math.round((healthyCount / totalKeys) * 100);
+  const healthPercentage = totalKeys === 0 ? null : Math.round((healthyCount / totalKeys) * 100);
+  const availabilityState =
+    totalKeys === 0
+      ? "empty"
+      : healthyCount === 0
+        ? "critical"
+        : healthyCount < totalKeys
+          ? "degraded"
+          : "healthy";
 
   return {
     totalKeys,
@@ -93,6 +103,7 @@ export function calculateFleetHealth(reports: ModelKeyFleetReport[]): FleetHealt
     evictedCount,
     activeLeases,
     healthPercentage,
+    availabilityState,
   };
 }
 

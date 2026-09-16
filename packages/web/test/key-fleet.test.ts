@@ -99,11 +99,12 @@ describe("key-fleet-types", () => {
       expect(stats.healthPercentage).toBe(60); // 3 / 5 * 100
     });
 
-    it("returns 100% health for empty fleet", () => {
+    it("reports null health and empty availabilityState for empty fleet", () => {
       const stats = calculateFleetHealth([]);
       expect(stats.totalKeys).toBe(0);
       expect(stats.healthyCount).toBe(0);
-      expect(stats.healthPercentage).toBe(100);
+      expect(stats.healthPercentage).toBeNull();
+      expect(stats.availabilityState).toBe("empty");
     });
   });
 

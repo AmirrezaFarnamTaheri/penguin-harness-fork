@@ -76,10 +76,16 @@ export class MailboxKernel {
   private readonly lastActivity = new Map<string, number>();
   private readonly maxQueueDepth: number;
   private readonly maxPayloadSizeBytes: number;
+  private readonly maxMailboxes: number;
 
-  constructor(options?: { maxQueueDepth?: number; maxPayloadSizeBytes?: number }) {
+  constructor(options?: {
+    maxQueueDepth?: number;
+    maxPayloadSizeBytes?: number;
+    maxMailboxes?: number;
+  }) {
     this.maxQueueDepth = options?.maxQueueDepth ?? 500;
     this.maxPayloadSizeBytes = options?.maxPayloadSizeBytes ?? 512 * 1024;
+    this.maxMailboxes = options?.maxMailboxes ?? 100;
   }
 
   public send<T = unknown>(
@@ -93,6 +99,10 @@ export class MailboxKernel {
     const source = normalizeMailboxOwnerName(fromAgent);
 
     if (!target) throw new Error("Recipient agent name cannot be empty");
+
+    if (!this.queues.has(target) && this.queues.size >= this.maxMailboxes) {
+      throw new Error(`Maximum mailbox cardinality limit reached (${this.maxMailboxes})`);
+    }
 
     if (payload !== undefined && payload !== null) {
       const payloadStr = typeof payload === "string" ? payload : JSON.stringify(payload);
@@ -183,6 +193,11 @@ export class MailboxKernel {
   public requeue<T = unknown>(agentName: string, message: MailboxMessage<T>): void {
     const name = normalizeMailboxOwnerName(agentName);
     const queue = this.queues.get(name) ?? [];
+    if (queue.length >= this.maxQueueDepth) {
+      throw new Error(
+        `Cannot requeue message: mailbox for agent '${name}' has reached maximum queue capacity (${this.maxQueueDepth})`,
+      );
+    }
     queue.unshift(message as MailboxMessage);
     this.queues.set(name, queue);
     this.lastActivity.set(name, Date.now());

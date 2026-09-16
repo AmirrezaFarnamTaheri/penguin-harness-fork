@@ -170,4 +170,66 @@ describe("SwarmCoordinator", () => {
     expect(results[1]?.taskId).toBe("task-concurrent-2");
     expect(results[1]?.status).toBe("settled");
   });
+
+  it("validates directive recipient against registered swarm agents", () => {
+    const coordinator = new SwarmCoordinator();
+    expect(coordinator.hasAgent("coder")).toBe(true);
+    expect(coordinator.hasAgent("unknown-agent")).toBe(false);
+
+    expect(() => coordinator.dispatchDirective("operator", "unknown-agent", "hello")).toThrow(
+      /Recipient agent 'unknown-agent' is not registered in swarm/,
+    );
+  });
+
+  it("enforces task admission queue depth limit and reports 429 backpressure", async () => {
+    const coordinator = new SwarmCoordinator({ maxPendingTasks: 1 });
+    let releaseFirstTask!: () => void;
+    const blockPromise = new Promise<void>((resolve) => {
+      releaseFirstTask = resolve;
+    });
+
+    const firstTask = coordinator.runTask(
+      { id: "task-blocking", goal: "Block queue" },
+      {
+        onExecute: async () => {
+          await blockPromise;
+          return { artifacts: [], summary: "done" };
+        },
+      },
+    );
+
+    // Second task should immediately reject with 429 backpressure
+    await expect(
+      coordinator.runTask({ id: "task-overflow", goal: "Should be rejected" }),
+    ).rejects.toThrow(/Swarm task queue limit reached/);
+
+    releaseFirstTask();
+    await firstTask;
+  });
+
+  it("guards consensus and artifacts against aborted or timed-out tasks", async () => {
+    const coordinator = new SwarmCoordinator({
+      watchdogConfig: { stepTimeoutMs: 50 },
+    });
+
+    const result = await coordinator.runTask(
+      {
+        id: "task-timedout",
+        goal: "Hang during execution",
+      },
+      {
+        onExecute: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          return {
+            artifacts: [{ path: "aborted.ts", summary: "Should not settle" }],
+            summary: "Timed out",
+          };
+        },
+      },
+    );
+
+    expect(result.status).toBe("timed_out");
+    expect(result.artifacts.length).toBe(0);
+    expect(result.standing?.status).not.toBe("settled");
+  });
 });
