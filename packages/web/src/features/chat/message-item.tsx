@@ -4,13 +4,15 @@
  * streamed as Markdown, tool cards, subagent cards, compaction banners, abort markers, and Task
  * stats lines. Items have a light entrance animation.
  */
-import { useEffect, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useState } from "react";
 import { S } from "../../lib/strings";
 import { useLocale } from "../../state/locale";
 import { formatMessageTime } from "../../lib/format";
 import { STAT_ICONS } from "../../lib/stat-icons";
 import { splitAttachments } from "../../lib/attachments";
+import { approvalKey } from "../../lib/omni/stream-model";
 import type { ChatItem, ReconnectItem } from "../../lib/omni/stream-model";
+import type { ApprovalDecision } from "@prismshadow/penguin-core/omnimessage";
 import { Md } from "./md";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { CopyButton } from "../../components/ui/copy-button";
@@ -185,7 +187,110 @@ function ReconnectLine({ item, ctx }: { item: ReconnectItem; ctx: StreamRenderCo
   );
 }
 
-export function MessageItem({ item, ctx }: { item: ChatItem; ctx: StreamRenderContext }) {
+export interface MessageItemProps {
+  item: ChatItem;
+  ctx: StreamRenderContext;
+}
+
+export interface MessageItemRenderState {
+  settled: boolean;
+  decision?: ApprovalDecision;
+  decisionSource?: string;
+  workspace?: string | null;
+  deletedMemoryKeys?: ReadonlySet<string>;
+}
+
+export const itemRenderState = new WeakMap<ChatItem, MessageItemRenderState>();
+
+/** Determines whether an item is currently active (streaming deltas, running tool execution, countdowns, or pending approvals). */
+export function isItemActive(item: ChatItem, ctx: StreamRenderContext): boolean {
+  switch (item.kind) {
+    case "assistant_text":
+      return item.streaming;
+    case "thinking":
+      return item.streaming;
+    case "tool_call": {
+      if (item.callStreaming || item.outputStreaming) return true;
+      if (item.callComplete && !item.outputComplete) return true;
+      return ctx.pendingApprovals.has(approvalKey(ctx.origin, item.toolCallId));
+    }
+    case "compaction":
+      return item.running || Boolean(item.thinkingStreaming);
+    case "mcp_connect":
+      return item.running;
+    case "reconnect":
+      return !item.gaveUp && !item.retrying;
+    case "subagent":
+      return item.model.openText !== null || item.model.openThinking !== null;
+    case "user_text":
+    case "user_image":
+    case "user_steering":
+    case "background_notice":
+    case "abort":
+    case "llm_error":
+    case "task_stats":
+      return false;
+  }
+}
+
+export function recordItemRenderState(item: ChatItem, ctx: StreamRenderContext): void {
+  const active = isItemActive(item, ctx);
+  itemRenderState.set(item, {
+    settled: !active,
+    ...(item.kind === "tool_call"
+      ? { decision: item.decision, decisionSource: item.decisionSource }
+      : {}),
+    ...(item.kind === "task_stats" ? { deletedMemoryKeys: ctx.deletedMemoryKeys } : {}),
+    ...(item.kind === "assistant_text" ? { workspace: ctx.workspace } : {}),
+  });
+}
+
+/**
+ * Custom prop comparator for ChatItem memoization:
+ * - Actively streaming or executing items always re-render to reflect deltas and live timers.
+ * - Settled items skip re-renders across parent stream version bumps once their settled state has been rendered.
+ */
+export function areMessageItemPropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean {
+  if (prev.item !== next.item) return false;
+  if (prev.item.id !== next.item.id || prev.item.kind !== next.item.kind) return false;
+
+  // Active items always re-render to capture stream deltas, running timers, and pending approvals.
+  if (isItemActive(next.item, next.ctx)) return false;
+
+  // Has the component rendered this item in its settled state?
+  const state = itemRenderState.get(next.item);
+  if (!state || !state.settled) return false;
+
+  // For tool_call: verify decision hasn't mutated upon settle.
+  if (next.item.kind === "tool_call") {
+    if (state.decision !== next.item.decision) return false;
+    if (state.decisionSource !== next.item.decisionSource) return false;
+  }
+
+  // For task_stats: check if memory deletions have updated.
+  if (next.item.kind === "task_stats") {
+    if (
+      next.item.memoryChanges !== undefined &&
+      prev.ctx.deletedMemoryKeys !== next.ctx.deletedMemoryKeys
+    ) {
+      return false;
+    }
+  }
+
+  // For nested assistant_text: check workspace path changes.
+  if (next.item.kind === "assistant_text" && next.ctx.origin.length > 0) {
+    if (prev.ctx.workspace !== next.ctx.workspace) return false;
+  }
+
+  return true;
+}
+
+function MessageItemInner({ item, ctx }: MessageItemProps) {
+  recordItemRenderState(item, ctx);
+  useLayoutEffect(() => {
+    recordItemRenderState(item, ctx);
+  });
+
   switch (item.kind) {
     case "user_text": {
       // Harness-injected completion notice of a run_in_background task: collapsed into a
@@ -451,3 +556,5 @@ export function MessageItem({ item, ctx }: { item: ChatItem; ctx: StreamRenderCo
       );
   }
 }
+
+export const MessageItem = memo(MessageItemInner, areMessageItemPropsEqual);

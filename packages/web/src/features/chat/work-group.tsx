@@ -18,7 +18,7 @@
  * shows "Running"; it flips to "Done" only once a later message (e.g. body text) pushes the
  * group away from the end, or the Task has actually finished.
  */
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { S } from "../../lib/strings";
 import { humanizeDuration } from "../../lib/format";
 import { Chevron } from "../../components/ui/chevron";
@@ -32,7 +32,7 @@ import { StatusIcon } from "../../components/ui/status-icon";
 import { approvalKey } from "../../lib/omni/stream-model";
 import type { ChatItem } from "../../lib/omni/stream-model";
 import { LiveDuration } from "./live-duration";
-import { MessageItem } from "./message-item";
+import { MessageItem, isItemActive } from "./message-item";
 import type { StreamRenderContext } from "./message-stream";
 import { summarizeWork } from "./work-summary";
 import { toneDot, toneInk, toneSurface } from "../../lib/tone";
@@ -40,17 +40,6 @@ import { toneDot, toneInk, toneSurface } from "../../lib/tone";
 /** Item kinds that belong in the group: thinking and tool calls (subagent cards are nested inside the run_subagent tool card, not listed separately). */
 export function isWorkItem(item: ChatItem): boolean {
   return item.kind === "thinking" || item.kind === "tool_call";
-}
-
-/** Whether an item is still in progress (drives spinner display): streaming, executing, or has a pending approval. */
-function itemActive(item: ChatItem, ctx: StreamRenderContext): boolean {
-  if (item.kind === "thinking") return item.streaming;
-  if (item.kind === "tool_call") {
-    if (item.callStreaming || item.outputStreaming) return true;
-    if (item.callComplete && !item.outputComplete) return true;
-    return ctx.pendingApprovals.has(approvalKey(ctx.origin, item.toolCallId));
-  }
-  return false;
 }
 
 /** Whether the group contains a pending approval (used to force it open, ensuring the approval buttons stay reachable). */
@@ -61,19 +50,82 @@ function hasPendingApproval(items: ChatItem[], ctx: StreamRenderContext): boolea
   );
 }
 
-export function WorkGroup({
-  items,
-  ctx,
-  isLast,
-}: {
+export interface WorkGroupProps {
   items: ChatItem[];
   ctx: StreamRenderContext;
   /** Whether this group is the last segment of the message stream (current turn still in progress): decides the default expanded/collapsed state. */
   isLast: boolean;
-}) {
+}
+
+export interface WorkGroupRenderState {
+  settled: boolean;
+  count: number;
+  isLast: boolean;
+}
+
+export const workGroupRenderState = new WeakMap<ChatItem, WorkGroupRenderState>();
+
+/** Whether the work group is actively executing, waiting for approval, or expecting more steps. */
+export function isWorkGroupActive(
+  items: ChatItem[],
+  ctx: StreamRenderContext,
+  isLast: boolean,
+): boolean {
+  const itemsRunning = items.some((it) => isItemActive(it, ctx));
+  return (isLast && ctx.taskRunning) || itemsRunning;
+}
+
+export function recordWorkGroupRenderState(
+  items: ChatItem[],
+  ctx: StreamRenderContext,
+  isLast: boolean,
+): void {
+  const first = items[0];
+  if (first) {
+    const active = isWorkGroupActive(items, ctx, isLast);
+    workGroupRenderState.set(first, {
+      settled: !active,
+      count: items.length,
+      isLast,
+    });
+  }
+}
+
+/**
+ * Custom prop comparator for WorkGroup memoization:
+ * - Groups with running items, active tasks, or pending approvals always re-render.
+ * - Settled groups skip re-renders across parent stream version bumps once their settled state has been rendered.
+ */
+export function areWorkGroupPropsEqual(prev: WorkGroupProps, next: WorkGroupProps): boolean {
+  if (prev.isLast !== next.isLast) return false;
+  if (prev.items.length !== next.items.length) return false;
+  const first = next.items[0];
+  if (!first || prev.items[0] !== first) return false;
+
+  // Active groups always re-render to reflect step runs or live timer updates.
+  if (isWorkGroupActive(next.items, next.ctx, next.isLast)) return false;
+
+  const state = workGroupRenderState.get(first);
+  if (
+    !state ||
+    !state.settled ||
+    state.count !== next.items.length ||
+    state.isLast !== next.isLast
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function WorkGroupInner({ items, ctx, isLast }: WorkGroupProps) {
+  recordWorkGroupRenderState(items, ctx, isLast);
+  useLayoutEffect(() => {
+    recordWorkGroupRenderState(items, ctx, isLast);
+  });
   // Whether any item is in flight right now — also the only window in which the group's span is
   // still growing, which the duration display below depends on.
-  const itemsRunning = items.some((it) => itemActive(it, ctx));
+  const itemsRunning = items.some((it) => isItemActive(it, ctx));
   // Last segment + Task running = the model might still call another tool → show Running (even if there's no active item right now).
   const active = (isLast && ctx.taskRunning) || itemsRunning;
   const pending = hasPendingApproval(items, ctx);
@@ -206,3 +258,5 @@ export function WorkGroup({
     </div>
   );
 }
+
+export const WorkGroup = memo(WorkGroupInner, areWorkGroupPropsEqual);
