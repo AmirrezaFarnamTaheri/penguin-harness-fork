@@ -51,7 +51,59 @@ const TOOLS: ToolDefinition[] = [
   { name: "exec_command", description: "Run a command", parameters: { type: "object" } },
 ];
 
+function usage(total: number, sessionTotal = 441_000): OmniMessage {
+  return tokenUsage(
+    { cache_read: 0, cache_write: sessionTotal, output: 0, total: sessionTotal },
+    { cache_read: 0, cache_write: total, output: 0, total },
+  );
+}
+
 describe("buildContextBreakdown", () => {
+  it("reports latest measured request occupancy separately from cumulative usage and estimates", () => {
+    const last = usage(83_000);
+    const b = buildContextBreakdown([userText("short estimate"), usage(79_100), last]);
+    expect(b.occupancyTokens).toBe(83_000);
+    expect(b.occupancyRecordedAt).toBe(last.timestamp);
+    expect(b.occupancyStale).toBe(false);
+    expect(b.total).toBeLessThan(83_000);
+  });
+
+  it("never treats missing or invalid measurement as empty or estimated occupancy", () => {
+    for (const messages of [[], [userText("hello")], [usage(-1)], [usage(NaN)], [usage(Infinity)]]) {
+      const b = buildContextBreakdown(messages);
+      expect(b.occupancyTokens).toBeNull();
+      expect(b.occupancyRecordedAt).toBeNull();
+      expect(b.occupancyStale).toBe(false);
+    }
+    expect(buildContextBreakdown([usage(0)]).occupancyTokens).toBe(0);
+  });
+
+  it("ignores nested usage, compaction requests and failed-attempt consumption", () => {
+    const b = buildContextBreakdown([
+      usage(79_100),
+      { ...usage(900_000), origin: ["child-session"] },
+      { ...compactionBegin({ reason: "manual", mode: "summarize", context: 1, turns: 1 }), origin: ["child-session"] },
+      usage(83_000),
+      { ...requestEnd("retryable"), payload: { type: "request_end", status: "retryable", usage: { cache_read: 0, cache_write: 999_000, output: 0, total: 999_000 } } },
+      compactionBegin({ reason: "manual", mode: "summarize", context: 83_000, turns: 1 }),
+      usage(60_000),
+      compactionEnd({ reason: "manual", mode: "summarize", status: "retryable" }),
+    ]);
+    expect(b.occupancyTokens).toBe(83_000);
+    expect(b.occupancyStale).toBe(false);
+  });
+
+  it("invalidates occupancy on completed compaction until the next normal usage", () => {
+    const messages = [
+      usage(79_100),
+      compactionBegin({ reason: "manual", mode: "summarize", context: 79_100, turns: 1 }),
+      usage(60_000),
+      compactionEnd({ reason: "manual", mode: "summarize", status: "completed" }),
+      userText("new input is not a measurement"),
+    ];
+    expect(buildContextBreakdown(messages)).toMatchObject({ occupancyTokens: null, occupancyStale: true, occupancyRecordedAt: null });
+    expect(buildContextBreakdown([...messages, usage(12_000)])).toMatchObject({ occupancyTokens: 12_000, occupancyStale: false });
+  });
   it("splits a shard across the six parts and sums them into total", () => {
     const b = buildContextBreakdown([
       sessionMeta(metaPayload("You are a helpful agent.")),
@@ -315,6 +367,9 @@ describe("TraceService.contextBreakdown", () => {
       topTools: [],
       topFiles: [],
       contextClosed: false,
+      occupancyTokens: null,
+      occupancyStale: false,
+      occupancyRecordedAt: null,
     });
   });
 });

@@ -2538,10 +2538,10 @@ export interface ContextFileShare {
 /**
  * What the Session's current model context is made of — the part derived from its messages.
  *
- * Every token figure is an **estimate** from a character heuristic, not a tokenizer: the
- * authoritative occupancy is the last `token_usage`'s `request.total`, which says how large the
- * context is but not what fills it. Consumers should present these as shares of that measured
- * occupancy rather than as counts of their own.
+ * The six composition parts and `total` are character-heuristic estimates over the newest
+ * Trace shard, not a snapshot of the last request. `occupancyTokens` separately reports the
+ * latest normal main-session `token_usage.request.total`; it is never inferred from the parts.
+ * Composition shares do not claim exact attribution of that measured occupancy.
  *
  * The six parts partition the context and sum to `total`; `topTools` is a ranking inside
  * `toolRequests + toolResults` and can sum to less than those two (a result whose call was not
@@ -2549,6 +2549,12 @@ export interface ContextFileShare {
  * ranking narrowed to the three file tools and keyed by the file each call named.
  */
 export interface SessionContextParts {
+  /** Latest normal main-session request.total, or null if not measured. Never cumulative usage. */
+  occupancyTokens?: number | null;
+  /** Completed compaction invalidated occupancy; cleared by the next normal usage record. */
+  occupancyStale?: boolean;
+  /** Timestamp of the usage record supplying occupancyTokens; null when unavailable/stale. */
+  occupancyRecordedAt?: string | null;
   systemPrompt: number;
   toolDefs: number;
   userMessages: number;

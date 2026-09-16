@@ -44,8 +44,8 @@ function ContextSessionPicker({ sessionId, embedded = false }: ContextBreakdownP
           <h1 className="text-xl font-semibold">{copy("Context usage", "上下文用量")}</h1>
           <p className={`mt-1 ${mutedClass}`}>
             {copy(
-              "Estimated token use from the latest recorded request, not a live counter.",
-              "最近一次已记录请求的 Token 估算，并非实时计数。",
+              "Measured request usage and estimated trace composition are shown separately.",
+              "请求的实测用量与追踪记录的估算构成分别显示。",
             )}
           </p>
         </div>
@@ -94,9 +94,12 @@ export function ContextSessionContent({ sessionId }: { sessionId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const generation = useRef(0);
   const mounted = useRef(false);
-  const load = useCallback(async () => {
+  const reading = useRef(false);
+  const load = useCallback(async (background = false) => {
+    if (background && reading.current) return;
     const request = ++generation.current;
-    setLoading(true);
+    reading.current = true;
+    if (!background) setLoading(true);
     setError(null);
     try {
       const result = await api.getSessionContext(sessionId);
@@ -107,14 +110,22 @@ export function ContextSessionContent({ sessionId }: { sessionId: string }) {
         setData(null);
       }
     } finally {
-      if (mounted.current && request === generation.current) setLoading(false);
+      if (mounted.current && request === generation.current) {
+        reading.current = false;
+        setLoading(false);
+      }
     }
   }, [sessionId]);
   useEffect(() => {
     mounted.current = true;
     void load();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void load(true);
+    }, 10_000);
     return () => {
+      window.clearInterval(timer);
       mounted.current = false;
+      reading.current = false;
       generation.current++;
     };
   }, [load]);
