@@ -95,9 +95,10 @@ win:
   # exe (>=256px required).
   icon: build/icon.png
   artifactName: penguin-desktop-win32-${arch}.${ext}
-  # Target-specific payload pruning: drop macOS binaries from Windows installers (~1 MB saved).
+  # Target-specific payload pruning: drop macOS binaries and foreign ARM64 Windows binaries from Windows x64 installers (~3.5 MB saved).
   files:
     - "!dist/node_modules/node-pty/prebuilds/darwin*/**"
+    - "!dist/node_modules/node-pty/prebuilds/win32-arm64/**"
   verifyUpdateCodeSignature: true
   signExts:
     - PenguinHarness.exe

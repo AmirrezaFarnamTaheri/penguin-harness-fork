@@ -37,6 +37,19 @@ function safeSend(ws: WebSocket, payload: string): void {
   }
 }
 
+function broadcast(clients: Iterable<WebSocket>, payload: string): void {
+  for (const client of clients) {
+    safeSend(client, payload);
+  }
+}
+
+function resolveKeyTarget(msg: Record<string, unknown>): string {
+  if (typeof msg.keyId === "string" && msg.keyId.trim()) {
+    return msg.keyId.trim();
+  }
+  return typeof msg.maskedKey === "string" ? msg.maskedKey : "";
+}
+
 export const RUNTIME_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 export interface CockpitWebSocketDeps {
@@ -246,42 +259,42 @@ export async function getOrCreateProjectRuntime(
   });
 
   const unsubCoordinator = coordinator.subscribe((event: SwarmEvent) => {
-    const payload = JSON.stringify({
-      type: "swarm_event",
-      projectId,
-      timestamp: Date.now(),
-      event: redactObject(event),
-    });
-    for (const ws of runtime!.clients) {
-      safeSend(ws, payload);
-    }
+    broadcast(
+      runtime!.clients,
+      JSON.stringify({
+        type: "swarm_event",
+        projectId,
+        timestamp: Date.now(),
+        event: redactObject(event),
+      }),
+    );
   });
 
   const unsubKeyFleet = keyFleet.subscribe((_stats) => {
-    const payload = JSON.stringify({
-      type: "key_fleet_update",
-      projectId,
-      timestamp: Date.now(),
-      keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
-      reports: redactObject(keyFleet.getFleetReport()),
-      stats: keyFleet.getFleetStats(),
-    });
-    for (const ws of runtime!.clients) {
-      safeSend(ws, payload);
-    }
+    broadcast(
+      runtime!.clients,
+      JSON.stringify({
+        type: "key_fleet_update",
+        projectId,
+        timestamp: Date.now(),
+        keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+        reports: redactObject(keyFleet.getFleetReport()),
+        stats: keyFleet.getFleetStats(),
+      }),
+    );
   });
 
   const onChange = (ev: unknown) => {
-    const payload = JSON.stringify({
-      type: "topology_change",
-      projectId,
-      timestamp: Date.now(),
-      event: ev,
-      stats: codeGraphWatcher.getStats(),
-    });
-    for (const ws of runtime!.clients) {
-      safeSend(ws, payload);
-    }
+    broadcast(
+      runtime!.clients,
+      JSON.stringify({
+        type: "topology_change",
+        projectId,
+        timestamp: Date.now(),
+        event: ev,
+        stats: codeGraphWatcher.getStats(),
+      }),
+    );
   };
   codeGraphWatcher.on("change", onChange);
 
@@ -389,12 +402,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
           if (msg.type === "probe_key") {
             const provider = typeof msg.provider === "string" ? msg.provider : "anthropic";
-            const target =
-              typeof msg.keyId === "string" && msg.keyId.trim()
-                ? msg.keyId.trim()
-                : typeof msg.maskedKey === "string"
-                  ? msg.maskedKey
-                  : "";
+            const target = resolveKeyTarget(msg);
             const result = await runtime.keyFleet.probeKey(provider, target);
             safeSend(
               ws,
@@ -423,12 +431,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
           if (msg.type === "key_action") {
             const action = msg.action;
             const provider = typeof msg.provider === "string" ? msg.provider : "";
-            const target =
-              typeof msg.keyId === "string" && msg.keyId.trim()
-                ? msg.keyId.trim()
-                : typeof msg.maskedKey === "string"
-                  ? msg.maskedKey
-                  : "";
+            const target = resolveKeyTarget(msg);
             if (action === "revive") {
               runtime.keyFleet.reviveKey(provider, target);
             } else if (action === "cooldown") {
@@ -465,15 +468,15 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 return;
               }
               const directive = runtime.coordinator.dispatchDirective(from, to, trimmed);
-              const confirmPayload = JSON.stringify({
-                type: "directive_dispatched",
-                directive: redactObject(directive),
-                mailbox: runtime.coordinator.getMailboxSummaries(),
-                timestamp: Date.now(),
-              });
-              for (const client of runtime.clients) {
-                safeSend(client, confirmPayload);
-              }
+              broadcast(
+                runtime.clients,
+                JSON.stringify({
+                  type: "directive_dispatched",
+                  directive: redactObject(directive),
+                  mailbox: runtime.coordinator.getMailboxSummaries(),
+                  timestamp: Date.now(),
+                }),
+              );
             } else if (trimmed.length > 8192) {
               safeSend(
                 ws,
@@ -531,26 +534,26 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 simulate,
               })
               .then((res: unknown) => {
-                const payload = JSON.stringify({
-                  type: "swarm_task_settled",
-                  taskId,
-                  result: redactObject(res),
-                  timestamp: Date.now(),
-                });
-                for (const client of runtime.clients) {
-                  safeSend(client, payload);
-                }
+                broadcast(
+                  runtime.clients,
+                  JSON.stringify({
+                    type: "swarm_task_settled",
+                    taskId,
+                    result: redactObject(res),
+                    timestamp: Date.now(),
+                  }),
+                );
               })
               .catch((err: unknown) => {
-                const payload = JSON.stringify({
-                  type: "swarm_task_error",
-                  taskId,
-                  error: err instanceof Error ? err.message : String(err),
-                  timestamp: Date.now(),
-                });
-                for (const client of runtime.clients) {
-                  safeSend(client, payload);
-                }
+                broadcast(
+                  runtime.clients,
+                  JSON.stringify({
+                    type: "swarm_task_error",
+                    taskId,
+                    error: err instanceof Error ? err.message : String(err),
+                    timestamp: Date.now(),
+                  }),
+                );
               });
           }
         } catch {

@@ -204,7 +204,8 @@ describe("packaged layout", () => {
     // macOS installers exclude Windows binaries
     expect(builderConfig).toContain('"!dist/node_modules/node-pty/build/Release/conpty{,/**/*}"');
     expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/win32*/**"');
-    // Windows installers exclude macOS binaries
+    // Windows installers exclude macOS binaries and foreign ARM64 Windows binaries
     expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/darwin*/**"');
+    expect(builderConfig).toContain('"!dist/node_modules/node-pty/prebuilds/win32-arm64/**"');
   });
 });
