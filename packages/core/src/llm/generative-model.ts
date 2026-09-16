@@ -130,7 +130,12 @@ function payloadToContentItem(payload: CompleteModelPayload): ContentItem {
     case "text":
       return {
         type: "text",
-        text: payload.text,
+        text:
+          payload.role === "user" && payload.sender === "parent_agent"
+            ? `Message from the parent agent, not the human user.
+
+${payload.text}`
+            : payload.text,
         ...fidelityProp(payload.fidelity),
       };
     case "image_url":

@@ -2069,6 +2069,9 @@ Scenarios:
     steerQueuedItem: (content: string) =>
       `Steering queued — delivered with the next turn: ${content}`,
     /** Label of the [user_steering] chip (a mid-run user message delivered between turns). */
+    agentSteering: "Agent steering",
+    automatedSteering: "Automated update",
+    agentMessage: "Message from parent agent",
     userSteering: "User steering",
     /** Mid-run send-mode setting: steer (delivered mid-run) vs follow-up (queued until the run ends). */
     steerModeLabel: "Mid-run send mode",

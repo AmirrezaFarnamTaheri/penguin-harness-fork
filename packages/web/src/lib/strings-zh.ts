@@ -2048,6 +2048,9 @@ Benchmark：
     /** Same hint, with the queued message's content (from the server's undelivered-steering mirror; survives reloads). */
     steerQueuedItem: (content: string) => `插话已排队，将随下一轮送达：${content}`,
     /** Label of the [user_steering] chip (a mid-run user message delivered between turns). */
+    agentSteering: "代理插话",
+    automatedSteering: "自动更新",
+    agentMessage: "来自父代理的消息",
     userSteering: "用户插话",
     /** Mid-run send-mode setting: steer (delivered mid-run) vs follow-up (queued until the run ends). */
     steerModeLabel: "运行中发送方式",
