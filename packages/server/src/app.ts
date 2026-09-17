@@ -160,6 +160,7 @@ import { commandPolicyRoutes } from "./http/routes/command-policy.js";
 import { vaultRoutes } from "./http/routes/vault.js";
 import { memoryRoutes } from "./http/routes/memory.js";
 import { scheduleRoutes } from "./http/routes/schedules.js";
+import { scheduleKanbanRoutes } from "./http/routes/schedule-kanban.js";
 import { organizationRoutes } from "./http/routes/organizations.js";
 import { benchmarksRoutes } from "./http/routes/benchmarks.js";
 import { agentSkillsRoutes } from "./http/routes/skills.js";
@@ -1393,6 +1394,7 @@ export function createApp(
   app.route("/api/projects/:projectId/agents/:agentId/vault", vaultRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/memory", memoryRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/schedules", scheduleRoutes(deps));
+  app.route("/api/projects/:projectId/agents/:agentId/schedule-kanban", scheduleKanbanRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/benchmarks", benchmarksRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/skills", agentSkillsRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/plugins", agentPluginsRoutes(deps));
