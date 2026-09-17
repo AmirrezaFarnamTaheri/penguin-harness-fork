@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "skills:audit": "node scripts/skills/audit.mjs",
     "skills:check": "node scripts/skills/audit.mjs --check",
     "skills:catalog": "node scripts/skills/catalog.mjs --json=artifacts/skill-catalog.json --markdown=artifacts/skill-catalog.md",
