@@ -64,6 +64,7 @@ import type {
   MemoryImportResponse,
   MemoryOverviewResponse,
   MemoryScopeExport,
+  MemorySearchResponse,
   MeResponse,
   MessagesResponse,
   MessagingBindingsResponse,
@@ -501,6 +502,12 @@ export const insertMemoryPlaceholder = (projectId: string, agentId: string) =>
 
 export const getMemoryFiles = (projectId: string, agentId: string, scopeKey: string) =>
   apiFetch<MemoryFilesResponse>(memoryFilesBase(projectId, agentId, scopeKey));
+
+/** Lexical search across every scope's topic files — the recall simulator's server-side query. */
+export const getMemorySearch = (projectId: string, agentId: string, query: string) =>
+  apiFetch<MemorySearchResponse>(
+    `${memoryBase(projectId, agentId)}/search?q=${encodeURIComponent(query)}`,
+  );
 
 export const getMemoryFile = (projectId: string, agentId: string, scopeKey: string, name: string) =>
   apiFetch<MemoryFileResponse>(

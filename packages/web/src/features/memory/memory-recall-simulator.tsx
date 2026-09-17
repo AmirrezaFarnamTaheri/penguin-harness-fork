@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import type { MemoryTopicNode } from "./memory-types";
-import { simulateSemanticRecall } from "./memory-types";
+import { useEffect, useState } from "react";
+import type { MemoryRecallResult, MemoryTopicNode } from "./memory-types";
+import { createRecallSearch } from "./memory-recall-query";
 import { Input } from "../../components/ui/input";
 import {
   mutedClass,
@@ -9,11 +9,15 @@ import {
   useInspectionCopy,
 } from "../context/inspection-ui";
 export interface MemoryRecallSimulatorProps {
+  projectId: string;
+  agentId: string;
   topics: MemoryTopicNode[];
   onSelectTopic: (id: string) => void;
   selectedTopicId: string | null;
 }
 export function MemoryRecallSimulator({
+  projectId,
+  agentId,
   topics,
   onSelectTopic,
   selectedTopicId,
@@ -21,17 +25,38 @@ export function MemoryRecallSimulator({
   const copy = useInspectionCopy();
   const [query, setQuery] = useState("");
   const [threshold, setThreshold] = useState(0.2);
-  const results = useMemo(
-    () => simulateSemanticRecall(query, topics, threshold),
-    [query, topics, threshold],
-  );
+  const [matches, setMatches] = useState<MemoryRecallResult[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setMatches([]);
+    setError(null);
+    setLoading(Boolean(query.trim()));
+    const search = createRecallSearch({
+      projectId,
+      agentId,
+      onResults: (next) => {
+        setMatches(next);
+        setLoading(false);
+      },
+      onError: (err) => {
+        setError(err.message);
+        setLoading(false);
+      },
+    });
+    search.setTopics(topics);
+    search.query(query);
+    setLoading(Boolean(query.trim()));
+    return () => search.dispose();
+  }, [projectId, agentId, query, topics]);
+  const results = matches.filter((result) => result.relevance >= threshold);
   return (
     <section className="space-y-4">
       <h2 className="text-base font-semibold">{copy("Keyword recall test", "关键词召回测试")}</h2>
       <p className={mutedClass}>
         {copy(
-          "Local word overlap, not embeddings or the agent's actual retrieval. Token counts use a rough bytes ÷ 4 estimate.",
-          "本地词汇匹配，并非向量检索或智能体的实际召回。Token 数按字节数 ÷ 4 粗略估算。",
+          "Searches saved topic files on the server using word overlap, not embeddings or the agent's actual retrieval. Token counts use a rough bytes ÷ 4 estimate.",
+          "通过服务器对已保存的主题文件进行词汇匹配，并非向量检索或智能体的实际召回。Token 数按字节数 ÷ 4 粗略估算。",
         )}
       </p>
       <Input
@@ -53,15 +78,20 @@ export function MemoryRecallSimulator({
           onChange={(event) => setThreshold(Number(event.target.value))}
         />
       </label>
+      {error && <p role="alert">{error}</p>}
       <p role="status" className={mutedClass}>
-        {!query.trim()
-          ? copy("Enter a query to test recall.", "输入查询以测试召回。")
-          : results.length
-            ? `${results.length} ${copy("matches", "项匹配")} · ~${results.reduce((sum, result) => sum + result.tokenCount, 0).toLocaleString()} tokens`
-            : copy(
-                "No matches. Try different words or lower the minimum overlap.",
-                "没有匹配项。请更换词语或降低匹配率。",
-              )}
+        {loading
+          ? copy("Searching saved memories…", "正在搜索已保存的记忆…")
+          : error
+            ? copy("Search failed. Change the query to retry.", "搜索失败，请修改查询重试。")
+            : !query.trim()
+              ? copy("Enter a query to test recall.", "输入查询以测试召回。")
+              : results.length
+                ? `${results.length} ${copy("matches", "项匹配")} · ~${results.reduce((sum, result) => sum + result.tokenCount, 0).toLocaleString()} tokens`
+                : copy(
+                    "No matches. Try different words or lower the minimum overlap.",
+                    "没有匹配项。请更换词语或降低匹配率。",
+                  )}
       </p>
       <ul className="max-h-[28rem] overflow-y-auto">
         {results.map((result) => (

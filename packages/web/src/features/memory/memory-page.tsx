@@ -237,6 +237,8 @@ export function MemoryInspection({ projectId, agentId }: { projectId: string; ag
             <div className="min-w-0">
               {view === "recall" ? (
                 <MemoryRecallSimulator
+                  projectId={projectId}
+                  agentId={agentId}
                   topics={filtered}
                   selectedTopicId={selected}
                   onSelectTopic={selectTopic}
