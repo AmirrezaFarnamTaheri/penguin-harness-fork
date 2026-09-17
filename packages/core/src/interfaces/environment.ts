@@ -231,6 +231,8 @@ export interface SubagentRunner {
     apiKeys?: string[];
     /** Key allocation strategy across available keys for this subagent. */
     keyStrategy?: SubagentKeyStrategy;
+    /** Opt-in host cascade routing; an explicit model pair takes precedence. */
+    cascade?: { taskType: string; failureCount: number };
   }): Promise<SubagentHandle>;
   /**
    * Revives a released child Session by id (`resumeSession` semantics: its own history,

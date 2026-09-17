@@ -52,6 +52,7 @@ import {
   effectiveMaxContextLength,
   parseApiKeys,
 } from "./llm/index.js";
+import { ModelComboRegistry, type ModelCombo } from "./llm/model-combos.js";
 import { Environment } from "./environment/index.js";
 import {
   Writer,
@@ -163,6 +164,9 @@ export interface CreateAgentOptions {
    * hot push that changes the set reaches the next Session without a restart.
    */
   assembly?: AgentAssembly;
+  /** Opt-in task routing for subagents. Targets must name configured project models.
+   * No request metadata means normal parent-model inheritance; explicit model pairs win. */
+  subagentCascade?: ModelCombo;
 }
 
 /**
@@ -389,6 +393,7 @@ export async function createAgent(opts: CreateAgentOptions = {}): Promise<Agent>
     opts.pathPrepend,
     opts.confineSpawn,
     opts.assembly,
+    opts.subagentCascade,
   );
 }
 
@@ -406,6 +411,7 @@ export class Agent {
     private readonly confineSpawn?: () => SpawnConfiner | null,
     /** See {@link CreateAgentOptions.assembly}; read at every Session creation. */
     private readonly assembly?: AgentAssembly,
+    private readonly subagentCascade?: ModelCombo,
   ) {}
 
   /**
@@ -518,6 +524,32 @@ export class Agent {
           // assembles it, this just keeps the leaf filter symmetrical.
           d.name !== "kill_subagent",
       );
+    }
+    if (canSpawn && this.subagentCascade) {
+      customTools = customTools.map((tool) => {
+        if (tool.name !== SUBAGENT_NAME) return tool;
+        const properties = tool.parameters?.properties;
+        return {
+          ...tool,
+          parameters: {
+            ...tool.parameters,
+            properties: {
+              ...(properties && typeof properties === "object" ? properties : {}),
+              task_type: {
+                type: "string",
+                description:
+                  "Opt into configured local/frontier routing. Use architecture for frontier work; other tasks start local. Omit to inherit the parent model. Explicit model/provider overrides routing.",
+              },
+              failure_count: {
+                type: "integer",
+                minimum: 0,
+                description:
+                  "Observed failed attempts for this task, default 0. At 2 or more use frontier. Do not count API/key errors or invent failures. Routing creates a new child; it does not migrate an existing session.",
+              },
+            },
+          },
+        };
+      });
     }
     const toolConfig: ToolConfig = { ...baseToolConfig, customTools };
 
@@ -994,6 +1026,7 @@ export class Agent {
         apiKey: spawnApiKey,
         apiKeys: spawnApiKeys,
         keyStrategy,
+        cascade,
       }) {
         if (subagentDepth >= MAX_SUBAGENT_DEPTH) {
           throw new Error(
@@ -1033,9 +1066,39 @@ export class Agent {
         // the same Project-config entry, so max_tokens / context_window / vision follow
         // automatically. An explicit pair still wins, and half a pair is forwarded as-is so
         // createSession rejects it (never silently completed from the parent's here).
+        let routedModel: { provider: string; modelId: string } | undefined;
+        if (modelId === undefined && provider === undefined && cascade) {
+          const combo = parentAgent.subagentCascade;
+          if (!combo) throw new Error("Subagent cascade routing is not configured");
+          // Resolve only project-configured pairs. Consult the same rotators as inference;
+          // no key selection, health probes, or guessed local endpoints during routing.
+          const targets = combo.targets.filter((target) =>
+            childAgent.projectConfig.models.some(
+              (entry) => entry.provider === target.provider && entry.model_id === target.modelId,
+            ),
+          );
+          const unavailable = new Set<string>();
+          for (const target of targets) {
+            const scope = `${projectId}/${target.provider}/${target.modelId}`;
+            if (!KeyRotatorRegistry.has(scope)) continue;
+            const keys = KeyRotatorRegistry.get(scope).getKeys();
+            // An empty registry is unknown (local servers/env credentials may need no key).
+            if (
+              keys.length > 0 &&
+              !keys.some((key) => !key.isFailed && key.cooldownUntil <= Date.now())
+            ) {
+              unavailable.add(`${target.provider}:${target.modelId}`);
+            }
+          }
+          routedModel = new ModelComboRegistry([{ ...combo, targets }]).resolveCandidate(combo.id, {
+            cascade,
+            coolingModels: unavailable,
+          });
+          if (!routedModel) throw new Error("No available configured cascade model");
+        }
         const childModel =
           modelId === undefined && provider === undefined
-            ? { modelId: modelEntry.model_id, provider: modelEntry.provider }
+            ? (routedModel ?? { modelId: modelEntry.model_id, provider: modelEntry.provider })
             : {
                 ...(modelId !== undefined ? { modelId } : {}),
                 ...(provider !== undefined ? { provider } : {}),
