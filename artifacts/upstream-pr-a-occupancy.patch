@@ -1,0 +1,341 @@
+diff --git a/packages/web/e2e/context-visual.fixture.tsx b/packages/web/e2e/context-visual.fixture.tsx
+new file mode 100644
+index 000000000..63b57eae8
+--- /dev/null
++++ b/packages/web/e2e/context-visual.fixture.tsx
+@@ -0,0 +1,44 @@
++import { useState } from "react";
++import { createRoot } from "react-dom/client";
++import { loadStrings, setActiveStrings } from "../src/lib/strings";
++import { LocaleProvider } from "../src/state/locale";
++import { HudStatusline } from "../src/features/hud/hud-statusline";
++import { ContextSessionContent } from "../src/features/context/context-breakdown-page";
++import { createTaskStatsTracker, trackMainUsage } from "../src/lib/omni/task-stats";
++
++const scenario = new URLSearchParams(location.search).get("scenario") ?? "ready";
++const stats = createTaskStatsTracker();
++// Repeated requests spend 441k while the latest request occupies only 79,100 tokens.
++trackMainUsage(stats, {
++  type: "token_usage",
++  request: { total: 79_100, input: 78_100, output: 1_000, cache_read: 70_000, cache_write: 8_100 },
++  session: { total: 441_000, input: 431_000, output: 10_000, cache_read: 400_000, cache_write: 31_000 },
++});
++
++function Fixture() {
++  const [selected, setSelected] = useState("alpha");
++  const unavailable = scenario === "compacted" || scenario === "unknown";
++  return (
++    <main className="min-h-screen bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100">
++      <HudStatusline
++        tokensUsed={unavailable ? undefined : stats.contextNow}
++        contextWindow={scenario === "unknown" ? undefined : 240_000}
++        onOpenContext={() => document.getElementById("context-panel")?.focus()}
++      />
++      <section id="context-panel" tabIndex={-1} className="mx-auto max-w-4xl space-y-5 p-4">
++        <header className="space-y-2">
++          <h1 className="text-xl font-semibold">Context usage</h1>
++          <p>Deterministic test session: {selected}</p>
++          <button className="min-h-11 underline" onClick={() => setSelected(selected === "alpha" ? "beta" : "alpha")}>
++            Switch session
++          </button>
++        </header>
++        <ContextSessionContent key={selected} sessionId={selected} />
++      </section>
++    </main>
++  );
++}
++void loadStrings("en").then((strings) => {
++  setActiveStrings(strings);
++  createRoot(document.getElementById("root")!).render(<LocaleProvider><Fixture /></LocaleProvider>);
++});
+diff --git a/packages/web/e2e/context-visual.spec.mjs b/packages/web/e2e/context-visual.spec.mjs
+new file mode 100644
+index 000000000..3a433273e
+--- /dev/null
++++ b/packages/web/e2e/context-visual.spec.mjs
+@@ -0,0 +1,105 @@
++import { expect, test } from "@playwright/test";
++import { build } from "esbuild";
++import { fileURLToPath } from "node:url";
++import { mkdir, readFile, readdir } from "node:fs/promises";
++
++let script;
++let style;
++const screenshots = new URL("../../../artifacts/context-review/context/", import.meta.url);
++const response = (scenario = "ready") => ({
++  systemPrompt: 14693, toolDefs: 12201, userMessages: 723,
++  assistantMessages: 379, toolRequests: 2691, toolResults: 48413,
++  total: 79100,
++  topTools: [{ name: "read_file", tokens: 30000 }, { name: "exec_command", tokens: 21104 }],
++  topFiles: [{ path: "packages/web/src/features/chat/chat-page.tsx", tokens: 24000, ops: { read: 3, edit: 1, write: 0 } }],
++  contextClosed: scenario === "compacted",
++  contextWindow: scenario === "unknown" ? null : 240000,
++  compactionThreshold: scenario === "unknown" ? null : 225000,
++  occupancyTokens: ["compacted", "unknown"].includes(scenario) ? null : scenario === "estimated" ? 83000 : 79100,
++  occupancyStale: scenario === "compacted",
++  occupancyRecordedAt: ["compacted", "unknown"].includes(scenario) ? null : "2026-09-17T00:00:00Z",
++});
++const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
++test.use({ locale: "en-US", timezoneId: "UTC" });
++test.beforeAll(async () => {
++  const bundle = await build({
++    entryPoints: [fileURLToPath(new URL("./context-visual.fixture.tsx", import.meta.url))],
++    bundle: true, format: "iife", platform: "browser", write: false,
++    define: { "process.env.NODE_ENV": '"test"' },
++  });
++  script = bundle.outputFiles[0].text;
++  const assets = new URL("../dist/assets/", import.meta.url);
++  const name = (await readdir(assets)).find((file) => /^index-.*\.css$/.test(file));
++  if (!name) throw new Error("Build the web app first so screenshots use production CSS.");
++  style = await readFile(new URL(name, assets), "utf8");
++  await mkdir(screenshots, { recursive: true });
++});
++async function boot(page, scenario = "ready", dark = false) {
++  const errors = [];
++  page.on("pageerror", (error) => errors.push(error.message));
++  await page.route("http://context.test/**", (route) => route.fulfill({
++    contentType: "text/html",
++    body: `<html lang="en" class="${dark ? "dark" : ""}"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div></html>`,
++  }));
++  await page.route("**/api/sessions/*/context", (route) => json(route, response(scenario)));
++  await page.goto(`http://context.test/?scenario=${scenario}`);
++  await page.addStyleTag({ content: style });
++  await page.addScriptTag({ content: script });
++  return errors;
++}
++async function capture(page, name, info) {
++  await page.evaluate(() => document.fonts.ready);
++  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
++  const path = fileURLToPath(new URL(`${name}.png`, screenshots));
++  await page.screenshot({ path, fullPage: true, animations: "disabled" });
++  await info.attach(name, { path, contentType: "image/png" });
++}
++
++test("441k accumulated spending never becomes 100% context occupancy", async ({ page }, info) => {
++  await page.setViewportSize({ width: 1440, height: 1000 });
++  const errors = await boot(page);
++  const hud = page.getByRole("region", { name: "Session status" });
++  await expect(hud.getByRole("button", { name: /Context 33%/ })).toBeVisible();
++  await expect(page.getByRole("progressbar")).toHaveAttribute("max", "240000");
++  await expect(page.getByRole("progressbar")).toHaveAttribute("value", "79100");
++  await hud.getByRole("button", { name: "Session details" }).click();
++  await expect(hud.getByText("79,100 / 240,000", { exact: true })).toBeVisible();
++  await expect(page.getByText(/441,000|441\.0k|Context 100%/)).toHaveCount(0);
++  await capture(page, "regression-spending-vs-occupancy", info);
++  expect(errors).toEqual([]);
++});
++
++for (const viewport of [{ name: "desktop", width: 1440, height: 1000 }, { name: "mobile", width: 390, height: 844 }]) {
++  for (const theme of ["light", "dark"]) {
++    for (const scenario of ["ready", "compacted", "unknown", "estimated"]) {
++      test(`${viewport.name} ${theme} ${scenario}`, async ({ page }, info) => {
++        await page.setViewportSize({ width: viewport.width, height: viewport.height });
++        const errors = await boot(page, scenario, theme === "dark");
++        await expect(page.getByRole("heading", { name: "Measured context usage" })).toBeVisible();
++        if (["compacted", "unknown"].includes(scenario)) {
++          await expect(page.getByRole("progressbar")).toHaveCount(0);
++          await expect(page.getByRole("button", { name: "Context unavailable" })).toBeVisible();
++        } else {
++          await expect(page.getByRole("progressbar")).toHaveAttribute("value", scenario === "estimated" ? "83000" : "79100");
++        }
++        await capture(page, `${viewport.name}-${theme}-${scenario}`, info);
++        expect(errors).toEqual([]);
++      });
++    }
++  }
++}
++
++test("error recovery and a session switch do not keep previous data", async ({ page }, info) => {
++  await page.setViewportSize({ width: 390, height: 844 });
++  const errors = await boot(page);
++  await expect(page.getByRole("progressbar")).toBeVisible();
++  await page.route("**/api/sessions/beta/context", (route) => json(route, { error: "Trace temporarily unavailable" }, 503));
++  await page.getByRole("button", { name: "Switch session" }).click();
++  await expect(page.getByRole("alert")).toContainText("Could not load context");
++  await expect(page.getByRole("progressbar")).toHaveCount(0);
++  await capture(page, "mobile-error-recovery", info);
++  await page.route("**/api/sessions/beta/context", (route) => json(route, { ...response(), occupancyTokens: 42000 }));
++  await page.getByRole("button", { name: "Try again" }).click();
++  await expect(page.getByRole("progressbar")).toHaveAttribute("value", "42000");
++  expect(errors).toEqual([]);
++});
+diff --git a/packages/web/e2e/hud-context-app.spec.mjs b/packages/web/e2e/hud-context-app.spec.mjs
+new file mode 100644
+index 000000000..d7196273c
+--- /dev/null
++++ b/packages/web/e2e/hud-context-app.spec.mjs
+@@ -0,0 +1,51 @@
++import { test, expect } from "@playwright/test";
++import { login, ADMIN_ID, ADMIN_PASSWORD } from "./auth.mjs";
++import { mkdir } from "node:fs/promises";
++import { fileURLToPath } from "node:url";
++
++// Actual production app route and stream reducer; only recorded usage is deterministic.
++test("chat HUD uses last request occupancy, not cumulative session spending", async ({ page }) => {
++  const errors = [];
++  page.on("pageerror", (error) => errors.push(error.message));
++  await page.addInitScript(() => localStorage.setItem("penguin.lang", "en"));
++  await login(page.request, ADMIN_ID, ADMIN_PASSWORD);
++  const projects = await (await page.request.get("/api/projects")).json();
++  const projectId = projects.projects[0].projectId;
++  const model = await page.request.put(`/api/projects/${projectId}/models`, {
++    data: {
++      defaultModel: { provider: "custom", modelId: "claude-4-8" },
++      models: [{ provider: "custom", modelId: "claude-4-8", contextWindow: 240000 }],
++    },
++  });
++  expect(model.ok(), await model.text()).toBe(true);
++  const created = await page.request.post(`/api/projects/${projectId}/agents/default_agent/sessions`, {
++    data: { provider: "custom", modelId: "claude-4-8" },
++  });
++  expect(created.ok(), await created.text()).toBe(true);
++  const sessionId = (await created.json()).session.sessionId;
++  const counts = (total) => ({ total, cache_read: 0, cache_write: total - 1000, output: 1000 });
++  const messages = [
++    { timestamp: "2026-09-17T00:00:00Z", type: "response_item", payload: { type: "text", role: "user", text: "Context regression" } },
++    { timestamp: "2026-09-17T00:00:01Z", type: "event_msg", payload: { type: "request_begin" } },
++    { timestamp: "2026-09-17T00:00:02Z", type: "event_msg", payload: { type: "token_usage", request: counts(79100), session: counts(441000) } },
++    { timestamp: "2026-09-17T00:00:03Z", type: "response_item", payload: { type: "text", role: "assistant", text: "Recorded request complete." } },
++    { timestamp: "2026-09-17T00:00:04Z", type: "event_msg", payload: { type: "request_end", status: "completed" } },
++  ];
++  await page.route(`**/api/sessions/${sessionId}/messages*`, (route) => route.fulfill({
++    contentType: "application/json", body: JSON.stringify({ messages }),
++  }));
++  await page.setViewportSize({ width: 1440, height: 1000 });
++  await page.goto(`/chat/${sessionId}`);
++  // A project without a model credential may open a real startup dialog; dismiss it if so.
++  const credential = page.getByRole("dialog", { name: "No model credential configured" });
++  if (await credential.isVisible().catch(() => false)) {
++    await credential.getByRole("button", { name: "Later" }).click();
++  }
++  const hud = page.getByRole("region", { name: "Session status" });
++  await expect(hud.getByRole("button", { name: "Context 33%", exact: true })).toBeVisible();
++  await expect(hud).not.toContainText("Context 184%");
++  const dir = new URL("../../../artifacts/context-review/actual-app/", import.meta.url);
++  await mkdir(dir, { recursive: true });
++  await page.screenshot({ path: fileURLToPath(new URL("hud-context-regression.png", dir)), fullPage: true });
++  expect(errors).toEqual([]);
++});
+diff --git a/packages/web/src/features/chat/chat-page.tsx b/packages/web/src/features/chat/chat-page.tsx
+index 97c0b3149..94b402bad 100644
+--- a/packages/web/src/features/chat/chat-page.tsx
++++ b/packages/web/src/features/chat/chat-page.tsx
+@@ -2170,14 +2170,9 @@ export function ChatPage() {
+ 
+       {selected && (
+         <HudStatusline
+-          tokensUsed={
+-            usageBuckets
+-              ? usageBuckets.cacheRead + usageBuckets.cacheWrite + usageBuckets.output
+-              : stream.model.stats.taskOutput +
+-                stream.model.stats.taskCacheRead +
+-                stream.model.stats.taskCacheWrite
+-          }
+-          contextWindow={contextWindow ? Number(contextWindow) : 200000}
++          tokensUsed={stream.loading ? undefined : stream.model.stats.contextNow}
++          contextStale={stream.model.stats.contextStale}
++          contextWindow={contextWindow !== undefined ? Number(contextWindow) : undefined}
+           speed={
+             stream.taskState === "running" && stream.model.stats.taskOutput > 0
+               ? {
+diff --git a/packages/web/src/features/hud/hud-statusline.tsx b/packages/web/src/features/hud/hud-statusline.tsx
+index abb3ea3e4..d5f73b952 100644
+--- a/packages/web/src/features/hud/hud-statusline.tsx
++++ b/packages/web/src/features/hud/hud-statusline.tsx
+@@ -8,7 +8,10 @@ import type {
+ import { Button } from "../../components/ui/button";
+ 
+ export interface HudStatuslineProps {
++  /** Latest main request context occupancy, never cumulative session usage. */
+   tokensUsed?: number;
++  /** Successful compaction invalidates occupancy until the next main request reports. */
++  contextStale?: boolean;
+   contextWindow?: number;
+   speed?: HudSpeedMetrics;
+   promptCache?: HudPromptCacheMetrics;
+@@ -23,6 +26,7 @@ export interface HudStatuslineProps {
+ }
+ export function HudStatusline({
+   tokensUsed,
++  contextStale = false,
+   contextWindow,
+   speed,
+   promptCache,
+@@ -37,6 +41,7 @@ export function HudStatusline({
+ }: HudStatuslineProps) {
+   const [expanded, setExpanded] = useState(false);
+   const validContext =
++    !contextStale &&
+     tokensUsed !== undefined &&
+     Number.isFinite(tokensUsed) &&
+     tokensUsed >= 0 &&
+diff --git a/packages/web/test/hud-statusline.test.ts b/packages/web/test/hud-statusline.test.ts
+new file mode 100644
+index 000000000..2de1e6867
+--- /dev/null
++++ b/packages/web/test/hud-statusline.test.ts
+@@ -0,0 +1,64 @@
++import { readFileSync } from "node:fs";
++import { createElement } from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++import { describe, expect, it } from "vitest";
++import { HudStatusline } from "../src/features/hud/hud-statusline";
++import type { HudStatuslineProps } from "../src/features/hud/hud-statusline";
++
++function render(props: HudStatuslineProps = {}): string {
++  return renderToStaticMarkup(createElement(HudStatusline, props));
++}
++
++describe("HUD context occupancy", () => {
++  it("uses latest main-request occupancy against the reported window", () => {
++    expect(render({ tokensUsed: 32_000, contextWindow: 128_000 })).toContain("Context 25%");
++  });
++
++  it("does not show the pre-compaction reading while context is stale", () => {
++    const html = render({ tokensUsed: 120_000, contextWindow: 128_000, contextStale: true });
++    expect(html).toContain("Context unavailable");
++    expect(html).not.toContain("Context 94%");
++  });
++
++  it("resumes measured occupancy after the next main request", () => {
++    expect(render({ tokensUsed: 32_000, contextWindow: 128_000, contextStale: false })).toContain(
++      "Context 25%",
++    );
++  });
++
++  it.each([undefined, 0, -1, NaN, Infinity])("does not invent a window for %s", (contextWindow) => {
++    expect(render({ tokensUsed: 32_000, contextWindow })).toContain("Context unavailable");
++  });
++
++  it.each([undefined, -1, NaN, Infinity])("does not invent occupancy for %s", (tokensUsed) => {
++    expect(render({ tokensUsed, contextWindow: 128_000 })).toContain("Context unavailable");
++  });
++
++  it("distinguishes a supplied zero from missing occupancy", () => {
++    expect(render({ tokensUsed: 0, contextWindow: 128_000 })).toContain("Context 0%");
++    expect(render({ contextWindow: 128_000 })).toContain("Context unavailable");
++  });
++
++  it("preserves an over-window measurement instead of clamping it", () => {
++    expect(render({ tokensUsed: 160_000, contextWindow: 128_000 })).toContain("Context 125%");
++  });
++
++  it("wires the real chat HUD to request context, not cumulative usage", () => {
++    const source = readFileSync(
++      new URL("../src/features/chat/chat-page.tsx", import.meta.url),
++      "utf8",
++    );
++    const hud = source.slice(source.indexOf("<HudStatusline"));
++    const contextProps = hud.slice(0, hud.indexOf("speed="));
++    expect(contextProps).toContain(
++      "tokensUsed={stream.loading ? undefined : stream.model.stats.contextNow}",
++    );
++    expect(contextProps).toContain("contextStale={stream.model.stats.contextStale}");
++    expect(contextProps).toContain(
++      "contextWindow={contextWindow !== undefined ? Number(contextWindow) : undefined}",
++    );
++    expect(contextProps).not.toContain("usageBuckets");
++    expect(contextProps).not.toContain("stats.task");
++    expect(contextProps).not.toContain("200000");
++  });
++});
