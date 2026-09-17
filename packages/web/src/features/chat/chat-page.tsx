@@ -1756,7 +1756,9 @@ export function ChatPage() {
       case "keyFleet":
         return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
       case "flamegraph":
-        return <TraceFlamegraphPage key={selected.sessionId} embedded />;
+        return (
+          <TraceFlamegraphPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
+        );
       case "snapshots":
         return (
           <SnapshotsPage

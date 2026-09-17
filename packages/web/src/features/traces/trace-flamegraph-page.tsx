@@ -1,8 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "../../components/ui/badge";
 import { WaterfallCanvas } from "./waterfall-canvas";
 import { CausalErrorTree } from "./causal-error-tree";
 import { SpanDetailDrawer } from "./span-detail-drawer";
+import { getSessionTraces, getTraceAnalysis } from "../../api/endpoints";
+import { parseTraceSpansToFlamegraph } from "./trace-ingest";
+import { sortTraceFiles } from "./trace-refresh";
 import { computeWaterfallBounds, formatDurationMs, type ExecutionSpan } from "./flamegraph-types";
 
 const SAMPLE_TRACES: Record<string, ExecutionSpan[]> = {
@@ -145,13 +148,64 @@ const SAMPLE_TRACES: Record<string, ExecutionSpan[]> = {
   ],
 };
 
-export function TraceFlamegraphPage({ embedded = false }: { embedded?: boolean } = {}) {
+export interface TraceFlamegraphPageProps {
+  embedded?: boolean;
+  /** A Session whose live trace files are analyzed; omit keeps the sample traces. */
+  sessionId?: string;
+}
+
+export function TraceFlamegraphPage({
+  embedded = false,
+  sessionId,
+}: TraceFlamegraphPageProps = {}) {
+  const live = sessionId !== undefined;
   const [selectedTraceKey, setSelectedTraceKey] = useState<string>("trace-autonomous-refactor");
   const [selectedSpan, setSelectedSpan] = useState<ExecutionSpan | null>(null);
+  const [liveFiles, setLiveFiles] = useState<Array<{ index: number }>>([]);
+  const [liveFileIndex, setLiveFileIndex] = useState<number | null>(null);
+  const [liveSpans, setLiveSpans] = useState<ExecutionSpan[]>([]);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    getSessionTraces(sessionId!)
+      .then((res) => {
+        if (cancelled) return;
+        const sorted = sortTraceFiles(res.files);
+        setLiveFiles(sorted);
+        setLiveFileIndex((cur) => cur ?? sorted[0]?.index ?? null);
+        setLiveError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setLiveError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [live, sessionId]);
+
+  useEffect(() => {
+    if (!live || liveFileIndex === null) return;
+    let cancelled = false;
+    getTraceAnalysis(sessionId!, liveFileIndex)
+      .then((res) => {
+        if (cancelled) return;
+        setLiveSpans(parseTraceSpansToFlamegraph(res));
+        setLiveError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setLiveError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [live, sessionId, liveFileIndex]);
 
   const activeSpans = useMemo(() => {
+    if (live) return liveSpans;
     return SAMPLE_TRACES[selectedTraceKey] ?? [];
-  }, [selectedTraceKey]);
+  }, [live, liveSpans, selectedTraceKey]);
 
   const bounds = useMemo(() => computeWaterfallBounds(activeSpans), [activeSpans]);
 
@@ -230,31 +284,60 @@ export function TraceFlamegraphPage({ embedded = false }: { embedded?: boolean }
                 <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
                   Execution traces
                 </h1>
-                <Badge tone="amber">Sample traces</Badge>
+                {live ? (
+                  <Badge tone="brand">Live session trace</Badge>
+                ) : (
+                  <Badge tone="amber">Sample traces</Badge>
+                )}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Inspect timings, payloads and failures in sample traces. These are not live session
-                records.
+                {live
+                  ? liveError
+                    ? liveError
+                    : "Timings, payloads and failures from this Session's trace files."
+                  : "Inspect timings, payloads and failures in sample traces. These are not live session records."}
               </p>
             </div>
           </div>
 
-          {/* Trace Selection Dropdown */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-gray-600 dark:text-gray-400">Sample trace:</span>
-            <select
-              aria-label="Sample trace"
-              value={selectedTraceKey}
-              onChange={(e) => {
-                setSelectedTraceKey(e.target.value);
-                setSelectedSpan(null);
-              }}
-              className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
-            >
-              <option value="trace-autonomous-refactor">Refactor — build failed</option>
-              <option value="trace-codebase-indexing">Codebase indexing — completed</option>
-            </select>
-          </div>
+          {/* Trace Selection Dropdown (sample mode only) */}
+          {!live && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Sample trace:</span>
+              <select
+                aria-label="Sample trace"
+                value={selectedTraceKey}
+                onChange={(e) => {
+                  setSelectedTraceKey(e.target.value);
+                  setSelectedSpan(null);
+                }}
+                className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              >
+                <option value="trace-autonomous-refactor">Refactor — build failed</option>
+                <option value="trace-codebase-indexing">Codebase indexing — completed</option>
+              </select>
+            </div>
+          )}
+          {live && liveFiles.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Trace file:</span>
+              <select
+                aria-label="Live trace file"
+                value={liveFileIndex ?? ""}
+                onChange={(e) => {
+                  setLiveFileIndex(Number(e.target.value));
+                  setSelectedSpan(null);
+                }}
+                className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              >
+                {liveFiles.map((f) => (
+                  <option key={f.index} value={f.index}>
+                    #{String(f.index).padStart(3, "0")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       }
 
