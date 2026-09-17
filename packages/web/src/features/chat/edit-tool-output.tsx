@@ -21,7 +21,11 @@ export function EditToolOutput({ output }: { output: string }) {
     let index = lines.length;
     while (index > start) {
       const line = lines[index - 1]!;
-      if (line.startsWith("@@") || line.startsWith("…and ") || /^\[editor attribution: /.test(line)) {
+      if (
+        line.startsWith("@@") ||
+        line.startsWith("…and ") ||
+        /^\[editor attribution: /.test(line)
+      ) {
         after.unshift(line);
         index -= 1;
         continue;
