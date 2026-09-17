@@ -64,6 +64,36 @@ describe("project audit receipts route", () => {
     expect(await fs.readFile(log, "utf8")).toBe(before);
   });
 
+  it("distinguishes owning and executing sessions for direct and nested child events", async () => {
+    const recorder = new AuditRecorder(t.root, { record: async () => {} });
+    for (const origin of [[], ["child-session"], ["child-session", "grandchild-session"]]) {
+      await recorder.record(
+        {
+          projectId: PROJECT,
+          agentId: "owner-agent",
+          sessionId: "owner-session",
+          provider: "custom",
+          modelId: "test",
+        },
+        {
+          ...toolCall({ name: "read_file", arguments: "{}", toolCallId: `call-${origin.length}` }),
+          origin,
+        },
+      );
+    }
+    const response = await member.get(URL);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      receipts: ["grandchild-session", "child-session", "owner-session"].map(
+        (executingSessionId) => ({
+          agentId: "owner-agent",
+          sessionId: "owner-session",
+          executingSessionId,
+        }),
+      ),
+    });
+  });
+
   it("returns empty with no log and hides missing projects/nonmembers with 404", async () => {
     expect(await (await member.get(URL)).json()).toEqual({ receipts: [], truncated: false });
     expect((await outsider.get(URL)).status).toBe(404);

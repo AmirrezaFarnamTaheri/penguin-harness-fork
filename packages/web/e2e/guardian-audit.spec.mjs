@@ -21,6 +21,7 @@ const receipt = (sessionId, timestamp) => ({
   projectId: "alpha",
   agentId: "agent",
   sessionId,
+  executingSessionId: "child-executor",
   timestamp,
   type: "tool_call",
   eventHash: "b7f2c9e1" + "a".repeat(56),
@@ -63,7 +64,8 @@ test("mounted Guardian feed refreshes empty to populated to empty without claimi
   receipts = [receipt("newest", 1700000001000), receipt("older", 1700000000000)];
   await page.getByRole("button", { name: "Refresh audit receipts" }).click();
   await expect(graph.locator("li")).toHaveCount(2);
-  await expect(graph.locator("li").first()).toContainText("newest");
+  await expect(graph.locator("li").first()).toContainText("Owner: agent / newest");
+  await expect(graph.locator("li").first()).toContainText("Executing session: child-executor");
   await expect(graph.locator("time").first()).toHaveAttribute(
     "datetime",
     "2023-11-14T22:13:21.000Z",

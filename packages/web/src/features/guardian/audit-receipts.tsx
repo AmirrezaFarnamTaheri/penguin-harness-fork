@@ -55,7 +55,7 @@ function ProjectAuditReceipts({ projectId }: { projectId: string }) {
           nodes: (result?.receipts ?? []).map((receipt, index) => ({
             id: `${receipt.payloadHash}-${index}`,
             type: receipt.type,
-            label: `${copy[receipt.type]} · ${receipt.agentId} / ${receipt.sessionId}`,
+            label: `${copy[receipt.type]} · ${copy.owner}: ${receipt.agentId} / ${receipt.sessionId} · ${copy.executingSession}: ${receipt.executingSessionId ?? copy.unknownExecutor}`,
             timestamp: receipt.timestamp,
             eventHash: receipt.eventHash,
           })),

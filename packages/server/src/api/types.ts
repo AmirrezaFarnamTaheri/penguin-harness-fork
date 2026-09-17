@@ -41,8 +41,12 @@ export interface ErrorBody {
 export interface AuditReceipt {
   payloadHash: string;
   projectId: string;
+  /** Owning top-level agent, not necessarily the executing agent. */
   agentId: string;
+  /** Owning top-level session. */
   sessionId: string;
+  /** Verified origin's final session, or owner for an empty origin; null for legacy unknown origin. */
+  executingSessionId: string | null;
   timestamp: number;
   type: "tool_call" | "tool_call_output" | "approval_decision";
   eventHash: string;

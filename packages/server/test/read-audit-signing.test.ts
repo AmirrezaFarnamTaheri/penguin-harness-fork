@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +34,7 @@ describe("bounded verified audit reader", () => {
     expect(Object.keys(result.receipts[0]!).sort()).toEqual([
       "agentId",
       "eventHash",
+      "executingSessionId",
       "payloadHash",
       "projectId",
       "sessionId",
@@ -67,6 +68,26 @@ describe("bounded verified audit reader", () => {
     expect(
       (await readAuditReceipts(f.root, { projectId: "alpha" })).receipts.map((r) => r.sessionId),
     ).toEqual(["original"]);
+  });
+
+  it("authenticates execution origin and does not invent it for legacy or malformed receipts", async () => {
+    const f = await fixture();
+    await f.record("alpha", "owner");
+    const original = JSON.parse((await fs.readFile(f.log, "utf8")).trim());
+    const secret = await fs.readFile(path.join(f.root, "audit", "signing.key"), "utf8");
+    for (const origin of [undefined, ["child", "grandchild"], [17], [""], "child"]) {
+      const payload = { ...original.payload, origin };
+      const payloadHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+      const signature = createHmac("sha256", secret).update(payloadHash).digest("hex");
+      await fs.appendFile(f.log, JSON.stringify({ payload, payloadHash, signature }) + "\n");
+    }
+    // Altering origin without signing it again must not change the attributed executor.
+    await fs.appendFile(
+      f.log,
+      JSON.stringify({ ...original, payload: { ...original.payload, origin: ["forged"] } }) + "\n",
+    );
+    const result = await readAuditReceipts(f.root, { projectId: "alpha" });
+    expect(result.receipts.map((r) => r.executingSessionId)).toEqual(["grandchild", null, "owner"]);
   });
 
   it("bounds the result and byte window and ignores incomplete appends", async () => {

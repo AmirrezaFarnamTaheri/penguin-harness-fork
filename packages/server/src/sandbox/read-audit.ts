@@ -47,8 +47,27 @@ function verifyLine(line: string, secret: string): AuditReceipt | null {
     !DIGEST.test(eventHash)
   )
     return null;
-  // Allowlist the view: never expose the key or unneeded origin data to clients.
-  return { payloadHash, projectId, agentId, sessionId, timestamp, type, eventHash };
+  // Derive execution scope only from authenticated origin metadata. Keep ownership
+  // unchanged; a child session ID does not establish the child's Agent State identity.
+  const { origin } = payload;
+  if (
+    origin !== undefined &&
+    (!Array.isArray(origin) || !origin.every((id) => typeof id === "string" && id.length > 0))
+  )
+    return null;
+  const executingSessionId =
+    origin === undefined ? null : origin.length ? origin[origin.length - 1] : sessionId;
+  // Allowlist the view: never expose the key or the complete origin chain to clients.
+  return {
+    payloadHash,
+    projectId,
+    agentId,
+    sessionId,
+    executingSessionId,
+    timestamp,
+    type,
+    eventHash,
+  };
 }
 
 async function openRegular(file: string) {
