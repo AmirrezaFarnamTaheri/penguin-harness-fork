@@ -28,10 +28,13 @@ describe("cockpit integrity", () => {
       clientType: "openai-chat",
     });
     expect(result.ok).toBe(true);
-    expect(fetchSpy).toHaveBeenCalledWith("https://gateway.example/v1/models", expect.objectContaining({
-      redirect: "error",
-      headers: { Authorization: "Bearer test-credential" },
-    }));
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://gateway.example/v1/models",
+      expect.objectContaining({
+        redirect: "error",
+        headers: { Authorization: "Bearer test-credential" },
+      }),
+    );
   });
 
   it("identifies the project in a telemetry snapshot", async () => {
@@ -43,15 +46,22 @@ describe("cockpit integrity", () => {
   });
 
   it.each(["refuted", "max_rounds_exceeded", "loop_aborted", "error", "timed_out"] as const)(
-    "does not acknowledge %s as successful execution", async (status) => {
+    "does not acknowledge %s as successful execution",
+    async (status) => {
       const runtime = await getOrCreateProjectRuntime("integrity-status");
       vi.spyOn(runtime.coordinator, "runTask").mockResolvedValue({
-        taskId: "task", status, rounds: 1, artifacts: [], safetyFindings: [], log: [],
+        taskId: "task",
+        status,
+        rounds: 1,
+        artifacts: [],
+        safetyFindings: [],
+        log: [],
       });
       const app = new Hono();
       app.route("/api/cockpit", cockpitRoutes());
       const response = await app.request("/api/cockpit/swarm/run?project=integrity-status", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ goal: "Test goal" }),
       });
       const json = (await response.json()) as {

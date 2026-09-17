@@ -18,22 +18,44 @@ test("chat HUD uses last request occupancy, not cumulative session spending", as
     },
   });
   expect(model.ok(), await model.text()).toBe(true);
-  const created = await page.request.post(`/api/projects/${projectId}/agents/default_agent/sessions`, {
-    data: { provider: "custom", modelId: "claude-4-8" },
-  });
+  const created = await page.request.post(
+    `/api/projects/${projectId}/agents/default_agent/sessions`,
+    {
+      data: { provider: "custom", modelId: "claude-4-8" },
+    },
+  );
   expect(created.ok(), await created.text()).toBe(true);
   const sessionId = (await created.json()).session.sessionId;
   const counts = (total) => ({ total, cache_read: 0, cache_write: total - 1000, output: 1000 });
   const messages = [
-    { timestamp: "2026-09-17T00:00:00Z", type: "response_item", payload: { type: "text", role: "user", text: "Context regression" } },
+    {
+      timestamp: "2026-09-17T00:00:00Z",
+      type: "response_item",
+      payload: { type: "text", role: "user", text: "Context regression" },
+    },
     { timestamp: "2026-09-17T00:00:01Z", type: "event_msg", payload: { type: "request_begin" } },
-    { timestamp: "2026-09-17T00:00:02Z", type: "event_msg", payload: { type: "token_usage", request: counts(79100), session: counts(441000) } },
-    { timestamp: "2026-09-17T00:00:03Z", type: "response_item", payload: { type: "text", role: "assistant", text: "Recorded request complete." } },
-    { timestamp: "2026-09-17T00:00:04Z", type: "event_msg", payload: { type: "request_end", status: "completed" } },
+    {
+      timestamp: "2026-09-17T00:00:02Z",
+      type: "event_msg",
+      payload: { type: "token_usage", request: counts(79100), session: counts(441000) },
+    },
+    {
+      timestamp: "2026-09-17T00:00:03Z",
+      type: "response_item",
+      payload: { type: "text", role: "assistant", text: "Recorded request complete." },
+    },
+    {
+      timestamp: "2026-09-17T00:00:04Z",
+      type: "event_msg",
+      payload: { type: "request_end", status: "completed" },
+    },
   ];
-  await page.route(`**/api/sessions/${sessionId}/messages*`, (route) => route.fulfill({
-    contentType: "application/json", body: JSON.stringify({ messages }),
-  }));
+  await page.route(`**/api/sessions/${sessionId}/messages*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ messages }),
+    }),
+  );
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`/chat/${sessionId}`);
   // A project without a model credential may open a real startup dialog; dismiss it if so.
@@ -46,6 +68,9 @@ test("chat HUD uses last request occupancy, not cumulative session spending", as
   await expect(hud).not.toContainText("Context 184%");
   const dir = new URL("../../../artifacts/context-review/actual-app/", import.meta.url);
   await mkdir(dir, { recursive: true });
-  await page.screenshot({ path: fileURLToPath(new URL("hud-context-regression.png", dir)), fullPage: true });
+  await page.screenshot({
+    path: fileURLToPath(new URL("hud-context-regression.png", dir)),
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });

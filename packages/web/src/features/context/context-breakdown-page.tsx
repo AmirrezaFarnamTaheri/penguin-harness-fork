@@ -95,27 +95,30 @@ export function ContextSessionContent({ sessionId }: { sessionId: string }) {
   const generation = useRef(0);
   const mounted = useRef(false);
   const reading = useRef(false);
-  const load = useCallback(async (background = false) => {
-    if (background && reading.current) return;
-    const request = ++generation.current;
-    reading.current = true;
-    if (!background) setLoading(true);
-    setError(null);
-    try {
-      const result = await api.getSessionContext(sessionId);
-      if (mounted.current && request === generation.current) setData(result);
-    } catch (err) {
-      if (mounted.current && request === generation.current) {
-        setError(err instanceof Error ? err.message : String(err));
-        setData(null);
+  const load = useCallback(
+    async (background = false) => {
+      if (background && reading.current) return;
+      const request = ++generation.current;
+      reading.current = true;
+      if (!background) setLoading(true);
+      setError(null);
+      try {
+        const result = await api.getSessionContext(sessionId);
+        if (mounted.current && request === generation.current) setData(result);
+      } catch (err) {
+        if (mounted.current && request === generation.current) {
+          setError(err instanceof Error ? err.message : String(err));
+          setData(null);
+        }
+      } finally {
+        if (mounted.current && request === generation.current) {
+          reading.current = false;
+          setLoading(false);
+        }
       }
-    } finally {
-      if (mounted.current && request === generation.current) {
-        reading.current = false;
-        setLoading(false);
-      }
-    }
-  }, [sessionId]);
+    },
+    [sessionId],
+  );
   useEffect(() => {
     mounted.current = true;
     void load();

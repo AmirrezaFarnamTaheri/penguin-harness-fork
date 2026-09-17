@@ -12,7 +12,13 @@ const stats = createTaskStatsTracker();
 trackMainUsage(stats, {
   type: "token_usage",
   request: { total: 79_100, input: 78_100, output: 1_000, cache_read: 70_000, cache_write: 8_100 },
-  session: { total: 441_000, input: 431_000, output: 10_000, cache_read: 400_000, cache_write: 31_000 },
+  session: {
+    total: 441_000,
+    input: 431_000,
+    output: 10_000,
+    cache_read: 400_000,
+    cache_write: 31_000,
+  },
 });
 
 function Fixture() {
@@ -29,7 +35,10 @@ function Fixture() {
         <header className="space-y-2">
           <h1 className="text-xl font-semibold">Context usage</h1>
           <p>Deterministic test session: {selected}</p>
-          <button className="min-h-11 underline" onClick={() => setSelected(selected === "alpha" ? "beta" : "alpha")}>
+          <button
+            className="min-h-11 underline"
+            onClick={() => setSelected(selected === "alpha" ? "beta" : "alpha")}
+          >
             Switch session
           </button>
         </header>
@@ -40,5 +49,9 @@ function Fixture() {
 }
 void loadStrings("en").then((strings) => {
   setActiveStrings(strings);
-  createRoot(document.getElementById("root")!).render(<LocaleProvider><Fixture /></LocaleProvider>);
+  createRoot(document.getElementById("root")!).render(
+    <LocaleProvider>
+      <Fixture />
+    </LocaleProvider>,
+  );
 });

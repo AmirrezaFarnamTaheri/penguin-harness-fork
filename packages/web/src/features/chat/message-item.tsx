@@ -332,7 +332,9 @@ function MessageItemInner({ item, ctx }: MessageItemProps) {
       return (
         <>
           {item.sender === "parent_agent" && (
-            <p className="mt-2 text-right text-xs text-gray-600 dark:text-gray-400">{S.chat.agentMessage}</p>
+            <p className="mt-2 text-right text-xs text-gray-600 dark:text-gray-400">
+              {S.chat.agentMessage}
+            </p>
           )}
           {orgTrigger && <OrgTriggerBanner origin={orgTrigger.origin} />}
           {scheduled && <ScheduledBanner origin={scheduled.origin} />}
