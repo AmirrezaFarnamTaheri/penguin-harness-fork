@@ -1279,6 +1279,8 @@ export class Agent {
       ),
       services: { subagentRunner, ...(visionDescriber ? { visionDescriber } : {}) },
       ...(Object.keys(initial.vault).length > 0 ? { vault: initial.vault } : {}),
+      // Editor attribution: this Agent and Session are who edits name in receipts.
+      attribution: { agentId: this.state.agentId, sessionId },
       ...(this.proxyEnv ? { proxyEnv: this.proxyEnv } : {}),
       // The control-env policy is bound to THIS Session's coordinates here (sessionId is
       // final by now); the getter shape keeps it re-evaluated at every command spawn, so

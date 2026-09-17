@@ -340,6 +340,14 @@ export interface EnvironmentConfig {
    * embedders without a stable Session directory omit it and keep truncation-only behavior.
    */
   sessionScratchpadDir?: string;
+  /**
+   * Who is running this Session, recorded verbatim into file-edit attribution receipts
+   * (`[editor attribution: …]` lines edit_file appends to its output; option A — runtime
+   * recorded, not cryptographic). Identity comes from the host, never from the model:
+   * Agent Sessions pass their own coordinates here; standalone embedders omit it and the
+   * tools keep their historical output shape.
+   */
+  attribution?: { agentId: string; sessionId: string };
   /** Runtime services (optional); Environment forwards these to each tool factory to use as needed. */
   services?: EnvironmentServices;
   /**
