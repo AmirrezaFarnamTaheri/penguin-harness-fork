@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useCockpitTelemetry } from "../src/features/agent/use-cockpit-telemetry";
+import { MailboxBureau } from "../src/features/consensus/mailbox-bureau";
 
 function TelemetryProbe() {
   const [project, setProject] = useState<string | null>(null);
@@ -63,6 +64,9 @@ function Controls({
   return (
     <>
       <output aria-label="Telemetry">{JSON.stringify(telemetry)}</output>
+      <section aria-label="Live mailbox">
+        <MailboxBureau entries={telemetry.mailboxEntries} />
+      </section>
       <button onClick={() => void telemetry.refresh()}>Refresh telemetry</button>
       <button onClick={() => void telemetry.triggerTask(prompt).then(onTask)}>Dispatch task</button>
       <button

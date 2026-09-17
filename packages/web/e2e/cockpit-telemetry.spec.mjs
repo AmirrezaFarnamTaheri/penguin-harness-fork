@@ -57,6 +57,43 @@ async function select(page, project = "alpha") {
   await expect.poll(async () => (await state(page)).transport).toBe("ws");
 }
 
+test("mailbox cards follow successive live snapshots and clear on project switch", async ({
+  page,
+}) => {
+  const { sockets, errors } = await boot(page);
+  const bureau = page.getByRole("region", { name: "Live mailbox" });
+  await select(page);
+  sockets[0].send(
+    JSON.stringify({
+      type: "cockpit_init",
+      data: {
+        mailbox: {
+          "worker-live": { queueDepth: 2, pendingReplyCount: 1, lease: { leaseState: "acquired" } },
+        },
+      },
+    }),
+  );
+  await expect(bureau.getByText("worker-live", { exact: true })).toBeVisible();
+  await expect(bureau.getByText("2 pending", { exact: true })).toBeVisible();
+  sockets[0].send(
+    JSON.stringify({
+      type: "cockpit_init",
+      data: {
+        mailbox: {
+          "worker-live": { queueDepth: 5, pendingReplyCount: 0, lease: { leaseState: "expired" } },
+        },
+      },
+    }),
+  );
+  await expect(bureau.getByText("5 pending", { exact: true })).toBeVisible();
+  await expect(bureau.getByText("2 pending", { exact: true })).toHaveCount(0);
+  await expect(bureau.getByRole("button", { name: "Compose demo message" })).toHaveCount(0);
+  await select(page, "beta");
+  await expect(bureau.getByText("worker-live", { exact: true })).toHaveCount(0);
+  await expect(bureau.getByText("agent-orchestrator", { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("no project means no traffic or seeded topology, even for manual actions", async ({
   page,
 }) => {
