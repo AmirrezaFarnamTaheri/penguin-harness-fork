@@ -1234,6 +1234,27 @@ export interface MemoryFileResponse {
   content: string;
 }
 
+/** One topic file a memory search matched, in the response's own order (most relevant first). */
+export interface MemorySearchHit {
+  /** The scope directory the topic lives in. */
+  scopeKey: string;
+  /** Topic file name inside that scope. */
+  fileName: string;
+  /** Matched terms over total query terms, 0–1. */
+  relevance: number;
+  /** Rough token count (bytes ÷ 4) of the whole file, as the recall simulator displays it. */
+  tokens: number;
+  /** First line of the topic's body, bounded — what the simulator shows as a preview. */
+  snippet: string;
+}
+
+/** GET …/memory/search — a lexical scan of every scope's topic files. */
+export interface MemorySearchResponse {
+  /** The query as received, trimmed. */
+  query: string;
+  results: MemorySearchHit[];
+}
+
 /** One topic file inside a transfer document: the name it had in its scope, and its whole text. */
 export interface MemoryTransferFile {
   /** File name inside the scope directory, e.g. `prefers-pnpm.md` — a name, never a path. */

@@ -53,6 +53,11 @@ export function memoryRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json(await deps.memoryService.overview(projectId, agentId));
   });
 
+  app.get("/search", async (c) => {
+    const { projectId, agentId } = scope(c);
+    return c.json(await deps.memoryService.search(projectId, agentId, c.req.query("q") ?? ""));
+  });
+
   // The explicit adoption path for a template that predates Memory (idempotent config write).
   app.post("/template-placeholder", async (c) => {
     const { projectId, agentId } = scope(c);
