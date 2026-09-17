@@ -32,7 +32,7 @@ import { ZoomableImage } from "../../components/ui/image-zoom";
 import { toneInk } from "../../lib/tone";
 import { StatusIcon } from "../../components/ui/status-icon";
 import type { RunState } from "../../components/ui/status-icon";
-import { ApprovalButtons } from "./approval-buttons";
+import { ToolBreakpointPanel } from "../cockpit/tool-breakpoint-panel";
 import { LiveDuration } from "./live-duration";
 import { useTheme } from "../../state/theme";
 import { agentIdFromRunSubagentArgs } from "./agent-topology";
@@ -288,7 +288,6 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
   const { toolAliases } = useTheme();
   // Matched by the current origin chain + toolCallId: prevents parent/child session tool_call_id collisions from lighting each other up.
   const pending = ctx.pendingApprovals.get(approvalKey(ctx.origin, item.toolCallId));
-  const preview = previewArguments(item.name, item.argumentsText);
   // Display-only, and confined to the two render expressions below: every name-keyed
   // decision on this card (DESCRIBED_TOOLS, FILE_TOOLS, the argument previews, the subagent
   // chip) and everywhere else in the app (the tools config table, permission rules, the
@@ -297,11 +296,6 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
   // The tool's own name stays one hover away, for matching a Trace or writing a permission
   // rule; when nothing was aliased the tooltip would only repeat the visible text.
   const nameTitle = displayName === item.name ? undefined : item.name;
-  const approvalLabel = pending?.approvalTarget
-    ? `${displayName || item.name} → ${pending.approvalTarget.name}${
-        pending.approvalTarget.permission ? ` (${pending.approvalTarget.permission})` : ""
-      }`
-    : displayName || item.name || S.chat.unknownTool;
   // Escape sequences are stripped at render time only (the stored stream/trace data keeps its
   // raw bytes): hardened child envs should no longer produce any, but historical traces and
   // force-color programs still can (#102). Memoized — the aggregated output can be large and
@@ -486,38 +480,23 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
 
       {/* Pending approval: always visible regardless of collapsed state — shows the tool name and arguments so the user knows what they're approving. */}
       {pending && (
-        <div className="border-t border-gray-100 bg-amber-50 px-3 py-2 dark:border-gray-800 dark:bg-amber-950/30">
-          {/* The user must be able to read the FULL command before deciding: below sm the
-              preview wraps in whole (expanded-args style: pre-wrap + break-all, no inner
-              scroll, the block may grow) — the one-line treatment resumes once decided, since
-              this pending block unmounts and only the truncating header subtitle remains. At
-              ≥sm the row stays one line (the desktop column is wide enough in practice). */}
-          <div className="mb-2 flex items-start gap-2 sm:items-center">
-            <span
-              title={nameTitle}
-              className="shrink-0 rounded-md bg-white px-1.5 py-0.5 font-mono text-xs font-semibold text-gray-700 dark:bg-gray-900 dark:text-gray-300"
-            >
-              {approvalLabel}
-            </span>
-            <span className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs text-gray-600 sm:truncate dark:text-gray-400">
-              {preview}
-            </span>
-          </div>
-          {/* File tools: the one-line preview shows only the (shortened) path, but the user is
-              approving a concrete rewrite — render the decoded payload (old_string/new_string/
-              content) in the scrollable expanded style while pending. */}
+        <ToolBreakpointPanel
+          pending={pending}
+          onDecide={(decision) => ctx.onApprove(item.toolCallId, decision, ctx.origin)}
+        >
+          {/* Keep the decoded file rewrite alongside the authoritative raw arguments. */}
           {(() => {
-            const payload = pendingFilePayload(item.name, item.argumentsText);
+            const payload = pendingFilePayload(
+              pending.toolCall.payload.name,
+              pending.toolCall.payload.arguments,
+            );
             return payload !== null ? (
               <pre className="mb-2 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-white/70 px-2 py-1.5 text-xs leading-5 text-gray-700 dark:bg-gray-950/40 dark:text-gray-300">
                 {payload}
               </pre>
             ) : null;
           })()}
-          <ApprovalButtons
-            onDecide={(decision) => ctx.onApprove(item.toolCallId, decision, ctx.origin)}
-          />
-        </div>
+        </ToolBreakpointPanel>
       )}
 
       {/* Expanded details: full arguments / output */}
@@ -531,10 +510,10 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
               {item.argumentsText}
             </pre>
           )}
-          {(item.output || item.outputStreaming) && (
+          {(item.output || item.outputStreaming) &&
             // edit_file renders its unified diff with line-level highlighting (DiffBlock);
             // other tools keep the plain preformatted block.
-            item.name === "edit_file" && !item.outputStreaming ? (
+            (item.name === "edit_file" && !item.outputStreaming ? (
               <div className="border-t border-gray-100 px-3 py-2 dark:border-gray-800">
                 <EditToolOutput output={output} />
               </div>
@@ -543,8 +522,7 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
                 {output}
                 {item.outputStreaming && <span className="animate-pulse">▌</span>}
               </pre>
-            )
-          )}
+            ))}
           {/* Tool output images (e.g. read_file on an image): shown as thumbnails, click to zoom (ZoomableImage). */}
           {item.images && item.images.length > 0 && (
             <div className="flex flex-wrap gap-2 border-t border-gray-100 px-3 py-2 dark:border-gray-800">
