@@ -1,4 +1,6 @@
-import { lazy, Suspense, useId, useState } from "react";
+import { lazy, Suspense, useId, useMemo, useState } from "react";
+import { QueryPartitioner } from "@prismshadow/penguin-core/browser";
+import { PartitionPreviewPanel } from "./partition-preview-panel";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -94,6 +96,7 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
   const [tool, setTool] = useState<CockpitTool>("swarm");
   const telemetry = useCockpitTelemetry(projectId, sessionId);
   const [goal, setGoal] = useState("");
+  const partitionPreview = useMemo(() => new QueryPartitioner().partitionQuery(goal), [goal]);
   const [recipient, setRecipient] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -279,6 +282,7 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
                 <p id={`${id}-goal-hint`} className={muted}>
                   {c.goalHint}
                 </p>
+                <PartitionPreviewPanel result={partitionPreview} />
                 <Button
                   type="submit"
                   variant="primary"
