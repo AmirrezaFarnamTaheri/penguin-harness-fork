@@ -37,6 +37,7 @@ import { LiveDuration } from "./live-duration";
 import { useTheme } from "../../state/theme";
 import { agentIdFromRunSubagentArgs } from "./agent-topology";
 import { SubagentChip } from "./subagent-chip";
+import { EditToolOutput } from "./edit-tool-output";
 import type { StreamRenderContext } from "./message-stream";
 
 /** Tools that accept the optional model-written `description` argument. */
@@ -531,10 +532,18 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
             </pre>
           )}
           {(item.output || item.outputStreaming) && (
-            <pre className={DISCLOSURE_OUTPUT_PRE_CLASS}>
-              {output}
-              {item.outputStreaming && <span className="animate-pulse">▌</span>}
-            </pre>
+            // edit_file renders its unified diff with line-level highlighting (DiffBlock);
+            // other tools keep the plain preformatted block.
+            item.name === "edit_file" && !item.outputStreaming ? (
+              <div className="border-t border-gray-100 px-3 py-2 dark:border-gray-800">
+                <EditToolOutput output={output} />
+              </div>
+            ) : (
+              <pre className={DISCLOSURE_OUTPUT_PRE_CLASS}>
+                {output}
+                {item.outputStreaming && <span className="animate-pulse">▌</span>}
+              </pre>
+            )
           )}
           {/* Tool output images (e.g. read_file on an image): shown as thumbnails, click to zoom (ZoomableImage). */}
           {item.images && item.images.length > 0 && (
