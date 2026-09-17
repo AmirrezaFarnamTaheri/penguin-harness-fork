@@ -31,9 +31,9 @@ const GuardianPage = lazy(() =>
     default: GuardianPage,
   })),
 );
-const ConsensusPage = lazy(() =>
-  import("./features/consensus/consensus-page").then(({ ConsensusPage }) => ({
-    default: ConsensusPage,
+const LiveConsensusPage = lazy(() =>
+  import("./features/consensus/consensus-page").then(({ LiveConsensusPage }) => ({
+    default: LiveConsensusPage,
   })),
 );
 const ContextBreakdownPage = lazy(() =>
@@ -304,7 +304,7 @@ export function AppRouter() {
                 path="/consensus"
                 element={
                   <RouteContent>
-                    <ConsensusPage />
+                    <LiveConsensusPage />
                   </RouteContent>
                 }
               />

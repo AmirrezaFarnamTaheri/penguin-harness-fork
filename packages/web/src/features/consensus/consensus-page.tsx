@@ -3,15 +3,34 @@ import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
 import { QuorumBoard } from "./quorum-board";
 import { MailboxBureau } from "./mailbox-bureau";
 import { HandoffTimeline } from "./handoff-timeline";
-import type { LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
+import {
+  useCockpitTelemetry,
+  type LiveMailboxEntry,
+  type LiveHandoffEvent,
+} from "../agent/use-cockpit-telemetry.js";
+import { useProject } from "../../state/project";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
   /** Live mailbox queues from the cockpit WS feed; absent keeps the local demo. */
   mailboxEntries?: LiveMailboxEntry[];
+  /** Observed project handoffs; absent keeps the local demo. */
+  handoffs?: LiveHandoffEvent[];
 }
 
-export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPageProps) {
+export function LiveConsensusPage({ embedded }: Pick<ConsensusPageProps, "embedded">) {
+  const { currentProject } = useProject();
+  const telemetry = useCockpitTelemetry(currentProject?.projectId ?? null);
+  return (
+    <ConsensusPage
+      embedded={embedded}
+      mailboxEntries={currentProject ? telemetry.mailboxEntries : undefined}
+      handoffs={currentProject ? telemetry.handoffs : undefined}
+    />
+  );
+}
+
+export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: ConsensusPageProps) {
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
   const [engine] = useState(() => new QuorumConsensusEngine());
   const [version, setVersion] = useState(0);
@@ -22,9 +41,9 @@ export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPag
       <header className="mb-6 space-y-2">
         <h1 className="text-xl font-semibold">Agent coordination</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          {mailboxEntries === undefined
+          {mailboxEntries === undefined && handoffs === undefined
             ? "Try proposals, messages and handoffs with local sample data. Changes are not sent to agents or saved after leaving this page."
-            : "Mailbox queues reflect the current project. Decisions and handoffs remain local demos."}
+            : "Live feeds reflect the current project where connected. Decisions remain a local demo."}
         </p>
       </header>
       <nav
@@ -56,7 +75,7 @@ export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPag
         <MailboxBureau entries={mailboxEntries} />
       </div>
       <div hidden={tab !== "handoff"}>
-        <HandoffTimeline />
+        <HandoffTimeline handoffs={handoffs} />
       </div>
     </div>
   );
