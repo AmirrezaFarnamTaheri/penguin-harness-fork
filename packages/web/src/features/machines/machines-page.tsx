@@ -48,6 +48,7 @@ import { ChevronDown, NAV_ICONS } from "../../components/ui/icons";
 import { installButtonState, installedMachines, verdictOf } from "./machines-view";
 import type { MachineVerdict } from "./machines-view";
 import { MAX_VISIBLE_MACHINES, highlightSegments, matchMachines } from "./machines-match";
+import { MachineHealth } from "./machine-health";
 
 /** How often a running job is re-read. Slow enough to be free, fast enough that a step reads as progress. */
 const POLL_MS = 1500;
@@ -295,6 +296,12 @@ export function MachinesPage() {
               </div>
             )}
 
+            {selected !== null && (
+              <div className="mt-2">
+                <MachineHealth status={selected.status} />
+              </div>
+            )}
+
             {selected?.installed != null && (
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 {S.machines.installedAt(
@@ -328,8 +335,9 @@ export function MachinesPage() {
                       <span className="shrink-0 text-gray-500 dark:text-gray-400">
                         <GlyphIcon d={NAV_ICONS.machines} size={ICON_SIZE.rowLead} />
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                        {machine.alias}
+                      <span className="min-w-0 flex-1 text-sm font-medium">
+                        <span className="block truncate">{machine.alias}</span>
+                        <MachineHealth status={machine.status} />
                       </span>
                       <span className={`shrink-0 text-xs ${toneInk.success}`}>
                         {machine.installed!.version}
