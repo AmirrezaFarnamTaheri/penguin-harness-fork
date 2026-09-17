@@ -14,6 +14,24 @@
 export const zh = {
   appName: "PenguinHarness",
 
+  guardian: {
+    audit: {
+      title: "按时间排列的审计回执",
+      description:
+        "最新记录优先；记录的先后不代表因果关系。HMAC 验证仅检查本地完整性，不能证明谁控制了服务器。无法验证的行不会显示。",
+      scope: "最多显示日志末尾 1 MiB 中的 50 条已验证回执。",
+      empty: "此项目在最近日志窗口中没有已验证的审计回执。",
+      loading: "正在加载审计回执…",
+      error: "无法加载审计回执。",
+      refresh: "刷新审计回执",
+      truncated: "较早的回执可能不在此有界视图中。",
+      eventHash: "事件哈希",
+      tool_call: "工具调用",
+      tool_call_output: "工具输出",
+      approval_decision: "审批决定",
+    },
+  },
+
   nav: {
     chat: "对话",
     newChat: "新对话",

@@ -10,6 +10,24 @@ import type { Strings } from "./strings-zh";
 export const en: Strings = {
   appName: "PenguinHarness",
 
+  guardian: {
+    audit: {
+      title: "Chronological audit receipts",
+      description:
+        "Newest recorded entries first, not proof of causality between entries. HMAC verification checks local integrity, not who controlled the server. Unverifiable lines are omitted.",
+      scope: "At most 50 verified receipts from the latest 1 MiB of the log.",
+      empty: "No verified audit receipts in the recent log window for this project.",
+      loading: "Loading audit receipts…",
+      error: "Could not load audit receipts.",
+      refresh: "Refresh audit receipts",
+      truncated: "Older receipts may be outside this bounded view.",
+      eventHash: "Event hash",
+      tool_call: "Tool call",
+      tool_call_output: "Tool output",
+      approval_decision: "Approval decision",
+    },
+  },
+
   nav: {
     chat: "Chat",
     newChat: "New chat",

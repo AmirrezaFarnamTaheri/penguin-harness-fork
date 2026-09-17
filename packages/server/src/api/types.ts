@@ -37,6 +37,24 @@ export interface ErrorBody {
   error: { code: string; message: string };
 }
 
+/** Verified audit metadata only; raw events, origins and signing material stay on the server. */
+export interface AuditReceipt {
+  payloadHash: string;
+  projectId: string;
+  agentId: string;
+  sessionId: string;
+  timestamp: number;
+  type: "tool_call" | "tool_call_output" | "approval_decision";
+  eventHash: string;
+}
+
+export interface AuditReceiptsResponse {
+  /** Newest append first, at most 50 verified entries for this project. */
+  receipts: AuditReceipt[];
+  /** The byte window or result limit excluded older data. */
+  truncated: boolean;
+}
+
 /** Session approval mode (reuses the CLI enum). */
 export type ApprovalMode = "allow-all" | "deny-all" | "read-only" | "always-ask";
 

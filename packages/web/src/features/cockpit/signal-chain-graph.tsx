@@ -13,6 +13,7 @@ export interface SignalChainNode {
   label: string;
   /** Audit event hash, when the node came from the signed audit log; rendered truncated. */
   eventHash?: string;
+  timestamp?: number;
 }
 
 export interface SignalChain {
@@ -20,19 +21,29 @@ export interface SignalChain {
   nodes: SignalChainNode[];
 }
 
-export function SignalChainGraph({ chain }: { chain: SignalChain }) {
+export function SignalChainGraph({
+  chain,
+  chronology,
+}: {
+  chain: SignalChain;
+  /** Independent audit receipts: no causal arrows or causal wording in this mode. */
+  chronology?: { title: string; empty: string; eventHashLabel: string };
+}) {
   return (
-    <section aria-label="Causal provenance chain" className="min-w-0 space-y-3">
-      <h3 className="text-base font-semibold">Causal provenance chain</h3>
+    <section
+      aria-label={chronology?.title ?? "Causal provenance chain"}
+      className="min-w-0 space-y-3"
+    >
+      <h3 className="text-base font-semibold">{chronology?.title ?? "Causal provenance chain"}</h3>
       {chain.nodes.length === 0 ? (
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          No recorded chain for this action yet.
+          {chronology?.empty ?? "No recorded chain for this action yet."}
         </p>
       ) : (
         <ol className="flex flex-wrap items-center gap-2">
           {chain.nodes.map((node, index) => (
             <li key={node.id} className="flex items-center gap-2">
-              {index > 0 && (
+              {!chronology && index > 0 && (
                 <span aria-hidden="true" className="text-gray-400">
                   →
                 </span>
@@ -42,9 +53,17 @@ export function SignalChainGraph({ chain }: { chain: SignalChain }) {
                   {node.type}
                 </span>
                 <span className="block break-words text-sm">{node.label}</span>
+                {node.timestamp !== undefined && (
+                  <time
+                    className="block text-xs text-gray-500 dark:text-gray-400"
+                    dateTime={new Date(node.timestamp).toISOString()}
+                  >
+                    {new Date(node.timestamp).toISOString()}
+                  </time>
+                )}
                 {node.eventHash && (
                   <span className="mt-1 block break-all font-mono text-[10px] text-gray-500 dark:text-gray-400">
-                    event {node.eventHash.slice(0, 8)}
+                    {chronology?.eventHashLabel ?? "event"} {node.eventHash.slice(0, 8)}
                   </span>
                 )}
               </span>

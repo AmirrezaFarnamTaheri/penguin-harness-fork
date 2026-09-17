@@ -157,6 +157,7 @@ import { ModelKeyHealthService } from "./services/model-key-health.js";
 import { modelOAuthCallbackRoutes, modelOAuthRoutes } from "./http/routes/model-oauth.js";
 import { chatDefaultsRoutes } from "./http/routes/chat-defaults.js";
 import { commandPolicyRoutes } from "./http/routes/command-policy.js";
+import { auditRoutes } from "./http/routes/audit.js";
 import { vaultRoutes } from "./http/routes/vault.js";
 import { memoryRoutes } from "./http/routes/memory.js";
 import { scheduleRoutes } from "./http/routes/schedules.js";
@@ -1384,6 +1385,7 @@ export function createApp(
   app.route("/api/projects/:projectId/model-oauth", modelOAuthRoutes(deps));
   app.route("/api/projects/:projectId/chat-defaults", chatDefaultsRoutes(deps));
   app.route("/api/projects/:projectId/command-policy", commandPolicyRoutes(deps));
+  app.route("/api/projects/:projectId/audit", auditRoutes(deps));
   app.route("/api/projects/:projectId/agents", agentsRoutes(deps));
   app.route("/api/projects/:projectId/organizations", organizationRoutes(deps));
   app.route("/api/projects/:projectId/dirs", dirsRoutes(deps));
