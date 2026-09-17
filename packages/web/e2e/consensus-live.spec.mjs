@@ -137,3 +137,59 @@ for (const surface of ["standalone", "embedded", "cockpit"]) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const lang of ["en", "zh"]) {
+  test(`${lang} coordination labels and proposal dialog are localized`, async ({ page }) => {
+    const zh = lang === "zh";
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.route("http://cockpit.test/**", (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === "/")
+        return route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' });
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify(pathname === "/api/projects" ? { projects: [] } : {}),
+      });
+    });
+    await page.goto(`http://cockpit.test/?lang=${lang}`);
+    await page.addScriptTag({ content: bundle });
+    await expect(
+      page.getByRole("heading", { name: zh ? "智能体协作" : "Agent coordination", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: zh ? "提出决策" : "Propose decision", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole("textbox", { name: zh ? "新主题" : "New topic", exact: true })
+      .fill("Locale regression proposal");
+    await dialog
+      .getByRole("button", { name: zh ? "创建提案" : "Create Proposal", exact: true })
+      .click();
+    await expect(page.getByText("Locale regression proposal", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: zh ? "消息" : "Messages", exact: true }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: zh ? "消息（本地演示）" : "Messages (local demo)",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: zh ? "编写演示消息" : "Compose demo message", exact: true })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: zh ? "发送 Agent" : "From agent", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: zh ? "取消" : "Cancel", exact: true })
+      .click();
+    await page.getByRole("button", { name: zh ? "交接" : "Handoffs", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: zh ? "模拟下一阶段" : "Simulate Next Stage", exact: true }),
+    ).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}

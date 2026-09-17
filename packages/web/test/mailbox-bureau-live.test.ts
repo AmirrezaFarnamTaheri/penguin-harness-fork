@@ -1,6 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { S, setActiveStrings } from "../src/lib/strings";
+import { en } from "../src/lib/strings-en";
+
+const originalStrings = S;
+beforeEach(() => setActiveStrings(en));
+afterEach(() => setActiveStrings(originalStrings));
 import { MailboxBureau } from "../src/features/consensus/mailbox-bureau";
 import type { LiveMailboxEntry } from "../src/features/agent/use-cockpit-telemetry";
 

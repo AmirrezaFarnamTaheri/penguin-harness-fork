@@ -1,6 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { S, setActiveStrings } from "../src/lib/strings";
+import { en } from "../src/lib/strings-en";
+
+const originalStrings = S;
+beforeEach(() => setActiveStrings(en));
+afterEach(() => setActiveStrings(originalStrings));
 import { HandoffTimeline } from "../src/features/consensus/handoff-timeline.js";
 
 describe("coordinator task starts in the live handoff timeline", () => {

@@ -1,3 +1,4 @@
+import { S } from "../../lib/strings";
 import { useState, useEffect } from "react";
 import type { MailboxSummary, MailboxMessage } from "./consensus-types";
 import type { LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
@@ -166,18 +167,16 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-            {isLive ? "Messages (live)" : "Messages (local demo)"}
+            {isLive ? S.consensus.mailbox.liveTitle : S.consensus.mailbox.demoTitle}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            {isLive
-              ? "Queues and leases from the project's running swarm."
-              : "Sample queues and leases. Messages created here stay in this page."}
+            {isLive ? S.consensus.mailbox.liveDescription : S.consensus.mailbox.demoDescription}
           </p>
         </div>
 
         {!isLive && (
           <Button size="sm" variant="primary" onClick={() => setDispatchOpen(true)}>
-            Compose demo message
+            {S.consensus.mailbox.compose}
           </Button>
         )}
       </div>
@@ -204,27 +203,33 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
                       : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                   }`}
                 >
-                  {leaseActive ? "LEASE HELD" : mb.leaseState === "expired" ? "EXPIRED" : "IDLE"}
+                  {leaseActive
+                    ? S.consensus.mailbox.held
+                    : mb.leaseState === "expired"
+                      ? S.consensus.mailbox.expired
+                      : S.consensus.mailbox.idle}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-                <span>Queue Depth:</span>
+                <span>{S.consensus.mailbox.depth}</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
-                  {mb.queueDepth} pending
+                  {mb.queueDepth} {S.consensus.mailbox.pending}
                 </span>
               </div>
 
               <div className="flex flex-wrap items-center justify-between">
-                <span>Pending replies:</span>
+                <span>{S.consensus.mailbox.replies}</span>
                 <span className="tabular-nums">{mb.pendingReplies}</span>
               </div>
 
               {leaseActive && (
                 <div className="flex flex-wrap items-center justify-between text-sm text-gray-900 dark:text-gray-100 bg-cyan-950/20 p-1.5 rounded border border-cyan-900/30">
-                  <span>Lease TTL:</span>
+                  <span>{S.consensus.mailbox.ttl}</span>
                   <span className="font-semibold tabular-nums">
-                    {remainingSec === undefined ? "Unknown" : `${remainingSec}s remaining`}
+                    {remainingSec === undefined
+                      ? S.consensus.mailbox.unknown
+                      : S.consensus.mailbox.remaining.replace("{seconds}", String(remainingSec))}
                   </span>
                 </div>
               )}
@@ -237,7 +242,7 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
       {!isLive && (
         <div className="flex flex-col gap-2 p-3 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            Recent messages ({messages.length})
+            {S.consensus.mailbox.recent} ({messages.length})
           </div>
           <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
             {messages.map((m) => (
@@ -269,10 +274,13 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
                         : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                     }`}
                   >
-                    {m.priority}
+                    {S.consensus.mailbox[m.priority]}
                   </span>
                   <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
-                    {Math.round((Date.now() - m.createdAt) / 1000)}s ago
+                    {S.consensus.mailbox.ago.replace(
+                      "{seconds}",
+                      String(Math.round((Date.now() - m.createdAt) / 1000)),
+                    )}
                   </span>
                 </div>
               </div>
@@ -285,15 +293,15 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
       {!isLive && (
         <Modal
           open={dispatchOpen}
-          title="Compose demo message"
+          title={S.consensus.mailbox.composeTitle}
           onClose={() => setDispatchOpen(false)}
           footer={
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setDispatchOpen(false)}>
-                Cancel
+                {S.consensus.mailbox.cancel}
               </Button>
               <Button size="sm" variant="primary" onClick={handleDispatchMessage}>
-                Add demo message
+                {S.consensus.mailbox.add}
               </Button>
             </div>
           }
@@ -302,10 +310,10 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
             <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                  From Agent
+                  {S.consensus.mailbox.fromLabel}
                 </label>
                 <Input
-                  aria-label="From agent"
+                  aria-label={S.consensus.mailbox.from}
                   value={fromAgent}
                   onChange={(e) => setFromAgent(e.target.value)}
                   size="sm"
@@ -313,10 +321,10 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
               </div>
               <div>
                 <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                  To Agent
+                  {S.consensus.mailbox.toLabel}
                 </label>
                 <Input
-                  aria-label="To agent"
+                  aria-label={S.consensus.mailbox.to}
                   value={toAgent}
                   onChange={(e) => setToAgent(e.target.value)}
                   size="sm"
@@ -326,23 +334,23 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
 
             <div>
               <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                Event Type <RequiredMark />
+                {S.consensus.mailbox.eventLabel} <RequiredMark />
               </label>
               <Input
-                aria-label="Event type"
+                aria-label={S.consensus.mailbox.event}
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value)}
-                placeholder="e.g. directive:refactor_code"
+                placeholder={S.consensus.mailbox.eventPlaceholder}
                 size="sm"
               />
             </div>
 
             <div>
               <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                JSON Payload
+                {S.consensus.mailbox.payloadLabel}
               </label>
               <textarea
-                aria-label="Payload text"
+                aria-label={S.consensus.mailbox.payload}
                 value={payloadText}
                 onChange={(e) => setPayloadText(e.target.value)}
                 rows={3}

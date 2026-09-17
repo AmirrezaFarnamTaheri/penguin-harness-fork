@@ -5,9 +5,11 @@ import { ProjectProvider, useProject } from "../src/state/project";
 import { LocaleProvider } from "../src/state/locale";
 import { en } from "../src/lib/strings-en";
 import { setActiveStrings } from "../src/lib/strings";
+import { zh } from "../src/lib/strings-zh";
 
-setActiveStrings(en);
-localStorage.setItem("penguin.lang", "en");
+const language = new URLSearchParams(window.location.search).get("lang") === "zh" ? "zh" : "en";
+setActiveStrings(language === "zh" ? zh : en);
+localStorage.setItem("penguin.lang", language);
 
 function ConsensusProbe() {
   const { setCurrentProjectId } = useProject();

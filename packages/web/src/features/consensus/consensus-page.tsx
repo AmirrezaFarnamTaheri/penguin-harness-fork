@@ -9,6 +9,7 @@ import {
   type LiveHandoffEvent,
 } from "../agent/use-cockpit-telemetry.js";
 import { useProject } from "../../state/project";
+import { S } from "../../lib/strings";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
@@ -39,22 +40,22 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
       className={`min-w-0 overflow-y-auto text-sm text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
     >
       <header className="mb-6 space-y-2">
-        <h1 className="text-xl font-semibold">Agent coordination</h1>
+        <h1 className="text-xl font-semibold">{S.consensus.title}</h1>
         <p className="text-gray-600 dark:text-gray-400">
           {mailboxEntries === undefined && handoffs === undefined
-            ? "Try proposals, messages and handoffs with local sample data. Changes are not sent to agents or saved after leaving this page."
-            : "Live feeds reflect the current project where connected. Decisions remain a local demo."}
+            ? S.consensus.demoDescription
+            : S.consensus.liveDescription}
         </p>
       </header>
       <nav
-        aria-label="Coordination views"
+        aria-label={S.consensus.navigation}
         className="mb-6 flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-800"
       >
         {(
           [
-            { value: "quorum", label: "Decisions" },
-            { value: "mailbox", label: "Messages" },
-            { value: "handoff", label: "Handoffs" },
+            { value: "quorum", label: S.consensus.decisions },
+            { value: "mailbox", label: S.consensus.messages },
+            { value: "handoff", label: S.consensus.handoffs },
           ] as const
         ).map((item) => (
           <button
