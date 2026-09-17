@@ -177,6 +177,7 @@ import { agentSessionsRoutes, sessionsRoutes } from "./http/routes/sessions.js";
 import { sessionMessagingRoutes } from "./http/routes/messaging.js";
 import { versionRoutes } from "./http/routes/version.js";
 import { machinesRoutes } from "./http/routes/machines.js";
+import { AuditRecorder } from "./sandbox/audit.js";
 import { UsageRecorder } from "./runtime/usage-recorder.js";
 import { previewRoutes } from "./http/routes/preview.js";
 import { MachinesService } from "./machines/service.js";
@@ -989,7 +990,10 @@ export function buildAppDeps(
     overrides.updateCheck ?? new UpdateCheckService(overrides.now ? { now: overrides.now } : {});
   const updateJob = overrides.updateJob ?? new UpdateJobService();
 
-  const recorder = new UsageRecorder(usageRepo, overrides.now ?? (() => new Date()));
+  const recorder = new AuditRecorder(
+    config.root,
+    new UsageRecorder(usageRepo, overrides.now ?? (() => new Date())),
+  );
   const errors = new ErrorRecorder(errorsRepo, overrides.now ?? (() => new Date()));
   // Shared by SessionManager (run-state flips) and TitleGenerator (title updates): both are
   // list-row facts that must reach tabs not subscribed to the Session's own channel.
