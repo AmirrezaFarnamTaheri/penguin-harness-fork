@@ -1,0 +1,6 @@
+#!/bin/sh
+# Gate what this repo's CI already gates (ci.yml: format:check, typecheck), so a hook
+# failure and a CI failure mean the same thing. Typecheck runs pnpm gen:ifaces first,
+# so it is machine-dependent: `pnpm typecheck` needs the full toolchain, which is why
+# it is the push gate and not the commit gate.
+node node_modules/prettier/bin/prettier.cjs --check .

@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
+    "hooks": "git config core.hooksPath .githooks",
     "check:i18n": "node scripts/check-i18n.mjs",
     "verify:benchmark-data": "node scripts/verify-benchmark-data.mjs",
     "skills:audit": "node scripts/skills/audit.mjs",
