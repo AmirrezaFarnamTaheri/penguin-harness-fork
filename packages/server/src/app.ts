@@ -168,6 +168,7 @@ import { agentPluginsRoutes, pluginLibraryRoutes } from "./http/routes/plugins.j
 import { agentTransferRoutes } from "./http/routes/agent-transfer.js";
 import { agentsRoutes } from "./http/routes/agents.js";
 import { dirsRoutes } from "./http/routes/dirs.js";
+import { worktreesRoutes } from "./http/routes/worktrees.js";
 import { directorySkillsRoutes } from "./http/routes/directory-skills.js";
 import { agentConfigRoutes } from "./http/routes/agent-config.js";
 import { agentTracesRoutes } from "./http/routes/agent-traces.js";
@@ -1379,6 +1380,7 @@ export function createApp(
   app.route("/api/projects/:projectId/agents", agentsRoutes(deps));
   app.route("/api/projects/:projectId/organizations", organizationRoutes(deps));
   app.route("/api/projects/:projectId/dirs", dirsRoutes(deps));
+  app.route("/api/projects/:projectId/worktrees", worktreesRoutes(deps));
   app.route("/api/projects/:projectId/dir-skills", directorySkillsRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/config", agentConfigRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/vault", vaultRoutes(deps));

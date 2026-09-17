@@ -27,7 +27,7 @@ export function GuardianPage({ embedded = false }: GuardianPageProps) {
           <p role="status">Select a project to load and edit its command policy.</p>
         )}
         <details className="border-t border-gray-200 pt-4 dark:border-gray-800">
-          <summary className="cursor-pointer py-2 font-medium">Worktree demo</summary>
+          <summary className="cursor-pointer py-2 font-medium">Repository worktrees</summary>
           <WorktreeLanesCard projectId={currentProject?.projectId ?? ""} />
         </details>
       </div>

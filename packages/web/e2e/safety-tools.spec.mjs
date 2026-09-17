@@ -138,3 +138,43 @@ test("coordination tab switches retain locally composed messages", async ({ page
   await page.getByRole("button", { name: "Messages", exact: true }).click();
   await expect(page.getByText("regression:message", { exact: true })).toBeVisible();
 });
+
+test("worktrees require an explicit repository and recover from listing failures", async ({
+  page,
+}) => {
+  const errors = await boot(page, "guardian");
+  const requests = [];
+  let offline = false;
+  await page.route("**/dirs*", (route) =>
+    json(route, { path: "C:/repos/selected", parent: "C:/repos", entries: [] }),
+  );
+  await page.route("**/worktrees?*", (route) => {
+    requests.push(new URL(route.request().url()).searchParams.get("workspace"));
+    return offline
+      ? json(route, { error: { code: "worktree_list_failed", message: "Git is unavailable" } }, 400)
+      : json(route, {
+          workspace: "C:/repos/selected",
+          worktrees: [
+            { path: "C:/repos/selected", head: "abc123", branch: "refs/heads/real-branch" },
+          ],
+        });
+  });
+  await page.getByText("Repository worktrees", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Refresh worktrees" })).toBeDisabled();
+  expect(requests).toEqual([]);
+  await page.getByRole("button", { name: "Repository workspace", exact: true }).click();
+  await page.getByRole("button", { name: "Use this dir", exact: true }).click();
+  await expect(page.getByText("real-branch", { exact: true })).toBeVisible();
+  expect(requests).toEqual(["C:/repos/selected"]);
+  offline = true;
+  await page.getByRole("button", { name: "Refresh worktrees" }).click();
+  await expect(page.getByRole("alert")).toContainText("Git is unavailable");
+  await expect(page.getByText("real-branch", { exact: true })).toHaveCount(0);
+  offline = false;
+  await page.getByRole("button", { name: "Retry loading worktrees" }).click();
+  await expect(page.getByText("real-branch", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Repository workspace", exact: true }).click();
+  await page.getByText("Clear repository", { exact: true }).click();
+  await expect(page.getByText("real-branch", { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

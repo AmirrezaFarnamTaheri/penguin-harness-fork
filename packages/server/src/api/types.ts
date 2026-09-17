@@ -1436,6 +1436,11 @@ export interface DirEntryInfo {
   /** Absolute path of this subdirectory (can be submitted directly as a Workspace). */
   path: string;
 }
+export interface WorktreesResponse {
+  workspace: string;
+  worktrees: Array<{ path: string; head: string; branch: string }>;
+}
+
 export interface DirListResponse {
   /** Absolute path of the current directory (realpath). */
   path: string;
