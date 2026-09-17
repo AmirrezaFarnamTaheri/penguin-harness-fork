@@ -2200,15 +2200,12 @@ export function ChatPage() {
               : undefined
           }
           promptCache={
-            usageBuckets && (usageBuckets.cacheRead > 0 || usageBuckets.cacheWrite > 0)
-              ? {
-                  cacheReadTokens: usageBuckets.cacheRead,
-                  cacheCreationTokens: usageBuckets.cacheWrite,
-                  ttlSeconds: 300,
-                  remainingSeconds: 240,
-                  state: usageBuckets.cacheRead > 0 ? "active" : "none",
+            stream.loading
+              ? undefined
+              : {
+                  cacheRead: stream.model.stats.taskCacheRead,
+                  cacheWrite: stream.model.stats.taskCacheWrite,
                 }
-              : undefined
           }
           costUsd={costHoldRef.current.sessionCost ?? liveTaskUsd ?? 0}
           costSavingsUsd={

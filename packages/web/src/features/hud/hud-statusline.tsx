@@ -1,11 +1,12 @@
 import { useState } from "react";
 import type {
   HudSpeedMetrics,
-  HudPromptCacheMetrics,
   HudVcsMetrics,
   HudActiveTask,
 } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
+import { CacheWarmBadge } from "../cockpit/cache-warm-badge";
+import type { CacheUsage } from "../cockpit/cache-warm-badge";
 
 export interface HudStatuslineProps {
   /** Latest main request context occupancy, never cumulative session usage. */
@@ -14,7 +15,8 @@ export interface HudStatuslineProps {
   contextStale?: boolean;
   contextWindow?: number;
   speed?: HudSpeedMetrics;
-  promptCache?: HudPromptCacheMetrics;
+  /** Current task's measured cached/uncached input buckets, updated by token_usage. */
+  promptCache?: CacheUsage;
   vcs?: HudVcsMetrics;
   costUsd?: number;
   costSavingsUsd?: number;
@@ -75,6 +77,7 @@ export function HudStatusline({
           ) : (
             <span>{cost}</span>
           )}
+          <CacheWarmBadge usage={promptCache} />
           {speed?.isStreaming &&
             Number.isFinite(speed.tokensPerSecond) &&
             speed.tokensPerSecond > 0 && (
@@ -118,9 +121,7 @@ export function HudStatusline({
             <div>
               <dt className="text-gray-500">Prompt cache</dt>
               <dd>
-                {promptCache
-                  ? `${promptCache.state}${promptCache.remainingSeconds > 0 ? ` · ${promptCache.remainingSeconds}s remaining` : ""}`
-                  : "Not reported"}
+                Current task input reuse is shown above. Provider cache lifetime is not reported.
               </dd>
             </div>
             <div>
