@@ -92,6 +92,13 @@ export const en: Strings = {
     /** The progress log's own heading, so the block is not an unlabelled wall of text. */
     output: "Install output",
     adminOnly: "Only an admin can install on a machine.",
+    health: {
+      unknown: "Not probed",
+      running: "Running",
+      stopped: "Stopped",
+      unreachable: "Unreachable",
+      lastProbe: "Last probe",
+    },
   },
 
   /** Server-side terminal (the in-app dock and the standalone /terminal page). */

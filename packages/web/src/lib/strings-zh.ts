@@ -92,6 +92,13 @@ export const zh = {
     /** The progress log's own heading, so the block is not an unlabelled wall of text. */
     output: "安装输出",
     adminOnly: "只有管理员可以安装到机器上。",
+    health: {
+      unknown: "尚未探测",
+      running: "运行中",
+      stopped: "已停止",
+      unreachable: "无法连接",
+      lastProbe: "上次探测",
+    },
   },
 
   /** Server-side terminal (the in-app dock and the standalone /terminal page). */
