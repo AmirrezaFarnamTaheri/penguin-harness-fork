@@ -82,7 +82,10 @@ function factsFromRecords(
   sessionId: string,
   records: OmniMessage[],
 ): TraceSessionRow {
-  const meta = records.find(isSessionMeta);
+  const candidate = records.find(isSessionMeta);
+  // A copied or misnamed shard must not register another session's metadata.
+  // Keep it unreadable for adoption so a corrected head can be retried later.
+  const meta = candidate?.payload.session_id === sessionId ? candidate : undefined;
   let firstPrompt: string | null = null;
   for (const msg of records) {
     if (msg.type !== "model_msg") continue;

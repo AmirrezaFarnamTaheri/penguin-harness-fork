@@ -517,6 +517,32 @@ describe("session-index", () => {
     ).toBe(400);
   });
 
+  it("startup adoption rejects metadata whose session identity differs from the shard filename", async () => {
+    const validId = "session-2026-07-01-08-30-00-valid123";
+    const mismatchedId = "session-2026-07-01-08-30-00-wrong123";
+    const meta: SessionMetaPayload = {
+      session_id: validId,
+      model_id: "cli-model",
+      provider: "custom",
+      model_context_window: 1000,
+      system_prompt: "",
+      agent_state: "/tmp/a",
+      workspace: "/tmp/cli-workspace",
+    };
+    for (const id of [validId, mismatchedId]) {
+      await writeTraceFile(t.root, projectId, "default_agent", "2026-07-01", id, 1, [
+        sessionMeta(meta),
+        userText("recovery fixture"),
+      ]);
+    }
+
+    expect(await t.deps.sessionService.adoptUnmanagedTraceSessions()).toBe(1);
+    expect(t.deps.sessionsRepo.findById(validId)?.modelId).toBe("cli-model");
+    expect(t.deps.sessionsRepo.findById(mismatchedId)).toBeNull();
+    expect((await api.get(`/api/sessions/${mismatchedId}`)).status).toBe(404);
+    expect(await t.deps.sessionService.adoptUnmanagedTraceSessions()).toBe(0);
+  });
+
   it("startup adoption sweep: an unmanaged Trace becomes a client:'cli' row, and lists serve it from the DB", async () => {
     await configureModels();
     const discovered = "session-2026-07-01-08-30-00-deadbeef";
