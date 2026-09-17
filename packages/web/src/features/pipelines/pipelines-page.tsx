@@ -7,6 +7,7 @@ import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
 import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
+import { PipelineStudioCanvas } from "./pipeline-studio-canvas";
 import {
   WorkTool,
   WorkHeader,
@@ -269,6 +270,15 @@ export function PipelineWorkspace({ projectId }: { projectId: string }) {
                   </label>
                 )}
               </div>
+              <PipelineStudioCanvas
+                pipeline={current}
+                run={run}
+                selectedNodeId={nodeId}
+                onSelectNode={(id) => {
+                  setNodeId(id);
+                  setOutput("{}");
+                }}
+              />
               <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,1fr)]">
                 <div className="space-y-3">
                   <h3 className="font-semibold">Steps & connections</h3>
