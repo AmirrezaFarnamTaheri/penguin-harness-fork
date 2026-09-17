@@ -112,6 +112,32 @@ describe("read-only schedule kanban projection", () => {
     expect(t.deps.scheduler.files.counters.gateStats).toBe(reads);
   });
 
+  it("round-trips board edits through the owner-only schedules API into TOML and the projection", async () => {
+    const file = path.join(dir, "daily.toml");
+    await fs.writeFile(file, RAW);
+    const url = `/api/projects/${PROJECT}/agents/${AGENT}/schedules/daily`;
+    const body = {
+      prompt: "Updated from the task board",
+      enabled: false,
+      startAt: START,
+      period: "1h",
+      endAt: "2099-02-01T09:00:00Z",
+    };
+    expect((await member.put(url, body)).status).toBe(403);
+    expect(await fs.readFile(file, "utf8")).toBe(RAW);
+    expect((await owner.put(url, body)).status).toBe(200);
+    const raw = await fs.readFile(file, "utf8");
+    expect(raw).toContain("Updated from the task board");
+    expect(raw).toContain("enabled = false");
+    expect(await (await owner.get(url)).json()).toMatchObject(body);
+    expect(await (await member.get(BASE)).json()).toMatchObject({
+      cards: [{ id: `${PROJECT}/${AGENT}/daily`, enabled: false, period: "1h" }],
+    });
+    await fs.writeFile(file, raw.replace('period = "1h"', 'period = "2h"'));
+    expect(await (await owner.get(url)).json()).toMatchObject({ period: "2h" });
+    expect(await (await member.get(BASE)).json()).toMatchObject({ cards: [{ period: "2h" }] });
+  });
+
   it("does not accept mutations", async () => {
     await fs.writeFile(path.join(dir, "daily.toml"), RAW);
     for (const response of [

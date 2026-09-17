@@ -13,20 +13,35 @@ import { Button } from "../../components/ui/button";
 import { Modal } from "../../components/ui/modal";
 import { toastSuccess } from "../../components/ui/toast";
 import { KanbanBoardView } from "./kanban-board";
+import { SchedulesTab } from "../agents/schedules-tab";
 import { WorkTool, WorkHeader, WorkError, fieldClass, mutedClass } from "./work-tool-ui";
 
 export function KanbanPage() {
   useDocumentTitle(S.nav.kanban);
-  const { currentProject } = useProject();
+  const { currentProject, currentAgent } = useProject();
   return currentProject ? (
-    <KanbanWorkspace key={currentProject.projectId} projectId={currentProject.projectId} />
+    <KanbanWorkspace
+      key={currentProject.projectId}
+      projectId={currentProject.projectId}
+      schedules={
+        currentAgent ? (
+          <SchedulesTab key={currentAgent.agentId} agentId={currentAgent.agentId} />
+        ) : undefined
+      }
+    />
   ) : (
     <WorkTool>
       <p>Select a project to view its tasks.</p>
     </WorkTool>
   );
 }
-export function KanbanWorkspace({ projectId }: { projectId: string }) {
+export function KanbanWorkspace({
+  projectId,
+  schedules,
+}: {
+  projectId: string;
+  schedules?: React.ReactNode;
+}) {
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
   const [drafts, setDrafts] = useState<TriageDraft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,6 +173,12 @@ export function KanbanWorkspace({ projectId }: { projectId: string }) {
         onClaimTask={(id, owner) => void update(id, undefined, owner)}
         onLaunchDraft={(id) => void launch(id)}
       />
+      {schedules && (
+        <section aria-label={S.agent.tabSchedules} className="min-w-0 space-y-4">
+          <h2 className="text-base font-semibold">{S.agent.tabSchedules}</h2>
+          {schedules}
+        </section>
+      )}
       <Modal
         open={open}
         onClose={() => {
