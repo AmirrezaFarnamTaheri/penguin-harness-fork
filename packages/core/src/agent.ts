@@ -1059,6 +1059,9 @@ export class Agent {
                 ...(parentAgent.pathPrepend ? { pathPrepend: parentAgent.pathPrepend } : {}),
                 ...(parentAgent.confineSpawn ? { confineSpawn: parentAgent.confineSpawn } : {}),
                 ...(parentAgent.assembly ? { assembly: parentAgent.assembly } : {}),
+                ...(parentAgent.subagentCascade
+                  ? { subagentCascade: parentAgent.subagentCascade }
+                  : {}),
               })
             : parentAgent;
         // The child Session follows the PARENT Session, never the Project default: with the
@@ -1183,6 +1186,9 @@ export class Agent {
                 ...(parentAgent.pathPrepend ? { pathPrepend: parentAgent.pathPrepend } : {}),
                 ...(parentAgent.confineSpawn ? { confineSpawn: parentAgent.confineSpawn } : {}),
                 ...(parentAgent.assembly ? { assembly: parentAgent.assembly } : {}),
+                ...(parentAgent.subagentCascade
+                  ? { subagentCascade: parentAgent.subagentCascade }
+                  : {}),
               });
         const childSession = await childAgent.resumeSession({ sessionId });
         return subagentHandleFor(childSession);
