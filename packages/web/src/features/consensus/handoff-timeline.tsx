@@ -85,7 +85,7 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
             {isLive
-              ? "Directives dispatched between agents in this project's swarm."
+              ? "Task starts and directives observed in this project's swarm."
               : "Follow a sample task from delegation to review. This does not reflect running agents."}
           </p>
         </div>
@@ -97,12 +97,12 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
         )}
       </div>
 
-      {/* Live directive feed (from the cockpit swarm event stream) */}
+      {/* Live feed (from the existing cockpit swarm event stream) */}
       {isLive && (
         <div className="flex flex-col gap-3">
           {handoffs.length === 0 && (
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              No directives observed in this connection.
+              No task starts or directives observed in this connection.
             </p>
           )}
           {handoffs.map((event) => (
@@ -115,12 +115,18 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
                 <span className="text-gray-600 dark:text-gray-400">→</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">{event.to}</span>
                 <span className="text-sm px-1.5 py-0.2 rounded font-semibold bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30">
-                  Dispatched
+                  {event.source === "task_started" ? "Task started" : "Dispatched"}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
                   [{new Date(event.timestamp).toLocaleTimeString()}]
                 </span>
               </div>
+              {event.source === "task_started" && (
+                <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
+                  <div>Task: {event.taskId}</div>
+                  <div>Planned target; assignment delivery is not reported by this event.</div>
+                </div>
+              )}
               {event.content && (
                 <div className="text-sm text-gray-900 dark:text-gray-100 font-medium break-words">
                   {event.content}

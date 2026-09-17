@@ -19,9 +19,11 @@ export interface LiveMailboxEntry {
   leaseRemainingSec?: number;
 }
 
-/** A directive_dispatched swarm event, folded for the consensus handoff timeline. */
+/** Existing swarm events folded for the timeline; task starts do not confirm delivery. */
 export interface LiveHandoffEvent {
   messageId: string;
+  source?: "task_started";
+  taskId?: string;
   from: string;
   to: string;
   content?: string;
@@ -271,6 +273,39 @@ export function useCockpitTelemetry(
                         ].slice(0, 50)
                       : previous.handoffs;
                   return { ...previous, ...{ handoffs } };
+                });
+              }
+              if (
+                msg.event.type === "task_started" &&
+                typeof msg.event.taskId === "string" &&
+                msg.event.taskId.trim() &&
+                msg.event.agentId === "orchestrator" &&
+                typeof msg.event.timestamp === "number" &&
+                Number.isFinite(msg.event.timestamp)
+              ) {
+                // The coordinator emits this BEFORE planning and mailbox.send. The coder
+                // is the pipeline's planned target, not evidence of a delivered assignment.
+                const handoff: LiveHandoffEvent = {
+                  messageId: `task_started:${msg.event.taskId}:${msg.event.timestamp}`,
+                  source: "task_started",
+                  taskId: msg.event.taskId,
+                  from: msg.event.agentId,
+                  to: "coder",
+                  content:
+                    typeof msg.event.payload?.goal === "string"
+                      ? msg.event.payload.goal
+                      : undefined,
+                  timestamp: msg.event.timestamp,
+                };
+                setState((previous) => {
+                  if (!current() || previous.projectId !== projectId) return previous;
+                  return {
+                    ...previous,
+                    handoffs: [
+                      handoff,
+                      ...previous.handoffs.filter((h) => h.messageId !== handoff.messageId),
+                    ].slice(0, 50),
+                  };
                 });
               }
               if (msg.event.taskId) update({ activeTaskId: msg.event.taskId });

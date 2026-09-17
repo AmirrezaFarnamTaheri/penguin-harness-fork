@@ -123,7 +123,9 @@ test("handoff timeline records directives once and clears on project switch", as
   await select(page, "beta");
   await expect(timeline.getByText("operator-live", { exact: true })).toHaveCount(0);
   await expect(
-    timeline.getByText("No directives observed in this connection.", { exact: true }),
+    timeline.getByText("No task starts or directives observed in this connection.", {
+      exact: true,
+    }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
