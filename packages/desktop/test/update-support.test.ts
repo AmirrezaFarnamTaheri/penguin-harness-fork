@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { feedUrlOverride, updateSourceConfig, updateSupport } from "../src/update-support.js";
+import {
+  feedUrlOverride,
+  updatePrereleaseConfig,
+  updateSourceConfig,
+  updateSupport,
+} from "../src/update-support.js";
+
+describe("updatePrereleaseConfig", () => {
+  it.each([false, true])("preserves the updater default (%s) when unset or blank", (current) => {
+    for (const raw of [undefined, "", "   "]) {
+      expect(updatePrereleaseConfig({ PENGUIN_UPDATE_ALLOW_PRERELEASE: raw }, current)).toEqual({
+        allowPrerelease: current,
+        invalidPrerelease: false,
+      });
+    }
+  });
+
+  it.each([false, true])("explicit settings override the updater default (%s)", (current) => {
+    expect(updatePrereleaseConfig({ PENGUIN_UPDATE_ALLOW_PRERELEASE: " 1 " }, current)).toEqual({
+      allowPrerelease: true,
+      invalidPrerelease: false,
+    });
+    expect(updatePrereleaseConfig({ PENGUIN_UPDATE_ALLOW_PRERELEASE: " 0 " }, current)).toEqual({
+      allowPrerelease: false,
+      invalidPrerelease: false,
+    });
+  });
+
+  it.each([false, true])(
+    "reports invalid settings without changing the default (%s)",
+    (current) => {
+      for (const raw of ["true", "false", "canary", "stable", "2", "-1"]) {
+        expect(updatePrereleaseConfig({ PENGUIN_UPDATE_ALLOW_PRERELEASE: raw }, current)).toEqual({
+          allowPrerelease: current,
+          invalidPrerelease: true,
+        });
+      }
+    },
+  );
+});
 
 describe("updateSupport", () => {
   it("supports packaged macOS and Windows builds", () => {
