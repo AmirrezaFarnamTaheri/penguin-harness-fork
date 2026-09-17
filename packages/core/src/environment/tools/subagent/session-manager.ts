@@ -72,7 +72,8 @@ export class SubagentSessionManager {
   track(session: ManagedSubagentSession): void {
     session.name = this.names.assign(session.sessionId);
     session.description = this.descriptions.get(session.sessionId) ?? session.description;
-    if (session.description !== undefined) this.descriptions.set(session.sessionId, session.description);
+    if (session.description !== undefined)
+      this.descriptions.set(session.sessionId, session.description);
     this.live.add(session);
     session.onStateChange(() => this.stateListener?.());
     if (this.approvalFallback) session.setFallbackApprovalSink(this.approvalFallback);

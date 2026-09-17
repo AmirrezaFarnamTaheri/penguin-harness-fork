@@ -965,10 +965,10 @@ describe("subagent steering and per-run abort", () => {
         const res = await gen.next();
         if (res.done) break;
       }
-      expect(env.listBackgroundSubagents()).toEqual([
-      // name/description are additive metadata; the objects are matched field-wise below.
-    ]),
-    expect(env.listBackgroundSubagents()).toEqual([]);
+      (expect(env.listBackgroundSubagents()).toEqual([
+        // name/description are additive metadata; the objects are matched field-wise below.
+      ]),
+        expect(env.listBackgroundSubagents()).toEqual([]));
 
       // Without the resume option the child is simply gone; with it, the session revives,
       // re-registers (the model can address it again), and runs the message as a new round.
@@ -1056,7 +1056,9 @@ describe("subagent steering and per-run abort", () => {
     manager.track(session);
     // Reachable by session id before any background registration (no subagent_id yet).
     expect(manager.bySessionId(HOP)).toBe(session);
-    expect(manager.listLive()).toMatchObject([{ sessionId: HOP, subagentId: null, running: false }]);
+    expect(manager.listLive()).toMatchObject([
+      { sessionId: HOP, subagentId: null, running: false },
+    ]);
 
     session.startRun([userText("occupy")]);
     const id = manager.register(session);
@@ -1085,18 +1087,51 @@ it("assigns distinct decorative names and preserves dispatcher descriptions on f
   };
   const { services, manager } = makeServices(runner);
   const launch = createSubagentTool(DEF, services);
-  const first = await collectWithReturn(launch.execute({ prompt: "Review", agent_description: "Reviews API contracts", run_in_background: true }, CTX));
-  await collectWithReturn(launch.execute({ prompt: "Test", agent_description: "Tests the browser flow", run_in_background: true }, CTX));
+  const first = await collectWithReturn(
+    launch.execute(
+      { prompt: "Review", agent_description: "Reviews API contracts", run_in_background: true },
+      CTX,
+    ),
+  );
+  await collectWithReturn(
+    launch.execute(
+      { prompt: "Test", agent_description: "Tests the browser flow", run_in_background: true },
+      CTX,
+    ),
+  );
   const roster = manager.listLive();
   expect(roster).toHaveLength(2);
-  expect(roster[0]).toMatchObject({ description: "Reviews API contracts", name: expect.any(String) });
-  expect(roster[1]).toMatchObject({ description: "Tests the browser flow", name: expect.any(String) });
+  expect(roster[0]).toMatchObject({
+    description: "Reviews API contracts",
+    name: expect.any(String),
+  });
+  expect(roster[1]).toMatchObject({
+    description: "Tests the browser flow",
+    name: expect.any(String),
+  });
   expect(new Set(roster.map((agent) => agent.name)).size).toBe(2);
   const id = extractSubagentId(first.result);
   const input = createInputSubagentTool(INPUT_DEF, services);
   await until(() => !manager.get(id)!.running);
-  await collectWithReturn(input.execute({ subagent_id: id, prompt: "Check pagination too", yield_time_ms: 1 }, CTX));
-  expect(manager.listLive()[0]).toMatchObject({ name: roster[0]!.name, description: "Reviews API contracts" });
-  await collectWithReturn(input.execute({ subagent_id: id, agent_description: "Reviews API contracts and pagination", yield_time_ms: 1 }, CTX));
-  expect(manager.listLive()[0]).toMatchObject({ name: roster[0]!.name, description: "Reviews API contracts and pagination" });
+  await collectWithReturn(
+    input.execute({ subagent_id: id, prompt: "Check pagination too", yield_time_ms: 1 }, CTX),
+  );
+  expect(manager.listLive()[0]).toMatchObject({
+    name: roster[0]!.name,
+    description: "Reviews API contracts",
+  });
+  await collectWithReturn(
+    input.execute(
+      {
+        subagent_id: id,
+        agent_description: "Reviews API contracts and pagination",
+        yield_time_ms: 1,
+      },
+      CTX,
+    ),
+  );
+  expect(manager.listLive()[0]).toMatchObject({
+    name: roster[0]!.name,
+    description: "Reviews API contracts and pagination",
+  });
 });

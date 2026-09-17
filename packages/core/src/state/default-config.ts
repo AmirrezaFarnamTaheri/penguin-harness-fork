@@ -858,7 +858,8 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
           },
           agent_description: {
             type: "string",
-            description: "Describe this dispatched agent and its current assignment for peers. Written by you; unrelated to its decorative name.",
+            description:
+              "Describe this dispatched agent and its current assignment for peers. Written by you; unrelated to its decorative name.",
           },
           prompt: {
             type: "string",
@@ -935,7 +936,8 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
           },
           agent_description: {
             type: "string",
-            description: "Optional explicit update to the agent description when its assignment genuinely changes. Omit on ordinary messages and polls to retain it.",
+            description:
+              "Optional explicit update to the agent description when its assignment genuinely changes. Omit on ordinary messages and polls to retain it.",
           },
           subagent_id: {
             type: "string",

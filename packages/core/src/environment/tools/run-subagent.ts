@@ -163,9 +163,12 @@ export function createSubagentTool(
         // Live index from the moment of spawn (before any registration): host paths — the
         // subagents panel's steer/abort — reach this child by its session id even while it
         // still runs inside this call's foreground collect window.
-        session.description = typeof args.agent_description === "string"
-          ? args.agent_description.trim().slice(0, 1000)
-          : typeof args.description === "string" ? args.description.trim().slice(0, 1000) : undefined;
+        session.description =
+          typeof args.agent_description === "string"
+            ? args.agent_description.trim().slice(0, 1000)
+            : typeof args.description === "string"
+              ? args.description.trim().slice(0, 1000)
+              : undefined;
         manager.track(session);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
