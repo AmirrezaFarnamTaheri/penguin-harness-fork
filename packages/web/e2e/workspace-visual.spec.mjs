@@ -35,6 +35,8 @@ const populated = {
     agents: [
       {
         id: "release-coder",
+        name: "Edsger",
+        description: "Owns the retry-flake fix and the regression suite this round.",
         role: "coder",
         status: "active",
         tasksCompleted: 4,
@@ -42,6 +44,8 @@ const populated = {
       },
       {
         id: "release-reviewer",
+        name: "Ada",
+        description: "Reviews the patch and confirms failure recovery before handoff.",
         role: "reviewer",
         status: "waiting_approval",
         tasksCompleted: 2,

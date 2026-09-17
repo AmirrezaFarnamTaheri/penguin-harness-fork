@@ -40,6 +40,8 @@ export interface AgentCockpitProps {
 }
 export interface SwarmAgentNode {
   id: string;
+  name?: string;
+  description?: string;
   role: "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
   status: "idle" | "active" | "waiting_approval" | "handoff";
   tasksCompleted: number;
@@ -304,9 +306,14 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
                       >
                         <div className="min-w-0 flex-1">
                           <p className="break-all text-sm font-medium">
-                            {agent.id}{" "}
+                            {agent.name ? `${agent.name} (${agent.id})` : agent.id}{" "}
                             <span className="font-normal text-gray-500">· {agent.role}</span>
                           </p>
+                          {agent.description && (
+                            <p className={`${muted} whitespace-pre-wrap break-words`}>
+                              {agent.description}
+                            </p>
+                          )}
                           {agent.currentTask && (
                             <p className={`${muted} break-words`}>{agent.currentTask}</p>
                           )}
@@ -391,7 +398,9 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
                     <option value="">{c.chooseRecipient}</option>
                     {telemetry.swarmAgents.map((agent) => (
                       <option key={agent.id} value={agent.id}>
-                        {agent.id} ({agent.role})
+                        {agent.name
+                          ? `${agent.name} (${agent.id} · ${agent.role})`
+                          : `${agent.id} (${agent.role})`}
                       </option>
                     ))}
                   </select>
@@ -434,7 +443,7 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
                       <p className={muted}>
                         {c.queue}: {box.queueDepth} · {c.replies}: {box.pendingReplies}
                       </p>
-                      <details className="text-sm text-gray-500">
+                      <details className="text-sm text-gray-600 dark:text-gray-400">
                         <summary className="cursor-pointer py-2">
                           {c.lease}: {box.leaseState}
                         </summary>

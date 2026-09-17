@@ -7,6 +7,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import type { SubagentRuntimeInfo } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
 import type { ChatItem } from "../../lib/omni/stream-model";
 import type { MemoryChangeRow } from "../../lib/omni/memory-changes";
@@ -21,6 +22,7 @@ import type { ForkTarget } from "./task-stats-line";
 
 /** Context passed down to nested rendering (pending approvals + approval submit callback + current origin chain). */
 export interface StreamRenderContext {
+  subagents?: readonly SubagentRuntimeInfo[];
   /** approvalKey(origin, toolCallId) → pending approval (disambiguates by origin when parent/child session tool_call_ids collide). */
   pendingApprovals: ReadonlyMap<string, PendingApproval>;
   onApprove: (toolCallId: string, decision: "allow" | "deny", origin: string[]) => Promise<void>;

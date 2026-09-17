@@ -125,7 +125,7 @@ export function SubagentsView({
     [subagents],
   );
 
-  const nodes = useMemo(
+  const topology = useMemo(
     () =>
       // A pinned scope (chip click) shows THAT Task's graph — historical or latest alike; when
       // its anchor is no longer referenced in the stream, fall back to the latest Task.
@@ -143,6 +143,13 @@ export function SubagentsView({
     [model, version, session.sessionId, taskRunning, taskScope, liveStates],
   );
 
+  const nodes = topology.map((node) => {
+    const identity = subagents.find((agent) => agent.sessionId === node.sessionId);
+    return identity?.description !== undefined
+      ? { ...node, description: identity.description || null }
+      : node;
+  });
+
   // No explicit selection yet: auto-focus the displayed Task's first child (null when none spawned).
   const firstChild = nodes.find((n) => n.depth > 0) ?? null;
   const active: Selection | null =
@@ -156,7 +163,11 @@ export function SubagentsView({
       return agent ? (agent.name?.length ? agent.name : agent.agentId) : session.agentId;
     }
     // Last-resort label is the short session id, not a generic word: two unknown children must stay distinguishable in the graph.
-    return resolveAgentLabel(node, agents, sessions) ?? shortSessionId(node.sessionId);
+    return (
+      subagents.find((agent) => agent.sessionId === node.sessionId)?.name ||
+      resolveAgentLabel(node, agents, sessions) ||
+      shortSessionId(node.sessionId)
+    );
   };
 
   const isRoot = active !== null && active.origin.length === 0;
@@ -297,6 +308,11 @@ export function SubagentsView({
               />
             </button>
           </div>
+          {activeNode?.description && (
+            <p className="shrink-0 whitespace-pre-wrap break-words border-b border-gray-100 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-400">
+              {activeNode.description}
+            </p>
+          )}
           <div className="min-h-0 flex-1">
             {/* Keyed by child: switching nodes resets scroll-follow instead of carrying the old position over. */}
             {childCtx && (

@@ -1570,6 +1570,7 @@ export function ChatPage() {
   // (paired reference) current pricing; null if no pricing is configured.
   const modelPricing = models?.models.find((m) => sameModelRef(m, activeModelRef))?.pricing;
   const ctx: StreamRenderContext = {
+    subagents: stream.subagents,
     pendingApprovals: stream.pendingApprovals,
     onApprove,
     onSendToBackground,

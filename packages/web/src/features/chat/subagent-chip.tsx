@@ -34,8 +34,10 @@ export function SubagentChip({
 }) {
   const { agents } = useProject();
   const { sessions } = useSessions();
+  const identity = ctx.subagents?.find((agent) => agent.sessionId === sessionId);
   const label =
-    resolveAgentLabel({ sessionId, agentId: model.meta?.agentId ?? agentId }, agents, sessions) ??
+    identity?.name ||
+    resolveAgentLabel({ sessionId, agentId: model.meta?.agentId ?? agentId }, agents, sessions) ||
     S.chat.subagent;
   const pending = hasPendingWithinOrigin(ctx.pendingApprovals.keys(), [...ctx.origin, sessionId]);
   const name = `${S.chat.subagent} ${label}${pending ? ` · ${S.chat.approvalWaiting}` : ""}`;
@@ -47,7 +49,7 @@ export function SubagentChip({
     <button
       type="button"
       aria-label={name}
-      title={name}
+      title={[name, sessionId, identity?.description].filter(Boolean).join(" | ")}
       onClick={() => ctx.onOpenSubagent?.(sessionId, ctx.origin)}
       className="flex w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-left transition-colors duration-150 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900/60 dark:hover:bg-gray-800/60"
     >
@@ -55,6 +57,11 @@ export function SubagentChip({
       <span className="min-w-0 truncate text-xs font-medium text-gray-700 dark:text-gray-300">
         {label}
       </span>
+      {identity?.description && (
+        <span className="min-w-0 flex-1 truncate text-xs text-gray-600 dark:text-gray-400">
+          {identity.description}
+        </span>
+      )}
       {sessionId && (
         <span className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
           {shortSessionId(sessionId)}

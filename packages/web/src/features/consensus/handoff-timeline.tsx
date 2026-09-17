@@ -95,7 +95,7 @@ export function HandoffTimeline() {
         {steps.map((step, idx) => (
           <div
             key={step.id}
-            className={`relative p-3 rounded-lg border transition-all flex flex-wrap items-start justify-between gap-4 ${
+            className={`relative p-3 rounded-lg border transition-all flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${
               step.status === "completed"
                 ? "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
                 : step.status === "in_progress"
@@ -103,7 +103,7 @@ export function HandoffTimeline() {
                   : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 opacity-60"
             }`}
           >
-            <div className="flex flex-wrap items-start gap-3 min-w-0 flex-1">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               <div
                 className={`w-6 h-6 rounded-full flex flex-wrap items-center justify-center font-semibold text-sm shrink-0 mt-0.5 ${
                   step.status === "completed"
@@ -116,7 +116,7 @@ export function HandoffTimeline() {
                 {step.status === "completed" ? "✓" : idx + 1}
               </div>
 
-              <div className="flex flex-col gap-1 min-w-0">
+              <div className="flex flex-col gap-1 min-w-0 flex-1 break-words">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold text-gray-900 dark:text-gray-100">
                     {step.fromAgent}
@@ -138,7 +138,7 @@ export function HandoffTimeline() {
               </div>
             </div>
 
-            <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="flex flex-row items-center gap-2 shrink-0 sm:flex-col sm:items-end">
               <span
                 className={`text-sm px-1.5 py-0.2 rounded  font-semibold ${
                   step.status === "completed"

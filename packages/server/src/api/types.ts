@@ -1757,6 +1757,9 @@ export interface PendingFollowUpInfo {
  * the truth.
  */
 export interface SubagentRuntimeInfo {
+  /** Decorative roster identity; IDs remain the routing authority. */
+  name?: string;
+  description?: string;
   sessionId: string;
   subagentId: string | null;
   running: boolean;
