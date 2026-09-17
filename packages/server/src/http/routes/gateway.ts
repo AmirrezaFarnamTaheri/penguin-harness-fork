@@ -221,7 +221,14 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
       ) {
         throw badRequest(`targets[${index}].timeoutMs must be a positive finite number.`);
       }
+      const tier = target.tier;
+      if (tier !== undefined && tier !== "local_slm" && tier !== "frontier") {
+        throw badRequest(
+          `targets[${index}].tier must be either "local_slm" or "frontier" when provided.`,
+        );
+      }
       return {
+        ...(tier === undefined ? {} : { tier }),
         provider: requireString(target, "provider", {
           minLen: 1,
           maxLen: 64,

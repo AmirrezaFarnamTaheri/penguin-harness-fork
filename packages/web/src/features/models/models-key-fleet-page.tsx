@@ -238,6 +238,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   const [reports, setReports] = useState<ModelKeyFleetReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
+  const [demoReports, setDemoReports] = useState(DEMO_FLEET_REPORTS);
+  const [error, setError] = useState<string | null>(null);
+  const [actionPending, setActionPending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "healthy" | "cooldown" | "evicted">("all");
   const [probingTarget, setProbingTarget] = useState<{
@@ -247,8 +250,8 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   } | null>(null);
 
   const activeReports = useMemo(() => {
-    return isDemo ? DEMO_FLEET_REPORTS : reports;
-  }, [isDemo, reports]);
+    return isDemo ? demoReports : reports;
+  }, [isDemo, demoReports, reports]);
 
   const fetchAbortRef = useRef<AbortController | null>(null);
 
@@ -258,19 +261,21 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     fetchAbortRef.current = abortCtrl;
 
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`, {
         signal: abortCtrl.signal,
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.reports)) {
-          setReports(data.reports);
-        }
-      }
+      if (!res.ok) throw new Error(`Could not load keys (HTTP ${res.status}).`);
+      const data = await res.json();
+      if (!Array.isArray(data.reports))
+        throw new Error("The server returned an invalid key report.");
+      if (!abortCtrl.signal.aborted) setReports(data.reports);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return;
-      // offline / standalone fallback
+      setError(
+        err instanceof Error ? err.message : "Could not load keys. Check the connection and retry.",
+      );
     } finally {
       if (!abortCtrl.signal.aborted) {
         setLoading(false);
@@ -306,12 +311,11 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     }
 
     if (isDemo) {
-      setReports((prev) => {
-        const source = prev.length > 0 ? prev : DEMO_FLEET_REPORTS;
+      setDemoReports((source) => {
         return source.map((rep) => {
           if (rep.modelRef !== modelRef) return rep;
           const updatedKeys = rep.keys.map((k) => {
-            if (k.maskedKey !== item.maskedKey) return k;
+            if (k.keyId !== item.keyId) return k;
             if (action === "revive") {
               return { ...k, status: "healthy" as const, isFailed: false, cooldownRemainingMs: 0 };
             }
@@ -341,6 +345,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       return;
     }
 
+    if (actionPending) return;
+    setActionPending(true);
+    setError(null);
     try {
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
@@ -361,16 +368,17 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           return;
         }
       }
-    } catch {
-      // ignore
+      throw new Error(`Key action failed (HTTP ${res.status}).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Key action failed. Refresh and try again.");
+    } finally {
+      setActionPending(false);
     }
-    void fetchLiveFleet();
   };
 
   const handleReviveAllCooldowns = async () => {
     if (isDemo) {
-      setReports((prev) => {
-        const source = prev.length > 0 ? prev : DEMO_FLEET_REPORTS;
+      setDemoReports((source) => {
         return source.map((rep) => {
           const updatedKeys = rep.keys.map((k) => {
             if (k.status === "cooldown") {
@@ -389,6 +397,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       return;
     }
 
+    if (actionPending) return;
+    setActionPending(true);
+    setError(null);
     try {
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
@@ -402,15 +413,16 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           return;
         }
       }
-    } catch {
-      // ignore
+      throw new Error(`Key action failed (HTTP ${res.status}).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Key action failed. Refresh and try again.");
+    } finally {
+      setActionPending(false);
     }
-    void fetchLiveFleet();
   };
 
   const handleChangeStrategy = (modelRef: string, newStrategy: RotationStrategy) => {
-    setReports((prev) => {
-      const source = prev.length > 0 ? prev : activeReports;
+    setDemoReports((source) => {
       return source.map((rep) =>
         rep.modelRef === modelRef ? { ...rep, rotationStrategy: newStrategy } : rep,
       );
@@ -418,33 +430,32 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   };
 
   return (
-    <div className={`flex flex-col gap-6 ${embedded ? "p-3" : "p-6"}`}>
+    <div
+      className={`min-w-0 flex flex-col gap-6 text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
+    >
       {/* Top Banner & Title */}
-      {!embedded && (
+      {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <KeyIcon size={22} />
-            </div>
+          <div className="flex flex-wrap items-center gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
-                  Model Key Fleet & Resilient Failover Console
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  Model keys
                 </h1>
                 {isDemo ? (
-                  <Badge tone="amber">DEMO SIMULATION</Badge>
+                  <Badge tone="amber">Local demo</Badge>
                 ) : (
-                  <Badge tone="green">LIVE TELEMETRY</Badge>
+                  <Badge tone="green">Project keys</Badge>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Real-time multi-key health telemetry, rate-limit cooldown timers, and active lease
-                routing
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Inspect key health and manage cooldowns. Refresh to retrieve the latest project
+                data.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -463,78 +474,63 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
               variant="secondary"
               size="sm"
               onClick={() => void fetchLiveFleet()}
-              disabled={loading}
+              disabled={loading || actionPending || isDemo}
             >
               <RefreshIcon size={13} />
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
             {stats.cooldownCount > 0 && (
-              <Button variant="secondary" size="sm" onClick={() => void handleReviveAllCooldowns()}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void handleReviveAllCooldowns()}
+                disabled={actionPending || (!isDemo && (loading || !!error))}
+              >
                 Revive All Cooldowns ({stats.cooldownCount})
               </Button>
             )}
           </div>
         </div>
+      }
+
+      {isDemo && (
+        <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
+          Sample keys only. Actions and probes in this mode do not contact a provider.
+        </p>
       )}
-
-      {/* Fleet Telemetry Metrics Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Total Fleet Keys</span>
-          <span className="font-mono text-2xl font-bold text-foreground">{stats.totalKeys}</span>
-          <span className="text-[11px] text-muted-foreground">
-            Across {activeReports.length} model pools
-          </span>
+      {error && !isDemo && (
+        <div role="alert" className="text-sm text-red-700 dark:text-red-400">
+          <p>{error} Previously loaded data may be out of date.</p>
+          <Button variant="secondary" onClick={() => void fetchLiveFleet()}>
+            Retry loading keys
+          </Button>
         </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Fleet Health</span>
-          <div className="flex items-baseline gap-1">
-            <span className="font-mono text-2xl font-bold text-emerald-500">
-              {stats.healthPercentage !== null ? `${stats.healthPercentage}%` : "—"}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {stats.healthPercentage !== null ? "available" : "no keys"}
-            </span>
+      )}
+      <dl className="flex flex-wrap gap-x-8 gap-y-3 border-b border-gray-200 pb-4 text-sm dark:border-gray-800">
+        {[
+          ["Keys", stats.totalKeys],
+          ["Available", stats.healthPercentage === null ? "—" : `${stats.healthPercentage}%`],
+          ["Active requests", stats.activeLeases],
+          ["In cooldown", stats.cooldownCount],
+          ["Evicted", stats.evictedCount],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-gray-600 dark:text-gray-400">{label}</dt>
+            <dd className="font-medium tabular-nums">{value}</dd>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full bg-emerald-500 transition-all duration-300"
-              style={{ width: `${stats.healthPercentage ?? 0}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Active Leases</span>
-          <span className="font-mono text-2xl font-bold text-primary">{stats.activeLeases}</span>
-          <span className="text-[11px] text-muted-foreground">Concurrent model requests</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">In Cooldown (429)</span>
-          <span className="font-mono text-2xl font-bold text-amber-500">{stats.cooldownCount}</span>
-          <span className="text-[11px] text-muted-foreground">Recovering automatically</span>
-        </div>
-
-        <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-4">
-          <span className="text-xs text-muted-foreground">Evicted (401)</span>
-          <span className="font-mono text-2xl font-bold text-red-500">{stats.evictedCount}</span>
-          <span className="text-[11px] text-muted-foreground">
-            Requires key credential rotation
-          </span>
-        </div>
-      </div>
+        ))}
+      </dl>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 py-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Search */}
         <div className="relative w-full max-w-sm">
           <SearchIcon
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-400"
           />
           <Input
+            aria-label="Filter model keys"
             size="sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -544,15 +540,16 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(["all", "healthy", "cooldown", "evicted"] as const).map((mode) => (
             <button
               key={mode}
+              aria-pressed={filterMode === mode}
               onClick={() => setFilterMode(mode)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
                 filterMode === mode
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  ? "bg-blue-700 text-white"
+                  : "bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-muted/80 hover:text-foreground"
               }`}
             >
               {mode}
@@ -564,36 +561,34 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       {/* Main Content Area */}
       <div className="flex flex-col gap-6">
         {loading && !isDemo && reports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card/40 p-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-12 text-center">
             <RefreshIcon size={24} />
-            <span className="mt-3 text-sm font-semibold text-foreground">
+            <span className="mt-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
               Loading key fleet telemetry...
             </span>
           </div>
-        ) : !isDemo && reports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
-              <KeyIcon size={24} />
-            </div>
-            <h3 className="text-base font-semibold text-foreground">No API key pools configured</h3>
-            <p className="mt-1 max-w-md text-xs text-muted-foreground">
-              No active model credentials were found for this project in .project_config.toml.
-              Configure API keys in Project Settings to enable live rotation, health tracking, and
-              sparkline latency telemetry.
+        ) : !isDemo && error && reports.length === 0 ? null : !isDemo && reports.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-12 text-center">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              No API key pools configured
+            </h3>
+            <p className="mt-1 max-w-md text-sm text-gray-600 dark:text-gray-400">
+              No key reports were returned for this project. Configure a model key in Project
+              Settings, then refresh.
             </p>
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button variant="secondary" size="sm" onClick={() => setIsDemo(true)}>
-                Preview with Demo Simulation
+                Try sample keys
               </Button>
             </div>
           </div>
         ) : filteredReports.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 p-12 text-center">
+          <div className="flex flex-col items-center justify-center rounded-md border border-dashed border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-12 text-center">
             <KeyIcon size={36} />
-            <span className="mt-3 text-sm font-semibold text-foreground">
+            <span className="mt-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
               No keys match your filter criteria
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-gray-600 dark:text-gray-400">
               Try adjusting your search query or status filter above
             </span>
           </div>
@@ -601,38 +596,41 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           filteredReports.map((report) => (
             <div
               key={report.modelRef}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 shadow-sm"
+              className="flex flex-col gap-4 border-b border-gray-200 dark:border-gray-800 py-4 "
             >
               {/* Group Header */}
-              <div className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-md bg-muted font-mono text-xs font-bold uppercase text-foreground">
+              <div className="flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-900 text-sm font-semibold  text-gray-900 dark:text-gray-100">
                     {report.provider.slice(0, 2)}
                   </span>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-foreground">{report.modelId}</h2>
-                      <span className="font-mono text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {report.modelId}
+                      </h2>
+                      <span className=" text-sm text-gray-600 dark:text-gray-400">
                         ({report.provider})
                       </span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
                       {report.totalKeys} keys in pool • {report.activeLeases} active requests
                     </span>
                   </div>
                 </div>
 
                 {/* Strategy Switcher & Status Badges */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
                     <span>Rotation:</span>
                     {isDemo ? (
                       <select
+                        aria-label={`Demo rotation for ${report.modelId}`}
                         value={report.rotationStrategy}
                         onChange={(e) =>
                           handleChangeStrategy(report.modelRef, e.target.value as RotationStrategy)
                         }
-                        className="rounded-md border border-border bg-muted/60 px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        className="rounded-md border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-900 px-2 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
                       >
                         <option value="round-robin">Round Robin</option>
                         <option value="least-leases">Least Leases</option>
@@ -657,11 +655,12 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
               </div>
 
               {/* Cards Grid */}
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
                 {report.keys.map((keyItem) => (
                   <KeyHealthCard
-                    key={keyItem.maskedKey}
+                    key={keyItem.keyId}
                     keyItem={keyItem}
+                    disabled={actionPending || (!isDemo && (loading || !!error))}
                     provider={report.provider}
                     modelId={report.modelId}
                     onAction={(action, item) =>
@@ -691,7 +690,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           projectId={projectId}
           onClose={() => {
             setProbingTarget(null);
-            void fetchLiveFleet();
+            if (!isDemo) void fetchLiveFleet();
           }}
         />
       )}

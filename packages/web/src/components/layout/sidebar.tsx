@@ -1,9 +1,9 @@
 /**
  * Single-column sidebar, top to bottom:
- * Project switcher -> new chat (default_agent draft) + page nav (Agents → Evaluation Center,
- * one collapsible group behind a nav-row-wide chevron button under its last entry: arrow
- * up = click to collapse, arrow down while collapsed = the way back; state persists in
- * localStorage, the pinned new-chat block never collapses) -> Session area with three grouping
+ * Project switcher -> prominent new chat (default_agent draft) + three everyday links
+ * and purpose-based tool groups (collapsed by default, with the current destination
+ * always visible). Company mode retains its own collapsible page navigation.
+ * The pinned new-chat block never collapses -> Session area with three grouping
  * modes (chosen in the section header's list options; the
  * choice and each Project's group collapse and pin state persist in localStorage): by Workspace
  * (the default; groups loaded Sessions by their
@@ -81,6 +81,7 @@ import type { FolderCategory, SessionPartition } from "../../lib/session-groupin
 import {
   initialNavGroupCollapsed,
   navKeysFor,
+  navPathFor,
   storeNavGroupCollapsed,
 } from "../../lib/nav-group-collapse";
 import {
@@ -176,6 +177,7 @@ import {
 import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { CreateProjectDialog, ProjectSettingsDialog } from "./project-dialogs";
 import { UserMenu } from "./user-menu";
+import { ProductNavigation } from "./product-navigation";
 import { navNoteFor, useUpdateBadges } from "../../lib/use-update-badges";
 import { pendingScheduleSessions } from "../../features/schedules/schedule-panel-state";
 import { useAgentSchedules } from "../../features/schedules/schedule-store";
@@ -443,7 +445,7 @@ export function Sidebar({
   const scheduledSessions = pendingScheduled ?? lastScheduledRef.current;
   const collapseStoreKey = currentProjectId === null ? null : collapsedGroupsKey(currentProjectId);
   const pinStoreKey = currentProjectId === null ? null : pinnedGroupsKey(currentProjectId);
-  /** Collapsed page-nav group (the Agents → Benchmark entries; expanded by default, the choice persists across sessions). */
+  /** Company page-nav collapse preference; development tools have independent disclosure state. */
   const [navCollapsed, setNavCollapsed] = useState(initialNavGroupCollapsed);
   /** Grouping mode of the Session list (Workspace by default; the choice persists across sessions). */
   const [groupMode, setGroupModeState] = useState<GroupMode>(initialGroupMode);
@@ -1576,8 +1578,7 @@ export function Sidebar({
         );
 
   /**
-   * Page entries of the collapsible nav group. Development mode: Agents → Benchmark, driven by
-   * the NAV_GROUP_KEYS manifest minus the entries this user's role cannot reach. Company
+   * Page entries, driven by the manifest minus entries this user's role cannot reach. Company
    * mode: the organization's six pages (COMPANY_NAV_KEYS) — channels are not among them,
    * they are the list below. Always mounted — the collapse animates their height to zero and
    * turns them inert.
@@ -1601,14 +1602,7 @@ export function Sidebar({
         note: null,
       }))
     : navKeysFor(user?.isAdmin === true).map((key) => {
-        const path =
-          key === "contextBreakdown"
-            ? "/context-breakdown"
-            : key === "keyFleet"
-              ? "/models/keys"
-              : key === "flamegraph"
-                ? "/traces/flamegraph"
-                : `/${key}`;
+        const path = navPathFor(key);
         return {
           key,
           to: path,
@@ -1716,10 +1710,7 @@ export function Sidebar({
         )}
       </div>
 
-      {/* New chat: the only pinned entry besides the Project switcher above and the user row
-          below. No background fill, the same gray hover/active styling as the nav items,
-          distinguished only by its position and font-medium; shows the same gray active state
-          while on the draft page.
+      {/* New chat: a prominent, theme-accent primary action pinned below the Project switcher.
           The gap to the scroll area below is this block's OWN pb-2, not padding inside the
           scroller: padding-top there belongs to the scrollable content and slides away with
           it, so a scrolled nav entry ended up flush against this pinned button, the two
@@ -1732,20 +1723,14 @@ export function Sidebar({
         <div className="shrink-0 pb-2" />
       ) : (
         <div className="shrink-0 px-2 pb-2 pt-2">
-          <button
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => newChat(defaultAgentId)}
-            className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors duration-150 ${
-              activeSessionId === DRAFT_SESSION_ID
-                ? "bg-gray-200/70 text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-                : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200"
-            }`}
+            className="min-h-10 w-full justify-start gap-2 px-2.5 max-md:min-h-11"
           >
-            <span className="text-gray-500 dark:text-gray-400">
-              <Icon d={NEW_CHAT_ICON} />
-            </span>
+            <Icon d={NEW_CHAT_ICON} />
             {S.chat.newSessionMenu}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -1760,8 +1745,11 @@ export function Sidebar({
           overflow-y-auto and stretch the **document**, so expanding "More" / a source
           folder made the whole page scroll (composer pushed up, blank space below). */}
       <div className="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <nav className="space-y-0.5">
-          {/* Expand/collapse SLIDE: grid-template-rows tweens between 0fr and 1fr with the
+        {!inCompany ? (
+          <ProductNavigation items={navItems} {...(onNavigate ? { onNavigate } : {})} />
+        ) : (
+          <nav aria-label={S.nav.navigation} className="space-y-0.5">
+            {/* Expand/collapse SLIDE: grid-template-rows tweens between 0fr and 1fr with the
               inner overflow-hidden clipping the rows (the skills/models-page convention) —
               the moving clip edge reveals/hides the entries while the toggle button and the
               Session list below glide up/down with it; a subtle opacity fade rides along,
@@ -1771,79 +1759,79 @@ export function Sidebar({
               restoring a persisted collapsed state renders collapsed instantly — only user
               toggles animate; reduced motion is covered by the global
               prefers-reduced-motion override in styles.css. */}
-          <div
-            className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-              navCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
-            }`}
-          >
-            <div className="overflow-hidden" inert={navCollapsed}>
-              <div
-                className={`space-y-0.5 transition-opacity duration-200 ${
-                  navCollapsed ? "opacity-0" : "opacity-100"
-                }`}
-              >
-                {navItems.map((item) => {
-                  /* Four nav entries sit on a badge trail — Agents (an outdated kernel, fixed on
+            <div
+              className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+                navCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
+              }`}
+            >
+              <div className="overflow-hidden" inert={navCollapsed}>
+                <div
+                  className={`space-y-0.5 transition-opacity duration-200 ${
+                    navCollapsed ? "opacity-0" : "opacity-100"
+                  }`}
+                >
+                  {navItems.map((item) => {
+                    /* Four nav entries sit on a badge trail — Agents (an outdated kernel, fixed on
                      the Agent settings page two clicks down), Skills, Models and the Cost Center
                      (each cleared on the page itself). The dot is anchored to the row, not to the
                      label text (where it would float over whatever follows the word): at the
                      row's right edge, on the same inset as its horizontal padding, and vertically
                      centred on the row rather than on the line of text. */
-                  const note = item.note;
-                  if (item.to === null) {
-                    /* Nowhere to go: the row keeps its place and its glyph, muted, with no
+                    const note = item.note;
+                    if (item.to === null) {
+                      /* Nowhere to go: the row keeps its place and its glyph, muted, with no
                        hover fill and nothing to click or tab to. */
+                      return (
+                        <span
+                          key={item.key}
+                          role="link"
+                          aria-disabled="true"
+                          className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-400 dark:text-gray-600"
+                        >
+                          <span className="text-gray-300 dark:text-gray-700">
+                            <Icon d={item.icon} />
+                          </span>
+                          {item.label}
+                        </span>
+                      );
+                    }
                     return (
-                      <span
+                      <NavLink
                         key={item.key}
-                        role="link"
-                        aria-disabled="true"
-                        className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-400 dark:text-gray-600"
+                        to={item.to}
+                        onClick={() => onNavigate?.()}
+                        {...(note !== null
+                          ? {
+                              // The row's own label is visible, so the tooltip only adds what
+                              // the dot means; the accessible name keeps that label as its
+                              // prefix. (The collapsed rail's icon-only twin has no visible
+                              // label, so its tooltip carries both.)
+                              title: note,
+                              "aria-label": `${item.label} · ${note}`,
+                            }
+                          : {})}
+                        className={({ isActive }) =>
+                          `relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-150 ${
+                            isActive
+                              ? "bg-gray-200/70 font-medium text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+                              : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200"
+                          }`
+                        }
                       >
-                        <span className="text-gray-300 dark:text-gray-700">
+                        <span className="text-gray-500 dark:text-gray-400">
                           <Icon d={item.icon} />
                         </span>
                         {item.label}
-                      </span>
+                        {note !== null && (
+                          <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
+                        )}
+                      </NavLink>
                     );
-                  }
-                  return (
-                    <NavLink
-                      key={item.key}
-                      to={item.to}
-                      onClick={() => onNavigate?.()}
-                      {...(note !== null
-                        ? {
-                            // The row's own label is visible, so the tooltip only adds what
-                            // the dot means; the accessible name keeps that label as its
-                            // prefix. (The collapsed rail's icon-only twin has no visible
-                            // label, so its tooltip carries both.)
-                            title: note,
-                            "aria-label": `${item.label} · ${note}`,
-                          }
-                        : {})}
-                      className={({ isActive }) =>
-                        `relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-150 ${
-                          isActive
-                            ? "bg-gray-200/70 font-medium text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-                            : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200"
-                        }`
-                      }
-                    >
-                      <span className="text-gray-500 dark:text-gray-400">
-                        <Icon d={item.icon} />
-                      </span>
-                      {item.label}
-                      {note !== null && (
-                        <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
-                      )}
-                    </NavLink>
-                  );
-                })}
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-          {/* Collapse toggle of the page-nav group (Agents → Benchmark): a slim (h-4)
+            {/* Collapse toggle of the page-nav group (Agents → Benchmark): a slim (h-4)
               nav-row-wide button directly under the group's last entry — a centered chevron
               pointing UP while expanded (click to collapse) and DOWN while collapsed (the
               button stays as the only way back, right under the new-chat boundary once the
@@ -1853,20 +1841,21 @@ export function Sidebar({
               was rejected as a line under the button); hover deepens it a step further so
               it stays clearly interactive. Icon-only, so tooltip + aria carry the name
               (GroupHeader's collapse/expand wording). */}
-          <button
-            type="button"
-            onClick={toggleNavGroup}
-            aria-expanded={!navCollapsed}
-            aria-label={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-            title={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-            className="flex h-4 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-          >
-            <ChevronDown
-              size={12}
-              className={`transition-transform duration-200 ${navCollapsed ? "" : "rotate-180"}`}
-            />
-          </button>
-        </nav>
+            <button
+              type="button"
+              onClick={toggleNavGroup}
+              aria-expanded={!navCollapsed}
+              aria-label={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
+              title={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
+              className="flex h-4 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+            >
+              <ChevronDown
+                size={12}
+                className={`transition-transform duration-200 ${navCollapsed ? "" : "rotate-180"}`}
+              />
+            </button>
+          </nav>
+        )}
 
         {inCompany ? (
           navOrg !== null ? (

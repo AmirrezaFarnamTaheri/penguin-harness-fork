@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Button } from "../../components/ui/button";
+import { mutedClass, sectionClass, useInspectionCopy } from "./inspection-ui";
 
 export interface CompactionAnchorItem {
   id: string;
@@ -11,124 +11,60 @@ export interface CompactionAnchorItem {
   durationMs: number;
   timestamp: string;
 }
-
 export interface CompactionAnchorsCardProps {
   onManualCompact?: () => void;
   compacting?: boolean;
+  anchors?: CompactionAnchorItem[];
 }
 
 export function CompactionAnchorsCard({
   onManualCompact,
   compacting = false,
+  anchors,
 }: CompactionAnchorsCardProps) {
-  const [anchors] = useState<CompactionAnchorItem[]>([
-    {
-      id: "anc-8f4b21",
-      trigger: "auto",
-      phase: "in-loop",
-      preTokens: 142000,
-      postTokens: 38400,
-      foldedTurns: 8,
-      durationMs: 420,
-      timestamp: "12m ago",
-    },
-    {
-      id: "anc-3a19e4",
-      trigger: "manual",
-      phase: "agent-session",
-      preTokens: 89000,
-      postTokens: 26100,
-      foldedTurns: 5,
-      durationMs: 310,
-      timestamp: "45m ago",
-    },
-    {
-      id: "anc-1c77d0",
-      trigger: "auto",
-      phase: "turn-start",
-      preTokens: 165000,
-      postTokens: 41200,
-      foldedTurns: 12,
-      durationMs: 580,
-      timestamp: "2h ago",
-    },
-  ]);
-
+  const copy = useInspectionCopy();
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-xl border border-gray-800 bg-gray-950 font-mono text-xs select-none">
-      <div className="flex items-center justify-between pb-2 border-b border-gray-800">
+    <section className={sectionClass}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h4 className="font-bold text-sm text-gray-200">Context Compaction History & Anchors</h4>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            Historical context folding points preserving conversation state while purging transient
-            tool outputs.
+          <h2 className="text-base font-semibold">{copy("Compaction", "上下文压缩")}</h2>
+          <p className={`mt-1 ${mutedClass}`}>
+            {copy(
+              "Fold older conversation content to reduce the next request's context.",
+              "折叠较早的对话内容，减少下次请求的上下文。",
+            )}
           </p>
         </div>
-
         {onManualCompact && (
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={onManualCompact}
-            disabled={compacting}
-            className="text-[11px]"
-          >
-            {compacting ? "Compacting..." : "Compact Context Now"}
+          <Button disabled={compacting} onClick={onManualCompact}>
+            {compacting ? copy("Requesting…", "请求中…") : copy("Request compaction", "请求压缩")}
           </Button>
         )}
       </div>
-
-      {/* Anchors Timeline Table */}
-      <div className="flex flex-col gap-2">
-        {anchors.map((a) => {
-          const tokensSaved = a.preTokens - a.postTokens;
-          const savedPct = Math.round((tokensSaved / a.preTokens) * 100);
-
-          return (
-            <div
-              key={a.id}
-              className="p-3 rounded-lg border border-gray-800 bg-gray-900/50 flex flex-wrap items-center justify-between gap-3"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 rounded-full bg-cyan-400" />
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-gray-200">{a.id}</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-800 text-cyan-300 font-semibold uppercase">
-                      {a.trigger}
-                    </span>
-                    <span className="text-[10px] text-gray-500">[{a.phase}]</span>
-                  </div>
-                  <span className="text-[10px] text-gray-500 mt-0.5">{a.timestamp}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 text-right">
-                <div className="flex flex-col">
-                  <span className="text-gray-400 text-[10px]">Tokens Before → After</span>
-                  <span className="text-gray-200 font-semibold tabular-nums">
-                    {a.preTokens.toLocaleString()} → {a.postTokens.toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="flex flex-col">
-                  <span className="text-gray-400 text-[10px]">Purged Volume</span>
-                  <span className="text-emerald-400 font-bold tabular-nums">
-                    -{tokensSaved.toLocaleString()} tok ({savedPct}%)
-                  </span>
-                </div>
-
-                <div className="flex flex-col">
-                  <span className="text-gray-400 text-[10px]">Folded Turns</span>
-                  <span className="text-gray-300 font-semibold tabular-nums">
-                    {a.foldedTurns} turns ({a.durationMs}ms)
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      {!anchors ? (
+        <p className={mutedClass}>
+          {copy(
+            "Compaction history is not supplied by this context endpoint. No history is inferred from the current snapshot.",
+            "此上下文接口未提供压缩历史，当前快照不能用于推断历史记录。",
+          )}
+        </p>
+      ) : !anchors.length ? (
+        <p className={mutedClass}>{copy("No compaction events recorded.", "暂无压缩记录。")}</p>
+      ) : (
+        <ul className="divide-y divide-gray-200 dark:divide-gray-800">
+          {anchors.map((anchor) => (
+            <li key={anchor.id} className="flex flex-wrap justify-between gap-3 py-3">
+              <span>
+                {anchor.timestamp} · {anchor.trigger} · {anchor.phase}
+              </span>
+              <span>
+                {anchor.preTokens.toLocaleString()} → {anchor.postTokens.toLocaleString()} tokens ·{" "}
+                {anchor.foldedTurns} turns · {anchor.durationMs} ms
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

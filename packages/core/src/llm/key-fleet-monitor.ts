@@ -274,6 +274,7 @@ export class KeyFleetMonitor {
     let details: string | undefined;
 
     if (probeFn && rawKey) {
+      const startedAt = performance.now();
       try {
         const res = await probeFn(provider, rawKey);
         latencyMs = res.latencyMs;
@@ -286,7 +287,7 @@ export class KeyFleetMonitor {
         }
       } catch (err) {
         status = "error";
-        latencyMs = 999;
+        latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
         details = err instanceof Error ? err.message : String(err);
         found?.rotator.recordFailure(rawKey, "other");
       }

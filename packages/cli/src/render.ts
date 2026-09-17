@@ -60,6 +60,7 @@ import type {
   PartialToolCallPayload,
   RequestEndPayload,
   TextPayload,
+  TextSender,
   TokenUsagePayload,
   ToolApprovalTarget,
   ToolCallPayload,
@@ -241,6 +242,7 @@ export function renderHistory(
     const p = msg.payload as {
       type?: string;
       role?: string;
+      sender?: TextSender;
       text?: string;
       thinking?: string;
       name?: string;
@@ -258,8 +260,8 @@ export function renderHistory(
           // Mid-run steering ([user_steering]-wrapped user text delivered between turns):
           // rendered as distinct user-speech lines instead of a raw marker block or a prompt.
           const steering = parseUserSteeringText(p.text ?? "");
-          if (steering !== null) {
-            writeSteeringLines(out, steering, t, c);
+          if (steering !== null || (p.sender !== undefined && p.sender !== "user")) {
+            writeSteeringLines(out, steering ?? p.text ?? "", t, c, p.sender);
           } else {
             out.write(`\n> ${p.text ?? ""}\n`);
           }
@@ -330,9 +332,10 @@ function writeSteeringLines(
   text: string,
   t: Messages,
   c: Palette,
+  sender?: TextSender,
 ): void {
   for (const line of text.split("\n")) {
-    out.write(`${c.magenta}${t.steerLinePrefix()}${line}${c.reset}\n`);
+    out.write(`${c.magenta}${t.steerLinePrefix(sender)}${line}${c.reset}\n`);
   }
 }
 
@@ -762,9 +765,9 @@ export class StreamRenderer {
           const p = payload as TextPayload;
           if (p.role === "user") {
             const steering = parseUserSteeringText(p.text);
-            if (steering !== null) {
+            if (steering !== null || (p.sender !== undefined && p.sender !== "user")) {
               this.finishLine();
-              writeSteeringLines(this.out, steering, this.t, this.c);
+              writeSteeringLines(this.out, steering ?? p.text, this.t, this.c, p.sender);
               this.lastLineKey = null;
             }
           }

@@ -8,6 +8,7 @@ describe("key-fleet-monitor", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("masks API keys safely preserving prefix and suffix", () => {
@@ -69,6 +70,24 @@ describe("key-fleet-monitor", () => {
     expect(probeRes.status).toBe("skipped");
     expect(probeRes.latencyMs).toBe(0);
     expect(probeRes.sparkline).toEqual([]);
+  });
+
+  it("does not fabricate a 999ms latency when a probe throws", async () => {
+    vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(137);
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "local",
+        modelId: "test",
+        keys: ["test-only-key"],
+        probeFn: async () => {
+          throw new Error("offline");
+        },
+      },
+    ]);
+    const result = await monitor.probeKey("local", "local-key-1");
+    expect(result.status).toBe("error");
+    expect(result.latencyMs).toBe(37);
+    expect(result.sparkline).toEqual([37]);
   });
 
   it("handles custom probe function with success and failure simulation", async () => {

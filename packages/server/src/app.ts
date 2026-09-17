@@ -157,17 +157,22 @@ import { ModelKeyHealthService } from "./services/model-key-health.js";
 import { modelOAuthCallbackRoutes, modelOAuthRoutes } from "./http/routes/model-oauth.js";
 import { chatDefaultsRoutes } from "./http/routes/chat-defaults.js";
 import { commandPolicyRoutes } from "./http/routes/command-policy.js";
+import { auditRoutes } from "./http/routes/audit.js";
 import { vaultRoutes } from "./http/routes/vault.js";
 import { memoryRoutes } from "./http/routes/memory.js";
 import { scheduleRoutes } from "./http/routes/schedules.js";
+import { scheduleKanbanRoutes } from "./http/routes/schedule-kanban.js";
 import { organizationRoutes } from "./http/routes/organizations.js";
 import { benchmarksRoutes } from "./http/routes/benchmarks.js";
 import { agentSkillsRoutes } from "./http/routes/skills.js";
 import { agentHooksRoutes } from "./http/routes/hooks.js";
 import { agentPluginsRoutes, pluginLibraryRoutes } from "./http/routes/plugins.js";
 import { agentTransferRoutes } from "./http/routes/agent-transfer.js";
+import { agentSnapshotRoutes } from "./http/routes/agent-snapshots.js";
 import { agentsRoutes } from "./http/routes/agents.js";
 import { dirsRoutes } from "./http/routes/dirs.js";
+import { worktreesRoutes } from "./http/routes/worktrees.js";
+import { quorumRoutes } from "./api/quorum.js";
 import { directorySkillsRoutes } from "./http/routes/directory-skills.js";
 import { agentConfigRoutes } from "./http/routes/agent-config.js";
 import { agentTracesRoutes } from "./http/routes/agent-traces.js";
@@ -176,6 +181,7 @@ import { agentSessionsRoutes, sessionsRoutes } from "./http/routes/sessions.js";
 import { sessionMessagingRoutes } from "./http/routes/messaging.js";
 import { versionRoutes } from "./http/routes/version.js";
 import { machinesRoutes } from "./http/routes/machines.js";
+import { AuditRecorder } from "./sandbox/audit.js";
 import { UsageRecorder } from "./runtime/usage-recorder.js";
 import { previewRoutes } from "./http/routes/preview.js";
 import { MachinesService } from "./machines/service.js";
@@ -988,7 +994,10 @@ export function buildAppDeps(
     overrides.updateCheck ?? new UpdateCheckService(overrides.now ? { now: overrides.now } : {});
   const updateJob = overrides.updateJob ?? new UpdateJobService();
 
-  const recorder = new UsageRecorder(usageRepo, overrides.now ?? (() => new Date()));
+  const recorder = new AuditRecorder(
+    config.root,
+    new UsageRecorder(usageRepo, overrides.now ?? (() => new Date())),
+  );
   const errors = new ErrorRecorder(errorsRepo, overrides.now ?? (() => new Date()));
   // Shared by SessionManager (run-state flips) and TitleGenerator (title updates): both are
   // list-row facts that must reach tabs not subscribed to the Session's own channel.
@@ -1376,19 +1385,24 @@ export function createApp(
   app.route("/api/projects/:projectId/model-oauth", modelOAuthRoutes(deps));
   app.route("/api/projects/:projectId/chat-defaults", chatDefaultsRoutes(deps));
   app.route("/api/projects/:projectId/command-policy", commandPolicyRoutes(deps));
+  app.route("/api/projects/:projectId/audit", auditRoutes(deps));
   app.route("/api/projects/:projectId/agents", agentsRoutes(deps));
   app.route("/api/projects/:projectId/organizations", organizationRoutes(deps));
   app.route("/api/projects/:projectId/dirs", dirsRoutes(deps));
+  app.route("/api/projects/:projectId/worktrees", worktreesRoutes(deps));
+  app.route("/api/projects/:projectId/quorum", quorumRoutes(deps));
   app.route("/api/projects/:projectId/dir-skills", directorySkillsRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/config", agentConfigRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/vault", vaultRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/memory", memoryRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/schedules", scheduleRoutes(deps));
+  app.route("/api/projects/:projectId/agents/:agentId/schedule-kanban", scheduleKanbanRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/benchmarks", benchmarksRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/skills", agentSkillsRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/plugins", agentPluginsRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/hooks", agentHooksRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId", agentTransferRoutes(deps));
+  app.route("/api/projects/:projectId/agents/:agentId", agentSnapshotRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/traces", agentTracesRoutes(deps));
   app.route("/api/projects/:projectId/agents/:agentId/sessions", agentSessionsRoutes(deps));
   app.route("/api/projects/:projectId/usage", usageRoutes(deps));

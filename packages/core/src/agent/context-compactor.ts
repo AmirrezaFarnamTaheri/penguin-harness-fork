@@ -26,6 +26,10 @@ export interface ConversationMessage {
   toolCallId?: string;
 }
 
+/** A line that opens a top-level code declaration worth keeping verbatim in a summary. */
+const DECLARATION_START =
+  /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:function\*?|class|interface|type|enum|const|let|var)\s+[A-Za-z_$][\w$]*/;
+
 export interface ContextCompactorOptions {
   /** Token budget threshold to trigger auto-compaction (default: 80,000 tokens). */
   tokenThreshold?: number;
@@ -33,17 +37,25 @@ export interface ContextCompactorOptions {
   keepRecentTurns?: number;
   /** Keep system instructions intact at index 0 (default: true). */
   preserveSystemPrompt?: boolean;
+  /**
+   * Extract code declarations and test failures into the summary verbatim, regardless of
+   * where they sit in a folded message, instead of relying on the 120-character flattening
+   * preview (default: false).
+   */
+  astAware?: boolean;
 }
 
 export class ContextCompactor {
   public readonly tokenThreshold: number;
   public readonly keepRecentTurns: number;
   public readonly preserveSystemPrompt: boolean;
+  public readonly astAware: boolean;
 
   constructor(options: ContextCompactorOptions = {}) {
     this.tokenThreshold = options.tokenThreshold ?? 80000;
     this.keepRecentTurns = options.keepRecentTurns ?? 4;
     this.preserveSystemPrompt = options.preserveSystemPrompt ?? true;
+    this.astAware = options.astAware ?? false;
   }
 
   public shouldCompact(currentEstimatedTokens: number): boolean {
@@ -145,7 +157,9 @@ export class ContextCompactor {
 
     const rawSummary = customSummarizer
       ? await customSummarizer(messagesToFold)
-      : this.defaultSummary(messagesToFold);
+      : this.astAware
+        ? this.astAwareSummary(messagesToFold)
+        : this.defaultSummary(messagesToFold);
     const summaryText = this.boundSummary(rawSummary, messagesToFold);
 
     const summaryMessage: ConversationMessage = {
@@ -208,5 +222,79 @@ export class ContextCompactor {
       if (preview.length > 0) lines.push(`- [${msg.role}]: ${preview}`);
     }
     return lines.join("\n");
+  }
+
+  /**
+   * The `astAware` summarizer: function/class/const declarations and test-runner failure
+   * lines are carried into the summary verbatim from anywhere in a folded message — the
+   * 120-character flattening preview cannot reach a signature buried behind tool chatter.
+   *
+   * Self-contained structural extraction (declaration keywords + brace balancing) rather than
+   * the full TypeScript compiler: core's dist must not bundle a multi-megabyte parser for what
+   * is a summary quality feature, and a caller needing deeper analysis already owns the
+   * `customSummarizer` seam. Falls back to the default summary when nothing salient is found.
+   */
+  private astAwareSummary(messages: ConversationMessage[]): string {
+    const lines: string[] = [];
+    for (const msg of messages) {
+      if (msg.role === "system") continue;
+      for (const line of this.extractSalientLines(msg.content)) {
+        lines.push(`- [${msg.role}]: ${line}`);
+      }
+    }
+    return lines.length > 0 ? lines.join("\n") : this.defaultSummary(messages);
+  }
+
+  /** Verbatim salient lines of one message: test failures and code declarations, in source order. */
+  private extractSalientLines(content: string): string[] {
+    const salient: string[] = [];
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = (lines[i] ?? "").trim();
+      if (this.isTestFailureLine(trimmed)) {
+        salient.push(trimmed);
+        continue;
+      }
+      if (!DECLARATION_START.test(trimmed)) continue;
+      // A declaration may span lines only until its first brace balance — capture the whole
+      // single-line form, and for multi-line ones keep reading until braces balance.
+      let candidate = trimmed;
+      let depth = this.braceDelta(candidate);
+      while (depth !== 0 && i + 1 < lines.length) {
+        i++;
+        candidate += `\n${(lines[i] ?? "").trim()}`;
+        depth += this.braceDelta(lines[i] ?? "");
+      }
+      if (depth === 0) salient.push(candidate);
+    }
+    return salient;
+  }
+
+  /** Whether a line opens a declaration the summary must keep (signature or type shape). */
+  private isTestFailureLine(trimmed: string): boolean {
+    if (trimmed.length === 0 || trimmed.length > 300) return false;
+    return (
+      /^(?:Tests? failed\b|FAIL\b|AssertionError)/.test(trimmed) ||
+      /AssertionError:/.test(trimmed) ||
+      /\bexpected .+ to (?:be|equal) /.test(trimmed)
+    );
+  }
+
+  /** Net brace change of one line, ignoring braces inside string literals. */
+  private braceDelta(line: string): number {
+    let delta = 0;
+    let quote: string | null = null;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]!;
+      if (quote) {
+        if (ch === "\\") i++;
+        else if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") delta++;
+      else if (ch === "}") delta--;
+    }
+    return delta;
   }
 }

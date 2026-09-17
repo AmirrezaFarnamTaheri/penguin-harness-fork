@@ -75,6 +75,29 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(json.error).toContain("no task handler configured");
   });
 
+  it("reports a refuted swarm task as success false", async () => {
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes());
+    const response = await app.request("/api/cockpit/swarm/run?project=failed-status-regression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        goal: "Verify failure status",
+        simulate: true,
+        maxRounds: 1,
+        proposedCommands: ["rm -rf /"],
+      }),
+    });
+    const result = (await response.json()) as {
+      success: boolean;
+      result: { status: string };
+      error?: string;
+    };
+    expect(result.result.status).toBe("refuted");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("refuted");
+  });
+
   it("serves registered key fleet metrics and handles real probes", async () => {
     const monitor = getSharedKeyFleetMonitor();
     monitor.registerProvider({

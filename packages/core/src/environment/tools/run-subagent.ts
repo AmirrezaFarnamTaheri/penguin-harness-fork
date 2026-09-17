@@ -92,6 +92,22 @@ export function createSubagentTool(
         );
         return { stopReason: "fatal" };
       }
+      let cascade: { taskType: string; failureCount: number } | undefined;
+      if (args.task_type !== undefined || args.failure_count !== undefined) {
+        const failureCount = args.failure_count ?? 0;
+        if (
+          typeof args.task_type !== "string" ||
+          typeof failureCount !== "number" ||
+          !Number.isSafeInteger(failureCount) ||
+          failureCount < 0
+        ) {
+          yield* fail(
+            "[run_subagent error: task_type must be a string and failure_count a non-negative safe integer]",
+          );
+          return { stopReason: "fatal" };
+        }
+        cascade = { taskType: args.task_type, failureCount };
+      }
       const agentId = typeof args.agent_id === "string" ? args.agent_id : undefined;
       const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
       const provider = typeof args.provider === "string" ? args.provider : undefined;
@@ -148,6 +164,7 @@ export function createSubagentTool(
       let session: ManagedSubagentSession;
       try {
         const handle = await runner.spawn({
+          ...(cascade ? { cascade } : {}),
           ...(agentId !== undefined ? { agentId } : {}),
           ...(modelId !== undefined ? { modelId } : {}),
           ...(provider !== undefined ? { provider } : {}),
@@ -163,6 +180,12 @@ export function createSubagentTool(
         // Live index from the moment of spawn (before any registration): host paths — the
         // subagents panel's steer/abort — reach this child by its session id even while it
         // still runs inside this call's foreground collect window.
+        session.description =
+          typeof args.agent_description === "string"
+            ? args.agent_description.trim().slice(0, 1000)
+            : typeof args.description === "string"
+              ? args.description.trim().slice(0, 1000)
+              : undefined;
         manager.track(session);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -178,6 +201,12 @@ export function createSubagentTool(
       // forwarding tap below (its own Trace stays the durable record).
       if (background) {
         const id = manager.register(session);
+        yield partialToolCallOutput({
+          eventType: "delta",
+          toolCallId,
+          output: `[Agent: ${session.name} (${session.sessionId}) — ${session.description || "Description not supplied"}]
+`,
+        });
         armSubagentDoneReport(session, id, prompt, services);
         // Decouple the child's lifecycle from this call: a standing approval sink (this
         // call's own ctx.approve — without it the child's first read-write tool would park

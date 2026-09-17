@@ -331,6 +331,11 @@ function MessageItemInner({ item, ctx }: MessageItemProps) {
       const { text, images, files } = splitAttachments(skills ? skills.rest : afterScheduled);
       return (
         <>
+          {item.sender === "parent_agent" && (
+            <p className="mt-2 text-right text-xs text-gray-600 dark:text-gray-400">
+              {S.chat.agentMessage}
+            </p>
+          )}
           {orgTrigger && <OrgTriggerBanner origin={orgTrigger.origin} />}
           {scheduled && <ScheduledBanner origin={scheduled.origin} />}
           {skills && <SkillsBanner names={skills.skills} />}
@@ -417,7 +422,11 @@ function MessageItemInner({ item, ctx }: MessageItemProps) {
               />
               <p className="wrap-anywhere whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">
                 <span className="mr-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                  {S.chat.userSteering}
+                  {item.sender === "parent_agent"
+                    ? S.chat.agentSteering
+                    : item.sender === "harness" || item.sender === "server"
+                      ? S.chat.automatedSteering
+                      : S.chat.userSteering}
                 </span>
                 {steerText}
               </p>

@@ -1,14 +1,8 @@
-/**
- * First-Class Multi-Agent Kanban Workspace.
- *
- * Provides live task tracking, triage queue management, priority sorting,
- * assignee delegation, and multi-agent workflow handoffs.
- */
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   KanbanTask,
-  KanbanTaskState,
   KanbanTaskPriority,
+  KanbanTaskState,
   TriageDraft,
 } from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
@@ -16,302 +10,256 @@ import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
 import { Button } from "../../components/ui/button";
-import { Badge } from "../../components/ui/badge";
 import { Modal } from "../../components/ui/modal";
-import { toastSuccess, toastError } from "../../components/ui/toast";
+import { toastSuccess } from "../../components/ui/toast";
 import { KanbanBoardView } from "./kanban-board";
+import { SchedulesTab } from "../agents/schedules-tab";
+import { WorkTool, WorkHeader, WorkError, fieldClass, mutedClass } from "./work-tool-ui";
 
 export function KanbanPage() {
-  useDocumentTitle(S.nav.kanban ?? "Task Board");
-  const { currentProject } = useProject();
-  const projectId = currentProject?.projectId;
-
+  useDocumentTitle(S.nav.kanban);
+  const { currentProject, currentAgent } = useProject();
+  return currentProject ? (
+    <KanbanWorkspace
+      key={currentProject.projectId}
+      projectId={currentProject.projectId}
+      schedules={
+        currentAgent ? (
+          <SchedulesTab key={currentAgent.agentId} agentId={currentAgent.agentId} />
+        ) : undefined
+      }
+    />
+  ) : (
+    <WorkTool>
+      <p>Select a project to view its tasks.</p>
+    </WorkTool>
+  );
+}
+export function KanbanWorkspace({
+  projectId,
+  schedules,
+}: {
+  projectId: string;
+  schedules?: React.ReactNode;
+}) {
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
   const [drafts, setDrafts] = useState<TriageDraft[]>([]);
   const [loading, setLoading] = useState(true);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
-
-  // New task form state
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newPriority, setNewPriority] = useState<KanbanTaskPriority>("normal");
-  const [newAssignee, setNewAssignee] = useState("");
-  const [newTags, setNewTags] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  const loadData = useCallback(async () => {
-    if (!projectId) return;
-    try {
-      setLoading(true);
-      const [tasksRes, draftsRes] = await Promise.all([
-        api.listKanbanTasks(projectId),
-        api.listTriageDrafts(projectId).catch(() => ({ drafts: [] })),
-      ]);
-      if (tasksRes && Array.isArray(tasksRes.tasks)) {
-        setTasks(tasksRes.tasks);
-      }
-      if (draftsRes && Array.isArray(draftsRes.drafts)) {
-        setDrafts(draftsRes.drafts);
-      } else {
-        setDrafts([]);
-      }
-    } catch (err) {
-      console.error("Failed to load kanban tasks:", err);
-      toastError("Failed to fetch kanban tasks");
-    } finally {
-      setLoading(false);
-    }
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [draftError, setDraftError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<KanbanTaskPriority>("normal");
+  const [assignee, setAssignee] = useState("");
+  const [tags, setTags] = useState("");
+  const generation = useRef(0);
+  const load = useCallback(async () => {
+    const ticket = ++generation.current;
+    setLoading(true);
+    setError("");
+    setDraftError("");
+    const [taskResult, draftResult] = await Promise.allSettled([
+      api.listKanbanTasks(projectId),
+      api.listTriageDrafts(projectId),
+    ]);
+    if (ticket !== generation.current) return;
+    if (taskResult.status === "fulfilled") setTasks(taskResult.value.tasks);
+    else setError(message(taskResult.reason));
+    if (draftResult.status === "fulfilled") setDrafts(draftResult.value.drafts);
+    else setDraftError(`Triage inbox: ${message(draftResult.reason)}`);
+    setLoading(false);
   }, [projectId]);
-
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const handleUpdateTaskState = async (taskId: string, state: KanbanTaskState) => {
-    if (!projectId) return;
-    const prev = [...tasks];
-    setTasks((curr) =>
-      curr.map((t) => (t.id === taskId ? { ...t, state, updatedAt: Date.now() } : t)),
-    );
+    void load();
+    return () => {
+      generation.current++;
+    };
+  }, [load]);
+  async function update(id: string, state?: KanbanTaskState, owner?: string) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
     try {
-      await api.updateKanbanTask(projectId, taskId, { state });
-      toastSuccess(`Task moved to ${state.replace("_", " ")}`);
-    } catch (err) {
-      setTasks(prev);
-      console.error("Failed to update task state:", err);
-      toastError("Failed to update task state");
-    }
-  };
-
-  const handleClaimTask = async (taskId: string, assignee: string) => {
-    if (!projectId) return;
-    try {
-      await api.claimKanbanTask(projectId, taskId, assignee);
-      setTasks((curr) =>
-        curr.map((t) => (t.id === taskId ? { ...t, assignee, updatedAt: Date.now() } : t)),
+      // Assignment is not a worker lease claim. Use the ordinary task update route.
+      const response = await api.updateKanbanTask(
+        projectId,
+        id,
+        state ? { state } : { assignee: owner },
       );
-      toastSuccess(`Task assigned to ${assignee}`);
+      if (!response?.task)
+        throw new Error("The server did not confirm the task update. Refresh before trying again.");
+      setTasks((prev) => prev.map((t) => (t.id === id ? response.task : t)));
+      toastSuccess("Task updated");
     } catch (err) {
-      console.error("Failed to claim task:", err);
-      toastError("Failed to claim task");
+      setError(message(err));
+    } finally {
+      setBusy(false);
     }
-  };
-
-  const handleLaunchDraft = async (draftId: string) => {
-    if (!projectId) return;
+  }
+  async function launch(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
     try {
-      await api.launchTriageDraft(projectId, draftId);
-      toastSuccess("Triage draft launched successfully");
-      void loadData();
+      await api.launchTriageDraft(projectId, id);
+      await load();
+      toastSuccess("Draft added to the board");
     } catch (err) {
-      console.error("Failed to launch draft:", err);
-      toastError("Failed to launch triage draft");
+      setError(message(err));
+    } finally {
+      setBusy(false);
     }
-  };
-
-  const handleCreateTask = async (e: React.FormEvent) => {
+  }
+  async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!projectId || !newTitle.trim()) return;
+    if (busy || !title.trim()) return;
+    setBusy(true);
+    setError("");
     try {
-      setCreating(true);
-      const created = await api.createKanbanTask(projectId, {
-        title: newTitle.trim(),
-        description: newDescription.trim(),
-        priority: newPriority,
-        assignee: newAssignee.trim() || undefined,
-        labels: newTags
+      const response = await api.createKanbanTask(projectId, {
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        assignee: assignee.trim() || undefined,
+        labels: tags
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean),
       });
-      if (created && created.task) {
-        setTasks((curr) => [created.task, ...curr]);
-      } else {
-        void loadData();
-      }
+      if (!response?.task)
+        throw new Error("The server did not confirm the new task. Refresh before trying again.");
+      setTasks((prev) => [response.task, ...prev]);
+      setOpen(false);
+      setTitle("");
+      setDescription("");
+      setPriority("normal");
+      setAssignee("");
+      setTags("");
       toastSuccess("Task created");
-      setCreateModalOpen(false);
-      setNewTitle("");
-      setNewDescription("");
-      setNewAssignee("");
-      setNewTags("");
-      setNewPriority("normal");
     } catch (err) {
-      console.error("Failed to create task:", err);
-      toastError("Failed to create task");
+      setError(message(err));
     } finally {
-      setCreating(false);
+      setBusy(false);
     }
-  };
-
-  const stats = useMemo(() => {
-    const total = tasks.length;
-    const inProgress = tasks.filter((t) => t.state === "in_progress").length;
-    const review = tasks.filter((t) => t.state === "review").length;
-    const done = tasks.filter((t) => t.state === "done").length;
-    const urgent = tasks.filter((t) => t.priority === "urgent" && t.state !== "done").length;
-    return { total, inProgress, review, done, urgent };
-  }, [tasks]);
-
+  }
   return (
-    <div className="flex h-full w-full flex-col bg-gray-50 dark:bg-gray-950">
-      {/* Top Cockpit Header */}
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-xs dark:border-gray-800 dark:bg-gray-900/80">
-        <div className="flex items-center gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                Multi-Agent Task Kanban
-              </h1>
-              <Badge tone="brand">{currentProject?.name ?? "Project"}</Badge>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Autonomous task coordination, triage inbox, and agent workflow handoffs
-            </p>
-          </div>
-
-          <div className="hidden items-center gap-2 pl-4 md:flex">
-            <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300 font-mono">
-              <span className="h-2 w-2 rounded-full bg-blue-500" />
-              {stats.inProgress} Active
-            </span>
-            <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300 font-mono">
-              <span className="h-2 w-2 rounded-full bg-purple-500" />
-              {stats.review} Review
-            </span>
-            <span className="flex items-center gap-1.5 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300 font-mono">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {stats.done} Done
-            </span>
-            {stats.urgent > 0 && (
-              <span className="flex items-center gap-1.5 rounded-md bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-950/60 dark:text-red-300 font-mono animate-pulse">
-                <span className="h-2 w-2 rounded-full bg-red-500" />
-                {stats.urgent} Urgent
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          <Button variant="secondary" size="sm" onClick={() => void loadData()}>
-            Refresh
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => setCreateModalOpen(true)}>
-            + New Task
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Board View */}
-      <div className="flex-1 overflow-hidden">
-        {loading && tasks.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-gray-500">
-            Loading Kanban Board...
-          </div>
-        ) : (
-          <KanbanBoardView
-            tasks={tasks}
-            drafts={drafts}
-            onUpdateTaskState={handleUpdateTaskState}
-            onClaimTask={handleClaimTask}
-            onLaunchDraft={handleLaunchDraft}
-          />
-        )}
-      </div>
-
-      {/* Create Task Modal */}
-      <Modal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        title="Create Kanban Task"
+    <WorkTool>
+      <WorkHeader
+        title="Task board"
+        description="Prioritize work, assign ownership, and move tasks through review. Drafts wait in the triage inbox until you add them."
       >
-        <form onSubmit={handleCreateTask} className="space-y-4 p-4 text-xs">
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Task Title *
-            </label>
+        <Button className="min-h-10" disabled={busy || loading} onClick={() => void load()}>
+          Refresh
+        </Button>
+        <Button className="min-h-10" variant="primary" onClick={() => setOpen(true)}>
+          New task
+        </Button>
+      </WorkHeader>
+      {!open && <WorkError error={error} />}
+      <WorkError error={draftError} />
+      {loading && (
+        <p role="status" className={mutedClass}>
+          Loading task board…
+        </p>
+      )}
+      <KanbanBoardView
+        tasks={tasks}
+        drafts={drafts}
+        busy={busy || loading}
+        error={error}
+        onUpdateTaskState={(id, state) => void update(id, state)}
+        onClaimTask={(id, owner) => void update(id, undefined, owner)}
+        onLaunchDraft={(id) => void launch(id)}
+      />
+      {schedules && (
+        <section aria-label={S.agent.tabSchedules} className="min-w-0 space-y-4">
+          <h2 className="text-base font-semibold">{S.agent.tabSchedules}</h2>
+          {schedules}
+        </section>
+      )}
+      <Modal
+        open={open}
+        onClose={() => {
+          if (!busy) setOpen(false);
+        }}
+        title="New task"
+      >
+        <form className="space-y-4 text-sm" onSubmit={create}>
+          <WorkError error={error} />
+          <label className="block">
+            Title
             <input
-              type="text"
               required
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g., Audit AST parser for incremental cache"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              maxLength={300}
+              className={`${fieldClass} mt-1`}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
             />
-          </div>
-
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Description
-            </label>
+          </label>
+          <label className="block">
+            Description
             <textarea
-              rows={3}
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="Describe requirements or context..."
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden focus:border-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 font-mono"
+              rows={4}
+              className={`${fieldClass} mt-1`}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-                Priority
-              </label>
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              Priority
               <select
-                value={newPriority}
-                onChange={(e) => setNewPriority(e.target.value as KanbanTaskPriority)}
-                className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                className={`${fieldClass} mt-1`}
+                value={priority}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (
+                    value === "low" ||
+                    value === "normal" ||
+                    value === "high" ||
+                    value === "urgent"
+                  )
+                    setPriority(value);
+                }}
               >
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="normal">Normal</option>
                 <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
               </select>
-            </div>
-
-            <div>
-              <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-                Assignee (Agent / User)
-              </label>
-              <input
-                type="text"
-                value={newAssignee}
-                onChange={(e) => setNewAssignee(e.target.value)}
-                placeholder="e.g. backend-developer"
-                className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 font-mono"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Tags (comma separated)
             </label>
-            <input
-              type="text"
-              value={newTags}
-              onChange={(e) => setNewTags(e.target.value)}
-              placeholder="frontend, performance, api"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
+            <label>
+              Assignee
+              <input
+                className={`${fieldClass} mt-1`}
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+              />
+            </label>
           </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setCreateModalOpen(false)}
-            >
+          <label className="block">
+            Labels (comma separated)
+            <input
+              className={`${fieldClass} mt-1`}
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button disabled={busy} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="sm" disabled={creating}>
-              {creating ? "Creating..." : "Create Task"}
+            <Button type="submit" variant="primary" disabled={busy || !title.trim()}>
+              {busy ? "Creating…" : "Create task"}
             </Button>
           </div>
         </form>
       </Modal>
-    </div>
+    </WorkTool>
   );
+}
+function message(error: unknown) {
+  return error instanceof Error ? error.message : "Request failed. Please try again.";
 }

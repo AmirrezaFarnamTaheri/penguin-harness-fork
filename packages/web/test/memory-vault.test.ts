@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseMemoryLinks,
+  memoryLinkEdges,
   filterMemoryTopics,
   simulateSemanticRecall,
   validateMemoryFrontmatter,
@@ -80,6 +81,30 @@ Persistent developer preferences.`,
 
       const linksEmpty = parseMemoryLinks("Just text with no markdown links.");
       expect(linksEmpty).toEqual([]);
+    });
+  });
+
+  describe("memoryLinkEdges", () => {
+    it("resolves wiki links without connecting duplicate filenames across scopes", () => {
+      const source = {
+        ...sampleTopics[0]!,
+        id: "a/source",
+        scopeKey: "workspace-a",
+        content: "[[notes]] [same](./notes.md#section)",
+      };
+      const target = {
+        ...sampleTopics[1]!,
+        id: "a/notes",
+        scopeKey: "workspace-a",
+        name: "notes.md",
+        content: "",
+      };
+      const other = { ...target, id: "b/notes", scopeKey: "workspace-b" };
+      expect(
+        memoryLinkEdges([source, target, other]).every((edge) => edge.target === "a/notes"),
+      ).toBe(true);
+      expect(memoryLinkEdges([source, other])).toEqual([]);
+      expect(parseMemoryLinks("[[notes]] [[notes|label]]")).toEqual(["notes.md"]);
     });
   });
 

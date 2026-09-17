@@ -121,7 +121,7 @@ import { AgentCockpit } from "../agent/agent-cockpit";
 import { SpendFlowPanel } from "../hud/spend-flow-panel";
 import { TopologyPage } from "../topology/topology-page";
 import { GuardianPage } from "../guardian/guardian-page";
-import { ConsensusPage } from "../consensus/consensus-page";
+import { LiveConsensusPage } from "../consensus/consensus-page";
 import { ContextBreakdownPage } from "../context/context-breakdown-page";
 import { MemoryPage } from "../memory/memory-page";
 import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
@@ -1570,6 +1570,7 @@ export function ChatPage() {
   // (paired reference) current pricing; null if no pricing is configured.
   const modelPricing = models?.models.find((m) => sameModelRef(m, activeModelRef))?.pricing;
   const ctx: StreamRenderContext = {
+    subagents: stream.subagents,
     pendingApprovals: stream.pendingApprovals,
     onApprove,
     onSendToBackground,
@@ -1747,7 +1748,7 @@ export function ChatPage() {
       case "guardian":
         return <GuardianPage key={selected.sessionId} embedded />;
       case "consensus":
-        return <ConsensusPage key={selected.sessionId} embedded />;
+        return <LiveConsensusPage key={selected.sessionId} embedded />;
       case "contextBreakdown":
         return (
           <ContextBreakdownPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
@@ -1755,9 +1756,18 @@ export function ChatPage() {
       case "keyFleet":
         return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
       case "flamegraph":
-        return <TraceFlamegraphPage key={selected.sessionId} embedded />;
+        return (
+          <TraceFlamegraphPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
+        );
       case "snapshots":
-        return <SnapshotsPage key={selected.sessionId} embedded />;
+        return (
+          <SnapshotsPage
+            key={selected.sessionId}
+            embedded
+            projectId={projectId ?? undefined}
+            agentId={selected.agentId ?? undefined}
+          />
+        );
     }
   };
 
@@ -2170,14 +2180,9 @@ export function ChatPage() {
 
       {selected && (
         <HudStatusline
-          tokensUsed={
-            usageBuckets
-              ? usageBuckets.cacheRead + usageBuckets.cacheWrite + usageBuckets.output
-              : stream.model.stats.taskOutput +
-                stream.model.stats.taskCacheRead +
-                stream.model.stats.taskCacheWrite
-          }
-          contextWindow={contextWindow ? Number(contextWindow) : 200000}
+          tokensUsed={stream.loading ? undefined : stream.model.stats.contextNow}
+          contextStale={stream.model.stats.contextStale}
+          contextWindow={contextWindow !== undefined ? Number(contextWindow) : undefined}
           speed={
             stream.taskState === "running" && stream.model.stats.taskOutput > 0
               ? {
@@ -2195,15 +2200,12 @@ export function ChatPage() {
               : undefined
           }
           promptCache={
-            usageBuckets && (usageBuckets.cacheRead > 0 || usageBuckets.cacheWrite > 0)
-              ? {
-                  cacheReadTokens: usageBuckets.cacheRead,
-                  cacheCreationTokens: usageBuckets.cacheWrite,
-                  ttlSeconds: 300,
-                  remainingSeconds: 240,
-                  state: usageBuckets.cacheRead > 0 ? "active" : "none",
+            stream.loading
+              ? undefined
+              : {
+                  cacheRead: stream.model.stats.taskCacheRead,
+                  cacheWrite: stream.model.stats.taskCacheWrite,
                 }
-              : undefined
           }
           costUsd={costHoldRef.current.sessionCost ?? liveTaskUsd ?? 0}
           costSavingsUsd={

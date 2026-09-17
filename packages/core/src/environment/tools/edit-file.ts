@@ -22,6 +22,7 @@
  * Docs: /docs/tools § "File tools".
  */
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
@@ -183,6 +184,13 @@ export function createEditFileTool(definition: ToolDefinitionConfig): BuiltinToo
       }
 
       const replaced = replaceAll ? occurrences : 1;
+      // Runtime-recorded editor attribution (option A): who ran this edit and what the file's
+      // bytes were before/after, so a later agent can tell whether the file changed since.
+      // Emitted only after the write succeeded — a failed edit gets no receipt. Absent
+      // attribution (bare embedders) keeps the historical output shape.
+      const attribution = ctx.attribution;
+      const sha256 = (bytes: string): string =>
+        createHash("sha256").update(bytes, "utf8").digest("hex");
       // Git-style unified diff of the changed regions, self-budgeted below the tool's
       // output cap so the leading summary line (and the elision note) always survive
       // Environment's front-keep truncation.
@@ -200,7 +208,12 @@ export function createEditFileTool(definition: ToolDefinitionConfig): BuiltinToo
       const out: string[] = [
         `Replaced ${replaced} occurrence${replaced === 1 ? "" : "s"} in "${filePath}".`,
       ];
-      let used = out[0]!.length;
+      if (attribution) {
+        out.push(
+          `[editor attribution: agent=${attribution.agentId} session=${attribution.sessionId} call=${toolCallId} at=${new Date().toISOString()} sha256_before=${sha256(content)} sha256_after=${sha256(newContent)}]`,
+        );
+      }
+      let used = out.reduce((n, line) => n + line.length + 1, 0) - 1;
       let shownSites = 0;
       for (const { hunk, sites } of hunks) {
         const rendered = renderHunk(hunk);

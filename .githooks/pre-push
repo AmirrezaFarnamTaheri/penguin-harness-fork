@@ -1,0 +1,4 @@
+#!/bin/sh
+# Mirrors ci.yml's typecheck job. Runs gen:ifaces before typechecking (the typecheck
+# script does both), so a stale generated ifaces.json can never pass locally and fail CI.
+pnpm typecheck

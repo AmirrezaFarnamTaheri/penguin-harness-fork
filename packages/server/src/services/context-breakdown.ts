@@ -51,7 +51,7 @@ const FILE_TOOL_OPS = new Map<string, keyof ContextFileShare["ops"]>([
   ["write_file", "write"],
 ]);
 
-/** The answer for a Session with no Trace yet: measured as empty, not unknown. */
+/** No Trace means an empty composition estimate, but no occupancy measurement yet. */
 export function emptyContextBreakdown(): SessionContextParts {
   return {
     systemPrompt: 0,
@@ -64,6 +64,9 @@ export function emptyContextBreakdown(): SessionContextParts {
     topTools: [],
     topFiles: [],
     contextClosed: false,
+    occupancyTokens: null,
+    occupancyStale: false,
+    occupancyRecordedAt: null,
   };
 }
 
@@ -156,6 +159,7 @@ export function buildContextBreakdown(messages: OmniMessage[]): SessionContextPa
   let compacting = false;
 
   for (const msg of messages) {
+    if (msg.origin?.length) continue;
     if (msg.type === "session_meta") {
       // A per-shard invariant, not an accumulation: a resumed process writes its own copy into
       // the shard it continues, and a rotation writes one at the head of the new file. The
@@ -178,6 +182,20 @@ export function buildContextBreakdown(messages: OmniMessage[]): SessionContextPa
         compacting = true;
       } else if (p.type === "compaction_end") {
         compacting = false;
+        if ((msg.payload as { status?: string }).status === "completed") {
+          out.occupancyTokens = null;
+          out.occupancyRecordedAt = null;
+          out.occupancyStale = true;
+        }
+      } else if (p.type === "token_usage" && !compacting) {
+        // Failed-attempt consumption lives on request_end.usage, never token_usage.
+        // Cumulative session totals and compaction/subagent usage do not measure this context.
+        const total = (msg.payload as { request?: { total?: number } }).request?.total;
+        if (typeof total === "number" && Number.isFinite(total) && total >= 0) {
+          out.occupancyTokens = total;
+          out.occupancyRecordedAt = msg.timestamp;
+          out.occupancyStale = false;
+        }
       }
       continue;
     }

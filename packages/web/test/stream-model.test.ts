@@ -2624,3 +2624,28 @@ describe("task_stats memory changes", () => {
     expect(all[2]!.memoryChanges).toBeUndefined(); // walk stops at the previous task_stats
   });
 });
+
+it("preserves agent authorship for prompts and steering without relabeling humans", () => {
+  const model = createStreamModel();
+  pushMessage(model, userText("agent task", "parent_agent"));
+  pushMessage(
+    model,
+    userText(
+      `[user_steering]
+agent update
+[/user_steering]`,
+      "parent_agent",
+    ),
+  );
+  pushMessage(
+    model,
+    userText(`[user_steering]
+human update
+[/user_steering]`),
+  );
+  const prompt = model.items.find((item) => item.kind === "user_text");
+  expect(prompt).toMatchObject({ sender: "parent_agent" });
+  const steering = model.items.filter((item) => item.kind === "user_steering");
+  expect(steering[0]).toMatchObject({ sender: "parent_agent", text: "agent update" });
+  expect(steering[1]).not.toHaveProperty("sender");
+});

@@ -1,3 +1,4 @@
+import type { TextSender } from "@prismshadow/penguin-core";
 import type { OrgChannelNoticeKind } from "@prismshadow/penguin-server/api";
 
 /**
@@ -666,7 +667,7 @@ export interface Messages {
   /** Acknowledgment printed when a line typed mid-run is queued as steering (echoes the text; delivered between turns). */
   steerQueued(text: string): string;
   /** Prefix for a rendered [user_steering] line (a mid-run user message delivered between turns). */
-  steerLinePrefix(): string;
+  steerLinePrefix(sender?: TextSender): string;
   error(message: string): string;
   /** Approval prompt text (the tool call is already streamed above and directly precedes this prompt, so no index and no re-rendering). */
   approvePrompt(): string;
@@ -1452,7 +1453,13 @@ const en: Messages = {
   confirmExit: () => "Exit penguin? [y/N] ",
   taskInterrupted: () => "[current conversation interrupted]",
   steerQueued: (text) => `» steering queued (delivered with the next turn): ${text}`,
-  steerLinePrefix: () => "↪ user: ",
+  steerLinePrefix: (sender = "user") =>
+    ({
+      user: "↪ user: ",
+      parent_agent: "↪ parent agent: ",
+      harness: "↪ harness: ",
+      server: "↪ server: ",
+    })[sender],
   error: (message) => `[error] ${message}`,
   approvePrompt: () => "? Approve this tool call? [Y/n] ",
   taskStats: (s) =>
@@ -2177,7 +2184,13 @@ const zh: Messages = {
   confirmExit: () => "确认退出 penguin？[y/N] ",
   taskInterrupted: () => "[已中断当前对话]",
   steerQueued: (text) => `» 插话已排队（随下一轮送达）：${text}`,
-  steerLinePrefix: () => "↪ 用户: ",
+  steerLinePrefix: (sender = "user") =>
+    ({
+      user: "↪ 用户: ",
+      parent_agent: "↪ 父智能体: ",
+      harness: "↪ 框架: ",
+      server: "↪ 服务器: ",
+    })[sender],
   error: (message) => `[错误] ${message}`,
   approvePrompt: () => "? 批准此工具调用？[Y/n] ",
   taskStats: (s) =>

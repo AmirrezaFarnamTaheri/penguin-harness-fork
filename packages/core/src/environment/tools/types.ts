@@ -32,6 +32,15 @@ export interface ToolExecutionContext {
   detachSignal?: AbortSignal;
   /** The parent Agent's approval callback; run_subagent passes it through to the child Session so it inherits the parent's approval mode (unused by most tools). */
   approve?: ApproveFn;
+  /**
+   * Runtime-recorded editor attribution (option A — recorded facts, not cryptographic):
+   * who is running this tool call. Identity comes from the HOST at assembly time, never from
+   * model-provided arguments, so a receipt cannot be forged by prompt content. Tools that
+   * modify persistent state (edit_file today) append an `[editor attribution: …]` receipt
+   * line to their output on success; absent = the embedder does not track identity and the
+   * tool behaves exactly as before.
+   */
+  attribution?: { agentId: string; sessionId: string };
 }
 
 /**

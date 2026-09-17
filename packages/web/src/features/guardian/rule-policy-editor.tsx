@@ -14,7 +14,8 @@ export interface RulePolicyEditorProps {
 export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
   const [enabled, setEnabled] = useState(true);
   const [rules, setRules] = useState<CommandPolicyRuleDto[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // New Rule Dialog state
@@ -27,39 +28,14 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
   const loadPolicy = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.getCommandPolicy(projectId);
       setEnabled(res.enabled);
       setRules(res.rules ?? []);
-    } catch {
-      // Fallback default rules
-      setEnabled(true);
-      setRules([
-        {
-          name: "block-root-rm",
-          pattern: "rm\\s+-[a-zA-Z]*rf.*(/|~|\\*)",
-          description: "Block recursive deletion of root or wildcard files",
-          enabled: true,
-        },
-        {
-          name: "block-dd-raw",
-          pattern: "dd\\s+.*of=/dev/(sd|nvme)",
-          description: "Block raw disk block overwrite via dd",
-          enabled: true,
-        },
-        {
-          name: "block-fork-bomb",
-          pattern: ":\\(\\)\\s*\\{",
-          description: "Block bash fork-bomb recursion",
-          enabled: true,
-        },
-        {
-          name: "warn-hard-reset",
-          pattern: "git\\s+reset\\s+--hard",
-          description: "Intercept uncommitted work loss from git reset --hard",
-          enabled: true,
-        },
-      ]);
+    } catch (err) {
+      setRules([]);
+      setLoadError(err instanceof Error ? err.message : "Could not load the command policy.");
     } finally {
       setLoading(false);
     }
@@ -70,7 +46,7 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
   }, [loadPolicy]);
 
   const handleSavePolicy = async () => {
-    if (!projectId) return;
+    if (!projectId || loading || loadError) return;
     setSaving(true);
     try {
       await api.putCommandPolicy(projectId, { enabled, rules });
@@ -126,86 +102,117 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
   };
 
   return (
-    <div className="flex flex-col gap-4 p-4 rounded-xl border border-gray-800 bg-gray-950 font-mono text-xs select-none">
+    <div className="flex flex-col gap-4 py-4 border-b border-gray-200 dark:border-gray-800 text-sm ">
       {/* Header with Master Toggle */}
-      <div className="flex items-center justify-between pb-3 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <h3 className="font-bold text-sm text-gray-100">Project Execution Policy</h3>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-gray-900 border border-gray-800 text-gray-400">
+      <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+            Project Execution Policy
+          </h3>
+          <span className="text-sm px-2 py-2 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400">
             {rules.length} rules
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer text-[11px] text-gray-300">
-            <span>Enforce Sandbox Barrier:</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex flex-wrap items-center gap-2 cursor-pointer text-sm text-gray-900 dark:text-gray-100">
+            <span>Enable command policy:</span>
             <input
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
-              className="rounded bg-gray-900 border-gray-700 text-cyan-500 focus:ring-0"
+              disabled={loading || !!loadError || saving}
+              className="rounded bg-white dark:bg-gray-950 border-gray-700 text-cyan-500 focus:ring-0"
             />
           </label>
 
-          <Button size="sm" variant="secondary" onClick={() => setAddOpen(true)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setAddOpen(true)}
+            disabled={loading || !!loadError || saving}
+          >
             + Add Rule
           </Button>
 
-          <Button size="sm" variant="primary" onClick={handleSavePolicy} disabled={saving}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={handleSavePolicy}
+            disabled={saving || loading || !!loadError}
+          >
             {saving ? "Saving..." : "Save Policy"}
           </Button>
         </div>
       </div>
 
+      {loading && <p role="status">Loading command policy…</p>}
+      {loadError && (
+        <div role="alert" className="text-sm text-red-700 dark:text-red-400">
+          <p>Could not load the command policy. No rules have been changed. {loadError}</p>
+          <Button variant="secondary" onClick={() => void loadPolicy()}>
+            Retry loading policy
+          </Button>
+        </div>
+      )}
       {/* Rules List */}
       <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto">
-        {rules.length === 0 ? (
-          <div className="py-8 text-center text-gray-600">No command policy rules configured.</div>
+        {loading || loadError ? null : rules.length === 0 ? (
+          <div className="py-8 text-center text-gray-600 dark:text-gray-400">
+            No command policy rules configured.
+          </div>
         ) : (
           rules.map((rule, idx) => {
             const isRuleActive = rule.enabled ?? true;
             return (
               <div
                 key={idx}
-                className={`p-3 rounded-lg border transition-colors flex items-center justify-between gap-3 ${
+                className={`p-3 rounded-lg border transition-colors flex flex-wrap items-center justify-between gap-3 ${
                   isRuleActive
-                    ? "bg-gray-900/50 border-gray-800"
-                    : "bg-gray-950/40 border-gray-900 opacity-60"
+                    ? "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                    : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 opacity-60"
                 }`}
               >
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-gray-200">{rule.name}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {rule.name}
+                    </span>
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded font-medium ${
+                      className={`text-sm px-1.5 py-0.2 rounded font-medium ${
                         isRuleActive
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-gray-800 text-gray-500"
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                          : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                       }`}
                     >
-                      {isRuleActive ? "ENFORCED" : "BYPASSED"}
+                      {isRuleActive ? "Enabled" : "Disabled"}
                     </span>
                   </div>
                   {rule.description && (
-                    <div className="text-[11px] text-gray-400">{rule.description}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {rule.description}
+                    </div>
                   )}
-                  <div className="text-[10px] text-gray-500 truncate">
-                    Pattern: <code className="text-cyan-400 font-bold">{rule.pattern}</code>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                    Pattern:{" "}
+                    <code className="font-mono break-words whitespace-pre-wrap  break-words whitespace-pre-wrap text-gray-900 dark:text-gray-100 font-semibold">
+                      {rule.pattern}
+                    </code>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => handleToggleRule(idx)}
-                    className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-gray-300 hover:text-white transition-colors"
+                    className="px-2 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100 hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
                     {isRuleActive ? "Disable" : "Enable"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteRule(idx)}
-                    className="px-2 py-1 rounded bg-gray-900 border border-gray-800 text-rose-400 hover:bg-rose-950/40 transition-colors"
+                    className="px-2 py-1 rounded bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-rose-700 dark:text-rose-400 hover:bg-rose-950/40 transition-colors"
                   >
                     Delete
                   </button>
@@ -232,9 +239,9 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
           </div>
         }
       >
-        <div className="flex flex-col gap-3 font-mono text-xs text-gray-300">
+        <div className="flex flex-col gap-3 text-sm text-gray-900 dark:text-gray-100">
           <div>
-            <label className="block mb-1 text-gray-400 font-medium">
+            <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
               Rule Identifier <RequiredMark />
             </label>
             <Input
@@ -246,7 +253,7 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
           </div>
 
           <div>
-            <label className="block mb-1 text-gray-400 font-medium">
+            <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
               Regular Expression Pattern <RequiredMark />
             </label>
             <Input
@@ -259,12 +266,16 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
               size="sm"
             />
             {patternError && (
-              <p className="mt-1 text-[11px] text-rose-400 font-semibold">{patternError}</p>
+              <p className="mt-1 text-sm text-rose-700 dark:text-rose-400 font-semibold">
+                {patternError}
+              </p>
             )}
           </div>
 
           <div>
-            <label className="block mb-1 text-gray-400 font-medium">Description (Optional)</label>
+            <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
+              Description (Optional)
+            </label>
             <Input
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}

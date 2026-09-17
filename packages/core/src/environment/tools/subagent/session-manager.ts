@@ -12,6 +12,7 @@
 import type { ApproveFn, BackgroundSubagentInfo } from "../../../interfaces/index.js";
 import { BackgroundRegistry } from "../background/index.js";
 import type { ManagedSubagentSession } from "./session.js";
+import { AgentNameRegistry } from "../../../agent/agent-name-registry.js";
 
 /**
  * Cap on concurrently managed background subagent sessions. This is a **spawn admission cap**,
@@ -22,6 +23,14 @@ import type { ManagedSubagentSession } from "./session.js";
 const MAX_SESSIONS = 8;
 
 export class SubagentSessionManager {
+  private readonly names = new AgentNameRegistry();
+  private readonly descriptions = new Map<string, string>();
+
+  updateDescription(session: ManagedSubagentSession, description: string): void {
+    session.description = description.trim().slice(0, 1000);
+    this.descriptions.set(session.sessionId, session.description);
+    this.changeListener?.();
+  }
   private readonly registry = new BackgroundRegistry<ManagedSubagentSession>({
     idPrefix: "subagent",
     maxTasks: MAX_SESSIONS,
@@ -61,6 +70,10 @@ export class SubagentSessionManager {
 
   /** Enters a freshly spawned session into the live index and wires its run-state pings into the aggregate listener. */
   track(session: ManagedSubagentSession): void {
+    session.name = this.names.assign(session.sessionId);
+    session.description = this.descriptions.get(session.sessionId) ?? session.description;
+    if (session.description !== undefined)
+      this.descriptions.set(session.sessionId, session.description);
     this.live.add(session);
     session.onStateChange(() => this.stateListener?.());
     if (this.approvalFallback) session.setFallbackApprovalSink(this.approvalFallback);
@@ -110,6 +123,8 @@ export class SubagentSessionManager {
         sessionId: session.sessionId,
         subagentId: handles.get(session) ?? null,
         running: session.running,
+        name: session.name,
+        description: session.description,
       });
     }
     return out;

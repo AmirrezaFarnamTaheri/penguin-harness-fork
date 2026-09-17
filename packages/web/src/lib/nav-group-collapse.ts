@@ -1,16 +1,8 @@
 /**
- * Collapse state of the sidebar's page-nav group (pure decisions, unit tested): the
- * Agents → Benchmark run of entries collapses as one group behind a nav-row-wide chevron
- * button under the group's last entry (arrow up = collapse; collapsed, the button
- * stays — arrow down — as the way back). The pinned "New chat" block above is NOT
- * part of the group — it stays visible in both states (the manifest below simply never
- * contains it).
- *
- * One global storage key, not per Project: the nav is identical everywhere, so like the
- * grouping mode (GROUP_MODE_KEY) this is a single user preference — toggling it anywhere
- * toggles it everywhere. Storage is injectable (model-group-expansion.ts convention:
- * vitest runs in Node, no localStorage); nothing stored, unrecognized values, and
- * throwing storage all fall back to expanded — the default.
+ * Product navigation manifest, route matching, and independent tool disclosure preferences.
+ * Three primary pages stay visible; Build, Review, and Models groups start closed.
+ * The legacy all-or-nothing collapse helpers below remain for company-mode navigation.
+ * Storage is injectable so blocked site data and preference restoration are testable.
  */
 
 /**
@@ -65,6 +57,63 @@ const ADMIN_ONLY_NAV_KEYS: ReadonlySet<NavGroupKey> = new Set<NavGroupKey>(["mac
  * so it waits for a release that means to introduce it.
  */
 const UNRELEASED_NAV_KEYS: ReadonlySet<NavGroupKey> = new Set<NavGroupKey>(["machines"]);
+
+/** Everyday destinations stay visible; tools are grouped by the job they help with. */
+export const PRIMARY_NAV_KEYS = ["cockpit", "agents", "kanban"] as const;
+export const NAV_TOOL_GROUPS = [
+  { key: "build", keys: ["pipelines", "skills", "plugins", "memory", "wiki", "topology"] },
+  {
+    key: "inspect",
+    keys: ["guardian", "consensus", "contextBreakdown", "flamegraph", "snapshots", "benchmark"],
+  },
+  { key: "manage", keys: ["models", "keyFleet", "gateway", "usage", "machines"] },
+] as const satisfies readonly { key: string; keys: readonly NavGroupKey[] }[];
+export type NavToolGroupKey = (typeof NAV_TOOL_GROUPS)[number]["key"];
+
+/** Preserve special routes rather than deriving a different URL from a display label. */
+export function navPathFor(key: NavGroupKey): string {
+  if (key === "contextBreakdown") return "/context-breakdown";
+  if (key === "keyFleet") return "/models/keys";
+  if (key === "flamegraph") return "/traces/flamegraph";
+  return `/${key}`;
+}
+
+/** Longest segment match: API keys must not also mark Models as the current page. */
+export function currentNavKey(pathname: string, isAdmin = true): NavGroupKey | null {
+  const path = pathname === "/contextBreakdown" ? "/context-breakdown" : pathname;
+  return (
+    navKeysFor(isAdmin)
+      .filter((key) => path === navPathFor(key) || path.startsWith(`${navPathFor(key)}/`))
+      .sort((a, b) => navPathFor(b).length - navPathFor(a).length)[0] ?? null
+  );
+}
+
+/** New preferences intentionally do not inherit the old all-or-nothing nav expansion. */
+export const NAV_TOOLS_STORAGE_PREFIX = "penguin.sidebarTools.";
+export function initialToolGroupExpanded(
+  group: NavToolGroupKey,
+  storage?: NavCollapseStorage,
+): boolean {
+  try {
+    return (storage ?? localStorage).getItem(`${NAV_TOOLS_STORAGE_PREFIX}${group}`) === "expanded";
+  } catch {
+    return false;
+  }
+}
+export function storeToolGroupExpanded(
+  group: NavToolGroupKey,
+  expanded: boolean,
+  storage?: NavCollapseStorage,
+): void {
+  try {
+    (storage ?? localStorage).setItem(
+      `${NAV_TOOLS_STORAGE_PREFIX}${group}`,
+      expanded ? "expanded" : "collapsed",
+    );
+  } catch {
+    /* Best effort when site storage is blocked. */
+  }
+}
 
 /** The manifest as this user sees it. */
 export function navKeysFor(isAdmin: boolean): readonly NavGroupKey[] {

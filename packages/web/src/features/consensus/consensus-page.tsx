@@ -1,99 +1,82 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
-import { useProject } from "../../state/project";
-import { Segmented } from "../../components/ui/segmented";
 import { QuorumBoard } from "./quorum-board";
 import { MailboxBureau } from "./mailbox-bureau";
 import { HandoffTimeline } from "./handoff-timeline";
+import {
+  useCockpitTelemetry,
+  type LiveMailboxEntry,
+  type LiveHandoffEvent,
+} from "../agent/use-cockpit-telemetry.js";
+import { useProject } from "../../state/project";
+import { S } from "../../lib/strings";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
+  /** Live mailbox queues from the cockpit WS feed; absent keeps the local demo. */
+  mailboxEntries?: LiveMailboxEntry[];
+  /** Observed project handoffs; absent keeps the local demo. */
+  handoffs?: LiveHandoffEvent[];
 }
 
-export function ConsensusPage({ embedded = false }: ConsensusPageProps) {
+export function LiveConsensusPage({ embedded }: Pick<ConsensusPageProps, "embedded">) {
   const { currentProject } = useProject();
+  const telemetry = useCockpitTelemetry(currentProject?.projectId ?? null);
+  return (
+    <ConsensusPage
+      embedded={embedded}
+      mailboxEntries={currentProject ? telemetry.mailboxEntries : undefined}
+      handoffs={currentProject ? telemetry.handoffs : undefined}
+    />
+  );
+}
+
+export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: ConsensusPageProps) {
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
   const [engine] = useState(() => new QuorumConsensusEngine());
   const [version, setVersion] = useState(0);
-
-  const standings = useMemo(() => {
-    void version;
-    return engine.listStandings();
-  }, [engine, version]);
-
-  const settledCount = standings.filter((s) => s.status === "settled").length;
-  const debatingCount = standings.filter((s) => s.status === "debating").length;
-
   return (
     <div
-      className={`flex flex-col h-full gap-4 ${
-        embedded ? "p-2" : "p-6"
-      } bg-gray-950 text-gray-100 font-sans select-none overflow-y-auto`}
+      className={`min-w-0 overflow-y-auto text-sm text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
     >
-      {/* Header & Telemetry Cards */}
-      <div className="flex flex-col gap-3 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 font-mono">
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-              Multi-Agent Quorum Consensus & Mailbox Bureau
-            </h1>
-            <p className="text-xs text-gray-400 font-mono mt-0.5">
-              Decentralized peer endorsement voting, anti-cascade evidence grounding, and message
-              lease bureau for {currentProject?.name ?? "Penguin"}
-            </p>
-          </div>
-
-          <div className="w-72">
-            <Segmented
-              cols={3}
-              options={[
-                { value: "quorum", label: "Quorum" },
-                { value: "mailbox", label: "Mailbox" },
-                { value: "handoff", label: "Handoffs" },
-              ]}
-              value={tab}
-              onChange={(v) => setTab(v as "quorum" | "mailbox" | "handoff")}
-            />
-          </div>
-        </div>
-
-        {/* Telemetry Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Settled Topics</span>
-            <span className="text-base font-bold text-emerald-400 tabular-nums">
-              {settledCount} settled
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Active Debates</span>
-            <span className="text-base font-bold text-amber-400 tabular-nums">
-              {debatingCount} debating
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Mailbox Leases</span>
-            <span className="text-base font-bold text-cyan-400 tabular-nums">3 active</span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Handoff Success</span>
-            <span className="text-base font-bold text-indigo-400 tabular-nums">100%</span>
-          </div>
-        </div>
+      <header className="mb-6 space-y-2">
+        <h1 className="text-xl font-semibold">{S.consensus.title}</h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          {mailboxEntries === undefined && handoffs === undefined
+            ? S.consensus.demoDescription
+            : S.consensus.liveDescription}
+        </p>
+      </header>
+      <nav
+        aria-label={S.consensus.navigation}
+        className="mb-6 flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-800"
+      >
+        {(
+          [
+            { value: "quorum", label: S.consensus.decisions },
+            { value: "mailbox", label: S.consensus.messages },
+            { value: "handoff", label: S.consensus.handoffs },
+          ] as const
+        ).map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            aria-pressed={tab === item.value}
+            onClick={() => setTab(item.value)}
+            className={`min-h-10 rounded-md px-4 py-2 ${tab === item.value ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <div hidden={tab !== "quorum"}>
+        <QuorumBoard engine={engine} version={version} onMutate={() => setVersion((v) => v + 1)} />
       </div>
-
-      {/* Main Workspace Body */}
-      <div className="flex-1 min-h-0">
-        {tab === "quorum" && (
-          <QuorumBoard
-            engine={engine}
-            version={version}
-            onMutate={() => setVersion((v) => v + 1)}
-          />
-        )}
-        {tab === "mailbox" && <MailboxBureau />}
-        {tab === "handoff" && <HandoffTimeline />}
+      <div hidden={tab !== "mailbox"}>
+        <MailboxBureau entries={mailboxEntries} />
+      </div>
+      <div hidden={tab !== "handoff"}>
+        <HandoffTimeline handoffs={handoffs} />
       </div>
     </div>
   );

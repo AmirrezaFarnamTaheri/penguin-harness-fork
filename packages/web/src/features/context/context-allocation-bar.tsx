@@ -1,4 +1,5 @@
 import type { SessionContextResponse } from "@prismshadow/penguin-server/api";
+import { mutedClass, sectionClass, useInspectionCopy } from "./inspection-ui";
 
 export interface ContextAllocationBarProps {
   data: SessionContextResponse;
@@ -6,130 +7,118 @@ export interface ContextAllocationBarProps {
 }
 
 export function ContextAllocationBar({ data, contextWindow }: ContextAllocationBarProps) {
+  const copy = useInspectionCopy();
   const parts = [
-    {
-      label: "System Prompt",
-      tokens: data.systemPrompt,
-      color: "bg-blue-500",
-      text: "text-blue-400",
-    },
-    { label: "Tool Defs", tokens: data.toolDefs, color: "bg-purple-500", text: "text-purple-400" },
-    {
-      label: "User Messages",
-      tokens: data.userMessages,
-      color: "bg-indigo-500",
-      text: "text-indigo-400",
-    },
-    {
-      label: "Assistant Output",
-      tokens: data.assistantMessages,
-      color: "bg-cyan-500",
-      text: "text-cyan-400",
-    },
-    {
-      label: "Tool Calls",
-      tokens: data.toolRequests,
-      color: "bg-amber-500",
-      text: "text-amber-400",
-    },
-    {
-      label: "Tool Results",
-      tokens: data.toolResults,
-      color: "bg-emerald-500",
-      text: "text-emerald-400",
-    },
+    { label: copy("System prompt", "系统提示词"), tokens: data.systemPrompt },
+    { label: copy("Tool definitions", "工具定义"), tokens: data.toolDefs },
+    { label: copy("User messages", "用户消息"), tokens: data.userMessages },
+    { label: copy("Assistant messages", "助手消息"), tokens: data.assistantMessages },
+    { label: copy("Tool requests", "工具请求"), tokens: data.toolRequests },
+    { label: copy("Tool results", "工具结果"), tokens: data.toolResults },
   ];
-
-  const totalTokens = parts.reduce((acc, p) => acc + p.tokens, 0);
-  const hasWindow = typeof contextWindow === "number" && contextWindow > 0;
-  const occupancyPct = hasWindow
-    ? Math.min(100, Math.round((totalTokens / contextWindow) * 100))
-    : null;
-  const thresholdPct =
-    data.compactionThreshold && hasWindow
-      ? Math.min(100, Math.round((data.compactionThreshold / contextWindow) * 100))
+  const total = parts.reduce((sum, part) => sum + part.tokens, 0);
+  const windowSize =
+    typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0
+      ? contextWindow
       : null;
-
+  const stale = data.contextClosed || data.occupancyStale === true;
+  const measured =
+    !stale &&
+    typeof data.occupancyTokens === "number" &&
+    Number.isFinite(data.occupancyTokens) &&
+    data.occupancyTokens >= 0
+      ? data.occupancyTokens
+      : null;
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-xl border border-gray-800 bg-gray-950 font-mono text-xs select-none">
-      <div className="flex items-center justify-between pb-2 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
-          <h3 className="font-bold text-sm text-gray-100">Context Window Allocation</h3>
-        </div>
-        <div className="flex items-center gap-2 text-gray-400 text-[11px]">
-          <span>
-            Total: <strong className="text-gray-100">{totalTokens.toLocaleString()}</strong>
-            {hasWindow ? ` / ${contextWindow.toLocaleString()} tokens` : " tokens (Window: —)"}
-          </span>
-          {occupancyPct !== null && (
-            <span className="text-cyan-400 font-bold">({occupancyPct}%)</span>
+    <>
+      <section className={sectionClass}>
+        <h2 className="text-base font-semibold">
+          {copy("Measured context usage", "实测上下文用量")}
+        </h2>
+        <p className={mutedClass}>
+          {stale
+            ? copy(
+                "Compacted. Waiting for the next normal request to measure context usage.",
+                "已压缩，等待下一次常规请求测量上下文用量。",
+              )
+            : measured === null
+              ? copy(
+                  "No context usage measurement is available. Estimates below are not model occupancy.",
+                  "暂无上下文用量测量值。下方估算不代表模型上下文占用。",
+                )
+              : copy(
+                  "Latest normal request, not cumulative session usage. New messages are not measured until the next usage report.",
+                  "最近一次常规请求的用量，并非会话累计用量。新消息需等待下一份用量报告才会计入。",
+                )}
+        </p>
+        <dl className="flex flex-wrap gap-x-8 gap-y-3">
+          <div>
+            <dt className={mutedClass}>{copy("Used", "已使用")}</dt>
+            <dd className="text-lg font-semibold tabular-nums">
+              {measured?.toLocaleString() ?? copy("Unknown", "未知")}
+            </dd>
+          </div>
+          <div>
+            <dt className={mutedClass}>{copy("Model capacity", "模型容量")}</dt>
+            <dd className="text-lg font-semibold tabular-nums">
+              {windowSize?.toLocaleString() ?? copy("Unknown", "未知")}
+            </dd>
+          </div>
+          <div>
+            <dt className={mutedClass}>{copy("Compaction threshold", "压缩阈值")}</dt>
+            <dd className="text-lg font-semibold tabular-nums">
+              {data.compactionThreshold?.toLocaleString() ??
+                copy("Disabled or unavailable", "已禁用或不可用")}
+            </dd>
+          </div>
+        </dl>
+        {windowSize !== null && measured !== null && (
+          <div className="space-y-1">
+            <progress
+              aria-label={copy("Context capacity used", "上下文容量使用情况")}
+              className="w-full h-3 accent-brand-600"
+              max={windowSize}
+              value={Math.min(measured, windowSize)}
+            />
+            <p className={mutedClass}>
+              {Math.round((measured / windowSize) * 100)}% {copy("of model capacity", "的模型容量")}
+              {measured > windowSize && copy(" — exceeds configured capacity", " — 超出配置容量")}
+            </p>
+          </div>
+        )}
+        {measured !== null && data.occupancyRecordedAt && (
+          <p className={`break-all ${mutedClass}`}>
+            {copy("Usage recorded: ", "用量记录时间：")}
+            <time dateTime={data.occupancyRecordedAt}>{data.occupancyRecordedAt}</time>
+          </p>
+        )}
+      </section>
+      <section className={sectionClass}>
+        <h2 className="text-base font-semibold">{copy("Estimated composition", "估算构成")}</h2>
+        <p className={mutedClass}>
+          {copy(
+            "Character-based estimates across the latest trace shard, not the last request. Shares use the estimated total and may differ from measured usage.",
+            "基于最新追踪分片全文字符的估算，而非最近一次请求。占比以估算总量为基准，可能与实测用量不同。",
           )}
-        </div>
-      </div>
-
-      {/* Segmented Progress Bar with Threshold Marker */}
-      <div className="relative w-full h-3 bg-gray-900 rounded-full overflow-hidden flex">
-        {totalTokens === 0 ? (
-          <div className="w-full h-full bg-gray-800" />
-        ) : (
-          parts.map((part, idx) => {
-            if (part.tokens <= 0) return null;
-            const pct = (part.tokens / totalTokens) * 100;
-            return (
-              <div
-                key={idx}
-                className={`h-full ${part.color} transition-all duration-300`}
-                style={{ width: `${pct}%` }}
-                title={`${part.label}: ${part.tokens.toLocaleString()} tokens (${pct.toFixed(1)}%)`}
-              />
-            );
-          })
-        )}
-
-        {/* Compaction Threshold line */}
-        {thresholdPct !== null && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-rose-500 z-10"
-            style={{ left: `${thresholdPct}%` }}
-            title={`Compaction Threshold: ${data.compactionThreshold?.toLocaleString()} tokens (${thresholdPct}%)`}
-          />
-        )}
-      </div>
-
-      {/* Threshold indicator notice */}
-      {thresholdPct !== null && (
-        <div className="flex items-center justify-between text-[10px] text-gray-500">
-          <span>0 tokens</span>
-          <span className="text-rose-400 font-semibold">
-            Compaction triggers at: {data.compactionThreshold?.toLocaleString()} tok ({thresholdPct}
-            %)
-          </span>
-          <span>{contextWindow ? `${contextWindow.toLocaleString()} tok` : "—"}</span>
-        </div>
-      )}
-
-      {/* Legend & Token Count Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1">
-        {parts.map((p, idx) => {
-          const sharePct = totalTokens > 0 ? ((p.tokens / totalTokens) * 100).toFixed(1) : "0.0";
-          return (
-            <div
-              key={idx}
-              className="p-2 rounded-lg bg-gray-900/60 border border-gray-800/80 flex flex-col gap-0.5"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                <span className={`w-2 h-2 rounded-full ${p.color}`} />
-                <span className="truncate">{p.label}</span>
-              </div>
-              <div className="text-xs font-bold text-gray-200 tabular-nums">
-                {p.tokens.toLocaleString()}
-              </div>
-              <div className={`text-[10px] font-semibold ${p.text}`}>{sharePct}%</div>
+        </p>
+        <dl className="divide-y divide-gray-200 dark:divide-gray-800">
+          <div className="flex items-center justify-between gap-4 py-2 font-semibold">
+            <dt>{copy("Estimated total", "估算总量")}</dt>
+            <dd className="tabular-nums">{total.toLocaleString()}</dd>
+          </div>
+          {parts.map((part) => (
+            <div key={part.label} className="flex items-center justify-between gap-4 py-2">
+              <dt>{part.label}</dt>
+              <dd className="tabular-nums text-right">
+                {part.tokens.toLocaleString()}{" "}
+                <span className={mutedClass}>
+                  ({total ? ((part.tokens / total) * 100).toFixed(1) : "0"}%)
+                </span>
+              </dd>
             </div>
-          );
-        })}
-      </div>
-    </div>
+          ))}
+        </dl>
+      </section>
+    </>
   );
 }

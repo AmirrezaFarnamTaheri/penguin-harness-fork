@@ -1,353 +1,245 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import {
-  CodeGraph,
-  type CodeGraphNode,
-  type CodeGraphEdge,
-} from "@prismshadow/penguin-core/browser";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { CodeGraph, type CodeGraphNode } from "@prismshadow/penguin-core/browser";
 import { useProject } from "../../state/project";
 import { Button } from "../../components/ui/button";
-import { Segmented } from "../../components/ui/segmented";
-import { createPenguinCodeGraph } from "./topology-graph-factory";
 import { TopologyGraphCanvas } from "./topology-graph-canvas";
 import { TopologyInspector } from "./topology-inspector";
 import { TopologyMatrix } from "./topology-matrix";
-import type { TopologyViewMode } from "./topology-types";
+import { pageClass, mutedClass, selectClass, useInspectionCopy } from "../context/inspection-ui";
 
 export interface TopologyPageProps {
   embedded?: boolean;
 }
-
 export function TopologyPage({ embedded = false }: TopologyPageProps) {
   const { currentProject } = useProject();
-  const projectId = currentProject?.projectId ?? "default";
-
-  const [viewMode, setViewMode] = useState<TopologyViewMode>("studio");
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>("core/code-graph");
-  const [fromNodeId, setFromNodeId] = useState<string | null>("web/chat-page");
-  const [toNodeId, setToNodeId] = useState<string | null>("sym/ShellGuardian#analyzeCommand");
-  const [impactNodeIds, setImpactNodeIds] = useState<Set<string>>(new Set());
-
-  const [liveGraph, setLiveGraph] = useState<CodeGraph | null>(null);
-  const [isLiveSynced, setIsLiveSynced] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
-
-  const fetchAbortRef = useRef<AbortController | null>(null);
-
-  const fetchTopology = useCallback(async () => {
-    fetchAbortRef.current?.abort();
-    const abortCtrl = new AbortController();
-    fetchAbortRef.current = abortCtrl;
-
-    try {
-      const res = await fetch(`/api/cockpit/topology?project=${encodeURIComponent(projectId)}`, {
-        signal: abortCtrl.signal,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.nodes && Array.isArray(data.nodes) && data.nodes.length > 0) {
-          const constructed = CodeGraph.fromJSON(data);
-          setLiveGraph(constructed);
-          setIsLiveSynced(true);
-          return;
-        }
-      }
-      setLiveGraph(null);
-      setIsLiveSynced(false);
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") return;
-      setLiveGraph(null);
-      setIsLiveSynced(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    setLiveGraph(null);
-    setIsLiveSynced(false);
-    setSelectedNodeId(null);
-    setFromNodeId(null);
-    setToNodeId(null);
-    setImpactNodeIds(new Set());
-    void fetchTopology();
-    return () => {
-      fetchAbortRef.current?.abort();
-    };
-  }, [projectId, fetchTopology]);
-
-  // Fallback factory or live graph
-  const defaultGraph = useMemo(() => createPenguinCodeGraph(), []);
-  const graph = liveGraph ?? (showDemo ? defaultGraph : null);
-
-  const allNodes = useMemo(() => graph?.getAllNodes() ?? [], [graph]);
-
-  const allEdges = useMemo(() => {
-    if (!graph) return [];
-    const edges: CodeGraphEdge[] = [];
-    for (const node of allNodes) {
-      edges.push(...graph.getOutgoingEdges(node.id));
-    }
-    return edges;
-  }, [graph, allNodes]);
-
-  // Telemetry metrics
-  const hubNodes = useMemo(() => (graph ? graph.getHubNodes(3) : []), [graph]);
-  const bridgeNodes = useMemo(() => (graph ? graph.getBridgeNodes() : []), [graph]);
-  const deadCode = useMemo(() => {
-    if (!graph) return [];
-    return allNodes.filter((n) => n.kind !== "file" && graph.getIncomingEdges(n.id).length === 0);
-  }, [graph, allNodes]);
-
-  // Selected node object
-  const selectedNode = useMemo(() => {
-    return selectedNodeId && graph ? (graph.getNode(selectedNodeId) ?? null) : null;
-  }, [graph, selectedNodeId]);
-
-  // Shortest path tracing
-  const tracedPath = useMemo(() => {
-    if (!fromNodeId || !toNodeId || !graph) return null;
-    return graph.findShortestPath(fromNodeId, toNodeId);
-  }, [graph, fromNodeId, toNodeId]);
-
-  const pathNodeIds = useMemo(() => {
-    if (!tracedPath) return new Set<string>();
-    return new Set(tracedPath.map((step) => step.node.id));
-  }, [tracedPath]);
-
-  const handleUpdateImpact = useCallback((nodes: CodeGraphNode[]) => {
-    setImpactNodeIds(new Set(nodes.map((n) => n.id)));
-  }, []);
-
+  const copy = useInspectionCopy();
+  if (!currentProject)
+    return (
+      <p className={`p-4 ${mutedClass}`}>
+        {copy("Select a project to inspect its code structure.", "请选择项目以查看代码结构。")}
+      </p>
+    );
   return (
-    <div
-      className={`flex flex-col h-full gap-4 ${embedded ? "p-2" : "p-6"} bg-gray-950 text-gray-100 font-sans select-none overflow-hidden`}
-    >
-      {/* Top Header & Telemetry Cards */}
-      <div className="flex flex-col gap-3 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2 font-mono">
-              <span
-                className={`w-2 h-2 rounded-full ${isLiveSynced ? "bg-emerald-400 animate-pulse" : showDemo ? "bg-amber-400 animate-pulse" : "bg-gray-500"}`}
-              />
-              CodeGraph & Syntactic Symbol / Dependency Graph
-            </h1>
-            <p className="text-xs text-gray-400 font-mono mt-0.5">
-              Architectural knowledge graph, relational call paths, and blast-radius analysis for{" "}
-              {currentProject?.name ?? projectId}
-            </p>
-          </div>
+    <ProjectTopology
+      key={currentProject.projectId}
+      projectId={currentProject.projectId}
+      embedded={embedded}
+    />
+  );
+}
 
-          {/* Sync badge, demo toggle, refresh & view mode switcher */}
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-mono bg-gray-900 border border-gray-800 text-gray-400">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${isLiveSynced ? "bg-emerald-400" : showDemo ? "bg-amber-400" : "bg-gray-500"}`}
-              />
-              {isLiveSynced
-                ? "Live Symbol Stream"
-                : showDemo
-                  ? "Demo Architecture"
-                  : "Project Topology"}
-            </span>
-            {showDemo ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowDemo(false)}
-                className="text-xs h-7 px-2"
-              >
-                Exit Demo
-              </Button>
-            ) : !isLiveSynced ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowDemo(true)}
-                className="text-xs h-7 px-2"
-              >
-                View Sample
-              </Button>
-            ) : null}
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => void fetchTopology()}
-              className="text-xs h-7 px-2 text-gray-400 hover:text-white"
-            >
-              Refresh
-            </Button>
-            <div className="w-56">
-              <Segmented
-                cols={3}
-                options={[
-                  { value: "studio", label: "Studio" },
-                  { value: "canvas", label: "Canvas" },
-                  { value: "matrix", label: "Matrix" },
-                ]}
-                value={viewMode}
-                onChange={(val) => setViewMode(val as TopologyViewMode)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Telemetry Chips Row */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 font-mono text-xs">
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Symbols</span>
-            <span className="text-base font-bold text-gray-100 tabular-nums">
-              {allNodes.length}
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Dependencies / Edges</span>
-            <span className="text-base font-bold text-cyan-400 tabular-nums">
-              {allEdges.length}
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Hub Nodes</span>
-            <span className="text-base font-bold text-indigo-400 tabular-nums">
-              {hubNodes.length}
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Bridge Nodes</span>
-            <span className="text-base font-bold text-purple-400 tabular-nums">
-              {bridgeNodes.length}
-            </span>
-          </div>
-          <div className="p-2.5 rounded-lg border border-gray-800 bg-gray-900/60 flex flex-col">
-            <span className="text-[10px] text-gray-500 uppercase">Dead Code Candidates</span>
-            <span className="text-base font-bold text-rose-400 tabular-nums">
-              {deadCode.length}
-            </span>
-          </div>
-        </div>
-
-        {/* Path Tracer Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-800 bg-gray-900/40 text-xs font-mono">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-gray-400 font-semibold">Path Finder:</span>
-            <span className="px-2 py-0.5 rounded bg-gray-800 text-cyan-300 truncate max-w-[160px]">
-              {fromNodeId ? (graph?.getNode(fromNodeId)?.name ?? fromNodeId) : "Select Start"}
-            </span>
-            <span className="text-gray-500">→</span>
-            <span className="px-2 py-0.5 rounded bg-gray-800 text-indigo-300 truncate max-w-[160px]">
-              {toNodeId ? (graph?.getNode(toNodeId)?.name ?? toNodeId) : "Select Target"}
-            </span>
-            {tracedPath && (
-              <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
-                Connected in {tracedPath.length - 1} hops
-              </span>
+export function ProjectTopology({
+  projectId,
+  embedded = false,
+}: {
+  projectId: string;
+  embedded?: boolean;
+}) {
+  const copy = useInspectionCopy();
+  const [view, setView] = useState("list");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [impactIds, setImpactIds] = useState<Set<string>>(new Set());
+  const [graph, setGraph] = useState<CodeGraph | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/cockpit/topology?project=${encodeURIComponent(projectId)}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges))
+          throw new Error("Invalid topology response");
+        const next = CodeGraph.fromJSON(data);
+        if (controller.signal.aborted) return;
+        setGraph(next);
+        setSelectedId((id) => (id && next.getNode(id) ? id : null));
+        setFrom((id) => (next.getNode(id) ? id : ""));
+        setTo((id) => (next.getNode(id) ? id : ""));
+        setImpactIds(new Set());
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : String(err));
+          setGraph(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [projectId, revision]);
+  const nodes = useMemo(() => graph?.getAllNodes() ?? [], [graph]);
+  const edges = useMemo(
+    () => nodes.flatMap((node) => graph?.getOutgoingEdges(node.id) ?? []),
+    [graph, nodes],
+  );
+  const path = useMemo(
+    () => (from && to && graph ? graph.findShortestPath(from, to) : null),
+    [from, to, graph],
+  );
+  const pathIds = useMemo(() => new Set(path?.map((step) => step.node.id) ?? []), [path]);
+  const updateImpact = useCallback(
+    (items: CodeGraphNode[]) => setImpactIds(new Set(items.map((node) => node.id))),
+    [],
+  );
+  // Stable node identity: a fresh node object per render would retrigger the inspector's impact effect forever.
+  const selectedNode = useMemo(
+    () => (selectedId && graph ? (graph.getNode(selectedId) ?? null) : null),
+    [graph, selectedId],
+  );
+  return (
+    <section className={`${pageClass} ${embedded ? "p-4" : "p-6"}`}>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">{copy("Code structure", "代码结构")}</h1>
+          <p className={`mt-1 ${mutedClass}`}>
+            {copy(
+              "Inspect indexed symbols, trace dependencies, and review possible change impact.",
+              "检查已索引符号、追踪依赖并评估变更影响。",
             )}
+          </p>
+        </div>
+        <Button disabled={loading} onClick={() => setRevision((r) => r + 1)}>
+          {loading ? copy("Loading…", "加载中…") : copy("Refresh", "刷新")}
+        </Button>
+      </header>
+      {error ? (
+        <div role="alert" className="space-y-3 py-6">
+          <h2 className="font-semibold">
+            {copy("Could not load code structure", "无法加载代码结构")}
+          </h2>
+          <p className={mutedClass}>{error}</p>
+          <Button onClick={() => setRevision((r) => r + 1)}>{copy("Try again", "重试")}</Button>
+        </div>
+      ) : loading && !graph ? (
+        <p role="status" className={`py-8 ${mutedClass}`}>
+          {copy("Loading indexed symbols…", "正在加载索引符号…")}
+        </p>
+      ) : !graph || nodes.length === 0 ? (
+        <div role="status" className="space-y-2 py-8">
+          <h2 className="font-semibold">{copy("No indexed symbols", "暂无索引符号")}</h2>
+          <p className={mutedClass}>
+            {copy(
+              "This project's topology endpoint returned no symbols. Refresh after an index is available. Sample repository data is never substituted.",
+              "此项目的拓扑接口未返回符号。索引可用后请刷新；此处不会用示例仓库数据代替。",
+            )}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className={`flex flex-wrap gap-x-6 gap-y-2 ${mutedClass}`}>
+            <span>
+              {nodes.length} {copy("symbols", "个符号")}
+            </span>
+            <span>
+              {edges.length} {copy("relationships", "条关系")}
+            </span>
+            <span>
+              {graph.getHubNodes(3).length} {copy("hubs", "个枢纽")}
+            </span>
+            <span>
+              {graph.getBridgeNodes().length} {copy("bridges", "个桥接节点")}
+            </span>
           </div>
-          {(fromNodeId || toNodeId) && (
+          <div className="flex flex-wrap items-end gap-3 border-y border-gray-200 py-4 dark:border-gray-800">
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              {copy("Path start", "路径起点")}
+              <select
+                className={selectClass}
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              >
+                <option value="">{copy("Choose a symbol", "选择符号")}</option>
+                {nodes.map((node) => (
+                  <option key={node.id} value={node.id}>
+                    {node.name} · {node.filePath}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col gap-1">
+              {copy("Path end", "路径终点")}
+              <select className={selectClass} value={to} onChange={(e) => setTo(e.target.value)}>
+                <option value="">{copy("Choose a symbol", "选择符号")}</option>
+                {nodes.map((node) => (
+                  <option key={node.id} value={node.id}>
+                    {node.name} · {node.filePath}
+                  </option>
+                ))}
+              </select>
+            </label>
             <Button
-              size="sm"
-              variant="ghost"
-              className="text-[11px] h-6 px-2 text-gray-400 hover:text-white"
+              disabled={!from && !to}
               onClick={() => {
-                setFromNodeId(null);
-                setToNodeId(null);
+                setFrom("");
+                setTo("");
               }}
             >
-              Clear Path
+              {copy("Clear path", "清除路径")}
             </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Main Workspace Body */}
-      <div className="flex-1 min-h-0">
-        {!graph ? (
-          <div className="flex flex-col items-center justify-center h-full rounded-xl border border-dashed border-gray-800 bg-gray-900/40 p-12 text-center font-mono">
-            <div className="w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-3">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <path d="m4.93 4.93 14.14 14.14" />
-              </svg>
-            </div>
-            <h3 className="text-base font-semibold text-gray-100">
-              No symbol dependencies extracted for this project
-            </h3>
-            <p className="mt-1 max-w-md text-xs text-gray-400">
-              The current project ({currentProject?.name ?? projectId}) has not indexed or generated
-              a syntactic symbol graph yet. Dispatched agent swarm tasks or workspace indexing will
-              populate live symbol relationships here.
-            </p>
-            <div className="mt-4 flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowDemo(true)}
-                className="text-xs"
-              >
-                View Sample Architecture
-              </Button>
-            </div>
           </div>
-        ) : (
-          <>
-            {viewMode === "studio" && (
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 h-full">
-                <div className="md:col-span-8 h-full">
-                  <TopologyGraphCanvas
-                    nodes={allNodes}
-                    edges={allEdges}
-                    selectedNodeId={selectedNodeId}
-                    onSelectNode={(id) => setSelectedNodeId(id)}
-                    highlightedPathNodeIds={pathNodeIds}
-                    highlightedImpactNodeIds={impactNodeIds}
-                  />
-                </div>
-                <div className="md:col-span-4 h-full">
-                  <TopologyInspector
-                    graph={graph}
-                    selectedNode={selectedNode}
-                    onSelectNode={(id) => setSelectedNodeId(id)}
-                    onSetPathFrom={(id) => setFromNodeId(id)}
-                    onSetPathTo={(id) => setToNodeId(id)}
-                    onUpdateImpact={handleUpdateImpact}
-                  />
-                </div>
-              </div>
-            )}
-
-            {viewMode === "canvas" && (
-              <div className="h-full">
-                <TopologyGraphCanvas
-                  nodes={allNodes}
-                  edges={allEdges}
-                  selectedNodeId={selectedNodeId}
-                  onSelectNode={(id) => setSelectedNodeId(id)}
-                  highlightedPathNodeIds={pathNodeIds}
-                  highlightedImpactNodeIds={impactNodeIds}
-                />
-              </div>
-            )}
-
-            {viewMode === "matrix" && (
-              <div className="h-full">
+          {from && to && (
+            <p role="status" className="break-words">
+              {path
+                ? path.map((step) => step.node.name).join(" → ")
+                : copy("No directed path connects these symbols.", "这些符号之间没有有向路径。")}
+            </p>
+          )}
+          <div className="flex gap-2" aria-label={copy("Code structure views", "代码结构视图")}>
+            {[
+              ["list", copy("Symbols", "符号列表")],
+              ["graph", copy("Graph", "关系图")],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                aria-pressed={view === value}
+                variant={view === value ? "primary" : "secondary"}
+                onClick={() => setView(value!)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.5fr)]">
+            <div className="min-w-0">
+              {view === "list" ? (
                 <TopologyMatrix
                   graph={graph}
-                  nodes={allNodes}
-                  selectedNodeId={selectedNodeId}
-                  onSelectNode={(id) => setSelectedNodeId(id)}
+                  nodes={nodes}
+                  selectedNodeId={selectedId}
+                  onSelectNode={setSelectedId}
                 />
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+              ) : (
+                <TopologyGraphCanvas
+                  nodes={nodes}
+                  edges={edges}
+                  selectedNodeId={selectedId}
+                  onSelectNode={setSelectedId}
+                  highlightedPathNodeIds={pathIds}
+                  highlightedImpactNodeIds={impactIds}
+                />
+              )}
+            </div>
+            <TopologyInspector
+              graph={graph}
+              selectedNode={selectedNode}
+              onSelectNode={setSelectedId}
+              onSetPathFrom={setFrom}
+              onSetPathTo={setTo}
+              onUpdateImpact={updateImpact}
+            />
+          </div>
+        </>
+      )}
+    </section>
   );
 }

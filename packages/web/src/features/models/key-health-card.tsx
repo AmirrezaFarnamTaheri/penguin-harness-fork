@@ -41,11 +41,11 @@ export function KeyHealthCard({
   const totalCalls = keyItem.successCount + keyItem.failureCount;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/40">
+    <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 p-4 transition-colors hover:border-gray-400">
       {/* Header: Masked Key, Copy, Status Badge */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-semibold text-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">
             {keyItem.maskedKey}
           </span>
           <CopyButton text={keyItem.maskedKey} label="Copy masked key" />
@@ -56,37 +56,25 @@ export function KeyHealthCard({
           {keyItem.status === "cooldown" && (
             <Badge tone="amber">Cooldown ({formatCooldownTimer(remainingMs)})</Badge>
           )}
-          {keyItem.status === "evicted" && <Badge tone="red">Evicted (401)</Badge>}
+          {keyItem.status === "evicted" && <Badge tone="red">Evicted</Badge>}
         </div>
       </div>
 
       {/* Invocation Statistics & Success Bar */}
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between text-sm text-gray-600 dark:text-gray-400">
           <span>Success Rate</span>
-          <span className="font-medium text-foreground">
+          <span className="font-medium text-gray-900 dark:text-gray-100">
             {successRate}% ({keyItem.successCount}/{totalCalls})
           </span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className={`h-full transition-all duration-300 ${
-              successRate >= 90
-                ? "bg-emerald-500"
-                : successRate >= 70
-                  ? "bg-amber-500"
-                  : "bg-red-500"
-            }`}
-            style={{ width: `${successRate}%` }}
-          />
         </div>
       </div>
 
       {/* Leases & Last Used Metadata */}
-      <div className="flex items-center justify-between border-t border-border/50 pt-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-between border-t border-gray-200 dark:border-gray-800 pt-2 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span>Active Leases:</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground">
+          <span className="rounded bg-gray-100 dark:bg-gray-900 px-1.5 py-0.5 text-sm font-medium text-gray-900 dark:text-gray-100">
             {keyItem.activeLeases ?? 0}
           </span>
         </div>
@@ -98,14 +86,14 @@ export function KeyHealthCard({
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-200 dark:border-gray-800 pt-2">
         <Button
           variant="secondary"
           size="sm"
           disabled={disabled}
           onClick={() => onAction?.("probe", keyItem)}
         >
-          Probe Latency
+          Probe
         </Button>
 
         {keyItem.status === "healthy" ? (
@@ -115,7 +103,7 @@ export function KeyHealthCard({
             disabled={disabled}
             onClick={() => onAction?.("cooldown", keyItem)}
           >
-            Force Cooldown
+            Pause for 60 seconds
           </Button>
         ) : (
           <Button
@@ -124,7 +112,7 @@ export function KeyHealthCard({
             disabled={disabled}
             onClick={() => onAction?.("revive", keyItem)}
           >
-            Revive Key
+            Make available
           </Button>
         )}
 

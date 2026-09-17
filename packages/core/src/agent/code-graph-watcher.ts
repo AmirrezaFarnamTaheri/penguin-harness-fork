@@ -139,6 +139,7 @@ export class CodeGraphWatcher extends EventEmitter {
     for (const pattern of this.ignorePatterns) {
       if (typeof pattern === "string") {
         if (
+          normalized === pattern ||
           normalized.includes(`/${pattern}/`) ||
           normalized.endsWith(`/${pattern}`) ||
           normalized.startsWith(`${pattern}/`)

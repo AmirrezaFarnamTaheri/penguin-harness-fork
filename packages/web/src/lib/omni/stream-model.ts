@@ -98,7 +98,7 @@ export interface UserTextItem {
   id: number;
   text: string;
   /** Set for a harness-injected input (a stop hook's continue, the goal plugin's round protocol): rendered with an origin caption, skipped by input history and the outline. */
-  sender?: "harness";
+  sender?: "user" | "parent_agent" | "harness" | "server";
   /** Message timestamp (milliseconds): shown on footer hover. History and real time share the same source — this message's own timestamp. */
   atMs?: number;
 }
@@ -109,6 +109,7 @@ export interface UserTextItem {
  * Task's flow — it never starts a new Task (`text` is the inner message, marker stripped).
  */
 export interface UserSteeringItem {
+  sender?: "user" | "parent_agent" | "harness" | "server";
   kind: "user_steering";
   id: number;
   text: string;
@@ -1210,6 +1211,7 @@ function handleComplete(
             kind: "user_steering",
             id: nextId(model),
             text: steering,
+            ...(p.sender !== undefined ? { sender: p.sender } : {}),
             ...(steerMs !== undefined ? { atMs: steerMs } : {}),
           };
           model.items.push(item);
@@ -1255,7 +1257,7 @@ function handleComplete(
           kind: "user_text",
           id: nextId(model),
           text: p.text,
-          ...(p.sender === "harness" ? { sender: "harness" as const } : {}),
+          ...(p.sender !== undefined ? { sender: p.sender } : {}),
           ...(atMs !== undefined ? { atMs } : {}),
         });
         return;

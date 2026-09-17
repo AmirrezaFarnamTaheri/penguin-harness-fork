@@ -2573,3 +2573,10 @@ describe("GenerativeModel API key rotation & failover", () => {
     expect(model.recordedKeys).toEqual(["key-x", "key-y"]);
   });
 });
+
+it("labels agent-authored provider input without changing its transport role or human text", () => {
+  const agent = mergeOmniToUniMessage([userText("check the tests", "parent_agent")]);
+  expect(JSON.stringify(agent)).toContain("Message from the parent agent, not the human user.");
+  const human = mergeOmniToUniMessage([userText("check the tests")]);
+  expect(JSON.stringify(human)).not.toContain("Message from the parent agent");
+});

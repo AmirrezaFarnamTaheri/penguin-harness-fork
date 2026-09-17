@@ -142,6 +142,8 @@ function boundVisible(
 
 export class Environment implements EnvironmentInterface {
   private readonly workspaceDir: string;
+  /** Editor attribution identity (host-supplied); threaded into every tool execution context. */
+  private readonly attribution: EnvironmentConfig["attribution"];
   /** The running model context's tool configuration; replaced as a whole by `reconfigure`. */
   private toolConfig!: ToolConfig;
   /**
@@ -166,6 +168,7 @@ export class Environment implements EnvironmentInterface {
 
   constructor(config: EnvironmentConfig) {
     this.workspaceDir = config.workspaceDir;
+    this.attribution = config.attribution;
     this.toolExposure = config.toolConfig.toolExposure ?? "direct";
     this.truncatedToolOutputArchive = config.sessionScratchpadDir
       ? new TruncatedToolOutputArchive({
@@ -711,6 +714,9 @@ export class Environment implements EnvironmentInterface {
       toolCallId,
       signal: ac.signal,
       detachSignal: detachCtrl.signal,
+      // Editor attribution identity (host-supplied at construction): file-edit receipts name
+      // the runtime's agent/session, never anything the model wrote.
+      ...(this.attribution ? { attribution: this.attribution } : {}),
       // Pass through the parent's approve callback (run_subagent uses it so the child Session
       // inherits the parent's approval mode; other tools ignore it).
       ...(request.approve ? { approve: request.approve } : {}),

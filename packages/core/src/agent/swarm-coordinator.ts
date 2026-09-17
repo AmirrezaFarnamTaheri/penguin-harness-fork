@@ -23,6 +23,7 @@ import { LoopDetector, type LoopDetectorOptions } from "./loop-detector.js";
 import { ShellGuardian, type ShellSafetyAssessment } from "./shell-guardian.js";
 import { SandboxedCommandRunner, type SandboxExecutionResult } from "./sandbox-runner.js";
 import { TaskWatchdog, type WatchdogConfig, type WatchdogStatus } from "./task-watchdog.js";
+import { AgentNameRegistry } from "./agent-name-registry.js";
 
 export type SwarmRole = "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
 
@@ -40,6 +41,10 @@ export interface SwarmTaskDefinition {
 
 export interface SwarmAgentState {
   id: string;
+  /** Human-distinct display name from the curated pool; unique among live agents. */
+  name?: string;
+  /** What this agent is for, so peers address it deliberately. */
+  description?: string;
   role: SwarmRole;
   status: "idle" | "active" | "waiting_approval" | "handoff" | "completed" | "failed";
   tasksCompleted: number;
@@ -141,6 +146,7 @@ export class SwarmCoordinator {
   public readonly watchdog: TaskWatchdog;
 
   private agents = new Map<string, SwarmAgentState>();
+  private readonly nameRegistry = new AgentNameRegistry();
   private edges = new Map<string, SwarmEdgeState>();
   private listeners = new Set<(event: SwarmEvent) => void>();
   private activeTaskId: string | null = null;
@@ -248,6 +254,7 @@ export class SwarmCoordinator {
     for (const a of defaultAgents) {
       this.agents.set(a.id, {
         id: a.id,
+        name: this.nameRegistry.assign(a.id),
         role: a.role,
         status: "idle",
         tasksCompleted: 0,

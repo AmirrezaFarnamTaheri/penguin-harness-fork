@@ -1,583 +1,306 @@
-import { useState, useMemo } from "react";
-import type { MemoryTopicNode, MemoryScope } from "./memory-types";
-import { filterMemoryTopics, formatBytes } from "./memory-types";
+import { useEffect, useState } from "react";
+import { useProject } from "../../state/project";
+import { MemoryTab } from "../agents/memory-tab";
 import { MemoryGraphCanvas } from "./memory-graph-canvas";
-import { MemoryDocumentStudio } from "./memory-document-studio";
 import { MemoryRecallSimulator } from "./memory-recall-simulator";
+import { filterMemoryTopics, type MemoryTopicNode, type MemoryScope } from "./memory-types";
+import * as api from "../../api/endpoints";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Badge } from "../../components/ui/badge";
-
-function BrainIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18ZM12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-    </svg>
-  );
-}
-
-function PlusIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-function DownloadIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
-
-function UploadIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
-
-function SearchIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="11" cy="11" r="8" />
-      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-  );
-}
-
-function DatabaseIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-    </svg>
-  );
-}
-
-function UserIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
-function FolderGitIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-      <circle cx="12" cy="13" r="2" />
-    </svg>
-  );
-}
-
-function CpuIcon({ size = 16, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <rect x="9" y="9" width="6" height="6" />
-      <line x1="9" y1="1" x2="9" y2="4" />
-      <line x1="15" y1="1" x2="15" y2="4" />
-      <line x1="9" y1="20" x2="9" y2="23" />
-      <line x1="15" y1="20" x2="15" y2="23" />
-      <line x1="20" y1="9" x2="23" y2="9" />
-      <line x1="20" y1="14" x2="23" y2="14" />
-      <line x1="1" y1="9" x2="4" y2="9" />
-      <line x1="1" y1="14" x2="4" y2="14" />
-    </svg>
-  );
-}
-
-function SparklesIcon({ size = 14, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M12 3l1.912 5.888L20 10l-6.088 1.112L12 17l-1.912-5.888L4 10l6.088-1.112z" />
-    </svg>
-  );
-}
-
-function FileCodeIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <polyline points="10 13 8 15 10 17" />
-      <polyline points="14 13 16 15 14 17" />
-    </svg>
-  );
-}
-
-// Default seed topics representing a rich agent state
-const INITIAL_TOPICS: MemoryTopicNode[] = [
-  {
-    id: "user-preferences",
-    name: "user-preferences.md",
-    title: "User Technical Preferences & Persona",
-    scope: "user",
-    bytes: 1420,
-    tokens: 355,
-    tags: ["user", "preferences", "standards"],
-    updatedAt: "2026-09-14T08:30:00Z",
-    content: `---
-title: User Technical Preferences & Persona
-tags: [user, preferences, standards]
----
-# User Preferences
-- Prefers TypeScript strict typing and modular architecture.
-- Enforces test-driven development and zero placeholders.
-- See [coding-guidelines](./coding-guidelines.md) for style specifics.`,
-  },
-  {
-    id: "coding-guidelines",
-    name: "coding-guidelines.md",
-    title: "Repository Architecture & Coding Guidelines",
-    scope: "workspace",
-    bytes: 3840,
-    tokens: 960,
-    tags: ["architecture", "typescript", "standards"],
-    updatedAt: "2026-09-14T09:15:00Z",
-    content: `---
-title: Repository Architecture & Coding Guidelines
-tags: [architecture, typescript, standards]
----
-# Coding Guidelines
-Monorepo rules:
-- All form controls must use size="sm" without manual font sizing.
-- State management follows atomic patterns documented in [state-architecture](./state-architecture.md).
-- Backend contracts detailed in [api-specifications](./api-specifications.md).`,
-  },
-  {
-    id: "state-architecture",
-    name: "state-architecture.md",
-    title: "Frontend State & Dock Management",
-    scope: "workspace",
-    bytes: 2560,
-    tokens: 640,
-    tags: ["state", "frontend", "dock"],
-    updatedAt: "2026-09-13T16:20:00Z",
-    content: `---
-title: Frontend State & Dock Management
-tags: [state, frontend, dock]
----
-# State Architecture
-- Dock panels registered in dock-state.ts.
-- Communicates with [api-specifications](./api-specifications.md) via typed endpoints.`,
-  },
-  {
-    id: "api-specifications",
-    name: "api-specifications.md",
-    title: "Backend Service Endpoints & DTOs",
-    scope: "workspace",
-    bytes: 4680,
-    tokens: 1170,
-    tags: ["api", "dto", "backend"],
-    updatedAt: "2026-09-13T11:00:00Z",
-    content: `---
-title: Backend Service Endpoints & DTOs
-tags: [api, dto, backend]
----
-# Backend Specifications
-Endpoints:
-- /api/agent/memory - Scope and topic file access.
-- /api/models/health - Live key fleet telemetry.
-- Refer to [auth-security](./auth-security.md) for credential headers.`,
-  },
-  {
-    id: "auth-security",
-    name: "auth-security.md",
-    title: "Authentication & Security Rules",
-    scope: "workspace",
-    bytes: 1890,
-    tokens: 472,
-    tags: ["security", "auth", "tokens"],
-    updatedAt: "2026-09-12T14:45:00Z",
-    content: `---
-title: Authentication & Security Rules
-tags: [security, auth, tokens]
----
-# Security Rules
-- All requests validate session tokens.
-- Masked keys never expose credentials.`,
-  },
-];
+import {
+  pageClass,
+  mutedClass,
+  rowButtonClass,
+  selectedClass,
+  selectClass,
+  useInspectionCopy,
+} from "../context/inspection-ui";
 
 export function MemoryPage({ embedded = false }: { embedded?: boolean } = {}) {
-  const [topics, setTopics] = useState<MemoryTopicNode[]>(INITIAL_TOPICS);
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>("coding-guidelines");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeScope, setActiveScope] = useState<MemoryScope>("all");
-  const [activeTab, setActiveTab] = useState<"editor" | "simulator">("editor");
-
-  const filteredTopics = useMemo(() => {
-    return filterMemoryTopics(topics, searchQuery, activeScope);
-  }, [topics, searchQuery, activeScope]);
-
-  const selectedTopic = useMemo(() => {
-    return topics.find((t) => t.id === selectedTopicId) ?? null;
-  }, [topics, selectedTopicId]);
-
-  // Telemetry Aggregates
-  const stats = useMemo(() => {
-    const totalBytes = topics.reduce((acc, t) => acc + t.bytes, 0);
-    const totalTokens = topics.reduce((acc, t) => acc + t.tokens, 0);
-    const userScopeCount = topics.filter((t) => t.scope === "user").length;
-    const workspaceScopeCount = topics.filter((t) => t.scope === "workspace").length;
-    return {
-      totalBytes,
-      totalTokens,
-      userScopeCount,
-      workspaceScopeCount,
-    };
-  }, [topics]);
-
-  const handleUpdateTopic = (id: string, updatedContent: string, newTitle?: string) => {
-    setTopics((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const bytes = new TextEncoder().encode(updatedContent).length;
-        const tokens = Math.ceil(bytes / 4);
-        return {
-          ...t,
-          content: updatedContent,
-          title: newTitle ?? t.title,
-          bytes,
-          tokens,
-          updatedAt: new Date().toISOString(),
-        };
-      }),
-    );
-  };
-
-  const handleDeleteTopic = (id: string) => {
-    setTopics((prev) => prev.filter((t) => t.id !== id));
-    if (selectedTopicId === id) {
-      setSelectedTopicId(null);
-    }
-  };
-
-  const handleCreateTopic = () => {
-    const newId = `topic-${Date.now()}`;
-    const newName = `new-topic-${Date.now().toString().slice(-4)}.md`;
-    const newTopic: MemoryTopicNode = {
-      id: newId,
-      name: newName,
-      title: "Untitled Topic",
-      scope: activeScope === "user" ? "user" : "workspace",
-      bytes: 256,
-      tokens: 64,
-      tags: ["draft"],
-      updatedAt: new Date().toISOString(),
-      content: `---\ntitle: Untitled Topic\ntags: [draft]\n---\n# Untitled Topic\nNew memory notes go here.`,
-    };
-    setTopics((prev) => [newTopic, ...prev]);
-    setSelectedTopicId(newId);
-  };
-
+  const { currentProject, currentAgent, agents, setCurrentAgentId } = useProject();
+  const copy = useInspectionCopy();
+  const [view, setView] = useState("manage");
   return (
-    <div
-      className={`flex flex-col gap-5 ${embedded ? "p-3" : "p-6 min-h-screen"} bg-background text-foreground`}
-    >
-      {/* Page Header */}
-      {!embedded && (
-        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/10 text-primary border border-primary/20">
-              <BrainIcon size={24} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
-                  Agent Memory Vault & Knowledge Studio
-                </h1>
-                <Badge tone="amber">[Local Studio Sample]</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Local simulation and inspection studio for visual knowledge graph, semantic recall
-                testing, and memory topic management
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" className="h-8">
-              <UploadIcon size={14} />
-              <span className="ml-1.5">Import Scope</span>
-            </Button>
-            <Button size="sm" variant="secondary" className="h-8">
-              <DownloadIcon size={14} />
-              <span className="ml-1.5">Export Archive</span>
-            </Button>
-            <Button size="sm" variant="primary" onClick={handleCreateTopic} className="h-8">
-              <PlusIcon size={14} />
-              <span className="ml-1.5">New Memory Topic</span>
-            </Button>
-          </div>
+    <section className={`${pageClass} ${embedded ? "p-4" : "p-6"}`}>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">{copy("Memory", "记忆")}</h1>
+          <p className={`mt-1 ${mutedClass}`}>
+            {copy(
+              "Manage saved memories or inspect their links and keyword matches.",
+              "管理已保存的记忆，或检查链接与关键词匹配。",
+            )}
+          </p>
         </div>
-      )}
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        <div className="p-3.5 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">Total Topics</span>
-            <DatabaseIcon size={16} />
-          </div>
-          <div className="text-2xl font-bold text-foreground mt-1.5">{topics.length}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">Indexed in MEMORY.md</div>
-        </div>
-
-        <div className="p-3.5 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">User Scope</span>
-            <UserIcon size={16} className="text-blue-400" />
-          </div>
-          <div className="text-2xl font-bold text-blue-400 mt-1.5">{stats.userScopeCount}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">
-            Cross-session personal profile
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">Workspace Scope</span>
-            <FolderGitIcon size={16} className="text-emerald-400" />
-          </div>
-          <div className="text-2xl font-bold text-emerald-400 mt-1.5">
-            {stats.workspaceScopeCount}
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">Project repository context</div>
-        </div>
-
-        <div className="p-3.5 rounded-lg border border-border bg-card">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-medium">Memory Footprint</span>
-            <CpuIcon size={16} className="text-amber-400" />
-          </div>
-          <div className="text-2xl font-bold text-foreground mt-1.5">
-            {formatBytes(stats.totalBytes)}
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-            ~{stats.totalTokens} tokens in context
-          </div>
-        </div>
-      </div>
-
-      {/* Main Workspace Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[600px]">
-        {/* Left Column: Knowledge Graph & Filter Bar (7 cols) */}
-        <div className="lg:col-span-7 flex flex-col gap-3">
-          {/* Controls Bar */}
-          <div className="flex items-center justify-between gap-3 flex-wrap bg-card p-2.5 rounded-lg border border-border">
-            <div className="flex items-center gap-1 bg-muted/40 p-0.5 rounded-md border border-border">
-              {(["all", "user", "workspace"] as const).map((sc) => (
-                <button
-                  key={sc}
-                  onClick={() => setActiveScope(sc)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium capitalize transition-all ${
-                    activeScope === sc
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {sc === "all" ? "All Scopes" : sc}
-                </button>
+        {agents.length > 0 && (
+          <label className="flex min-w-0 flex-col gap-1">
+            {copy("Agent", "智能体")}
+            <select
+              className={selectClass}
+              value={currentAgent?.agentId ?? ""}
+              onChange={(e) => setCurrentAgentId(e.target.value)}
+            >
+              <option value="" disabled>
+                {copy("Select an agent", "选择智能体")}
+              </option>
+              {agents.map((agent) => (
+                <option key={agent.agentId} value={agent.agentId}>
+                  {agent.name || agent.agentId}
+                </option>
               ))}
-            </div>
-
-            <div className="relative w-56">
-              <SearchIcon
-                size={14}
-                className="absolute left-2.5 top-2 text-muted-foreground pointer-events-none"
-              />
-              <Input
-                size="sm"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search topics or tags..."
-                className="pl-8 h-7"
-              />
-            </div>
-          </div>
-
-          {/* Interactive Graph Canvas */}
-          <div className="flex-1 min-h-[520px]">
-            <MemoryGraphCanvas
-              topics={filteredTopics}
-              selectedTopicId={selectedTopicId}
-              onSelectTopic={setSelectedTopicId}
+            </select>
+          </label>
+        )}
+      </header>
+      {!currentProject || !currentAgent ? (
+        <p role="status" className={`py-8 ${mutedClass}`}>
+          {copy(
+            "Select a project and agent to load saved memories.",
+            "请选择项目和智能体以加载已保存的记忆。",
+          )}
+        </p>
+      ) : (
+        <>
+          <nav className="flex flex-wrap gap-2" aria-label={copy("Memory views", "记忆视图")}>
+            <Button
+              aria-pressed={view === "manage"}
+              variant={view === "manage" ? "primary" : "secondary"}
+              onClick={() => setView("manage")}
+            >
+              {copy("Manage memories", "管理记忆")}
+            </Button>
+            <Button
+              aria-pressed={view === "inspect"}
+              variant={view === "inspect" ? "primary" : "secondary"}
+              onClick={() => setView("inspect")}
+            >
+              {copy("Inspect & test recall", "检查与召回测试")}
+            </Button>
+          </nav>
+          {view === "manage" ? (
+            <MemoryTab
+              key={`${currentProject.projectId}/${currentAgent.agentId}`}
+              agentId={currentAgent.agentId}
             />
-          </div>
-        </div>
+          ) : (
+            <MemoryInspection
+              key={`${currentProject.projectId}/${currentAgent.agentId}`}
+              projectId={currentProject.projectId}
+              agentId={currentAgent.agentId}
+            />
+          )}
+        </>
+      )}
+    </section>
+  );
+}
 
-        {/* Right Column: Studio / Simulator Tabs (5 cols) */}
-        <div className="lg:col-span-5 flex flex-col gap-3">
-          {/* View Switcher Tabs */}
-          <div className="flex items-center justify-between bg-card p-1.5 rounded-lg border border-border">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setActiveTab("editor")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                  activeTab === "editor"
-                    ? "bg-secondary text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <FileCodeIcon size={14} />
-                <span>Document Studio</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("simulator")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                  activeTab === "simulator"
-                    ? "bg-secondary text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <SparklesIcon size={14} className="text-primary" />
-                <span>Recall Simulator</span>
-              </button>
-            </div>
-
-            {selectedTopic && (
-              <span className="text-[11px] text-muted-foreground font-mono truncate max-w-[140px]">
-                {selectedTopic.name}
-              </span>
-            )}
-          </div>
-
-          {/* Tab Content */}
-          <div className="flex-1 min-h-[520px]">
-            {activeTab === "editor" ? (
-              <MemoryDocumentStudio
-                topic={selectedTopic}
-                onSaveTopic={handleUpdateTopic}
-                onDeleteTopic={handleDeleteTopic}
-              />
-            ) : (
-              <MemoryRecallSimulator
-                topics={topics}
-                onSelectTopic={setSelectedTopicId}
-                selectedTopicId={selectedTopicId}
-              />
-            )}
-          </div>
-        </div>
+/** Inspection uses actual scope files. Mutations stay in the established owner-gated manager. */
+export function MemoryInspection({ projectId, agentId }: { projectId: string; agentId: string }) {
+  const copy = useInspectionCopy();
+  const [topics, setTopics] = useState<MemoryTopicNode[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [scope, setScope] = useState<MemoryScope>("all");
+  const [view, setView] = useState("list");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setLoading(true);
+    setError(null);
+    void (async () => {
+      try {
+        const overview = await api.getMemoryOverview(projectId, agentId);
+        const result: MemoryTopicNode[] = [];
+        // Sequential file reads bound request pressure for large vaults; never silently skip failures.
+        for (const memoryScope of overview.scopes) {
+          if (!current) return;
+          const listing = await api.getMemoryFiles(projectId, agentId, memoryScope.scopeKey);
+          for (const file of listing.files) {
+            if (!current) return;
+            const document = await api.getMemoryFile(
+              projectId,
+              agentId,
+              memoryScope.scopeKey,
+              file.name,
+            );
+            result.push({
+              id: `${memoryScope.scopeKey}/${file.name}`,
+              scopeKey: memoryScope.scopeKey,
+              name: file.name,
+              title: file.title,
+              scope: memoryScope.kind,
+              bytes: file.size,
+              tokens: Math.ceil(file.size / 4),
+              tags: [],
+              updatedAt: file.updatedAt ?? file.modifiedAt,
+              content: document.content,
+            });
+          }
+        }
+        if (current) {
+          setTopics(result);
+          setSelected((id) => (result.some((topic) => topic.id === id) ? id : null));
+        }
+      } catch (err) {
+        if (current) {
+          setError(err instanceof Error ? err.message : String(err));
+          setTopics([]);
+        }
+      } finally {
+        if (current) setLoading(false);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [projectId, agentId, revision]);
+  const filtered = filterMemoryTopics(topics, search, scope);
+  const document = topics.find((topic) => topic.id === selected);
+  const selectTopic = (id: string) => {
+    setSelected(id);
+  };
+  return (
+    <div className="space-y-4" aria-busy={loading}>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+          {loading ? copy("Loading…", "加载中…") : copy("Refresh files", "刷新文件")}
+        </Button>
+        <p className={mutedClass}>
+          {copy(
+            "Read-only snapshot. Edit, add, delete, import and export in Manage memories.",
+            "只读快照。编辑、新建、删除及导入导出请使用“管理记忆”。",
+          )}
+        </p>
       </div>
+      {error ? (
+        <div role="alert" className="space-y-2">
+          <p>
+            {copy(
+              "Could not load all memory files; no partial index is shown.",
+              "无法加载全部记忆文件，未显示不完整索引。",
+            )}
+          </p>
+          <p className={mutedClass}>{error}</p>
+          <Button onClick={() => setRevision((value) => value + 1)}>
+            {copy("Try again", "重试")}
+          </Button>
+        </div>
+      ) : loading ? (
+        <p role="status" className={`py-8 ${mutedClass}`}>
+          {copy("Reading saved memory files…", "正在读取已保存的记忆文件…")}
+        </p>
+      ) : !topics.length ? (
+        <p role="status" className={`py-8 ${mutedClass}`}>
+          {copy(
+            "No saved memory topics. Add or import memories in Manage memories.",
+            "暂无已保存的记忆。请在“管理记忆”中添加或导入。",
+          )}
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <Input
+              aria-label={copy("Search memory topics", "搜索记忆主题")}
+              placeholder={copy("Search titles and filenames", "搜索标题与文件名")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              aria-label={copy("Memory scope", "记忆范围")}
+              className={selectClass}
+              value={scope}
+              onChange={(e) => setScope(e.target.value as MemoryScope)}
+            >
+              <option value="all">{copy("All scopes", "所有范围")}</option>
+              <option value="user">{copy("User", "用户")}</option>
+              <option value="workspace">{copy("Workspace", "工作区")}</option>
+            </select>
+            {[
+              ["list", copy("Topics", "主题")],
+              ["graph", copy("Links", "链接")],
+              ["recall", copy("Recall test", "召回测试")],
+            ].map(([value, label]) => (
+              <Button
+                key={value}
+                aria-pressed={view === value}
+                variant={view === value ? "primary" : "secondary"}
+                onClick={() => setView(value!)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="min-w-0">
+              {view === "recall" ? (
+                <MemoryRecallSimulator
+                  projectId={projectId}
+                  agentId={agentId}
+                  topics={filtered}
+                  selectedTopicId={selected}
+                  onSelectTopic={selectTopic}
+                />
+              ) : view === "graph" ? (
+                <MemoryGraphCanvas
+                  topics={filtered}
+                  selectedTopicId={selected}
+                  onSelectTopic={selectTopic}
+                />
+              ) : !filtered.length ? (
+                <p className={`py-6 ${mutedClass}`}>
+                  {copy(
+                    "No matching topics. Clear your search or choose another scope.",
+                    "没有匹配主题。请清除搜索或选择其他范围。",
+                  )}
+                </p>
+              ) : (
+                <ul className="max-h-[36rem] overflow-y-auto">
+                  {filtered.map((topic) => (
+                    <li key={topic.id}>
+                      <button
+                        type="button"
+                        aria-pressed={selected === topic.id}
+                        className={`${rowButtonClass} ${selected === topic.id ? selectedClass : ""}`}
+                        onClick={() => selectTopic(topic.id)}
+                      >
+                        <span className="block break-words font-semibold">{topic.title}</span>
+                        <span className={`mt-1 block break-all ${mutedClass}`}>
+                          {topic.scopeKey} / {topic.name} · {topic.bytes.toLocaleString()} B
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <section className="min-w-0 space-y-3">
+              <h2 className="break-all text-base font-semibold">
+                {document?.title ?? copy("Document", "文档")}
+              </h2>
+              {document ? (
+                <>
+                  <p className={`break-all ${mutedClass}`}>
+                    {document.scopeKey} / {document.name}
+                  </p>
+                  <pre className="max-h-[36rem] overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 p-4 font-mono text-sm dark:border-gray-800">
+                    {document.content}
+                  </pre>
+                </>
+              ) : (
+                <p className={mutedClass}>
+                  {copy(
+                    "Select a topic to read its saved content.",
+                    "选择主题以阅读已保存的内容。",
+                  )}
+                </p>
+              )}
+            </section>
+          </div>
+        </>
+      )}
     </div>
   );
 }

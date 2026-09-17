@@ -1,12 +1,8 @@
-import React, { useState } from "react";
-import type {
-  KanbanTask,
-  KanbanTaskState,
-  KanbanTaskPriority,
-  TriageDraft,
-} from "@prismshadow/penguin-core/browser";
-import { Button } from "../../components/ui/button.js";
-import { Badge } from "../../components/ui/badge.js";
+import { useState } from "react";
+import type { KanbanTask, KanbanTaskState, TriageDraft } from "@prismshadow/penguin-core/browser";
+import { Button } from "../../components/ui/button";
+import { Modal } from "../../components/ui/modal";
+import { fieldClass, mutedClass, panelClass, WorkError } from "./work-tool-ui";
 
 export interface KanbanBoardViewProps {
   tasks: KanbanTask[];
@@ -15,32 +11,19 @@ export interface KanbanBoardViewProps {
   onClaimTask?: (taskId: string, assignee: string) => void;
   onLaunchDraft?: (draftId: string) => void;
   onClose?: () => void;
+  busy?: boolean;
+  error?: string;
 }
-
-const COLUMNS: Array<{ key: KanbanTaskState; title: string; color: string }> = [
-  { key: "backlog", title: "Backlog", color: "border-gray-300 dark:border-gray-700" },
-  { key: "triage", title: "Triage", color: "border-amber-400 dark:border-amber-600" },
-  { key: "in_progress", title: "In Progress", color: "border-blue-400 dark:border-blue-600" },
-  { key: "review", title: "Review", color: "border-purple-400 dark:border-purple-600" },
-  { key: "done", title: "Done", color: "border-emerald-400 dark:border-emerald-600" },
+const columns: Array<{ key: KanbanTaskState; title: string }> = [
+  { key: "backlog", title: "Backlog" },
+  { key: "triage", title: "Triage" },
+  { key: "in_progress", title: "In progress" },
+  { key: "review", title: "Review" },
+  { key: "done", title: "Done" },
+  { key: "failed", title: "Failed" },
+  { key: "archived", title: "Archived" },
 ];
-
-const PRIORITY_BADGES: Record<KanbanTaskPriority, { label: string; class: string }> = {
-  urgent: {
-    label: "Urgent",
-    class: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
-  },
-  high: {
-    label: "High",
-    class: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-  },
-  normal: {
-    label: "Normal",
-    class: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
-  },
-  low: { label: "Low", class: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
-};
-
+const rank = { urgent: 0, high: 1, normal: 2, low: 3 };
 export function KanbanBoardView({
   tasks,
   drafts = [],
@@ -48,186 +31,228 @@ export function KanbanBoardView({
   onClaimTask,
   onLaunchDraft,
   onClose,
+  busy = false,
+  error,
 }: KanbanBoardViewProps) {
-  const [selectedTask, setSelectedTask] = useState<KanbanTask | null>(null);
-  const [filterAssignee, setFilterAssignee] = useState<string>("");
-
-  const filteredTasks = tasks.filter((t) => {
-    if (!filterAssignee) return true;
-    return t.assignee?.toLowerCase().includes(filterAssignee.toLowerCase());
-  });
-
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [assignee, setAssignee] = useState("");
+  const [query, setQuery] = useState("");
+  const [owner, setOwner] = useState("");
+  const [state, setState] = useState("all");
+  const selected = tasks.find((t) => t.id === selectedId);
+  const filtered = tasks
+    .filter(
+      (t) =>
+        (!owner || t.assignee?.toLowerCase().includes(owner.toLowerCase())) &&
+        (!query ||
+          `${t.title} ${t.description} ${taskLabels(t).join(" ")}`
+            .toLowerCase()
+            .includes(query.toLowerCase())),
+    )
+    .sort((a, b) => rank[a.priority] - rank[b.priority] || b.createdAt - a.createdAt);
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans">
-      {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
-              />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-base font-semibold leading-none">Multi-Agent Kanban & Pipeline</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {tasks.length} total tasks · {tasks.filter((t) => t.state === "in_progress").length}{" "}
-              active
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2.5">
+    <div className="min-w-0 space-y-5 text-sm text-gray-900 dark:text-gray-100">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="min-w-0 flex-1 basis-52">
+          Search tasks
           <input
-            type="text"
-            placeholder="Filter assignee..."
-            value={filterAssignee}
-            onChange={(e) => setFilterAssignee(e.target.value)}
-            className="px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+            className={`${fieldClass} mt-1`}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Title, description, or label"
           />
-          {onClose && (
-            <Button size="sm" variant="ghost" onClick={onClose}>
-              Close
-            </Button>
-          )}
-        </div>
+        </label>
+        <label className="min-w-0 flex-1 basis-40">
+          Assignee
+          <input
+            className={`${fieldClass} mt-1`}
+            value={owner}
+            onChange={(e) => setOwner(e.target.value)}
+            placeholder="All assignees"
+          />
+        </label>
+        <label className="min-w-0 flex-1 basis-40">
+          Show status
+          <select
+            className={`${fieldClass} mt-1`}
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            {columns.map((c) => (
+              <option key={c.key} value={c.key}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {onClose && (
+          <Button className="min-h-10" onClick={onClose}>
+            Close
+          </Button>
+        )}
       </div>
-
-      {/* Triage Drafts Notification Bar */}
       {drafts.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/60 px-6 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
-            <span className="font-semibold">{drafts.length} Triage Draft(s) Ready:</span>
-            <span>{drafts[0]?.title}</span>
-            <span className="text-amber-600 dark:text-amber-400">
-              ({drafts[0]?.suggestedTasks.length} subtasks)
-            </span>
-          </div>
-          {onLaunchDraft && drafts[0] && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => onLaunchDraft(drafts[0]!.id)}
-              className="text-xs py-0.5 px-2"
-            >
-              Launch Pipeline
-            </Button>
-          )}
-        </div>
+        <details className={panelClass} open>
+          <summary className="cursor-pointer font-semibold">Triage inbox ({drafts.length})</summary>
+          <p className={mutedClass}>Review drafts before adding them to the task board.</p>
+          <ul className="mt-3 max-h-80 overflow-auto divide-y divide-gray-200 dark:divide-gray-800">
+            {drafts.map((draft) => (
+              <li key={draft.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <h3 className="font-medium break-words">{draft.title}</h3>
+                  <p className={mutedClass}>{draft.suggestedTasks.length} suggested tasks</p>
+                </div>
+                {onLaunchDraft && (
+                  <Button
+                    className="min-h-10"
+                    disabled={busy}
+                    onClick={() => onLaunchDraft(draft.id)}
+                  >
+                    Add draft to board
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
-
-      {/* Columns Board */}
-      <div className="flex-1 p-6 overflow-x-auto">
-        <div className="grid grid-cols-5 gap-4 h-full min-w-[1000px]">
-          {COLUMNS.map((col) => {
-            const colTasks = filteredTasks.filter((t) => t.state === col.key);
+      <p className={mutedClass}>
+        {filtered.length} of {tasks.length} tasks · Highest priority first
+      </p>
+      <div
+        className={`grid min-w-0 gap-4 ${state === "all" ? "md:grid-cols-2 2xl:grid-cols-5" : ""}`}
+      >
+        {columns
+          .filter((c) => state === "all" || c.key === state)
+          .map((col) => {
+            const items = filtered.filter((t) => t.state === col.key);
             return (
-              <div
+              <section
                 key={col.key}
-                className="flex flex-col rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-100/60 dark:bg-gray-900/40 p-3 h-full"
+                aria-label={col.title}
+                className="min-w-0 rounded-lg bg-gray-50 p-3 dark:bg-gray-900"
               >
-                {/* Column Header */}
-                <div
-                  className={`flex items-center justify-between pb-2 mb-2 border-b-2 ${col.color}`}
-                >
-                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-gray-300">
-                    {col.title}
-                  </span>
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                    {colTasks.length}
-                  </span>
-                </div>
-
-                {/* Task Cards */}
-                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-                  {colTasks.map((task) => {
-                    const pri = PRIORITY_BADGES[task.priority] ?? PRIORITY_BADGES.normal;
-                    return (
-                      <div
-                        key={task.id}
-                        onClick={() => setSelectedTask(task)}
-                        className={`group relative rounded-lg border bg-white dark:bg-gray-900 p-3 shadow-2xs hover:shadow-md transition-all cursor-pointer ${
-                          selectedTask?.id === task.id
-                            ? "border-blue-500 ring-1 ring-blue-500"
-                            : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
-                        }`}
+                <h2 className="mb-3 flex items-center justify-between font-semibold">
+                  {col.title}
+                  <span className="text-sm font-normal text-gray-500">{items.length}</span>
+                </h2>
+                <div className="max-h-[38rem] space-y-3 overflow-y-auto">
+                  {items.map((task) => (
+                    <article className={`${panelClass} space-y-3`} key={task.id}>
+                      <button
+                        className="min-h-10 w-full text-left font-semibold break-words hover:underline"
+                        onClick={() => {
+                          setSelectedId(task.id);
+                          setAssignee(task.assignee ?? "");
+                        }}
                       >
-                        <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                          <span className="text-xs font-semibold leading-snug line-clamp-2">
-                            {task.title}
-                          </span>
-                          <span
-                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-sm shrink-0 ${pri.class}`}
-                          >
-                            {pri.label}
-                          </span>
-                        </div>
-
-                        {task.description && (
-                          <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mb-2">
-                            {task.description}
-                          </p>
+                        {task.title}
+                      </button>
+                      <p className="line-clamp-3 text-gray-600 dark:text-gray-400">
+                        {task.description}
+                      </p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-600 dark:text-gray-400">
+                        <span
+                          className={
+                            task.priority === "urgent"
+                              ? "text-red-700 dark:text-red-300"
+                              : "capitalize"
+                          }
+                        >
+                          {task.priority}
+                        </span>
+                        <span className="break-all">{task.assignee || "Unassigned"}</span>
+                        {task.dependencies.length > 0 && (
+                          <span>{task.dependencies.length} dependencies</span>
                         )}
-
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-500 dark:text-gray-400">
-                          <div className="flex items-center gap-1.5">
-                            {task.assignee ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 font-mono">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                                {task.assignee}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 italic">Unassigned</span>
-                            )}
-                          </div>
-
-                          {task.dependencies.length > 0 && (
-                            <span
-                              className="font-mono"
-                              title={`${task.dependencies.length} blocking dependencies`}
-                            >
-                              🔗 {task.dependencies.length}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Quick state shift buttons on hover */}
-                        <div className="absolute top-2 right-2 hidden group-hover:flex items-center gap-1 bg-white/90 dark:bg-gray-900/90 rounded-md p-0.5 shadow-sm border border-gray-200 dark:border-gray-700">
-                          {col.key !== "done" && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const nextState: KanbanTaskState =
-                                  col.key === "backlog"
-                                    ? "triage"
-                                    : col.key === "triage"
-                                      ? "in_progress"
-                                      : col.key === "in_progress"
-                                        ? "review"
-                                        : "done";
-                                onUpdateTaskState(task.id, nextState);
-                              }}
-                              className="px-1.5 py-0.5 text-[10px] bg-blue-600 text-white rounded hover:bg-blue-700"
-                              title="Advance state"
-                            >
-                              →
-                            </button>
-                          )}
-                        </div>
                       </div>
-                    );
-                  })}
+                      <label className="block text-xs text-gray-600 dark:text-gray-400">
+                        Move task
+                        <select
+                          aria-label={`Status for ${task.title}`}
+                          className={`${fieldClass} mt-1`}
+                          value={task.state}
+                          disabled={busy}
+                          onChange={(e) => {
+                            const next = columns.find((c) => c.key === e.target.value);
+                            if (next) onUpdateTaskState(task.id, next.key);
+                          }}
+                        >
+                          {columns.map((c) => (
+                            <option key={c.key} value={c.key}>
+                              {c.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </article>
+                  ))}
+                  {!items.length && (
+                    <p className={`${mutedClass} py-4`}>
+                      {tasks.length ? "No matching tasks in this status." : "No tasks yet."}
+                    </p>
+                  )}
                 </div>
-              </div>
+              </section>
             );
           })}
-        </div>
       </div>
+      <Modal
+        open={!!selected}
+        onClose={() => setSelectedId(null)}
+        title={selected?.title ?? "Task details"}
+      >
+        {selected && (
+          <div className="space-y-4 text-sm">
+            <WorkError error={error} />
+            <p className="whitespace-pre-wrap break-words leading-6">
+              {selected.description || "No description."}
+            </p>
+            <dl className="space-y-2">
+              <dt className={mutedClass}>Task ID</dt>
+              <dd className="font-mono break-all">{selected.id}</dd>
+              <dt className={mutedClass}>Labels</dt>
+              <dd>{taskLabels(selected).join(", ") || "None"}</dd>
+              <dt className={mutedClass}>Dependencies</dt>
+              <dd>
+                {selected.dependencies
+                  .map((id) => tasks.find((t) => t.id === id)?.title ?? id)
+                  .join(", ") || "None"}
+              </dd>
+            </dl>
+            {onClaimTask && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (assignee.trim()) onClaimTask(selected.id, assignee.trim());
+                }}
+                className="space-y-3"
+              >
+                <label className="block">
+                  Assign to agent or user
+                  <input
+                    className={`${fieldClass} mt-1`}
+                    value={assignee}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    required
+                  />
+                </label>
+                <Button type="submit" className="min-h-10" disabled={busy || !assignee.trim()}>
+                  Assign task
+                </Button>
+              </form>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
+}
+
+export function taskLabels(task: KanbanTask): string[] {
+  const labels = task.metadata?.labels;
+  return Array.isArray(labels)
+    ? labels.filter((label): label is string => typeof label === "string")
+    : [];
 }

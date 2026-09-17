@@ -25,6 +25,7 @@ import {
 } from "@prismshadow/penguin-core";
 import { HttpError } from "../http/errors.js";
 import { badRequest } from "../http/validate.js";
+import type { AgentSnapshotVersion, AgentSnapshotsResponse } from "../api/types.js";
 
 /** Vault file name inside a snapshot/import package (used for archive filtering). */
 const VAULT_BASENAME = ".vault.toml";
@@ -87,6 +88,32 @@ export class SnapshotService {
   ): Promise<{ version: number; file: string; fileName: string }> {
     const { version, file } = await this.ensureSnapshot(projectId, agentId);
     return { version, file, fileName: `${agentId}-v${version}.tar.gz` };
+  }
+
+  /**
+   * The snapshot files this Agent actually has on disk (`snapshots/v<N>.tar.gz`),
+   * oldest first, with the current-version one flagged. Reads only the directory
+   * the export/import flow writes — no second data source, no packing side effect.
+   */
+  async listSnapshots(projectId: string, agentId: string): Promise<AgentSnapshotsResponse> {
+    const current = await this.currentVersion(projectId, agentId);
+    const dir = snapshotsDir(this.root, projectId, agentId);
+    const entries = await fs.readdir(dir).catch(() => [] as string[]);
+    const snapshots: AgentSnapshotVersion[] = [];
+    for (const name of entries) {
+      const m = /^v(\d+)\.tar\.gz$/.exec(name);
+      if (m === null) continue;
+      const stat = await fs.stat(path.join(dir, name));
+      snapshots.push({
+        version: Number(m[1]),
+        fileName: name,
+        sizeBytes: stat.size,
+        mtimeMs: stat.mtimeMs,
+        isCurrent: Number(m[1]) === current,
+      });
+    }
+    snapshots.sort((a, b) => a.version - b.version);
+    return { currentVersion: current, snapshots };
   }
 
   /**

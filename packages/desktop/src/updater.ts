@@ -29,7 +29,12 @@ import type {
   DesktopUpdateStatus,
   DesktopUpdaterCommandMessage,
 } from "@prismshadow/penguin-server/api";
-import { feedUrlOverride, updateSourceConfig, updateSupport } from "./update-support.js";
+import {
+  feedUrlOverride,
+  updatePrereleaseConfig,
+  updateSourceConfig,
+  updateSupport,
+} from "./update-support.js";
 import {
   feedLabel,
   ossFeedUrl,
@@ -302,6 +307,14 @@ export function initUpdater(getWindow: () => BrowserWindow | null): void {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = null;
+
+  const prerelease = updatePrereleaseConfig(process.env, autoUpdater.allowPrerelease);
+  autoUpdater.allowPrerelease = prerelease.allowPrerelease;
+  if (prerelease.invalidPrerelease) {
+    log(
+      "PENGUIN_UPDATE_ALLOW_PRERELEASE has an unsupported value; keeping the version-derived default.",
+    );
+  }
 
   autoUpdater.on("checking-for-update", () => {
     log("checking");

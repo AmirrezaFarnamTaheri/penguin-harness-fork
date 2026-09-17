@@ -12,7 +12,7 @@ import { humanizeDuration } from "../../lib/format";
 import { AgentAvatar } from "../../components/ui/agent-avatar";
 import { StatusIcon } from "../../components/ui/status-icon";
 import { LiveDuration } from "./live-duration";
-import { layoutTopology, NODE_H, NODE_W } from "./agent-topology";
+import { layoutTopology, NODE_H, NODE_W, shortSessionId } from "./agent-topology";
 import type { TopologyNode } from "./agent-topology";
 
 export function AgentTopologyView({
@@ -55,6 +55,7 @@ export function AgentTopologyView({
           const stateLabel = node.running ? S.subagentPanel.nodeRunning : S.subagentPanel.nodeDone;
           // The node renders the description truncated on its second line; the tooltip carries
           // the full sentence, which is the only place it appears untruncated.
+          const identityLabel = `${label} (${shortSessionId(node.sessionId)})`;
           const tooltip =
             node.description !== null
               ? `${label} · ${stateLabel}\n${node.description}`
@@ -65,7 +66,8 @@ export function AgentTopologyView({
               type="button"
               aria-label={`${label} · ${stateLabel}`}
               aria-pressed={selected}
-              title={tooltip}
+              title={`${node.sessionId}
+${tooltip}`}
               onClick={() => onSelect(node)}
               style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
               className={`absolute flex flex-col justify-center gap-0.5 rounded-md border bg-white px-2 text-left transition-colors duration-150 dark:bg-gray-900 ${
@@ -77,7 +79,7 @@ export function AgentTopologyView({
               <span className="flex w-full min-w-0 items-center gap-1.5">
                 <AgentAvatar id={node.agentId ?? node.sessionId} name={label} size={18} />
                 <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {label}
+                  {identityLabel}
                 </span>
                 {/* Elapsed: ticking from first appearance while running, frozen at the settled
                     span when done; omitted when the stamps are unknown (always for the root).

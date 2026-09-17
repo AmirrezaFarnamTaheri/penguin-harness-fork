@@ -102,6 +102,10 @@ export function createInputSubagentTool(
         return { stopReason: "fatal" };
       }
 
+      if (typeof args.agent_description === "string") {
+        manager.updateDescription(session, args.agent_description);
+      }
+
       const prompt = typeof args["prompt"] === "string" ? (args["prompt"] as string) : "";
       const empty = prompt.trim().length === 0;
       const resume = args["resume"] === true;

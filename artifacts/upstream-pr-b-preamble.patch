@@ -1,0 +1,33 @@
+diff --git a/packages/core/src/llm/generative-model.ts b/packages/core/src/llm/generative-model.ts
+index 935141ff9..245e804c5 100644
+--- a/packages/core/src/llm/generative-model.ts
++++ b/packages/core/src/llm/generative-model.ts
+@@ -130,7 +130,12 @@ function payloadToContentItem(payload: CompleteModelPayload): ContentItem {
+     case "text":
+       return {
+         type: "text",
+-        text: payload.text,
++        text:
++          payload.role === "user" && payload.sender === "parent_agent"
++            ? `Message from the parent agent, not the human user.
++
++${payload.text}`
++            : payload.text,
+         ...fidelityProp(payload.fidelity),
+       };
+     case "image_url":
+diff --git a/packages/core/test/llm.test.ts b/packages/core/test/llm.test.ts
+index 1c90e841b..7cbd43d7a 100644
+--- a/packages/core/test/llm.test.ts
++++ b/packages/core/test/llm.test.ts
+@@ -2573,3 +2573,10 @@ describe("GenerativeModel API key rotation & failover", () => {
+     expect(model.recordedKeys).toEqual(["key-x", "key-y"]);
+   });
+ });
++
++it("labels agent-authored provider input without changing its transport role or human text", () => {
++  const agent = mergeOmniToUniMessage([userText("check the tests", "parent_agent")]);
++  expect(JSON.stringify(agent)).toContain("Message from the parent agent, not the human user.");
++  const human = mergeOmniToUniMessage([userText("check the tests")]);
++  expect(JSON.stringify(human)).not.toContain("Message from the parent agent");
++});

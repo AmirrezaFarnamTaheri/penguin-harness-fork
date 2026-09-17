@@ -3,7 +3,8 @@
  * utilityProcess (same Node runtime, isolated from the main process), learns the actual
  * port from the PENGUIN_PORT_FILE announcement, probes HTTP readiness, and stops the
  * server gracefully — shutdown endpoint first (the only graceful path on Windows, where
- * kill() is a hard TerminateProcess), then SIGTERM-equivalent kill as fallback.
+ * kill() is a hard TerminateProcess), then a Windows tree kill or Electron's
+ * direct-child kill as fallback on other platforms.
  */
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -14,6 +15,7 @@ import { embeddedCliEntry } from "./launcher.js";
 import { osProxyEnv } from "./os-proxy.js";
 import { choosePort, readPreferredPort, rememberPreferredPort } from "./port-memory.js";
 import { appOriginFor, parsePortFile } from "./util.js";
+import { forceStopUtilityProcess } from "./utility-process-stop.js";
 
 export interface EmbeddedServer {
   child: UtilityProcess;
@@ -156,25 +158,34 @@ export async function startEmbeddedServer(opts: {
  * server's wrap-up, then kill as a last resort. Safe to call when the child already died.
  */
 export async function stopEmbeddedServer(server: EmbeddedServer): Promise<void> {
+  // Electron clears pid after exit: don't target a stale server or wait for an event
+  // that already fired before this stop request.
+  if (server.child.pid === undefined) return;
   let exited = false;
-  const exit = new Promise<void>((resolve) =>
-    server.child.once("exit", () => {
+  let onExit: () => void;
+  const exit = new Promise<void>((resolve) => {
+    onExit = () => {
       exited = true;
       resolve();
-    }),
-  );
+    };
+    server.child.once("exit", onExit);
+  });
   try {
-    await fetch(`${server.origin}/api/desktop/shutdown`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${server.token}` },
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch {
-    // Server unreachable (already dead or wedged): fall through to kill.
-  }
-  await Promise.race([exit, delay(SHUTDOWN_GRACE_MS)]);
-  if (!exited) {
-    server.child.kill();
-    await Promise.race([exit, delay(2000)]);
+    try {
+      await fetch(`${server.origin}/api/desktop/shutdown`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${server.token}` },
+        signal: AbortSignal.timeout(3000),
+      });
+    } catch {
+      // Server unreachable (already dead or wedged): fall through to forced stop.
+    }
+    await Promise.race([exit, delay(SHUTDOWN_GRACE_MS)]);
+    if (!exited) {
+      await forceStopUtilityProcess(server.child);
+      await Promise.race([exit, delay(2000)]);
+    }
+  } finally {
+    server.child.removeListener("exit", onExit!);
   }
 }

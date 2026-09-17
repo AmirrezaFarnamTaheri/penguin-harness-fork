@@ -37,6 +37,28 @@ export interface ErrorBody {
   error: { code: string; message: string };
 }
 
+/** Verified audit metadata only; raw events, origins and signing material stay on the server. */
+export interface AuditReceipt {
+  payloadHash: string;
+  projectId: string;
+  /** Owning top-level agent, not necessarily the executing agent. */
+  agentId: string;
+  /** Owning top-level session. */
+  sessionId: string;
+  /** Verified origin's final session, or owner for an empty origin; null for legacy unknown origin. */
+  executingSessionId: string | null;
+  timestamp: number;
+  type: "tool_call" | "tool_call_output" | "approval_decision";
+  eventHash: string;
+}
+
+export interface AuditReceiptsResponse {
+  /** Newest append first, at most 50 verified entries for this project. */
+  receipts: AuditReceipt[];
+  /** The byte window or result limit excluded older data. */
+  truncated: boolean;
+}
+
 /** Session approval mode (reuses the CLI enum). */
 export type ApprovalMode = "allow-all" | "deny-all" | "read-only" | "always-ask";
 
@@ -1234,6 +1256,27 @@ export interface MemoryFileResponse {
   content: string;
 }
 
+/** One topic file a memory search matched, in the response's own order (most relevant first). */
+export interface MemorySearchHit {
+  /** The scope directory the topic lives in. */
+  scopeKey: string;
+  /** Topic file name inside that scope. */
+  fileName: string;
+  /** Matched terms over total query terms, 0–1. */
+  relevance: number;
+  /** Rough token count (bytes ÷ 4) of the whole file, as the recall simulator displays it. */
+  tokens: number;
+  /** First line of the topic's body, bounded — what the simulator shows as a preview. */
+  snippet: string;
+}
+
+/** GET …/memory/search — a lexical scan of every scope's topic files. */
+export interface MemorySearchResponse {
+  /** The query as received, trimmed. */
+  query: string;
+  results: MemorySearchHit[];
+}
+
 /** One topic file inside a transfer document: the name it had in its scope, and its whole text. */
 export interface MemoryTransferFile {
   /** File name inside the scope directory, e.g. `prefers-pnpm.md` — a name, never a path. */
@@ -1436,6 +1479,11 @@ export interface DirEntryInfo {
   /** Absolute path of this subdirectory (can be submitted directly as a Workspace). */
   path: string;
 }
+export interface WorktreesResponse {
+  workspace: string;
+  worktrees: Array<{ path: string; head: string; branch: string }>;
+}
+
 export interface DirListResponse {
   /** Absolute path of the current directory (realpath). */
   path: string;
@@ -1757,6 +1805,9 @@ export interface PendingFollowUpInfo {
  * the truth.
  */
 export interface SubagentRuntimeInfo {
+  /** Decorative roster identity; IDs remain the routing authority. */
+  name?: string;
+  description?: string;
   sessionId: string;
   subagentId: string | null;
   running: boolean;
@@ -2538,10 +2589,10 @@ export interface ContextFileShare {
 /**
  * What the Session's current model context is made of — the part derived from its messages.
  *
- * Every token figure is an **estimate** from a character heuristic, not a tokenizer: the
- * authoritative occupancy is the last `token_usage`'s `request.total`, which says how large the
- * context is but not what fills it. Consumers should present these as shares of that measured
- * occupancy rather than as counts of their own.
+ * The six composition parts and `total` are character-heuristic estimates over the newest
+ * Trace shard, not a snapshot of the last request. `occupancyTokens` separately reports the
+ * latest normal main-session `token_usage.request.total`; it is never inferred from the parts.
+ * Composition shares do not claim exact attribution of that measured occupancy.
  *
  * The six parts partition the context and sum to `total`; `topTools` is a ranking inside
  * `toolRequests + toolResults` and can sum to less than those two (a result whose call was not
@@ -2549,6 +2600,12 @@ export interface ContextFileShare {
  * ranking narrowed to the three file tools and keyed by the file each call named.
  */
 export interface SessionContextParts {
+  /** Latest normal main-session request.total, or null if not measured. Never cumulative usage. */
+  occupancyTokens?: number | null;
+  /** Completed compaction invalidated occupancy; cleared by the next normal usage record. */
+  occupancyStale?: boolean;
+  /** Timestamp of the usage record supplying occupancyTokens; null when unavailable/stale. */
+  occupancyRecordedAt?: string | null;
   systemPrompt: number;
   toolDefs: number;
   userMessages: number;
@@ -3272,6 +3329,22 @@ export interface AgentImportRequest {
 export interface AgentImportResponse {
   /** Agent State version number after import (taken from the package's value). */
   version: number;
+}
+
+/** One on-disk Agent State snapshot (snapshots/v<N>.tar.gz), as the listing route serves it. */
+export interface AgentSnapshotVersion {
+  version: number;
+  fileName: string;
+  sizeBytes: number;
+  mtimeMs: number;
+  /** True when this snapshot's version equals the Agent's current Agent State version. */
+  isCurrent: boolean;
+}
+
+export interface AgentSnapshotsResponse {
+  /** The Agent's current Agent State version (what the next export would package). */
+  currentVersion: number;
+  snapshots: AgentSnapshotVersion[];
 }
 
 // ---------------------------------------------------------------------------

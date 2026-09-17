@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CodeGraph, CodeGraphNode, CodeGraphEdge } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
 import { CopyButton } from "../../components/ui/copy-button";
-
+import {
+  mutedClass,
+  rowButtonClass,
+  sectionClass,
+  useInspectionCopy,
+} from "../context/inspection-ui";
 export interface TopologyInspectorProps {
   graph: CodeGraph;
   selectedNode: CodeGraphNode | null;
@@ -11,7 +16,6 @@ export interface TopologyInspectorProps {
   onSetPathTo: (nodeId: string) => void;
   onUpdateImpact: (nodes: CodeGraphNode[], edges: CodeGraphEdge[]) => void;
 }
-
 export function TopologyInspector({
   graph,
   selectedNode,
@@ -20,171 +24,109 @@ export function TopologyInspector({
   onSetPathTo,
   onUpdateImpact,
 }: TopologyInspectorProps) {
-  const [impactDepth, setImpactDepth] = useState<number>(2);
-
-  const callers = useMemo(() => {
-    if (!selectedNode) return [];
-    return graph.getCallers(selectedNode.id, 2);
-  }, [graph, selectedNode]);
-
-  const callees = useMemo(() => {
-    if (!selectedNode) return [];
-    return graph.getCallees(selectedNode.id, 2);
-  }, [graph, selectedNode]);
-
-  const impact = useMemo(() => {
-    if (!selectedNode) return { nodes: [], edges: [] };
-    const res = graph.getImpactRadius(selectedNode.id, impactDepth);
-    onUpdateImpact(res.nodes, res.edges);
-    return res;
-  }, [graph, selectedNode, impactDepth, onUpdateImpact]);
-
-  if (!selectedNode) {
+  const copy = useInspectionCopy();
+  const [depth, setDepth] = useState(2);
+  const impact = useMemo(
+    () => (selectedNode ? graph.getImpactRadius(selectedNode.id, depth) : { nodes: [], edges: [] }),
+    [graph, selectedNode, depth],
+  );
+  // Parent notification is an effect, never a state update during another component's render.
+  useEffect(() => {
+    onUpdateImpact(impact.nodes, impact.edges);
+  }, [impact, onUpdateImpact]);
+  if (!selectedNode)
     return (
-      <div className="flex h-full flex-col items-center justify-center p-6 text-center text-xs text-gray-500 font-mono border border-gray-800 rounded-xl bg-gray-900/60 backdrop-blur-md">
-        <div className="w-8 h-8 rounded-full border border-gray-700 flex items-center justify-center text-gray-400 mb-2">
-          i
-        </div>
-        <div className="font-semibold text-gray-300">No Symbol Selected</div>
-        <div className="text-[11px] text-gray-500 mt-1 max-w-xs">
-          Click any node in the AST graph or table row to inspect callers, callees, and simulate
-          alteration blast radius.
-        </div>
-      </div>
+      <aside className={sectionClass}>
+        <h2 className="text-base font-semibold">{copy("Symbol details", "符号详情")}</h2>
+        <p className={mutedClass}>
+          {copy(
+            "Select a symbol from the list or graph to inspect its relationships.",
+            "从列表或关系图选择符号以检查其关系。",
+          )}
+        </p>
+      </aside>
     );
-  }
-
+  const relations = [
+    {
+      title: copy("Callers · up to 2 steps", "调用方 · 最多两步"),
+      nodes: graph.getCallers(selectedNode.id, 2),
+    },
+    {
+      title: copy("Callees · up to 2 steps", "被调用方 · 最多两步"),
+      nodes: graph.getCallees(selectedNode.id, 2),
+    },
+    {
+      title: copy("Potentially affected symbols", "可能受影响的符号"),
+      nodes: impact.nodes.filter((node) => node.id !== selectedNode.id),
+    },
+  ];
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 border border-gray-800 rounded-xl bg-gray-900/80 backdrop-blur-md text-xs font-mono select-none">
-      {/* Header Symbol Info */}
-      <div className="flex flex-col gap-1.5 pb-3 border-b border-gray-800">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-bold text-sm text-gray-100 truncate">{selectedNode.name}</span>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase font-semibold">
-            {selectedNode.kind}
-          </span>
+    <aside className="min-w-0 space-y-5">
+      <section className={sectionClass}>
+        <h2 className="break-all text-base font-semibold">{selectedNode.name}</h2>
+        <p className={mutedClass}>
+          {selectedNode.kind} · {selectedNode.loc ?? "—"} LOC
+        </p>
+        <div className="flex items-start gap-2">
+          <code className="min-w-0 break-all">{selectedNode.filePath}</code>
+          <CopyButton text={selectedNode.filePath} label={copy("Copy path", "复制路径")} />
         </div>
-        <div className="flex items-center justify-between text-[11px] text-gray-400">
-          <span className="truncate pr-2" title={selectedNode.filePath}>
-            {selectedNode.filePath}
-          </span>
-          <CopyButton text={selectedNode.filePath} label="Copy path" />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => onSetPathFrom(selectedNode.id)}>
+            {copy("Use as start", "设为起点")}
+          </Button>
+          <Button onClick={() => onSetPathTo(selectedNode.id)}>
+            {copy("Use as end", "设为终点")}
+          </Button>
         </div>
-        {selectedNode.loc !== undefined && (
-          <div className="text-[10px] text-gray-500">
-            Source Size: <strong className="text-gray-300">{selectedNode.loc}</strong> lines
-          </div>
-        )}
-      </div>
-
-      {/* Action Buttons: Path Trace */}
-      <div className="flex gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          className="flex-1 text-[11px]"
-          onClick={() => onSetPathFrom(selectedNode.id)}
-        >
-          Set As Path Start
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="flex-1 text-[11px]"
-          onClick={() => onSetPathTo(selectedNode.id)}
-        >
-          Set As Path End
-        </Button>
-      </div>
-
-      {/* Blast Radius & Impact Simulator */}
-      <div className="flex flex-col gap-2 p-3 rounded-lg border border-gray-800 bg-gray-950/60">
-        <div className="flex items-center justify-between">
-          <span className="font-semibold text-rose-400">Blast Radius Simulator</span>
-          <span className="text-[11px] text-gray-400">
-            Depth: <strong className="text-gray-200">{impactDepth}</strong>
-          </span>
-        </div>
-        <input
-          type="range"
-          min="1"
-          max="4"
-          value={impactDepth}
-          onChange={(e) => setImpactDepth(Number(e.target.value))}
-          className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
-        />
-        <div className="text-[11px] text-gray-400">
-          Altering this symbol directly or transitively impacts{" "}
-          <strong className="text-rose-400">{Math.max(0, impact.nodes.length - 1)}</strong>{" "}
-          dependent symbols across <strong className="text-gray-200">{impact.edges.length}</strong>{" "}
-          relationships.
-        </div>
-        {impact.nodes.length > 1 && (
-          <div className="flex flex-wrap gap-1 mt-1 max-h-24 overflow-y-auto">
-            {impact.nodes
-              .filter((n) => n.id !== selectedNode.id)
-              .map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => onSelectNode(n.id)}
-                  className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 text-[10px] hover:bg-rose-500/20 transition-colors truncate max-w-[140px]"
-                  title={n.name}
-                >
-                  {n.name}
-                </button>
+      </section>
+      <section className={sectionClass}>
+        <label className="flex flex-wrap items-center justify-between gap-3">
+          {copy("Impact depth", "影响深度")} <span>{depth}</span>
+          <input
+            aria-label={copy("Impact depth", "影响深度")}
+            className="w-full accent-brand-600"
+            type="range"
+            min="1"
+            max="4"
+            value={depth}
+            onChange={(e) => setDepth(Number(e.target.value))}
+          />
+        </label>
+        <p className={mutedClass}>
+          {copy(
+            "Potential impact follows indexed dependencies; it does not predict runtime behavior.",
+            "潜在影响基于索引依赖，并不预测运行时行为。",
+          )}
+        </p>
+      </section>
+      {relations.map((relation) => (
+        <section key={relation.title} className={sectionClass}>
+          <h3 className="font-semibold">
+            {relation.title} ({relation.nodes.length})
+          </h3>
+          {!relation.nodes.length ? (
+            <p className={mutedClass}>
+              {copy("No relationships found in this index.", "此索引中未找到关系。")}
+            </p>
+          ) : (
+            <ul className="max-h-56 overflow-y-auto">
+              {relation.nodes.map((node) => (
+                <li key={node.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelectNode(node.id)}
+                    className={rowButtonClass}
+                  >
+                    <span className="block break-all">{node.name}</span>
+                    <span className={mutedClass}>{node.kind}</span>
+                  </button>
+                </li>
               ))}
-          </div>
-        )}
-      </div>
-
-      {/* Callers Tree */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-gray-300 font-semibold">
-          <span>Inbound Callers & Dependents</span>
-          <span className="text-gray-500 text-[10px]">({callers.length})</span>
-        </div>
-        {callers.length === 0 ? (
-          <div className="text-[11px] text-gray-600 italic">No inbound callers detected.</div>
-        ) : (
-          <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
-            {callers.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => onSelectNode(c.id)}
-                className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-950 border border-gray-800/80 hover:border-cyan-500/40 cursor-pointer transition-colors"
-              >
-                <span className="text-cyan-400 font-medium truncate">{c.name}</span>
-                <span className="text-[10px] text-gray-500 uppercase">{c.kind}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Callees Tree */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-gray-300 font-semibold">
-          <span>Outbound Callees & Imports</span>
-          <span className="text-gray-500 text-[10px]">({callees.length})</span>
-        </div>
-        {callees.length === 0 ? (
-          <div className="text-[11px] text-gray-600 italic">No outbound callees detected.</div>
-        ) : (
-          <div className="flex flex-col gap-1 max-h-36 overflow-y-auto">
-            {callees.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => onSelectNode(c.id)}
-                className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-950 border border-gray-800/80 hover:border-indigo-500/40 cursor-pointer transition-colors"
-              >
-                <span className="text-indigo-300 font-medium truncate">{c.name}</span>
-                <span className="text-[10px] text-gray-500 uppercase">{c.kind}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+            </ul>
+          )}
+        </section>
+      ))}
+    </aside>
   );
 }

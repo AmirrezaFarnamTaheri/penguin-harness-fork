@@ -114,7 +114,7 @@ function DockButton(props: {
       aria-label={props.label}
       data-testid={props.testId}
       onClick={props.onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
     >
       {props.children}
     </button>
@@ -150,7 +150,7 @@ function DockTabButton(props: {
       data-tab-id={props.tabId}
       {...(props.terminalId !== undefined ? { "data-terminal-id": props.terminalId } : {})}
       data-active={props.active}
-      className={`flex h-6 max-w-44 items-center rounded-md pr-0.5 transition-colors duration-150 ${
+      className={`flex h-10 max-w-60 items-center rounded-md pr-0.5 transition-colors duration-150 ${
         props.active
           ? "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
           : "text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-300"
@@ -159,8 +159,9 @@ function DockTabButton(props: {
       <button
         type="button"
         title={props.title}
+        aria-pressed={props.active}
         onClick={props.onSelect}
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-2 pr-1 text-left text-xs"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pl-3 pr-2 text-left text-sm"
       >
         <span aria-hidden className="shrink-0">
           {props.glyph}
@@ -180,7 +181,7 @@ function DockTabButton(props: {
         aria-label={`${props.closeLabel}: ${props.label}`}
         data-testid="dock-tab-close"
         onClick={props.onClose}
-        className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
       >
         <CloseIcon size={10} />
       </button>
@@ -294,6 +295,10 @@ function DockPicker({
         {row("trace")}
         {row("messaging")}
         {row("schedules")}
+        {PANEL_KINDS.filter(
+          (kind) =>
+            !["agents", "workspace", "memory", "trace", "messaging", "schedules"].includes(kind),
+        ).map(row)}
       </div>
     </div>
   );
@@ -570,7 +575,7 @@ export function DockPanel({
       open={addOpen}
       setOpen={setAddOpen}
       portal={{ direction: "down", align: "right" }}
-      menuClass="w-56"
+      menuClass="w-72 max-h-[min(70vh,32rem)] overflow-y-auto"
       button={
         <DockButton label={S.dock.addTab} testId="dock-add" onClick={() => setAddOpen(!addOpen)}>
           <GlyphIcon d={ADD_ICON} size={ICON_SIZE.iconButton} />
@@ -583,7 +588,7 @@ export function DockPanel({
           type="button"
           data-testid={`dock-add-${kind}`}
           onClick={() => openPanelHere(kind)}
-          className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
         >
           <span className="shrink-0 text-gray-500 dark:text-gray-400">{panelGlyph(kind)}</span>
           <span className="min-w-0 truncate">{panelLabel(kind)}</span>
@@ -599,7 +604,7 @@ export function DockPanel({
               setAddOpen(false);
               void createShellInDock(merged ? undefined : position);
             }}
-            className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+            className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-md px-3 py-2.5 text-left text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100"
           >
             <span className="shrink-0 text-gray-500 dark:text-gray-400">
               <GlyphIcon d={ADD_ICON} size={ICON_SIZE.iconButton} />

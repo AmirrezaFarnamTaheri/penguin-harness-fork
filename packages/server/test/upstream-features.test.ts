@@ -35,6 +35,46 @@ describe("upstream-features integration", () => {
   });
 
   describe("Pipeline routes (F01, F03, F10, F14)", () => {
+    it.each([
+      { from: "missing", to: "start" },
+      { from: "start", to: "missing" },
+    ])("rejects unknown edge endpoints as a client error: %j", async (edge) => {
+      const response = await userA.post(`/api/projects/${projectA}/pipelines`, {
+        id: "bad-edge",
+        name: "Invalid edge",
+        nodes: [{ id: "start", name: "Start", kind: "trigger" }],
+        edges: [edge],
+      });
+      expect(response.status).toBe(400);
+      const listing = await userA.get(`/api/projects/${projectA}/pipelines`);
+      expect(await listing.json()).toEqual({ pipelines: [] });
+    });
+
+    it("keeps prototype-named nodes runnable after disk persistence", async () => {
+      const base = `/api/projects/${projectA}/pipelines`;
+      const created = await userA.post(base, {
+        id: "prototype-ids",
+        name: "Prototype IDs",
+        nodes: [
+          { id: "__proto__", name: "Start", kind: "trigger" },
+          { id: "constructor", name: "Finish", kind: "output" },
+        ],
+        edges: [{ from: "__proto__", to: "constructor" }],
+      });
+      expect(created.status).toBe(201);
+      const response = await userA.post(`${base}/prototype-ids/runs`, {});
+      expect(response.status).toBe(201);
+      const { run } = (await response.json()) as { run: { runId: string } };
+      const runBase = `${base}/prototype-ids/runs/${run.runId}`;
+      const start = await userA.post(`${runBase}/nodes/__proto__/complete`, {});
+      expect(start.status).toBe(200);
+      const finish = await userA.post(`${runBase}/nodes/constructor/complete`, {});
+      expect(finish.status).toBe(200);
+      expect(await finish.json()).toMatchObject({
+        run: { status: "completed", currentNodeIds: [] },
+      });
+    });
+
     it("creates pipeline, enforces DAG validation, persists to disk, and isolates across projects", async () => {
       // 1. Invalid node kind rejected
       const badRes = await userA.post(`/api/projects/${projectA}/pipelines`, {

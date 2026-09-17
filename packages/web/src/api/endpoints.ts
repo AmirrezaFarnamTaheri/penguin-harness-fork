@@ -16,6 +16,8 @@ import type {
   AgentHooksResponse,
   AgentImportRequest,
   AgentImportResponse,
+  AgentSnapshotVersion,
+  AgentSnapshotsResponse,
   AgentKernelUpdateResponse,
   AgentPluginsInstallResponse,
   AgentSchedulesConfigDto,
@@ -62,6 +64,7 @@ import type {
   MemoryImportResponse,
   MemoryOverviewResponse,
   MemoryScopeExport,
+  MemorySearchResponse,
   MeResponse,
   MessagesResponse,
   MessagingBindingsResponse,
@@ -499,6 +502,12 @@ export const insertMemoryPlaceholder = (projectId: string, agentId: string) =>
 
 export const getMemoryFiles = (projectId: string, agentId: string, scopeKey: string) =>
   apiFetch<MemoryFilesResponse>(memoryFilesBase(projectId, agentId, scopeKey));
+
+/** Lexical search across every scope's topic files — the recall simulator's server-side query. */
+export const getMemorySearch = (projectId: string, agentId: string, query: string) =>
+  apiFetch<MemorySearchResponse>(
+    `${memoryBase(projectId, agentId)}/search?q=${encodeURIComponent(query)}`,
+  );
 
 export const getMemoryFile = (projectId: string, agentId: string, scopeKey: string, name: string) =>
   apiFetch<MemoryFileResponse>(
@@ -1427,6 +1436,12 @@ export const importAgent = (projectId: string, agentId: string, body: AgentImpor
   apiFetch<AgentImportResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/import`,
     { method: "POST", body },
+  );
+
+/** The Agent State archives on disk for this Agent (GET /snapshots, any project member). */
+export const getAgentSnapshots = (projectId: string, agentId: string) =>
+  apiFetch<AgentSnapshotsResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/snapshots`,
   );
 
 // Machines (admin only) ----------------------------------------------------------------

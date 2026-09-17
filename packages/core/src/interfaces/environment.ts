@@ -231,6 +231,8 @@ export interface SubagentRunner {
     apiKeys?: string[];
     /** Key allocation strategy across available keys for this subagent. */
     keyStrategy?: SubagentKeyStrategy;
+    /** Opt-in host cascade routing; an explicit model pair takes precedence. */
+    cascade?: { taskType: string; failureCount: number };
   }): Promise<SubagentHandle>;
   /**
    * Revives a released child Session by id (`resumeSession` semantics: its own history,
@@ -340,6 +342,14 @@ export interface EnvironmentConfig {
    * embedders without a stable Session directory omit it and keep truncation-only behavior.
    */
   sessionScratchpadDir?: string;
+  /**
+   * Who is running this Session, recorded verbatim into file-edit attribution receipts
+   * (`[editor attribution: …]` lines edit_file appends to its output; option A — runtime
+   * recorded, not cryptographic). Identity comes from the host, never from the model:
+   * Agent Sessions pass their own coordinates here; standalone embedders omit it and the
+   * tools keep their historical output shape.
+   */
+  attribution?: { agentId: string; sessionId: string };
   /** Runtime services (optional); Environment forwards these to each tool factory to use as needed. */
   services?: EnvironmentServices;
   /**
@@ -486,6 +496,8 @@ export interface BackgroundCommandInfo {
  * whether a round is currently running.
  */
 export interface BackgroundSubagentInfo {
+  name?: string;
+  description?: string;
   sessionId: string;
   subagentId: string | null;
   running: boolean;

@@ -5,6 +5,12 @@
 
 // Agent & Swarm Governance
 export {
+  QueryPartitioner,
+  type PartitionResult,
+  type SubQuery,
+} from "./agent/query-partitioner.js";
+
+export {
   ShellGuardian,
   type ShellRiskLevel,
   type ShellFinding,

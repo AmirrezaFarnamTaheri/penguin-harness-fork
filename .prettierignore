@@ -22,3 +22,7 @@ specs/
 # Playwright e2e artifacts
 test-results/
 playwright-report/
+artifacts/
+
+# Git hooks: shell scripts with no parser
+.githooks/
