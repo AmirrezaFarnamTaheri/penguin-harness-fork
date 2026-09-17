@@ -6,6 +6,7 @@ import { SpanDetailDrawer } from "./span-detail-drawer";
 import { getSessionTraces, getTraceAnalysis } from "../../api/endpoints";
 import { parseTraceSpansToFlamegraph } from "./trace-ingest";
 import { sortTraceFiles } from "./trace-refresh";
+import { replayTraceTurns, TimeTravelSlider } from "./time-travel-slider";
 import { computeWaterfallBounds, formatDurationMs, type ExecutionSpan } from "./flamegraph-types";
 
 const SAMPLE_TRACES: Record<string, ExecutionSpan[]> = {
@@ -154,10 +155,12 @@ export interface TraceFlamegraphPageProps {
   sessionId?: string;
 }
 
-export function TraceFlamegraphPage({
-  embedded = false,
-  sessionId,
-}: TraceFlamegraphPageProps = {}) {
+export function TraceFlamegraphPage(props: TraceFlamegraphPageProps = {}) {
+  // Session changes must discard file selection, pending analysis and replay position together.
+  return <TraceFlamegraphContent key={props.sessionId ?? "sample"} {...props} />;
+}
+
+function TraceFlamegraphContent({ embedded = false, sessionId }: TraceFlamegraphPageProps) {
   const live = sessionId !== undefined;
   const [selectedTraceKey, setSelectedTraceKey] = useState<string>("trace-autonomous-refactor");
   const [selectedSpan, setSelectedSpan] = useState<ExecutionSpan | null>(null);
@@ -165,6 +168,7 @@ export function TraceFlamegraphPage({
   const [liveFileIndex, setLiveFileIndex] = useState<number | null>(null);
   const [liveSpans, setLiveSpans] = useState<ExecutionSpan[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [replayStep, setReplayStep] = useState<number | null>(null);
 
   useEffect(() => {
     if (!live) return;
@@ -203,9 +207,9 @@ export function TraceFlamegraphPage({
   }, [live, sessionId, liveFileIndex]);
 
   const activeSpans = useMemo(() => {
-    if (live) return liveSpans;
+    if (live) return replayTraceTurns(liveSpans, replayStep ?? liveSpans.length);
     return SAMPLE_TRACES[selectedTraceKey] ?? [];
-  }, [live, liveSpans, selectedTraceKey]);
+  }, [live, liveSpans, selectedTraceKey, replayStep]);
 
   const bounds = useMemo(() => computeWaterfallBounds(activeSpans), [activeSpans]);
 
@@ -326,6 +330,9 @@ export function TraceFlamegraphPage({
                 value={liveFileIndex ?? ""}
                 onChange={(e) => {
                   setLiveFileIndex(Number(e.target.value));
+                  setLiveSpans([]);
+                  setReplayStep(null);
+                  setLiveError(null);
                   setSelectedSpan(null);
                 }}
                 className="rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-600"
@@ -340,6 +347,17 @@ export function TraceFlamegraphPage({
           )}
         </div>
       }
+
+      {live && (
+        <TimeTravelSlider
+          maxSteps={liveSpans.length}
+          currentStep={replayStep ?? liveSpans.length}
+          onStepChange={(step) => {
+            setReplayStep(step);
+            setSelectedSpan(null);
+          }}
+        />
+      )}
 
       <dl className="flex flex-wrap gap-x-8 gap-y-3 border-b border-gray-200 pb-4 text-sm dark:border-gray-800">
         {[
