@@ -1,18 +1,40 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Modal } from "../../components/ui/modal";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { SnapshotTimeline } from "./snapshot-timeline";
 import { SnapshotDiffViewer } from "./snapshot-diff-viewer";
+import { getAgentSnapshots } from "../../api/endpoints";
+import type { AgentSnapshotsResponse } from "@prismshadow/penguin-server/api";
 import {
   computeStateDiff,
   executeTimeTravel,
+  formatSnapshotTimestamp,
   type AgentSnapshotState,
   type RollbackMode,
   type SnapshotVersionInfo,
   type TimeTravelResult,
 } from "./snapshot-types";
+
+/** Maps a live GET /snapshots response onto the timeline's version rows. */
+export function toSnapshotVersionInfo(res: AgentSnapshotsResponse): SnapshotVersionInfo[] {
+  const fallbackCurrent = res.snapshots.reduce<number>(
+    (max, s) => Math.max(max, s.version),
+    res.currentVersion,
+  );
+  return res.snapshots.map((s): SnapshotVersionInfo => ({
+    version: s.version,
+    label: s.fileName,
+    timestamp: Math.round(s.mtimeMs),
+    trigger: "auto-save",
+    uncompressedSizeBytes: s.sizeBytes,
+    fileCount: 0,
+    memoryTopicsCount: 0,
+    activePromptHash: "",
+    isCurrent: s.isCurrent || (res.currentVersion === 0 && s.version === fallbackCurrent),
+  }));
+}
 
 function HistoryIcon({ size = 20 }: { size?: number }) {
   return (
@@ -136,7 +158,15 @@ const INITIAL_STATE_DETAILS: Record<number, AgentSnapshotState> = {
   },
 };
 
-export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {}) {
+export interface SnapshotsPageProps {
+  embedded?: boolean;
+  projectId?: string;
+  /** The Agent whose on-disk Agent State archives are listed; omit keeps the local demo. */
+  agentId?: string;
+}
+
+export function SnapshotsPage({ embedded = false, projectId, agentId }: SnapshotsPageProps = {}) {
+  const live = projectId !== undefined && agentId !== undefined;
   const [snapshots, setSnapshots] = useState<SnapshotVersionInfo[]>(INITIAL_SNAPSHOTS);
   const [stateDetails, setStateDetails] = useState(INITIAL_STATE_DETAILS);
   const [selectedVersion, setSelectedVersion] = useState<number>(1);
@@ -147,6 +177,32 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
     targetVersion: number;
     mode: RollbackMode;
   } | null>(null);
+  const [liveArchive, setLiveArchive] = useState<AgentSnapshotsResponse | null>(null);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    getAgentSnapshots(projectId!, agentId!)
+      .then((res) => {
+        if (!cancelled) {
+          setLiveArchive(res);
+          setLiveError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setLiveError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [live, projectId, agentId]);
+
+  const liveVersions = useMemo(
+    () => (liveArchive === null ? [] : toSnapshotVersionInfo(liveArchive)),
+    [liveArchive],
+  );
+  const liveCurrent = liveVersions.find((v) => v.isCurrent);
 
   const currentSnapshot = useMemo(() => {
     return snapshots.find((s) => s.isCurrent) ?? snapshots[snapshots.length - 1]!;
@@ -223,11 +279,12 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
                 <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
                   Checkpoints
                 </h1>
-                <Badge tone="amber">Local demo</Badge>
+                {live ? <Badge tone="brand">live</Badge> : <Badge tone="amber">Local demo</Badge>}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Compare sample checkpoints, preview a restore, or export their state. Changes stay
-                in this page and do not affect your workspace.
+                {live
+                  ? "Agent State archives this Agent actually has on disk, from the snapshots API."
+                  : "Compare sample checkpoints, preview a restore, or export their state. Changes stay in this page and do not affect your workspace."}
               </p>
             </div>
           </div>
@@ -261,10 +318,12 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
               Export JSON
             </Button>
 
-            <Button variant="primary" size="sm" onClick={() => setIsCreatingModal(true)}>
-              <PlusIcon size={13} />
-              Create Checkpoint
-            </Button>
+            {!live && (
+              <Button variant="primary" size="sm" onClick={() => setIsCreatingModal(true)}>
+                <PlusIcon size={13} />
+                Create Checkpoint
+              </Button>
+            )}
           </div>
         </div>
       }
@@ -283,41 +342,88 @@ export function SnapshotsPage({ embedded = false }: { embedded?: boolean } = {})
         </div>
       )}
 
-      <p className="border-b border-gray-200 pb-4 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
-        Current: v{currentSnapshot.version} · {snapshots.length} checkpoints ·{" "}
-        {currentSnapshot.fileCount} sample files · {currentSnapshot.memoryTopicsCount} memory topics
-        · {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
-      </p>
+      {!live && (
+        <p className="border-b border-gray-200 pb-4 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
+          Current: v{currentSnapshot.version} · {snapshots.length} checkpoints ·{" "}
+          {currentSnapshot.fileCount} sample files · {currentSnapshot.memoryTopicsCount} memory
+          topics · {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
+        </p>
+      )}
 
-      {/* Main Split Workbench: Timeline on Left, Diff & Time-Travel on Right */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Timeline (5 cols) */}
-        <div className="lg:col-span-5">
-          <SnapshotTimeline
-            snapshots={snapshots}
-            selectedVersion={selectedVersion}
-            onSelectVersion={(v) => setSelectedVersion(v)}
-            onInitiateRollback={(v) =>
-              setRollbackConfirmation({ targetVersion: v, mode: "in-place" })
-            }
-          />
-        </div>
+      {/* Main Split Workbench: Timeline on Left, Diff & Time-Travel on Right (demo only) */}
+      {!live && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          {/* Timeline (5 cols) */}
+          <div className="lg:col-span-5">
+            <SnapshotTimeline
+              snapshots={snapshots}
+              selectedVersion={selectedVersion}
+              onSelectVersion={(v) => setSelectedVersion(v)}
+              onInitiateRollback={(v) =>
+                setRollbackConfirmation({ targetVersion: v, mode: "in-place" })
+              }
+            />
+          </div>
 
-        {/* Diff Viewer (7 cols) */}
-        <div className="lg:col-span-7">
-          <SnapshotDiffViewer
-            currentSnapshot={currentSnapshot}
-            targetSnapshot={targetSnapshot}
-            diffSummary={diffSummary}
-            onConfirmRollback={(mode) =>
-              setRollbackConfirmation({
-                targetVersion: targetSnapshot.version,
-                mode,
-              })
-            }
-          />
+          {/* Diff Viewer (7 cols) */}
+          <div className="lg:col-span-7">
+            <SnapshotDiffViewer
+              currentSnapshot={currentSnapshot}
+              targetSnapshot={targetSnapshot}
+              diffSummary={diffSummary}
+              onConfirmRollback={(mode) =>
+                setRollbackConfirmation({
+                  targetVersion: targetSnapshot.version,
+                  mode,
+                })
+              }
+            />
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Live on-disk archive list (real Agent State snapshots API) */}
+      {live && (
+        <section aria-label="On-disk snapshots" className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between border-b border-gray-200 pb-3 dark:border-gray-800">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                On-disk archives (live)
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {liveError
+                  ? liveError
+                  : liveArchive === null
+                    ? "Loading archives…"
+                    : `${liveArchive.snapshots.length} archive${liveArchive.snapshots.length === 1 ? "" : "s"} on disk · current Agent State version v${liveArchive.currentVersion}`}
+              </p>
+            </div>
+            <Badge tone="brand">live</Badge>
+          </div>
+          {liveCurrent && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Current: {liveCurrent.label} · {liveCurrent.uncompressedSizeBytes} bytes ·{" "}
+              {formatSnapshotTimestamp(liveCurrent.timestamp)}
+            </p>
+          )}
+          <ul className="flex flex-col gap-1.5">
+            {liveVersions.map((v) => (
+              <li
+                key={v.version}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-950"
+              >
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{v.label}</span>
+                <span className="flex flex-wrap items-center gap-2">
+                  {v.isCurrent && <Badge tone="green">current</Badge>}
+                  <span className="tabular-nums text-gray-600 dark:text-gray-400">
+                    {formatSnapshotTimestamp(v.timestamp)}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <Modal
         open={isCreatingModal}

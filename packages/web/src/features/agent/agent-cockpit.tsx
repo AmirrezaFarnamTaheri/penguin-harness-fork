@@ -499,7 +499,9 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
             {tool === "memory" && <MemoryPage embedded />}
             {tool === "keys" && <ModelsKeyFleetPage embedded />}
             {tool === "flamegraph" && <TraceFlamegraphPage embedded />}
-            {tool === "snapshots" && <SnapshotsPage embedded />}
+            {tool === "snapshots" && (
+              <SnapshotsPage embedded projectId={projectId} agentId="default_agent" />
+            )}
           </Suspense>
         </div>
       </div>

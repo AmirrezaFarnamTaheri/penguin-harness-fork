@@ -1758,7 +1758,14 @@ export function ChatPage() {
       case "flamegraph":
         return <TraceFlamegraphPage key={selected.sessionId} embedded />;
       case "snapshots":
-        return <SnapshotsPage key={selected.sessionId} embedded />;
+        return (
+          <SnapshotsPage
+            key={selected.sessionId}
+            embedded
+            projectId={projectId ?? undefined}
+            agentId={selected.agentId ?? undefined}
+          />
+        );
     }
   };
 

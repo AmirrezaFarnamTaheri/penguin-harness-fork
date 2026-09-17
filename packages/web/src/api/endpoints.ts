@@ -16,6 +16,8 @@ import type {
   AgentHooksResponse,
   AgentImportRequest,
   AgentImportResponse,
+  AgentSnapshotVersion,
+  AgentSnapshotsResponse,
   AgentKernelUpdateResponse,
   AgentPluginsInstallResponse,
   AgentSchedulesConfigDto,
@@ -1427,6 +1429,12 @@ export const importAgent = (projectId: string, agentId: string, body: AgentImpor
   apiFetch<AgentImportResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/import`,
     { method: "POST", body },
+  );
+
+/** The Agent State archives on disk for this Agent (GET /snapshots, any project member). */
+export const getAgentSnapshots = (projectId: string, agentId: string) =>
+  apiFetch<AgentSnapshotsResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/snapshots`,
   );
 
 // Machines (admin only) ----------------------------------------------------------------
