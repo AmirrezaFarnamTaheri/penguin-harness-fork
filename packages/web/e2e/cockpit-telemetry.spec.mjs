@@ -94,6 +94,40 @@ test("mailbox cards follow successive live snapshots and clear on project switch
   expect(errors).toEqual([]);
 });
 
+test("handoff timeline records directives once and clears on project switch", async ({ page }) => {
+  const { sockets, errors } = await boot(page);
+  await select(page);
+  const timeline = page.getByRole("region", { name: "Live handoffs" });
+  const event = {
+    type: "swarm_event",
+    projectId: "alpha",
+    event: {
+      type: "directive_dispatched",
+      taskId: "inter-agent",
+      timestamp: 1700000000000,
+      payload: {
+        from: "operator-live",
+        to: "coder-live",
+        content: "Review this change",
+        messageId: "directive-1",
+      },
+    },
+  };
+  sockets[0].send(JSON.stringify(event));
+  await expect(timeline.getByText("operator-live", { exact: true })).toBeVisible();
+  await expect(timeline.getByText("coder-live", { exact: true })).toBeVisible();
+  await expect(timeline.getByText("Dispatched", { exact: true })).toBeVisible();
+  sockets[0].send(JSON.stringify(event));
+  await expect(timeline.getByText("operator-live", { exact: true })).toHaveCount(1);
+  await expect(timeline.getByRole("button", { name: "Simulate Next Stage" })).toHaveCount(0);
+  await select(page, "beta");
+  await expect(timeline.getByText("operator-live", { exact: true })).toHaveCount(0);
+  await expect(
+    timeline.getByText("No directives observed in this connection.", { exact: true }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("no project means no traffic or seeded topology, even for manual actions", async ({
   page,
 }) => {

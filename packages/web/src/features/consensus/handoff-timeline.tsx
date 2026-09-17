@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { HandoffStepItem } from "./consensus-types";
+import type { LiveHandoffEvent } from "../agent/use-cockpit-telemetry.js";
 import { Button } from "../../components/ui/button";
 
-export function HandoffTimeline() {
+export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] }) {
   const [steps, setSteps] = useState<HandoffStepItem[]>([
     {
       id: "step-1",
@@ -73,92 +74,134 @@ export function HandoffTimeline() {
     }, 1200);
   };
 
+  const isLive = handoffs !== undefined;
+
   return (
     <div className="flex flex-col gap-4 py-4 border-b border-gray-200 dark:border-gray-800 text-sm ">
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-            Handoffs (local demo)
+            {isLive ? "Handoffs (live)" : "Handoffs (local demo)"}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            Follow a sample task from delegation to review. This does not reflect running agents.
+            {isLive
+              ? "Directives dispatched between agents in this project's swarm."
+              : "Follow a sample task from delegation to review. This does not reflect running agents."}
           </p>
         </div>
 
-        <Button size="sm" variant="secondary" onClick={handleRunSimulation} disabled={simulating}>
-          {simulating ? "Advancing..." : "Simulate Next Stage"}
-        </Button>
+        {!isLive && (
+          <Button size="sm" variant="secondary" onClick={handleRunSimulation} disabled={simulating}>
+            {simulating ? "Advancing..." : "Simulate Next Stage"}
+          </Button>
+        )}
       </div>
 
-      {/* Stepper Timeline */}
-      <div className="flex flex-col gap-3">
-        {steps.map((step, idx) => (
-          <div
-            key={step.id}
-            className={`relative p-3 rounded-lg border transition-all flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${
-              step.status === "completed"
-                ? "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
-                : step.status === "in_progress"
-                  ? "bg-cyan-950/20 border-cyan-500/40 ring-1 ring-cyan-500/30"
-                  : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 opacity-60"
-            }`}
-          >
-            <div className="flex items-start gap-3 min-w-0 flex-1">
-              <div
-                className={`w-6 h-6 rounded-full flex flex-wrap items-center justify-center font-semibold text-sm shrink-0 mt-0.5 ${
-                  step.status === "completed"
-                    ? "bg-emerald-500 text-black"
-                    : step.status === "in_progress"
-                      ? "bg-cyan-500 text-black "
-                      : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
-                }`}
-              >
-                {step.status === "completed" ? "✓" : idx + 1}
-              </div>
-
-              <div className="flex flex-col gap-1 min-w-0 flex-1 break-words">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">
-                    {step.fromAgent}
-                  </span>
-                  <span className="text-gray-600 dark:text-gray-400">→</span>
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">
-                    {step.toAgent}
-                  </span>
-                  <span className="text-gray-600 dark:text-gray-400 text-sm tabular-nums">
-                    [{step.timestamp}]
-                  </span>
-                </div>
-                <div className="text-sm text-gray-900 dark:text-gray-100 font-medium">
-                  {step.reason}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
-                  {step.payloadSummary}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-row items-center gap-2 shrink-0 sm:flex-col sm:items-end">
-              <span
-                className={`text-sm px-1.5 py-0.2 rounded  font-semibold ${
-                  step.status === "completed"
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
-                    : step.status === "in_progress"
-                      ? "bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30"
-                      : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
-                }`}
-              >
-                {step.status}
-              </span>
-              {step.durationMs > 0 && (
-                <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
-                  {step.durationMs}ms
+      {/* Live directive feed (from the cockpit swarm event stream) */}
+      {isLive && (
+        <div className="flex flex-col gap-3">
+          {handoffs.length === 0 && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              No directives observed in this connection.
+            </p>
+          )}
+          {handoffs.map((event) => (
+            <div
+              key={event.messageId}
+              className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-col gap-2"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{event.from}</span>
+                <span className="text-gray-600 dark:text-gray-400">→</span>
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{event.to}</span>
+                <span className="text-sm px-1.5 py-0.2 rounded font-semibold bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30">
+                  Dispatched
                 </span>
+                <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
+                  [{new Date(event.timestamp).toLocaleTimeString()}]
+                </span>
+              </div>
+              {event.content && (
+                <div className="text-sm text-gray-900 dark:text-gray-100 font-medium break-words">
+                  {event.content}
+                </div>
               )}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* Stepper Timeline */}
+      {!isLive && (
+        <div className="flex flex-col gap-3">
+          {steps.map((step, idx) => (
+            <div
+              key={step.id}
+              className={`relative p-3 rounded-lg border transition-all flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4 ${
+                step.status === "completed"
+                  ? "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                  : step.status === "in_progress"
+                    ? "bg-cyan-950/20 border-cyan-500/40 ring-1 ring-cyan-500/30"
+                    : "bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div
+                  className={`w-6 h-6 rounded-full flex flex-wrap items-center justify-center font-semibold text-sm shrink-0 mt-0.5 ${
+                    step.status === "completed"
+                      ? "bg-emerald-500 text-black"
+                      : step.status === "in_progress"
+                        ? "bg-cyan-500 text-black "
+                        : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
+                  }`}
+                >
+                  {step.status === "completed" ? "✓" : idx + 1}
+                </div>
+
+                <div className="flex flex-col gap-1 min-w-0 flex-1 break-words">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {step.fromAgent}
+                    </span>
+                    <span className="text-gray-600 dark:text-gray-400">→</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {step.toAgent}
+                    </span>
+                    <span className="text-gray-600 dark:text-gray-400 text-sm tabular-nums">
+                      [{step.timestamp}]
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-900 dark:text-gray-100 font-medium">
+                    {step.reason}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
+                    {step.payloadSummary}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-row items-center gap-2 shrink-0 sm:flex-col sm:items-end">
+                <span
+                  className={`text-sm px-1.5 py-0.2 rounded  font-semibold ${
+                    step.status === "completed"
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20"
+                      : step.status === "in_progress"
+                        ? "bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30"
+                        : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
+                  }`}
+                >
+                  {step.status}
+                </span>
+                {step.durationMs > 0 && (
+                  <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
+                    {step.durationMs}ms
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

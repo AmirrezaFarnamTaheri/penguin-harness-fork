@@ -19,6 +19,15 @@ export interface LiveMailboxEntry {
   leaseRemainingSec?: number;
 }
 
+/** A directive_dispatched swarm event, folded for the consensus handoff timeline. */
+export interface LiveHandoffEvent {
+  messageId: string;
+  from: string;
+  to: string;
+  content?: string;
+  timestamp: number;
+}
+
 export interface KeyFleetProvider {
   provider: string;
   status: "active" | "cooldown" | "error";
@@ -34,6 +43,7 @@ export interface CockpitTelemetryState {
   swarmEdges: SwarmEdge[];
   turnSummaries: LiveTurnSummary[];
   mailboxEntries: LiveMailboxEntry[];
+  handoffs: LiveHandoffEvent[];
   keyFleet: { healthy: boolean; activeCount: number; providers: KeyFleetProvider[] };
   lastEventTime: number | null;
   isDispatching: boolean;
@@ -80,6 +90,7 @@ function emptyTelemetry(projectId: string | null): Telemetry {
     swarmEdges: [],
     turnSummaries: [],
     mailboxEntries: [],
+    handoffs: [],
     keyFleet: { healthy: false, activeCount: 0, providers: [] },
     lastEventTime: null,
     isDispatching: false,
@@ -236,6 +247,32 @@ export function useCockpitTelemetry(
               update(snapshotPatch(msg.data));
             } else if (msg.type === "swarm_event" && msg.event) {
               update({ lastEventTime: Date.now() });
+              if (
+                msg.event.type === "directive_dispatched" &&
+                typeof msg.event.payload?.messageId === "string"
+              ) {
+                snapshotRevision++;
+                const payload = msg.event.payload;
+                setState((previous) => {
+                  if (!current()) return previous;
+                  const handoff: LiveHandoffEvent = {
+                    messageId: String(payload.messageId),
+                    from: typeof payload.from === "string" ? payload.from : "unknown",
+                    to: typeof payload.to === "string" ? payload.to : "unknown",
+                    content: typeof payload.content === "string" ? payload.content : undefined,
+                    timestamp:
+                      typeof msg.event.timestamp === "number" ? msg.event.timestamp : Date.now(),
+                  };
+                  const handoffs =
+                    previous.projectId === projectId
+                      ? [
+                          handoff,
+                          ...previous.handoffs.filter((h) => h.messageId !== handoff.messageId),
+                        ].slice(0, 50)
+                      : previous.handoffs;
+                  return { ...previous, ...{ handoffs } };
+                });
+              }
               if (msg.event.taskId) update({ activeTaskId: msg.event.taskId });
               if (msg.event.type === "task_completed" || msg.event.type === "task_failed") {
                 update({ activeTaskId: null, isDispatching: scope.dispatching });
