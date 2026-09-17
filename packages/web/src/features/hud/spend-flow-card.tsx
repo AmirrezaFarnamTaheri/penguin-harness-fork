@@ -1,5 +1,6 @@
 import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
 import { mutedClass, panelClass } from "../kanban/work-tool-ui";
+import { SankeySpendChart } from "../cockpit/sankey-spend-chart";
 
 export interface SpendFlowCardProps {
   report: SpendFlowReport;
@@ -15,6 +16,7 @@ export function SpendFlowCard({ report, className = "" }: SpendFlowCardProps) {
         </p>
         <p className={mutedClass}>{report.period.label}</p>
       </header>
+      <SankeySpendChart report={report} />
       <div className="grid min-w-0 gap-6 lg:grid-cols-2">
         {[
           { title: "By model", rows: report.models },
