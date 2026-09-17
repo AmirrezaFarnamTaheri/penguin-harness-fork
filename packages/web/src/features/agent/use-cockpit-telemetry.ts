@@ -30,6 +30,52 @@ export interface LiveHandoffEvent {
   timestamp: number;
 }
 
+/** Only alerts observed on this project's live stream; snapshots contain no loop history. */
+export interface LiveLoopEvent {
+  id: string;
+  taskId: string;
+  agentId?: string;
+  timestamp: number;
+  message: string;
+}
+
+export const LOOP_EVENT_LIMIT = 50;
+
+export function retainLoopEvent(events: LiveLoopEvent[], value: unknown): LiveLoopEvent[] {
+  if (!value || typeof value !== "object") return events;
+  if (
+    !("type" in value) ||
+    value.type !== "loop_detected" ||
+    !("taskId" in value) ||
+    typeof value.taskId !== "string" ||
+    !value.taskId.trim() ||
+    !("timestamp" in value) ||
+    typeof value.timestamp !== "number" ||
+    !Number.isFinite(value.timestamp) ||
+    Math.abs(value.timestamp) > 8.64e15 ||
+    !("payload" in value) ||
+    !value.payload ||
+    typeof value.payload !== "object" ||
+    !("message" in value.payload) ||
+    typeof value.payload.message !== "string" ||
+    !value.payload.message.trim()
+  )
+    return events;
+  const agentId =
+    "agentId" in value && typeof value.agentId === "string" && value.agentId.trim()
+      ? value.agentId
+      : undefined;
+  const event: LiveLoopEvent = {
+    id: JSON.stringify([value.taskId, agentId, value.timestamp, value.payload.message]),
+    taskId: value.taskId,
+    agentId,
+    timestamp: value.timestamp,
+    message: value.payload.message,
+  };
+  if (events.some((existing) => existing.id === event.id)) return events;
+  return [event, ...events].slice(0, LOOP_EVENT_LIMIT);
+}
+
 export interface KeyFleetProvider {
   provider: string;
   status: "active" | "cooldown" | "error";
@@ -46,6 +92,7 @@ export interface CockpitTelemetryState {
   turnSummaries: LiveTurnSummary[];
   mailboxEntries: LiveMailboxEntry[];
   handoffs: LiveHandoffEvent[];
+  loopEvents: LiveLoopEvent[];
   keyFleet: { healthy: boolean; activeCount: number; providers: KeyFleetProvider[] };
   lastEventTime: number | null;
   isDispatching: boolean;
@@ -93,6 +140,7 @@ function emptyTelemetry(projectId: string | null): Telemetry {
     turnSummaries: [],
     mailboxEntries: [],
     handoffs: [],
+    loopEvents: [],
     keyFleet: { healthy: false, activeCount: 0, providers: [] },
     lastEventTime: null,
     isDispatching: false,
@@ -249,6 +297,15 @@ export function useCockpitTelemetry(
               update(snapshotPatch(msg.data));
             } else if (msg.type === "swarm_event" && msg.event) {
               update({ lastEventTime: Date.now() });
+              if (msg.event.type === "loop_detected") {
+                setState((previous) => {
+                  if (!current() || previous.projectId !== projectId) return previous;
+                  return {
+                    ...previous,
+                    loopEvents: retainLoopEvent(previous.loopEvents, msg.event),
+                  };
+                });
+              }
               if (
                 msg.event.type === "directive_dispatched" &&
                 typeof msg.event.payload?.messageId === "string"

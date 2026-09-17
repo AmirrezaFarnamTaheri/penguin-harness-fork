@@ -1,6 +1,7 @@
 import { lazy, Suspense, useId, useMemo, useState } from "react";
 import { QueryPartitioner } from "@prismshadow/penguin-core/browser";
 import { PartitionPreviewPanel } from "./partition-preview-panel";
+import { LoopEventFeed } from "./loop-event-feed";
 import { Modal } from "../../components/ui/modal.js";
 import { Button } from "../../components/ui/button.js";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -462,6 +463,11 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
           {tool === "loop" && (
             <section className="max-w-3xl space-y-6">
               <h2 className="text-lg font-semibold">{c.loop}</h2>
+              <LoopEventFeed
+                events={telemetry.loopEvents}
+                transport={telemetry.transport}
+                locale={locale}
+              />
               <dl className="divide-y divide-gray-200 text-sm dark:divide-gray-800">
                 {[
                   [c.task, telemetry.activeTaskId ?? c.noTask],
