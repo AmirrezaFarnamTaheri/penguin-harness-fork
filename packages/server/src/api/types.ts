@@ -3288,6 +3288,22 @@ export interface AgentImportResponse {
   version: number;
 }
 
+/** One on-disk Agent State snapshot (snapshots/v<N>.tar.gz), as the listing route serves it. */
+export interface AgentSnapshotVersion {
+  version: number;
+  fileName: string;
+  sizeBytes: number;
+  mtimeMs: number;
+  /** True when this snapshot's version equals the Agent's current Agent State version. */
+  isCurrent: boolean;
+}
+
+export interface AgentSnapshotsResponse {
+  /** The Agent's current Agent State version (what the next export would package). */
+  currentVersion: number;
+  snapshots: AgentSnapshotVersion[];
+}
+
 // ---------------------------------------------------------------------------
 // Benchmark scoring (display), manual creation and deletion
 // ---------------------------------------------------------------------------
