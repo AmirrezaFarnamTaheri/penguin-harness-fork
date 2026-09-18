@@ -30,6 +30,23 @@ const FUNC_RE =
 const IMPORT_RE = /^import\s+"([^"]+)"/;
 const IMPORT_BLOCK_RE = /^import\s*\(/;
 
+/**
+ * Reduce one Go parameter spelling to its name.
+ *
+ * Go spells a parameter `name Type` — including the variadic form `name ...T` — so the name is the
+ * FIRST token, not the last (taking the last recorded the type: `func f(value int)` yielded `int`).
+ * A lone token is an unnamed parameter (`func f(int)` / `func f(*Loader)`): it has no name, and the
+ * token is a type, so it is dropped rather than recorded as though it were a name.
+ */
+function goParameterName(param: string): string | undefined {
+  const tokens = param
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+  if (tokens.length < 2) return undefined;
+  return tokens[0];
+}
+
 export const goExtractor: SymbolExtractor = {
   language: "go",
 
@@ -95,8 +112,8 @@ export const goExtractor: SymbolExtractor = {
         const params = fnMatch[3]
           ? fnMatch[3]
               .split(",")
-              .map((part) => part.trim().split(/\s+/).pop() ?? "")
-              .filter((part) => part.length > 0)
+              .map((part) => goParameterName(part))
+              .filter((name): name is string => name !== undefined)
           : [];
         defs.push({
           name: fnMatch[2],

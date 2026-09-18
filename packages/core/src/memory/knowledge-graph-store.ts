@@ -192,6 +192,14 @@ export interface UpsertRelationInput {
 export class KnowledgeGraphStore {
   private readonly nodes = new Map<string, EntityNode>();
   private readonly edges = new Map<string, RelationEdge>();
+  /**
+   * Chunk ids recorded against each source. A source is the unit of
+   * re-ingestion, and retraction has to reach exactly the evidence one document
+   * contributed — an entity shared between two documents must keep the other
+   * document's evidence, and an entity only the retracted document knew about
+   * must go away entirely.
+   */
+  private readonly sources = new Map<string, Set<string>>();
   readonly maxNodes: number;
 
   constructor(args: { maxNodes?: number } = {}) {
@@ -241,18 +249,25 @@ export class KnowledgeGraphStore {
   /**
    * Insert or merge an entity. Merging accumulates descriptions (deduplicated)
    * and source ids (deduplicated, capped), which is what makes a re-ingest of
-   * an unchanged document a no-op instead of a duplicate generator.
+   * an unchanged document a no-op instead of a duplicate generator. A merge
+   * that contributes nothing new returns the stored node untouched, so
+   * `updatedAt` — the field eviction and ranking read — stays put instead of
+   * churning on every idempotent re-extraction.
    */
   async upsertEntity(input: UpsertEntityInput): Promise<EntityNode> {
     const name = normalizeEntityName(input.entityName);
     if (name.length === 0) throw new Error("Entity name is empty after normalization");
 
-    const now = Date.now();
     const existing = this.nodes.get(name);
     const descriptions = mergeDescriptions(existing?.descriptions ?? [], input.descriptions ?? []);
     const sourceIds = capSourceIds(
       dedupe([...(existing?.sourceIds ?? []), ...(input.sourceIds ?? [])]),
     );
+    if (existing !== undefined && !evidenceGrew(existing, descriptions, sourceIds)) {
+      return existing;
+    }
+
+    const now = Date.now();
 
     const node: EntityNode = {
       id: existing?.id ?? contentId(name, "entity:"),
@@ -265,13 +280,18 @@ export class KnowledgeGraphStore {
       updatedAt: now,
     };
     this.nodes.set(name, node);
+    this.registerEvidence(input.filePath, input.sourceIds);
     this.evictIfFull();
     return node;
   }
 
   /**
    * Insert or merge a relation. Endpoints are canonicalized, so the same pair
-   * extracted in either order resolves to one edge whose weight accumulates.
+   * extracted in either order resolves to one edge. Weight tracks *distinct*
+   * evidence, not repeat count: a merge that brings no new chunk id and no new
+   * description fragment returns the stored edge untouched, so an unchanged
+   * re-ingest leaves the edge's strength and `updatedAt` exactly where they
+   * were and graph ranking cannot drift on an idempotent write.
    */
   async upsertRelation(input: UpsertRelationInput): Promise<RelationEdge> {
     const [a, b] = relationKey(input.source, input.target);
@@ -279,25 +299,32 @@ export class KnowledgeGraphStore {
       throw new Error("A relation needs two distinct endpoints");
     }
     const key = joinGraphField([a, b]);
-    const now = Date.now();
     const existing = this.edges.get(key);
     const descriptions = mergeDescriptions(existing?.descriptions ?? [], input.descriptions ?? []);
     const sourceIds = capSourceIds(
       dedupe([...(existing?.sourceIds ?? []), ...(input.sourceIds ?? [])]),
     );
     const addedWeight = typeof input.weight === "number" && input.weight > 0 ? input.weight : 1;
+    if (existing !== undefined && !evidenceGrew(existing, descriptions, sourceIds)) {
+      return existing;
+    }
+
+    const now = Date.now();
 
     const edge: RelationEdge = {
       id: existing?.id ?? contentId(key, "relation:"),
       endpoints: [a, b],
       descriptions: descriptions.fragments,
       sourceIds,
+      // Only evidence the graph did not already hold moves the weight, so a
+      // repeated unchanged ingestion adds zero rather than `addedWeight`.
       weight: (existing?.weight ?? 0) + addedWeight,
       ...(input.filePath !== undefined ? { filePath: input.filePath } : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
     this.edges.set(key, edge);
+    this.registerEvidence(input.filePath, input.sourceIds);
     return edge;
   }
 
@@ -433,6 +460,66 @@ export class KnowledgeGraphStore {
   }
 
   /**
+   * Retract everything the graph learned from one source.
+   *
+   * The chunk ids that source recorded are stripped from every node and edge
+   * that carries them. A node or edge left with no evidence at all is deleted,
+   * along with the edges of a deleted node, because a relation whose endpoint
+   * no longer exists is not retrievable — it is a dangling edge. Re-ingesting a
+   * changed document calls this before re-extracting, so stale evidence cannot
+   * survive the document that produced it.
+   */
+  async clearSource(filePath: string): Promise<{ entities: number; relations: number }> {
+    const recorded = this.sources.get(filePath);
+    this.sources.delete(filePath);
+    if (recorded === undefined) return { entities: 0, relations: 0 };
+
+    const stale = new Set(recorded);
+    const droppedNames = new Set<string>();
+    let entities = 0;
+    for (const [name, node] of this.nodes) {
+      const surviving = node.sourceIds.filter((id) => !stale.has(id));
+      if (surviving.length === 0) {
+        this.nodes.delete(name);
+        droppedNames.add(name);
+        entities++;
+      } else if (surviving.length !== node.sourceIds.length) {
+        this.nodes.set(name, { ...node, sourceIds: surviving });
+      }
+    }
+
+    let relations = 0;
+    for (const [key, edge] of this.edges) {
+      const endpointsGone = edge.endpoints.some((endpoint) => droppedNames.has(endpoint));
+      const surviving = endpointsGone ? [] : edge.sourceIds.filter((id) => !stale.has(id));
+      if (surviving.length === 0) {
+        this.edges.delete(key);
+        relations++;
+      } else if (surviving.length !== edge.sourceIds.length) {
+        this.edges.set(key, { ...edge, sourceIds: surviving });
+      }
+    }
+    return { entities, relations };
+  }
+
+  /** Record the chunk ids one upsert contributed, keyed by the source they came from. */
+  private registerEvidence(
+    filePath: string | undefined,
+    sourceIds: readonly string[] | undefined,
+  ): void {
+    if (filePath === undefined || !sourceIds) return;
+    const recorded = this.sources.get(filePath) ?? new Set<string>();
+    let grew = false;
+    for (const id of sourceIds) {
+      if (id.length > 0 && !recorded.has(id)) {
+        recorded.add(id);
+        grew = true;
+      }
+    }
+    if (grew) this.sources.set(filePath, recorded);
+  }
+
+  /**
    * Retire the least-recently-updated node when the graph is at capacity. A
    * graph that grows without bound degrades both retrieval quality and the
    * token cost of a context build; eviction by `updatedAt` keeps the
@@ -467,4 +554,24 @@ function dedupe<T>(values: readonly T[]): T[] {
     }
   }
   return out;
+}
+
+/**
+ * Whether a merge actually added evidence the node or edge did not already hold.
+ *
+ * Both the source-id list and the description list are deduplicated on write, so growth in
+ * either is the signal that this upsert carries something genuinely new. A source-id list
+ * already at its cap cannot grow even when fresh ids arrive, which is the intended reading:
+ * evidence the store cannot record must not move the weight either.
+ */
+function evidenceGrew(
+  existing: { sourceIds: string[] } | undefined,
+  merged: { fragments: string[]; storedFragmentCount: number },
+  sourceIds: string[],
+): boolean {
+  if (existing === undefined) return true;
+  return (
+    sourceIds.length > existing.sourceIds.length ||
+    merged.fragments.length > merged.storedFragmentCount
+  );
 }

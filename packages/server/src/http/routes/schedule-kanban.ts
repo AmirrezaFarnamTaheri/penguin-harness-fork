@@ -6,8 +6,9 @@
  * no mutation route — writes stay on the schedules API, so a board view can never mutate
  * a schedule file and no card can ever be "moved".
  *
- * Member-gated like every schedules read; registered before /:name in schedules.ts (the
- * static path wins anyway, matching template-placeholder).
+ * Member-gated like every schedules read. Mounted as a sibling of the schedules router in
+ * app.ts: `.../schedule-kanban` is a distinct static path from `.../schedules`, so it
+ * cannot collide with that router's `/:name`.
  */
 import { Hono } from "hono";
 import type { Context } from "hono";

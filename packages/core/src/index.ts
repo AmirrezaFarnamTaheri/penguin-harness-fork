@@ -38,6 +38,26 @@ export * from "./plugins/index.js";
 export * from "./hud/index.js";
 export * from "./agent/index.js";
 export * from "./environment/worktrees.js";
+// The Universal Tool Mesh: 250+ SaaS providers, OAuth/PKCE exchange, credential rotation,
+// dynamic CLI wrapping, and the encrypted credential vault. A subpath-free re-export so the
+// server's tool-fleet services reach it through the package root.
+export * from "./fleet/index.js";
+
+// Semantic code topology, AST diffing and automated review — the codegraph subsystem.
+// Re-exported barrel-for-barrel: every name below is exactly what ./codegraph/index.js ships,
+// and the matching ./codegraph subpath bundles it without the rest of the SDK.
+export * from "./codegraph/index.js";
+
+// NOTE on prompts: the prompts subsystem is published through its own ./prompts subpath only,
+// not from this root barrel. prompts/index.js exports a `DEFAULT_CONTEXT_WINDOW` that already
+// ships from ./llm/index.js, so a root-level `export *` is ambiguous (TS2308) and cannot be
+// resolved without either renaming one of the two constants or dropping one side's name from
+// the root. It stays reachable through its subpath, the way ./kernel, ./paths,
+// ./context-limits and ./model-catalog already publish.
+// Memory carries no such collision, so it is re-exported barrel-for-barrel here as well as
+// through the ./memory subpath; if a future memory symbol ever collides with another root
+// export, prefer the prompts resolution (subpath only) over renaming either name.
+export * from "./memory/index.js";
 
 // Runtime entry points
 export { ContextEngine, reconnectDelayMs } from "./engine/context-engine.js";

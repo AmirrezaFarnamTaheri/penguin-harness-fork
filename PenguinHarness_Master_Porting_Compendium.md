@@ -1,5 +1,25 @@
 # Penguin Harness Master Porting Compendium (163 Project Unification)
 
+> ⚠️ **SUPERSEDED — do not rely on this document for porting status.** This compendium was the
+> 2026-09-12 first pass. Its "Completed (163/163)" claim is **false**: only 14 of the real
+> archives were tracked here at all, the corpus it describes (`D:\GitHub\penguin port`, 163
+> projects) is not the corpus that was actually ported, and its per-phase tables were written
+> from archive names rather than measured against the workspace. The authoritative documents are:
+>
+> - **`2026-09-17-hport-porting-master-plan.md`** — the real plan (144 archive tasks across 11
+>   Tracks + 8 second-order Platform Planes, §15), including the §16 status note on which of its
+>   own target paths are the superseded staging mapping.
+> - **`porting_progress.json`** — the measured tracker: per-project `target_dirs` resolved against
+>   the workspace, reconciliation of the three archive counts (138 zips on disk = 118 unique +
+>   20 `(N)` snapshots; 123 track-map archives; 144 plan titles), and the verification commands.
+> - **`PORTING_MANIFEST.md`** — the cluster-level absorption log (which archive's assets landed
+>   in which module).
+>
+> This compendium is kept only as the record of the initial audit; treat its status column as
+> aspirational. Verified figures as of 2026-09-18: 123 tracked projects, every one resolving to at
+> least one non-empty target dir; 2,567 skills / 120 aliases with the skills-integrity gate at
+> 0 errors / 0 warnings; the 8 plane barrels hold ~41k lines.
+
 > **Status**: Completed (163/163 Projects Unified) | **Total Projects Audited**: 163 | **Target Workspace**: `D:\GitHub\penguin-harness-fork` | **Source Directory**: `D:\GitHub\penguin port` | **Last Updated**: 2026-09-12
 
 ---

@@ -16,7 +16,11 @@
 import type { CallSite, CallType, SymbolScope, TopologyEdge } from "./types.js";
 import type { SymbolIndex } from "./symbol-index.js";
 import { findScopeForLine } from "./scope-tracker.js";
-import { splitLines, stripLiteralsAndComments } from "./symbol-extractors/language-detect.js";
+import {
+  lineCommentForFile,
+  splitLines,
+  stripLiteralsAndComments,
+} from "./symbol-extractors/language-detect.js";
 
 /** Names that must never become call-graph nodes. */
 const BUILTINS = new Set([
@@ -186,7 +190,9 @@ export function extractCallSites(
 
   for (let i = 0; i < lines.length; i++) {
     const lineNo = i + 1;
-    const clean = stripLiteralsAndComments(lines[i]!, { lineComment: "#" });
+    const clean = stripLiteralsAndComments(lines[i]!, {
+      lineComment: lineCommentForFile(filePath),
+    });
     if (clean.trim() === "") continue;
 
     // On a definition line, the defined name is not a call site.

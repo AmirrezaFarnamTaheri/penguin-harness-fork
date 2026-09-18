@@ -152,6 +152,7 @@ export function buildScopes(filePath: string, defs: RawDefinition[]): SymbolScop
       startLine: def.startLine,
       endLine: def.endLine ?? def.startLine,
       className: def.className,
+      parameters: def.parameters,
     };
   });
 }

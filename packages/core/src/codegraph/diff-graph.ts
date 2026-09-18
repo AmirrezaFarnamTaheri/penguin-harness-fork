@@ -166,11 +166,17 @@ export function extractSideLines(hunk: DiffHunk, newSide: boolean): IndexedLine[
   return result;
 }
 
-/** Trim and strip a leading `+`/`-` diff marker. */
+/**
+ * Trim and collapse surrounding whitespace.
+ *
+ * The diff `+`/`-` marker is removed *exactly once*, by `parseHunks`, where the `inHunk` state
+ * machine is the only place that can tell `+++ b/file` (header) from `++i` (inserted source).
+ * Stripping a second time here mangled real sources whose first character is `+` or `-`: `++i;`
+ * became `+i;` and never matched an excerpt again. Raw source passed to `splitAndNormalize` and
+ * `resolveFromFileContent` never carried a marker in the first place.
+ */
 export function normalizeLine(line: string): string {
-  let value = line.trim();
-  if (value.startsWith("+") || value.startsWith("-")) value = value.slice(1);
-  return value.trim();
+  return line.trim();
 }
 
 /** Split code text into normalized, non-blank lines. */
@@ -303,11 +309,14 @@ export function parseCitations(raw: string | string[] | unknown[]): DiffCitation
     const lastColon = text.lastIndexOf(":");
     const path = text.slice(0, lastColon);
     const linePart = text.slice(lastColon + 1);
-    if (linePart.includes("-")) {
-      const [start, end] = linePart.split("-", 1);
-      if (start && end && isPositiveInt(start) && isPositiveInt(end)) {
-        citations.push({ path, side: "unified", startLine: Number(start), endLine: Number(end) });
-      }
+    const rangeMatch = /^(\d+)\s*-\s*(\d+)$/.exec(linePart.trim());
+    if (rangeMatch) {
+      citations.push({
+        path,
+        side: "unified",
+        startLine: Number(rangeMatch[1]),
+        endLine: Number(rangeMatch[2]),
+      });
       continue;
     }
     if (isPositiveInt(linePart)) {
@@ -330,7 +339,13 @@ function isPositiveInt(value: string): boolean {
  * Diff-bounded citation validation: a citation is only valid if its line range is visible inside a
  * hunk of the cited file. Ports the review engine's strict rule forbidding citations outside the
  * visible diff, which is what makes generated review comments trustworthy.
+ *
+ * "Visible" means *substantially* visible: the cited range must be at least half covered by one
+ * hunk's lines. Accepting on a single shared line let `foo.ts:10-10000` pass because line 10 was
+ * in a hunk, certifying lines the diff never shows.
  */
+export const CITATION_MIN_COVERAGE = 0.5;
+
 export function validateCitations(citations: DiffCitation[], diffs: DiffFile[]): DiffCitation[] {
   const byPath = new Map<string, DiffFile>();
   for (const diff of diffs) {
@@ -340,12 +355,18 @@ export function validateCitations(citations: DiffCitation[], diffs: DiffFile[]):
   return citations.filter((citation) => {
     const diff = byPath.get(citation.path);
     if (!diff) return false;
-    const hunks = parseHunks(diff.patch);
-    return hunks.some((hunk) => {
+    const cited = citation.endLine - citation.startLine + 1;
+    // Lines of the cited range that must be visible for the citation to count as honest.
+    const required = Math.max(1, Math.ceil(cited * CITATION_MIN_COVERAGE));
+    return parseHunks(diff.patch).some((hunk) => {
       const side = extractSideLines(hunk, citation.side !== "deletions");
-      return side.some(
-        (indexed) => indexed.lineNum >= citation.startLine && indexed.lineNum <= citation.endLine,
-      );
+      let visible = 0;
+      for (const indexed of side) {
+        if (indexed.lineNum >= citation.startLine && indexed.lineNum <= citation.endLine) {
+          if (++visible >= required) return true;
+        }
+      }
+      return false;
     });
   });
 }

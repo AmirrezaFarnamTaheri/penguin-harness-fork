@@ -1,4 +1,3 @@
-import { S } from "../../lib/strings";
 import { useState } from "react";
 import type { HandoffStepItem } from "./consensus-types";
 import type { LiveHandoffEvent } from "../agent/use-cockpit-telemetry.js";
@@ -82,16 +81,18 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-            {isLive ? S.consensus.timeline.liveTitle : S.consensus.timeline.demoTitle}
+            {isLive ? "Handoffs (live)" : "Handoffs (local demo)"}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            {isLive ? S.consensus.timeline.liveDescription : S.consensus.timeline.demoDescription}
+            {isLive
+              ? "Task starts and directives observed in this project's swarm."
+              : "Follow a sample task from delegation to review. This does not reflect running agents."}
           </p>
         </div>
 
         {!isLive && (
           <Button size="sm" variant="secondary" onClick={handleRunSimulation} disabled={simulating}>
-            {simulating ? S.consensus.timeline.advancing : S.consensus.timeline.simulate}
+            {simulating ? "Advancing..." : "Simulate Next Stage"}
           </Button>
         )}
       </div>
@@ -100,7 +101,9 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
       {isLive && (
         <div className="flex flex-col gap-3">
           {handoffs.length === 0 && (
-            <p className="text-sm text-gray-600 dark:text-gray-400">{S.consensus.timeline.empty}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              No task starts or directives observed in this connection.
+            </p>
           )}
           {handoffs.map((event) => (
             <div
@@ -112,9 +115,7 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
                 <span className="text-gray-600 dark:text-gray-400">→</span>
                 <span className="font-semibold text-gray-900 dark:text-gray-100">{event.to}</span>
                 <span className="text-sm px-1.5 py-0.2 rounded font-semibold bg-cyan-500/15 text-gray-900 dark:text-gray-100 border border-cyan-500/30">
-                  {event.source === "task_started"
-                    ? S.consensus.timeline.started
-                    : S.consensus.timeline.dispatched}
+                  {event.source === "task_started" ? "Task started" : "Dispatched"}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
                   [{new Date(event.timestamp).toLocaleTimeString()}]
@@ -122,10 +123,8 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
               </div>
               {event.source === "task_started" && (
                 <div className="text-sm text-gray-600 dark:text-gray-400 break-words">
-                  <div>
-                    {S.consensus.timeline.task} {event.taskId}
-                  </div>
-                  <div>{S.consensus.timeline.planned}</div>
+                  <div>Task: {event.taskId}</div>
+                  <div>Planned target; assignment delivery is not reported by this event.</div>
                 </div>
               )}
               {event.content && (
@@ -197,11 +196,11 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
                         : "bg-white dark:bg-gray-950 text-gray-600 dark:text-gray-400"
                   }`}
                 >
-                  {S.consensus.timeline[step.status]}
+                  {step.status}
                 </span>
                 {step.durationMs > 0 && (
                   <span className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
-                    {S.consensus.timeline.duration.replace("{ms}", String(step.durationMs))}
+                    {step.durationMs}ms
                   </span>
                 )}
               </div>

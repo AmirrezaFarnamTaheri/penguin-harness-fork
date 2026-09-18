@@ -1,6 +1,6 @@
 ---
 name: davidondrej-teach
-description: "Teach the user a new skill or concept, within this workspace."
+description: "Teach a new skill or concept across multiple sessions, keeping chat replies short and putting all length into the lesson documents, with high-expectation feedback on the learner's work."
 ---
 
 The user has asked you to teach them something. This is a stateful request - they intend to learn the topic over multiple sessions.

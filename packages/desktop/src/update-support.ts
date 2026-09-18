@@ -43,28 +43,6 @@ export function feedUrlOverride(env: NodeJS.ProcessEnv): string | null {
   }
 }
 
-/**
- * Explicit prerelease selection (`PENGUIN_UPDATE_ALLOW_PRERELEASE=0|1`). Unset or
- * invalid values preserve electron-updater's version-derived default, passed by the
- * caller so this resolver stays pure. Invalid values are reported for logging.
- *
- * For GitHub prerelease discovery, also set PENGUIN_UPDATE_SOURCE=github (and leave
- * PENGUIN_UPDATE_FEED_URL unset). Auto/OSS selection pins the mirror's current latest
- * tag; this flag cannot discover a different tag there. Generic feeds remain governed
- * by their published latest*.yml metadata, not GitHub's prerelease filtering.
- * This does not configure a named canary feed or enable downgrades.
- */
-export function updatePrereleaseConfig(
-  env: NodeJS.ProcessEnv,
-  defaultAllowPrerelease: boolean,
-): { allowPrerelease: boolean; invalidPrerelease: boolean } {
-  const raw = env.PENGUIN_UPDATE_ALLOW_PRERELEASE?.trim() ?? "";
-  if (raw === "0" || raw === "1") {
-    return { allowPrerelease: raw === "1", invalidPrerelease: false };
-  }
-  return { allowPrerelease: defaultAllowPrerelease, invalidPrerelease: raw !== "" };
-}
-
 export type UpdateSource = "auto" | "oss" | "github";
 
 /**

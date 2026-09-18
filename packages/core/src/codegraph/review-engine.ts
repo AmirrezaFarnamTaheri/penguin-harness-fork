@@ -38,6 +38,8 @@ export interface ReviewRuleContext {
 
 /** Graph statistics a rule may consult. */
 export interface SymbolReviewStats {
+  /** File the symbol lives in, so hunk-overlap tests stay per-file (one global stats map is shared). */
+  filePath: string;
   kind: string;
   qualifiedName: string;
   complexity: number;

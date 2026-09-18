@@ -39,6 +39,34 @@ export const CONTEXT_OPEN = "<CONTEXT>";
 /** Closing tag of the context block. */
 export const CONTEXT_CLOSE = "</CONTEXT>";
 
+/** Every boundary delimiter a compiled prompt is split on, in emit order. */
+const RESERVED_DELIMITERS: readonly string[] = [
+  INSTRUCTION_OPEN,
+  INSTRUCTION_CLOSE,
+  CONTEXT_OPEN,
+  CONTEXT_CLOSE,
+];
+
+/** Matches any of the four reserved boundary tags, and only those. */
+const RESERVED_DELIMITER_PATTERN = /<\/?(?:INSTRUCTION|CONTEXT)>/gu;
+
+/**
+ * Neutralize the boundary delimiters inside untrusted text so task data cannot close the
+ * context section — or open an instruction block of its own.
+ *
+ * Both angle brackets of a reserved tag are escaped as HTML entities, so the escape is
+ * symmetric, legible to a reader, and reversible, while removing the exact strings a
+ * harness splits on: `&lt;/CONTEXT&gt;` contains no `<`, no `>`, and no `</CONTEXT>` at
+ * all. Everything else in the text, including an ordinary `<` and every other tag, is
+ * left byte for byte as it was — `use <read_file> on /srv/app` is untouched, because only
+ * the four reserved names are recognized.
+ */
+export function escapeTaskContext(taskContext: string): string {
+  return taskContext.replace(RESERVED_DELIMITER_PATTERN, (tag) =>
+    tag.replace(/</gu, "&lt;").replace(/>/gu, "&gt;"),
+  );
+}
+
 /**
  * Default context window the budget is measured against. Deliberately a common large
  * window so a preset that fits here fits everywhere it is likely to run.
@@ -361,7 +389,7 @@ export function compilePreset(
   const ratio = context.budgetRatio ?? PROMPT_TOKEN_BUDGET_RATIO;
 
   const identity = context.variables
-    ? interpolatePrompt(preset.identity, context.variables, { missing: "blank" })
+    ? escapeTaskContext(interpolatePrompt(preset.identity, context.variables, { missing: "blank" }))
     : preset.identity;
 
   const sections: string[] = [identity];
@@ -395,9 +423,12 @@ export function compilePreset(
   if (taskContext && context.variables) {
     taskContext = interpolatePrompt(taskContext, context.variables, { missing: "blank" });
   }
+  // Escape after interpolation: a variable value is as untrusted as raw context, and either
+  // one can carry a delimiter that would close the data section early.
+  const escapedTaskContext = taskContext ? escapeTaskContext(taskContext) : "";
 
-  const text = taskContext
-    ? `${INSTRUCTION_OPEN}\n${instruction}\n${INSTRUCTION_CLOSE}\n\n${CONTEXT_OPEN}\n${taskContext}\n${CONTEXT_CLOSE}`
+  const text = escapedTaskContext
+    ? `${INSTRUCTION_OPEN}\n${instruction}\n${INSTRUCTION_CLOSE}\n\n${CONTEXT_OPEN}\n${escapedTaskContext}\n${CONTEXT_CLOSE}`
     : `${INSTRUCTION_OPEN}\n${instruction}\n${INSTRUCTION_CLOSE}`;
 
   const budget = promptTokenBudget(text, contextWindow, ratio);
@@ -428,9 +459,20 @@ export interface CompiledPromptIssue {
   readonly message: string;
 }
 
+/** Count non-overlapping occurrences of a literal delimiter. */
+function countDelimiterOccurrences(text: string, delimiter: string): number {
+  let count = 0;
+  let index = text.indexOf(delimiter);
+  while (index !== -1) {
+    count += 1;
+    index = text.indexOf(delimiter, index + delimiter.length);
+  }
+  return count;
+}
+
 /**
- * Structural checks on a compiled prompt: the boundary tags are present, closed and
- * ordered; the instruction block precedes any context; no harness marker survived
+ * Structural checks on a compiled prompt: the boundary tags are present, closed, ordered and
+ * *unique*; the instruction block precedes any context; no harness marker survived
  * compilation; and the text fits its budget.
  *
  * These are what make a compiled prompt *usable* — the tags are the seam the harness
@@ -441,6 +483,20 @@ export interface CompiledPromptIssue {
 export function verifyCompiled(compiled: CompiledPersonaPrompt): CompiledPromptIssue[] {
   const issues: CompiledPromptIssue[] = [];
   const { text } = compiled;
+
+  // The harness splits on these exact strings, so each may occur only once. A second
+  // occurrence means a piece of untrusted context promoted itself past the boundary, or an
+  // escape failed — either way the tags no longer describe the text, and trusting the first
+  // pair would hide it.
+  for (const delimiter of RESERVED_DELIMITERS) {
+    const count = countDelimiterOccurrences(text, delimiter);
+    if (count > 1) {
+      issues.push({
+        severity: "error",
+        message: `Compiled prompt contains ${count} occurrences of the reserved delimiter ${delimiter}; each boundary tag must appear exactly once`,
+      });
+    }
+  }
 
   const instructionOpen = text.indexOf(INSTRUCTION_OPEN);
   const instructionClose = text.indexOf(INSTRUCTION_CLOSE);
@@ -491,17 +547,38 @@ export function verifyCompiled(compiled: CompiledPersonaPrompt): CompiledPromptI
 /* Registry                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Cache key is the preset id plus a stable hash of the compile context. */
+/**
+ * Cache key is the preset id plus a canonical serialization of the compile context.
+ *
+ * The shape is fixed and the values are strings, numbers and arrays of strings, so the
+ * serialization is unambiguous: a `|` or `,` inside a task context or a tool name cannot
+ * blur into a field boundary the way it could when the fields were simply joined, and two
+ * variable maps that differ only in key order serialize identically.
+ */
 function contextCacheKey(context: CompileContext): string {
-  const variables = context.variables ? JSON.stringify(context.variables) : "";
-  return [
-    context.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-    context.budgetRatio ?? "",
-    variables,
-    context.taskContext ?? "",
-    (context.allowedTools ?? []).join(","),
-    context.workspaceRoot ?? "",
-  ].join("|");
+  return JSON.stringify({
+    contextWindow: context.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+    budgetRatio: context.budgetRatio ?? PROMPT_TOKEN_BUDGET_RATIO,
+    variables: context.variables === undefined ? {} : canonicalVariableMap(context.variables),
+    taskContext: context.taskContext ?? "",
+    allowedTools: [...(context.allowedTools ?? [])],
+    workspaceRoot: context.workspaceRoot ?? "",
+  });
+}
+
+/**
+ * A variable map keyed in sorted order, so equal maps serialize to one key. Entries with
+ * no value are dropped rather than serialized as `undefined`: a key whose value is missing
+ * is not a variable the caller set, and `JSON.stringify` would emit it as `null`, which a
+ * map that genuinely bound a variable to the literal string "null" would collide with.
+ */
+function canonicalVariableMap(variables: Readonly<Record<string, string>>): Record<string, string> {
+  const sorted = Object.entries(variables)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+  const out: Record<string, string> = {};
+  for (const [key, value] of sorted) out[key] = value;
+  return out;
 }
 
 /**

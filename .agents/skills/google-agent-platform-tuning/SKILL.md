@@ -426,18 +426,13 @@ ls $DATASET_URI` (or `gsutil ls`).
 
 ### For Gemini Models
 
-Check if `scripts/tune_gemini_model.py` exists.
+Check whether this skill ships a Gemini tuning script named `tune_gemini_model.py` under `scripts/`.
 
--   **If `scripts/tune_gemini_model.py` exists:** Submit the Gemini model tuning
-    job using this script.
+-   **If it ships one:** Submit the Gemini model tuning job using that script.
 
-    ```bash
-    python3 scripts/tune_gemini_model.py
-    ```
-
--   **If `scripts/tune_gemini_model.py` does not exist:** Instruct the user to
-    manually configure and submit the tuning job via the Google Cloud Console UI
-    or using the Agent Platform SDK for Python.
+-   **If it ships none:** Instruct the user to manually configure and submit the
+    tuning job via the Google Cloud Console UI or using the Agent Platform SDK
+    for Python.
 
 ### For Open Models
 

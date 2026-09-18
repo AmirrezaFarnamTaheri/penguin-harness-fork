@@ -123,25 +123,30 @@ export function cacheKey(namespace: string, kind: string, hash: string): string 
 /**
  * A stable document id for a structured content list.
  *
- * Structural shape participates in the id, not just concatenated text: two
- * documents whose blocks happen to concatenate to the same string but differ
- * in block boundaries get distinct ids, which keeps a re-parsed document from
- * aliasing an unrelated one.
+ * Shape *and* content participate in the id. Block boundaries are length-prefixed
+ * so two documents whose blocks concatenate to the same string but differ in
+ * boundary get distinct ids, and the field values are part of the encoding, so
+ * two blocks with the same shape and different text are different documents — a
+ * shape-only id hashed `[text:"A"]` and `[text:"something else entirely"]` to
+ * the same value. A sentinel separates blocks, because field values are
+ * arbitrary text and a delimiter-less join of them is ambiguous.
  */
 export function contentListDocumentId(blocks: ReadonlyArray<Record<string, unknown>>): string {
-  const shape = blocks
-    .map((block) => {
-      const type = String(block["type"] ?? "unknown");
-      const fields = Object.keys(block)
-        .filter((key) => key !== "type")
-        .sort()
-        .map((key) => `${key}:${typeof block[key]}`)
-        .join(",");
-      return `${type}{${fields}}`;
-    })
-    .join("|");
-  return computeArgsHash(shape);
+  const parts: (string | number | boolean)[] = [];
+  for (const block of blocks) {
+    parts.push(String(block["type"] ?? "unknown"));
+    for (const key of Object.keys(block).sort()) {
+      if (key === "type") continue;
+      const value = block[key];
+      parts.push(key, typeof value, value === undefined ? "" : String(value));
+    }
+    parts.push(BLOCK_BOUNDARY);
+  }
+  return computeArgsHash(...parts);
 }
+
+/** Sentinel between two blocks in a content-list id, which field text cannot contain. */
+const BLOCK_BOUNDARY = "\u0000";
 
 /**
  * The offline default embedding.

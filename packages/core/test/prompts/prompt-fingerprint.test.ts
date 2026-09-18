@@ -29,6 +29,52 @@ describe("prompt-fingerprint / FNV-1a 64", () => {
     expect(fnv1a64("one prompt")).toBe(fnv1a64("one prompt"));
     expect(fnv1a64("one prompt")).not.toBe(fnv1a64("two prompt"));
   });
+
+  // Each digest below is the FNV-1a-64 of that string's UTF-8 bytes, derived
+  // independently of this module (offset basis 0xCBF29CE484222325, prime
+  // 0x100000001B3, XOR-then-multiply per byte). The three cases cover every
+  // UTF-8 byte width the catalog can meet: "café" exercises 2-byte é, "日本語"
+  // exercises 3-byte CJK, and "emoji 😀" exercises a 4-byte astral code point.
+  it("hashes the UTF-8 bytes, not the UTF-16 code units", () => {
+    expect(fnv1a64("café")).toBe("48e8823acfa40d89");
+    expect(fnv1a64("日本語")).toBe("ee9ee2b5c854ef87");
+    expect(fnv1a64("emoji 😀")).toBe("565ac79f864705d6");
+  });
+
+  it("differs from a code-unit fold on non-ASCII text", () => {
+    // The pre-fix implementation XOR'd charCodeAt() code units, folding é as one
+    // unit (0xe9) rather than the two UTF-8 bytes c3 a9. Its digest for "café"
+    // was b538f990e85962dc, which is not the standard value, so provenance and
+    // de-duplication against any other FNV-1a-64 tool could not agree.
+    expect(fnv1a64("café")).not.toBe("b538f990e85962dc");
+  });
+
+  it("agrees with an independent byte-fold implementation of the spec", () => {
+    // A second implementation written inline from the spec is the structural
+    // check that the exported one folds bytes: it covers inputs the pinned
+    // constants above do not, including astral and combining sequences.
+    const reference = (text: string): string => {
+      let hash = 0xcbf29ce484222325n;
+      const BIG_HEX_MASK = 0xffffffffffffffffn;
+      for (const byte of new TextEncoder().encode(text)) {
+        hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & BIG_HEX_MASK;
+      }
+      return hash.toString(16).padStart(16, "0");
+    };
+    for (const text of [
+      "",
+      "a",
+      "foobar",
+      "café",
+      "日本語",
+      "emoji 😀",
+      "héllo wörld",
+      "Ünïcödé tèst",
+      "combining: e\u0301",
+    ]) {
+      expect(fnv1a64(text)).toBe(reference(text));
+    }
+  });
 });
 
 describe("prompt-fingerprint / bytes, lines and tokens", () => {

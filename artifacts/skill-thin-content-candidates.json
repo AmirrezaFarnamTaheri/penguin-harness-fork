@@ -1,0 +1,227 @@
+{
+  "generatedAt": "2026-09-18T17:01:51.146Z",
+  "threshold": "body <= 520 bytes, redirects excluded",
+  "count": 44,
+  "candidates": [
+    {
+      "name": "aihero-grill-me",
+      "bodyBytes": 36,
+      "description": "A relentless interview to sharpen a plan or design."
+    },
+    {
+      "name": "aihero-grill-with-docs",
+      "bodyBytes": 64,
+      "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as "
+    },
+    {
+      "name": "aihero-implement",
+      "bodyBytes": 300,
+      "description": "Implement a piece of work based on a spec or set of tickets."
+    },
+    {
+      "name": "aihero-research",
+      "bodyBytes": 517,
+      "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown fil"
+    },
+    {
+      "name": "aihero-wait-what",
+      "bodyBytes": 271,
+      "description": "Stop. That last message did not land: re-pitch it."
+    },
+    {
+      "name": "batch",
+      "bodyBytes": 420,
+      "description": "Break a large, parallelizable goal into bounded work units, coordinate existing agent/worktree machi"
+    },
+    {
+      "name": "bulk-reader",
+      "bodyBytes": 347,
+      "description": "Delegate bulk file reading to AiKA. Use when you need to read files >350 lines, answer questions acr"
+    },
+    {
+      "name": "code-simplification-cleaner",
+      "bodyBytes": 413,
+      "description": "Improve clarity and reduce needless complexity after behavior is understood; preserve behavior and k"
+    },
+    {
+      "name": "codebase-documentation-writer",
+      "bodyBytes": 434,
+      "description": "Write and update repository and product documentation, including READMEs, user guides, architecture "
+    },
+    {
+      "name": "create-image-campaign",
+      "bodyBytes": 483,
+      "description": "Use this plugin when the user wants image assets, posters, social visuals, ad concepts, or a small c"
+    },
+    {
+      "name": "create-video-storyboard",
+      "bodyBytes": 475,
+      "description": "Use this plugin when the user wants a video concept, storyboard, shot list, prompt pack, or render-r"
+    },
+    {
+      "name": "dataviz",
+      "bodyBytes": 384,
+      "description": "Choose and produce an appropriate chart/dashboard/visual explanation from data, with legible encodin"
+    },
+    {
+      "name": "davidondrej-before-building",
+      "bodyBytes": 463,
+      "description": "Fire the moment the user proposes a build. Instantly surface the 1-3 consequential choices hidden in"
+    },
+    {
+      "name": "davidondrej-decisions",
+      "bodyBytes": 479,
+      "description": "Ask the agent to list all choices it made during the current work that it is not confident of. Manua"
+    },
+    {
+      "name": "davidondrej-file-tree",
+      "bodyBytes": 218,
+      "description": "Manually-invoked skill that prints a nice file tree of the current topic in a code block. Use when t"
+    },
+    {
+      "name": "davidondrej-keep-track",
+      "bodyBytes": 211,
+      "description": "Keep track of open topics and decisions. Use when the user says \\\"keep-track\\\" or asks to keep a run"
+    },
+    {
+      "name": "davidondrej-read-all-adrs",
+      "bodyBytes": 238,
+      "description": "Read every ADR markdown file in the project's docs/adr/ folder so you have full context on past deci"
+    },
+    {
+      "name": "davidondrej-rename",
+      "bodyBytes": 167,
+      "description": "Manually-invoked skill that renames the current thread or session to 2-5 lowercase descriptive words"
+    },
+    {
+      "name": "davidondrej-self-archive",
+      "bodyBytes": 476,
+      "description": "Archive the current bb thread and release its runtime. Use when the user explicitly asks to \\\"self-a"
+    },
+    {
+      "name": "davidondrej-short",
+      "bodyBytes": 76,
+      "description": "Manually-invoked skill that forces the agent to compress its current answer — strip filler, simplify"
+    },
+    {
+      "name": "davidondrej-stop-overthinking",
+      "bodyBytes": 291,
+      "description": "Manually-invoked skill that stops overthinking and forces a short, practical decision. Use only when"
+    },
+    {
+      "name": "deck-pitch",
+      "bodyBytes": 344,
+      "description": "10-page fundraising deck, white background + gradient hero, traction charts, $X.XM ask"
+    },
+    {
+      "name": "dependency-update",
+      "bodyBytes": 335,
+      "description": "Read release notes/changelogs, update a defined dependency scope, handle breaking changes, and verif"
+    },
+    {
+      "name": "deploy-vercel-static",
+      "bodyBytes": 452,
+      "description": "Use this plugin when the user wants to deploy an accepted static web artifact to Vercel or prepare a"
+    },
+    {
+      "name": "docx",
+      "bodyBytes": 377,
+      "description": "Create/edit/inspect Word documents using available managed or host capabilities."
+    },
+    {
+      "name": "export-nextjs-handoff",
+      "bodyBytes": 499,
+      "description": "Use this plugin when the user wants an accepted OpenDesign artifact converted into a Next.js App Rou"
+    },
+    {
+      "name": "extend-plugin-author",
+      "bodyBytes": 467,
+      "description": "Use this plugin when the user wants to create, improve, validate, publish, or submit an OpenDesign p"
+    },
+    {
+      "name": "grilling",
+      "bodyBytes": 472,
+      "description": ">-"
+    },
+    {
+      "name": "makers-cloud-functions",
+      "bodyBytes": 504,
+      "description": ">-"
+    },
+    {
+      "name": "meeting-notes",
+      "bodyBytes": 266,
+      "description": "Title + attendance + agenda + resolutions + action items + next meeting"
+    },
+    {
+      "name": "mobile-onboarding",
+      "bodyBytes": 279,
+      "description": "Three mobile screens side-by-side: splash / value-prop / sign-in"
+    },
+    {
+      "name": "nano-pdf",
+      "bodyBytes": 429,
+      "description": "Edit PDFs with natural-language instructions using the nano-pdf CLI."
+    },
+    {
+      "name": "product-spec-prd",
+      "bodyBytes": 336,
+      "description": "Problem + success metrics + scope + user stories + design + release + open questions"
+    },
+    {
+      "name": "project-test-runner",
+      "bodyBytes": 426,
+      "description": "Detect the project’s test stack, run the narrowest useful tests, create tests when authorized, and r"
+    },
+    {
+      "name": "refine-critique-loop",
+      "bodyBytes": 465,
+      "description": "Use this plugin when the user has an existing OpenDesign artifact and wants targeted critique, patch"
+    },
+    {
+      "name": "release-process-runner",
+      "bodyBytes": 496,
+      "description": "Prepare a named release version through preflight checks, version consistency, build and packaging, "
+    },
+    {
+      "name": "remotion-render",
+      "bodyBytes": 384,
+      "description": "Export a Remotion video"
+    },
+    {
+      "name": "research",
+      "bodyBytes": 333,
+      "description": "Current external research using available web tools, primary sources where possible, links/citations"
+    },
+    {
+      "name": "runtime-output-verifier",
+      "bodyBytes": 422,
+      "description": "Exercise the real app/API/CLI and collect observable evidence; tests alone do not count as end-to-en"
+    },
+    {
+      "name": "sample-plugin",
+      "bodyBytes": 491,
+      "description": "Phase 1 sample plugin synthesizing a SKILL.md frontmatter for backwards-compat tests."
+    },
+    {
+      "name": "security-review",
+      "bodyBytes": 442,
+      "description": "Review trust boundaries, auth/authz, injection, secrets, filesystem/network exposure, dependencies, "
+    },
+    {
+      "name": "share-github-pr",
+      "bodyBytes": 430,
+      "description": "Use this plugin when the user wants to package an accepted plugin or artifact as a GitHub pull reque"
+    },
+    {
+      "name": "video-frames",
+      "bodyBytes": 460,
+      "description": "Extract frames or short clips from videos using ffmpeg."
+    },
+    {
+      "name": "whisper-local-cli",
+      "bodyBytes": 378,
+      "description": "Local speech-to-text with the Whisper CLI (no API key)."
+    }
+  ]
+}

@@ -571,16 +571,47 @@ describe("edit_file — review follow-ups", () => {
     expect(text).toContain("write_file");
   });
 
-  it("mentions CRLF in the not-found error when the file uses \\r\\n", async () => {
+  it("matches an LF old_string against a CRLF file and writes the file back in CRLF", async () => {
+    // The case this tool used to fail: read_file strips the \r it shows, so the model quotes
+    // bare \n; matching now happens on the file's LF view, and the write keeps its style.
+    const file = path.join(tmp, "crlf.txt");
+    await writeFile(file, "alpha\r\nbeta\r\n");
+    const { result, text } = await run(
+      tool(),
+      { file_path: "crlf.txt", old_string: "alpha\nbeta", new_string: "gamma\ndelta" },
+      tmp,
+    );
+    expect(result?.stopReason).toBeUndefined();
+    expect(text).toContain('Replaced 1 occurrence in "crlf.txt".');
+    expect(text).toContain("-alpha");
+    expect(text).toContain("+gamma");
+    expect(await readFile(file, "utf8")).toBe("gamma\r\ndelta\r\n");
+  });
+
+  it("accepts a CRLF old_string/new_string against a CRLF file and still writes CRLF", async () => {
+    const file = path.join(tmp, "crlf2.txt");
+    await writeFile(file, "alpha\r\nbeta\r\n");
+    const { result } = await run(
+      tool(),
+      { file_path: "crlf2.txt", old_string: "alpha\r\nbeta", new_string: "gamma\r\n" },
+      tmp,
+    );
+    expect(result?.stopReason).toBeUndefined();
+    expect(await readFile(file, "utf8")).toBe("gamma\r\n\r\n");
+  });
+
+  it("names the file's style in the not-found error when old_string is genuinely absent", async () => {
     await writeFile(path.join(tmp, "crlf.txt"), "alpha\r\nbeta\r\n");
     const { result, text } = await run(
       tool(),
-      { file_path: "crlf.txt", old_string: "alpha\nbeta", new_string: "gamma" },
+      { file_path: "crlf.txt", old_string: "gamma\nzeta", new_string: "x" },
       tmp,
     );
     expect(result?.stopReason).toBe("fatal");
     expect(text).toContain("old_string not found");
     expect(text).toContain("CRLF");
+    // The old hint told the model to add \r characters; matching is normalized now, so it must not.
+    expect(text).not.toContain("must include the");
   });
 
   it("erasing the whole content diffs to a pure removal hunk", async () => {

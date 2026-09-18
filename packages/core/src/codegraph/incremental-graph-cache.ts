@@ -67,7 +67,14 @@ function cyrb53(str: string, seed = 0): string {
 
 export class IncrementalGraphCache {
   private readonly entries = new Map<string, CachedFileEntry>();
-  /** importer file -> imported files (normalized, extension-stripped). */
+  /**
+   * importer file -> imported files.
+   *
+   * Both maps use ONE canonical key form: the *full normalized* path (extension kept), because
+   * that is what `knownFiles`/`resolveImportTargets` hands out. Earlier versions mixed full paths
+   * with `stripCodeExtension` lookups, which made every reverse lookup miss and silently left
+   * dependents stale.
+   */
   private readonly importTargets = new Map<string, string[]>();
   /** imported file -> importers (reverse closure for invalidation). */
   private readonly reverseImports = new Map<string, Set<string>>();
@@ -152,7 +159,7 @@ export class IncrementalGraphCache {
       linesOfCode: extraction.linesOfCode,
       edges: [],
     };
-    entry.instanceTypes = extractInstanceTypes(content, scopes);
+    entry.instanceTypes = extractInstanceTypes(content, scopes, normalized);
     entry.variableBindings = extractVariableBindings(content, scopes, normalized);
 
     // Remove the previous reverse-import edges contributed by this file before re-deriving them.
@@ -160,7 +167,15 @@ export class IncrementalGraphCache {
     this.entries.set(normalized, entry);
 
     // Derive import links against the (now updated) known-file set.
-    const targets = this.resolveImportTargets(normalized, entry.imports);
+    this.linkImporters(normalized, entry.imports);
+
+    entry.edges = [];
+    return { changed: true, stale: [normalized, ...this.dependentsOf(normalized)] };
+  }
+
+  /** Importer -> targets and reverse-index population for one file. */
+  private linkImporters(normalized: string, imports: ImportRecord[]): void {
+    const targets = this.resolveImportTargets(normalized, imports);
     this.importTargets.set(normalized, targets);
     for (const target of targets) {
       let importers = this.reverseImports.get(target);
@@ -170,9 +185,21 @@ export class IncrementalGraphCache {
       }
       importers.add(normalized);
     }
+  }
 
-    entry.edges = [];
-    return { changed: true, stale: [normalized, ...this.dependentsOf(normalized)] };
+  /**
+   * Re-derive every file's import links against the complete known-file set.
+   *
+   * A cold build registers files one at a time, so links derived during registration only ever saw
+   * the files added *earlier*; an import of a not-yet-registered file stayed unresolved. Calling
+   * this after every file is registered repairs those links before edges are built.
+   */
+  relinkAll(): void {
+    this.importTargets.clear();
+    this.reverseImports.clear();
+    for (const entry of this.entries.values()) {
+      this.linkImporters(entry.filePath, entry.imports);
+    }
   }
 
   /** Assign the derived edges for a file (called by the topology engine after symbol registration). */
@@ -198,7 +225,7 @@ export class IncrementalGraphCache {
 
   /** Files that (transitively) import the given file and must be re-linked when it changes. */
   dependentsOf(filePath: string): string[] {
-    const normalized = stripCodeExtension(normalizePath(filePath));
+    const normalized = normalizePath(filePath);
     const seen = new Set<string>();
     const queue = [normalized];
     while (queue.length > 0) {
@@ -208,7 +235,7 @@ export class IncrementalGraphCache {
       for (const importer of importers) {
         if (seen.has(importer)) continue;
         seen.add(importer);
-        queue.push(stripCodeExtension(importer));
+        queue.push(importer);
       }
     }
     return [...seen];
@@ -240,10 +267,9 @@ export class IncrementalGraphCache {
 
   /** Remove this file's contribution to the reverse-import index. */
   private detachImportLinks(filePath: string): void {
-    const normalized = stripCodeExtension(normalizePath(filePath));
+    const normalized = normalizePath(filePath);
     for (const importers of this.reverseImports.values()) {
       importers.delete(normalized);
-      importers.delete(filePath);
     }
     this.reverseImports.delete(normalized);
   }

@@ -70,11 +70,24 @@ export function resolvePathStyleImport(fromFile: string, importSpec: string): st
   return stripCodeExtension(parts.join("/"));
 }
 
+/**
+ * Canonical key under which a file's symbols are indexed.
+ *
+ * Both sides of a relative-import lookup must reduce to this one form: `resolvePathStyleImport`
+ * yields extension-stripped paths (`./foo` -> `src/foo`) and files are registered under their
+ * extension-stripped path as well, so `src/foo.ts` and a resolved `src/foo` are the same key. The
+ * alternative — keying `byFile` by the full filename while lookups arrive stripped — made every
+ * ordinary relative import miss and fall back to global name resolution.
+ */
+function fileKey(filePath: string): string {
+  return stripCodeExtension(normalizePath(filePath));
+}
+
 /** Lookup tables backing symbol resolution. */
 export class SymbolIndex {
   /** symbol id -> symbol */
   readonly byId = new Map<string, GraphSymbol>();
-  /** file path -> symbols defined in that file */
+  /** file path (extension-stripped, POSIX) -> symbols defined in that file */
   readonly byFile = new Map<string, GraphSymbol[]>();
   /** dotted module path -> file path */
   readonly moduleMap = new Map<string, string>();
@@ -83,9 +96,18 @@ export class SymbolIndex {
   /** plain or qualified name -> symbol ids (global fallback) */
   readonly byName = new Map<string, string[]>();
 
+  /**
+   * Repository root the indexed files are relative to. Relative (`from . import`) resolution needs
+   * the module path relative to the repo root; the importing file's own directory is NOT that root,
+   * and supplying it collapses `pkg/sub/mod.py` to the module `mod`.
+   */
+  private repoRoot = "";
+
   /** Register a file's symbols, rebuilding that file's export entries. */
   registerFile(filePath: string, symbols: GraphSymbol[], repoRoot: string): void {
-    this.byFile.set(filePath, symbols);
+    this.repoRoot = repoRoot;
+    const key = fileKey(filePath);
+    this.byFile.set(key, symbols);
     const modulePath = filePathToModulePath(filePath, repoRoot);
     if (modulePath) this.moduleMap.set(modulePath, filePath);
 
@@ -116,21 +138,22 @@ export class SymbolIndex {
 
   /** Drop a file's symbols and export entries. */
   unregisterFile(filePath: string, repoRoot: string): void {
-    const symbols = this.byFile.get(filePath);
+    const key = fileKey(filePath);
+    const symbols = this.byFile.get(key);
     if (symbols) {
       for (const symbol of symbols) {
         this.byId.delete(symbol.id);
-        for (const key of [symbol.qualifiedName, symbol.name]) {
-          const bucket = this.byName.get(key);
+        for (const keyName of [symbol.qualifiedName, symbol.name]) {
+          const bucket = this.byName.get(keyName);
           if (bucket) {
             const next = bucket.filter((id) => id !== symbol.id);
-            if (next.length) this.byName.set(key, next);
-            else this.byName.delete(key);
+            if (next.length) this.byName.set(keyName, next);
+            else this.byName.delete(keyName);
           }
         }
       }
     }
-    this.byFile.delete(filePath);
+    this.byFile.delete(key);
     const modulePath = filePathToModulePath(filePath, repoRoot);
     if (modulePath) {
       this.moduleMap.delete(modulePath);
@@ -145,7 +168,7 @@ export class SymbolIndex {
 
   /** Resolve a symbol defined locally in the given file. */
   resolveLocal(symbolName: string, currentFilePath: string): string | undefined {
-    const symbols = this.byFile.get(currentFilePath);
+    const symbols = this.byFile.get(fileKey(currentFilePath));
     if (!symbols) return undefined;
     const exact = symbols.find((symbol) => symbol.qualifiedName === symbolName);
     if (exact) return exact.id;
@@ -166,11 +189,10 @@ export class SymbolIndex {
     for (const imp of imports) {
       if (!matchesImport(symbolName, imp)) continue;
       if (imp.level > 0) {
-        // Python-style relative import.
-        const currentModule = filePathToModulePath(
-          currentFilePath,
-          currentFilePath.split("/").slice(0, -1).join("/"),
-        );
+        // Python-style relative import: the level counts up from the importing module's position in
+        // the package, so the module path must be relative to the repo root, not to this file's own
+        // directory.
+        const currentModule = filePathToModulePath(currentFilePath, this.repoRoot);
         const targetModule = resolveRelativeModulePath(
           currentModule,
           imp.module,
@@ -206,17 +228,14 @@ export class SymbolIndex {
   ): string | undefined {
     const exports = this.exportMap.get(modulePath);
     if (!exports) return undefined;
+    const source = sourceNameFor(symbolName, imp);
     if (imp.names.length) {
-      if (imp.names.includes(symbolName)) return exports.get(symbolName);
-      const alias = imp.alias;
-      if (alias && symbolName === alias) {
-        return exports.get(imp.names[0] ?? symbolName);
-      }
+      if (imp.names.includes(source)) return exports.get(source);
       for (const name of imp.names) {
-        if (symbolName.startsWith(`${name}.`)) return exports.get(symbolName) ?? exports.get(name);
+        if (source.startsWith(`${name}.`)) return exports.get(source) ?? exports.get(name);
       }
     }
-    return exports.get(symbolName);
+    return exports.get(source);
   }
 
   private matchInFile(
@@ -224,22 +243,23 @@ export class SymbolIndex {
     symbolName: string,
     imp: ImportRecord,
   ): string | undefined {
-    const symbols = this.byFile.get(targetFile);
+    const symbols = this.byFile.get(fileKey(targetFile));
     if (!symbols) return undefined;
+    const source = sourceNameFor(symbolName, imp);
     if (imp.names.length) {
-      if (imp.names.includes(symbolName)) {
-        return symbols.find((symbol) => symbol.name === symbolName)?.id;
+      if (imp.names.includes(source)) {
+        return symbols.find((symbol) => symbol.name === source)?.id;
       }
       for (const name of imp.names) {
-        if (symbolName.startsWith(`${name}.`)) {
+        if (source.startsWith(`${name}.`)) {
           return (
-            symbols.find((symbol) => symbol.qualifiedName === symbolName)?.id ??
+            symbols.find((symbol) => symbol.qualifiedName === source)?.id ??
             symbols.find((symbol) => symbol.name === name)?.id
           );
         }
       }
     }
-    return symbols.find((symbol) => symbol.name === symbolName)?.id;
+    return symbols.find((symbol) => symbol.name === source)?.id;
   }
 
   /** Fall back to matching `imp.module` against the tail of indexed file paths. */
@@ -283,10 +303,25 @@ export class SymbolIndex {
   }
 }
 
+/**
+ * Map a call's locally-spelled name back to the name the source module exports it under.
+ *
+ * `import { a as x }` / `from m import a as x` bind the local name `x` to the exported name `a`;
+ * the export map and the file's symbols are keyed by `a`, so a lookup spelled `x` must be
+ * translated before it is matched. The general form is the alias map; the single `alias` field
+ * covers the one-rename case.
+ */
+function sourceNameFor(symbolName: string, imp: ImportRecord): string {
+  if (imp.aliasMap && Object.hasOwn(imp.aliasMap, symbolName)) return imp.aliasMap[symbolName]!;
+  if (imp.alias && symbolName === imp.alias) return imp.names[0] ?? symbolName;
+  return symbolName;
+}
+
 /** Predicate from the donor's `_matches_import`. */
 function matchesImport(symbolName: string, imp: ImportRecord): boolean {
   if (imp.names.includes(symbolName)) return true;
   if (imp.alias && symbolName === imp.alias) return true;
+  if (imp.aliasMap && Object.hasOwn(imp.aliasMap, symbolName)) return true;
   if (imp.module && symbolName.startsWith(`${imp.module}.`)) return true;
   for (const name of imp.names) {
     if (symbolName.startsWith(`${name}.`)) return true;

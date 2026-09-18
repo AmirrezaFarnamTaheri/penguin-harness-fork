@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -275,4 +276,26 @@ export function stableStringify(value) {
     return input;
   };
   return `${JSON.stringify(sort(value), null, 2)}\n`;
+}
+
+/**
+ * Normalized content fingerprint of a SKILL.md body. Two skills whose bodies
+ * carry the same instructions — regardless of casing, punctuation or
+ * whitespace — share a fingerprint, which is how the audit detects a skill
+ * ported into the corpus twice under two names.
+ */
+export function bodyFingerprint(body) {
+  return crypto.createHash("sha256").update(normalizeDescription(body)).digest("hex").slice(0, 16);
+}
+
+/**
+ * A redirect skill keeps its directory and `name` but replaces its instructions
+ * with a pointer at the canonical skill it duplicates. Recognized by a
+ * frontmatter `redirect:` key holding a canonical skill name.
+ */
+export function readRedirectTarget(metadata) {
+  const value = metadata?.redirect;
+  if (typeof value !== "string") return null;
+  const target = value.trim();
+  return target.length > 0 ? target : null;
 }

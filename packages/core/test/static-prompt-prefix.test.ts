@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UniConfig, UniEvent, UniMessage } from "@prismshadow/agenthub";
-import { GenerativeModel, buildUniConfig } from "../src/llm/generative-model.js";
+import { GenerativeModel, buildUniConfig } from "../src/llm/index.js";
 import { userText } from "../src/omnimessage/index.js";
 import type { OmniMessage } from "../src/omnimessage/index.js";
 

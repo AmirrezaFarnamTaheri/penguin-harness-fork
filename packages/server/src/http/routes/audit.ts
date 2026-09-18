@@ -1,3 +1,9 @@
+/**
+ * Audit receipt route: GET /api/projects/:p/audit/receipts — the verified, Project-scoped
+ * projection of the append-only audit log the recorder writes (sandbox/audit.ts). Any
+ * member can read it: the receipts name tool calls the whole Project is accountable for,
+ * and the view is allowlisted (no raw arguments, no origin chain, no signing material).
+ */
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import type { AppDeps } from "../../app.js";

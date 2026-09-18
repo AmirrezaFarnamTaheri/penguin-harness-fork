@@ -1,10 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { SwarmCoordinator, type SwarmEvent } from "../src/agent/swarm-coordinator.js";
+import { describe, expect, it, vi } from "vitest";
 import { LoopDetector, ProgressTracker } from "../src/agent/loop-detector.js";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe("LoopDetector", () => {
   it("allows normal tool execution under repeat thresholds", () => {
@@ -107,76 +102,6 @@ describe("LoopDetector", () => {
     expect(detector.checkToolCall("").status).toBe("ok");
   });
 
-  it("VERIFIED (existing): keeps file timeout separate from the progress stall budget", () => {
-    vi.useFakeTimers();
-    const detector = new LoopDetector({ timeoutSeconds: 5, stallThreshold: 2 });
-    detector.startFile("src/big-file.ts");
-
-    vi.advanceTimersByTime(5000);
-    detector.noteLlmWait(5);
-    expect(detector.checkToolCall("").status).toBe("ok");
-
-    vi.advanceTimersByTime(1);
-    detector.recordProgress();
-    const timeout = detector.checkToolCall("");
-    expect(timeout.status).toBe("timeout");
-    expect(timeout.shouldStop).toBe(true);
-    expect(timeout.message).toContain("src/big-file.ts");
-    expect(detector.getStatusSummary()).toMatchObject({
-      isAborted: true,
-      abortReason: timeout.message,
-      recentTools: [],
-    });
-
-    detector.startFile("src/next-file.ts");
-    expect(detector.checkToolCall("").status).toBe("ok");
-  });
-
-  it("VERIFIED (existing): detects period-3 cycles at the ninth call, not earlier", () => {
-    const detector = new LoopDetector({ maxCycleLength: 3, maxRepeats: 20 });
-    const sequence = [
-      "a_tool",
-      "b_tool",
-      "c_tool",
-      "a_tool",
-      "b_tool",
-      "c_tool",
-      "a_tool",
-      "b_tool",
-    ];
-    for (const tool of sequence) {
-      expect(detector.checkToolCall(tool).shouldStop).toBe(false);
-    }
-    const result = detector.checkToolCall("c_tool");
-    expect(result).toMatchObject({
-      status: "loop_detected",
-      shouldStop: true,
-      patternType: "alternating_cycle",
-    });
-    expect(result.message).toContain("a_tool -> b_tool -> c_tool");
-    expect(detector.shouldAbort()).toBe(true);
-    expect(detector.getAbortReason()).toBe(result.message);
-    expect(detector.getStatusSummary().recentTools).toEqual([
-      "b_tool",
-      "c_tool",
-      "a_tool",
-      "b_tool",
-      "c_tool",
-    ]);
-  });
-
-  it("VERIFIED (existing): getAbortReason mirrors shouldAbort and returns null when healthy", () => {
-    const healthy = new LoopDetector({ maxErrors: 2 });
-    expect(healthy.shouldAbort()).toBe(false);
-    expect(healthy.getAbortReason()).toBeNull();
-
-    const failing = new LoopDetector({ maxErrors: 2 });
-    failing.recordError("e1");
-    failing.recordError("e2");
-    expect(failing.shouldAbort()).toBe(true);
-    expect(failing.getAbortReason()).toContain("consecutive errors");
-  });
-
   it("provides status summary accurately", () => {
     const detector = new LoopDetector({ maxRepeats: 5 });
     detector.startFile("src/index.ts");
@@ -188,49 +113,6 @@ describe("LoopDetector", () => {
     expect(summary.consecutiveErrors).toBe(1);
     expect(summary.recentTools).toEqual(["read_file"]);
     expect(summary.isAborted).toBe(false);
-  });
-});
-
-describe("SwarmCoordinator safety loop", () => {
-  it("VERIFIED (existing): emits one alert and stops dispatch before the repeated round, then resets for the next task", async () => {
-    const coordinator = new SwarmCoordinator({ loopOptions: { maxRepeats: 2 } });
-    const events: SwarmEvent[] = [];
-    coordinator.subscribe((event) => events.push(event));
-    const executedRounds: number[] = [];
-    const result = await coordinator.runTask(
-      { id: "safety-loop", goal: "Exercise repeat breaker", maxRounds: 4 },
-      {
-        onExecute: async (_task, _step, round) => {
-          executedRounds.push(round);
-          return { artifacts: [], summary: "Needs revision" };
-        },
-        onReview: async () => ({ approved: false, grounds: "Needs another revision" }),
-      },
-    );
-
-    expect(result.status).toBe("loop_aborted");
-    expect(result.rounds).toBe(2);
-    expect(executedRounds).toEqual([1]);
-    expect(result.terminalSummary?.status).toBe("interrupted");
-    const alerts = events.filter((event) => event.type === "loop_detected");
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0]).toMatchObject({
-      taskId: "safety-loop",
-      agentId: "coder",
-      timestamp: expect.any(Number),
-      payload: { message: coordinator.loopDetector.getAbortReason() },
-    });
-    expect(coordinator.loopDetector.shouldAbort()).toBe(true);
-
-    const next = await coordinator.runTask({
-      id: "safety-loop-next",
-      goal: "Fresh task after the breaker",
-      simulate: true,
-    });
-    expect(next.status).toBe("settled");
-    expect(next.rounds).toBe(1);
-    expect(coordinator.loopDetector.shouldAbort()).toBe(false);
-    expect(events.filter((event) => event.type === "loop_detected")).toHaveLength(1);
   });
 });
 

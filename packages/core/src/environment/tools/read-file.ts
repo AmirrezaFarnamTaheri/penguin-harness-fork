@@ -32,10 +32,11 @@
  * - **Self-budgeted output**: the rendered window is trimmed to the tool's own
  *   maxOutputLength before Environment's front-keep truncation could cut the trailing
  *   continuation note — the note (and the shown range it reports) always survives.
- * - Overlong single lines are truncated with a marker; CRLF files display without the `\r`
- *   and get an explicit note; binary content that is not a supported image (NUL bytes) is
- *   rejected with advice; the secret stores (.vault.toml / .project_config.toml) are refused
- *   outright.
+ * - Overlong single lines are truncated with a marker; CRLF/CR/mixed files display without the
+ *   `\r` and get an explicit one-line note naming the file's real line-ending style (null, and
+ *   so free, for the common LF case — see line-endings.ts); binary content that is not a
+ *   supported image (NUL bytes) is rejected with advice; the secret stores (.vault.toml /
+ *   .project_config.toml) are refused outright.
  *
  * Division of responsibility with Environment (see environment.ts): a text read yields the
  * whole numbered listing as one delta; failures (missing file, directory, binary content,
@@ -58,6 +59,8 @@ import type {
   VisionDescriberService,
 } from "../../interfaces/index.js";
 import { formatSize, isHttpUrl, loadImage, looksLikeImageFile } from "./image-source.js";
+import { lineEndingStyleNote } from "./line-endings.js";
+import type { LineEndingCounts } from "./line-endings.js";
 import { missingPathHint } from "./path-hint.js";
 import { describeArgumentError } from "./tool-arguments.js";
 import type { BuiltinTool, ToolExecutionContext, ToolResult } from "./types.js";
@@ -161,8 +164,8 @@ interface ScanOutcome {
   /** Total line count — exact when `totalKnown`, otherwise a lower bound (lines seen before the scan cap). */
   total: number;
   totalKnown: boolean;
-  /** Whether any CRLF (\r\n) line ending was seen in the scanned range. */
-  sawCRLF: boolean;
+  /** Line-terminator counts over the scanned range (the CRLF/C note comes from these). */
+  endings: LineEndingCounts;
   /** Whether a NUL byte was seen (binary content). */
   binary: boolean;
   /** Scan cap hit before the window produced any line: the request cannot be served. */
@@ -188,7 +191,7 @@ async function scanWindow(
     lines: [],
     total: 0,
     totalKnown: false,
-    sawCRLF: false,
+    endings: { lf: 0, crlf: 0, cr: 0 },
     binary: false,
     capBeforeWindow: false,
     aborted: false,
@@ -239,8 +242,10 @@ async function scanWindow(
       }
       const { bytesRead } = await fd.read(chunk, 0, toRead, scanned);
       if (bytesRead === 0) {
-        // EOF: a final line without a trailing newline still counts.
+        // EOF: a final line without a trailing newline still counts. A trailing lone \r ends
+        // that final line too (finishLine strips it from the content), so it is counted here.
         if (currentHasBytes) finishLine();
+        if (prevByte === 0x0d) out.endings.cr += 1;
         out.total = completedLines;
         out.totalKnown = true;
         return out;
@@ -254,13 +259,18 @@ async function scanWindow(
           return out;
         }
         if (b === 0x0a) {
-          if (prevByte === 0x0d) out.sawCRLF = true;
+          if (prevByte === 0x0d) out.endings.crlf += 1;
+          else out.endings.lf += 1;
           if (i > from) {
             currentHasBytes = true;
             if (inWindow()) appendRun(chunk, from, i);
           }
           finishLine();
           from = i + 1;
+        } else if (prevByte === 0x0d) {
+          // The \r this byte follows was a lone CR, not the first half of a CRLF — it ends a
+          // line too (classic-Mac files), and the note below has to count it.
+          out.endings.cr += 1;
         }
         prevByte = b;
       }
@@ -543,7 +553,11 @@ export function createReadFileTool(
       }
 
       const moreRemains = budgetTrimmed || !scan.totalKnown || shownEnd < scan.total;
-      if (scan.sawCRLF) rows.push("(file uses CRLF line endings)");
+      // The one-line ending note costs nothing in the common LF case (null) and is the only
+      // signal the model gets that the file's bytes are not what it is being shown — read_file
+      // strips every \r, so without it a CRLF file looks exactly like an LF one.
+      const endingNote = lineEndingStyleNote(scan.endings);
+      if (endingNote !== null) rows.push(endingNote);
       if (moreRemains) {
         const trimmedInfix = budgetTrimmed ? " (output limit reached)" : "";
         const totalPart = scan.totalKnown

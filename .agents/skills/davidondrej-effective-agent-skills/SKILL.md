@@ -45,7 +45,7 @@ The agent sees `name` + `description` first to decide whether the skill applies.
 When the request matches, the agent reads the full `SKILL.md` body.
 
 **Level 3 — Execution (unbounded, on demand):**
-The agent reads references (`references/foo.md`) or runs scripts (`scripts/validate.py`) as needed. Running a script need not load its source into context.
+The agent reads a document under `references/` or runs a script under `scripts/` as needed. Running a script need not load its source into context.
 
 Bundled files consume context only when their contents are loaded.
 

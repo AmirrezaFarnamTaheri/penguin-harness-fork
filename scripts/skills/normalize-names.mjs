@@ -1,4 +1,53 @@
 #!/usr/bin/env node
+/**
+ * Skill naming policy
+ * ===================
+ *
+ * A skill name is a routing key first and a label second: `SkillRegistry` matches
+ * a prompt against the name's tokens (see `scoreSkillRelevance` in
+ * packages/core/src/agent/skill-engine.ts), so a name has to carry the words a
+ * user would actually say. These rules decide what a corpus name must look like.
+ *
+ * Canonical form — lowercase, digits and single hyphens only, <= 64 chars
+ * (`SKILL_NAME_PATTERN`), and the frontmatter `name` must equal the directory
+ * name; `audit.mjs` fails the build on any mismatch.
+ *
+ * Naming shape, in precedence order — the first one that applies wins:
+ *
+ *   1. An external service is named for the service (`linear`, `github`,
+ *      `slack`), never `codex-linear` or `slack-skill`. The service token is
+ *      what a prompt contains.
+ *   2. Verb-phrase skills put the verb first (`deploy-to-vercel`,
+ *      `review-animations`, `run-skill-generator`) so the action leads the noun.
+ *      `animations-review-animations` inverts this and is a consolidation target.
+ *   3. A vendor/author prefix is dropped when the topic stands on its own
+ *      (`minimax-shader-dev` -> `shader-dev`). `minimax-` / `codex-` /
+ *      `davidondrej-` prefixes say where a skill came from, not what it does,
+ *      and they cost a routing token while earning nothing.
+ *   4. Kind suffixes are reserved for *how* the skill delivers, and are matched
+ *      by the alias table rather than by the stem: `-automation` (drives a named
+ *      SaaS service), `-bilingual` (English/Indonesian bilingual specialist),
+ *      `-patterns` / `-best-practices` (reference guidance, not execution),
+ *      `-runner` (execution), `-review` (inspection), `-dev` (a language or
+ *      platform development guide).
+ *
+ * Renaming is a move, not a rename-and-forget: the directory is renamed, the
+ * frontmatter `name` is rewritten, local path references inside the skill are
+ * repointed, and the old name becomes an alias of the new one — so nothing that
+ * used the old name stops resolving.
+ *
+ * Two policies drive automatic renaming:
+ *
+ *   --bilingual-experts    A `-expert` skill whose description declares English
+ *                          and Indonesian coverage is really a bilingual
+ *                          specialist; it becomes `-bilingual`, which is the
+ *                          suffix the corpus reserves for that.
+ *
+ *   --core-disambiguation  EXPLICIT_RENAMES below: names that are actively
+ *                          misleading — they promise a different capability from
+ *                          the one they deliver, so a router scoring their tokens
+ *                          sends a prompt to the wrong skill.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -28,6 +77,15 @@ const EXPLICIT_RENAMES = new Map([
   ["browser", "chrome-cdp-browser-control"],
   ["browsing", "use-browser-mcp-control"],
   ["snowflake-expert", "snowflake-platform-engineering"],
+  // `healthcheck` reads as an infrastructure probe; the skill actually logs water
+  // and sleep to a JSON file.
+  ["healthcheck", "water-sleep-tracker"],
+  // `model-update` reads as an LLM/weights update; the skill actually updates
+  // financial models with new earnings and macro data.
+  ["model-update", "financial-model-update"],
+  // In a corpus full of finance skills, `portfolio` reads as an investment
+  // portfolio; the skill tracks an IP portfolio (registrations, renewals, fees).
+  ["portfolio", "ip-portfolio"],
 ]);
 
 function replaceFrontmatterName(raw, oldName, newName) {

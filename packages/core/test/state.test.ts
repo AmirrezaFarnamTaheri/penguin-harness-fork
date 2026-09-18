@@ -258,6 +258,7 @@ describe("buildToolConfig", () => {
       "input_command",
       "run_subagent",
       "input_subagent",
+      "environment_info",
     ]);
     const exec = cfg.customTools.find((t) => t.name === "exec_command")!;
     expect(exec.permission).toBe("rw");
@@ -385,6 +386,7 @@ describe("buildToolConfig", () => {
       "input_command",
       "run_subagent",
       "input_subagent",
+      "environment_info",
     ]);
   });
 });

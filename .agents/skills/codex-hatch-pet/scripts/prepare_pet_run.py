@@ -156,6 +156,10 @@ CHROMA_KEY_CANDIDATES = [
     ("green", "#00FF00"),
 ]
 
+# Paths below are relative to the run directory, not to this skill: they name
+# artifacts the run creates at runtime (the canonical base is copied in by the
+# parent after the base job completes, layout guides are generated below, and
+# the brand discovery file is copied in when --brand-discovery-file is given).
 DEFAULT_PET_NAME = "Sprout"
 CANONICAL_BASE_PATH = "references/canonical-base.png"
 BRAND_DISCOVERY_PATH = "references/brand-discovery.md"

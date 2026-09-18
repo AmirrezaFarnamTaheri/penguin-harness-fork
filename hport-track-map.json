@@ -13,7 +13,7 @@
     "bVisor-main.zip",
     "async-bash-master.zip"
   ],
-  "6. Track 3 — Code Topology, AST Diffing, Semantic Graphs & Automated Review (11 Archives)": [
+  "6. Track 3 — Code Topology, AST Diffing, Semantic Graphs & Automated Review (10 Archives)": [
     "OpenGraph-main.zip",
     "DiffGraph-main.zip",
     "AnyGraph-main.zip",
@@ -25,7 +25,7 @@
     "AsyncReview-main.zip",
     "async-code-main.zip"
   ],
-  "7. Track 4 — Hierarchical RAG, Context Memory & State Stores (9 Archives)": [
+  "7. Track 4 — Hierarchical RAG, Context Memory & State Stores (8 Archives)": [
     "letta-code-main.zip",
     "rowboat-main.zip",
     "LightRAG-main.zip",
@@ -70,7 +70,7 @@
     "lingxiao-ai-manager-main.zip",
     "open-antigravity-patcher-main.zip"
   ],
-  "10. Track 7 — Autonomous SWE Loops, Tool Execution & Multi-Agent Swarms (24 Archives)": [
+  "10. Track 7 — Autonomous SWE Loops, Tool Execution & Multi-Agent Swarms (22 Archives)": [
     "hermes-agent-main.zip",
     "DeepSearchAgents-main.zip",
     "autogen-main.zip",
@@ -94,7 +94,7 @@
     "agents-main.zip",
     "agent-skills-main.zip"
   ],
-  "11. Track 8 — Deep Research, Scientific Engines & Reasoning Acceleration (32 Archives)": [
+  "11. Track 8 — Deep Research, Scientific Engines & Reasoning Acceleration (31 Archives)": [
     "AI-Researcher-main.zip",
     "pydantic-ai-main.zip",
     "rtp-llm-main.zip",
@@ -132,13 +132,13 @@
     "claude-code-system-prompts-main.zip",
     "awesome-ai-system-prompts-main.zip"
   ],
-  "13. Track 10 — Agent Skills & Dynamic Superpowers Corpus (19 Archives)": [
+  "13. Track 10 — Agent Skills & Dynamic Superpowers Corpus (4 Archives)": [
     "awesome-claude-skills-master.zip",
     "skills-main.zip",
     "superpowers-main.zip",
     "swarm-forge-main.zip"
   ],
-  "14. Track 11 — Verification Baselines, Visual Diffs & E2E Traces (5 Archives)": [
+  "14. Track 11 — Verification Baselines, Visual Diffs & E2E Traces (4 Archives)": [
     "huntx-output-34868179005-1.zip",
     "ci-evidence-validate-browser-1.zip",
     "ci-evidence-validate-frontend-1.zip",

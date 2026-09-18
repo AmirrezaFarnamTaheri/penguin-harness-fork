@@ -81,10 +81,24 @@ export class TopologyEngine {
     this.impact = new ImpactRadiusEngine(this.nodes, this.edges);
   }
 
-  /** Cold-start build over many files. */
+  /**
+   * Cold-start build over many files.
+   *
+   * Two phases, because resolution is only correct once the index is complete: registering files
+   * one at a time and building each file's edges immediately meant an import of a file added later
+   * never resolved (and was never repaired). Phase 1 parses every file and registers every symbol;
+   * phase 2 resolves imports/calls/inheritance against the now-complete index and builds edges.
+   */
   build(files: Array<{ path: string; content: string }>): BuildStats {
     const startedAt = performance.now();
-    for (const file of files) this.updateFile(file.path, file.content);
+    for (const file of files) this.upsertFile(file.path, file.content, false);
+    // Import links were derived against a partial file set during registration; re-derive them all.
+    this.cache.relinkAll();
+    for (const entry of this.cache.getAll()) {
+      this.cache.setEdges(entry.filePath, this.buildEdgesForFile(entry));
+      this.lifecycles.set(entry.filePath, computeAllLifecycles(entry.variableBindings));
+    }
+    this.rebuild();
     return {
       ...this.cache.stats(),
       callEdges: this.edges.filter((edge) => edge.kind === "calls").length,
@@ -95,6 +109,13 @@ export class TopologyEngine {
 
   /** Incremental update on a single-file edit. */
   updateFile(filePath: string, content: string): UpdateResult {
+    const result = this.upsertFile(filePath, content, true);
+    this.rebuild();
+    return result;
+  }
+
+  /** Register a file's symbols (and optionally rebuild edges) without touching aggregate views. */
+  private upsertFile(filePath: string, content: string, buildEdges: boolean): UpdateResult {
     const result = this.cache.update(filePath, content);
     if (!result.changed) return result;
     const work = new Set<string>([normalizePath(filePath), ...result.stale]);
@@ -107,14 +128,14 @@ export class TopologyEngine {
     }
 
     // Rebuild edges for every stale file (order independent now that the index is current).
-    for (const stale of work) {
-      const entry = this.cache.get(stale);
-      if (!entry) continue;
-      this.cache.setEdges(stale, this.buildEdgesForFile(entry));
-      this.lifecycles.set(stale, computeAllLifecycles(entry.variableBindings));
+    if (buildEdges) {
+      for (const stale of work) {
+        const entry = this.cache.get(stale);
+        if (!entry) continue;
+        this.cache.setEdges(stale, this.buildEdgesForFile(entry));
+        this.lifecycles.set(stale, computeAllLifecycles(entry.variableBindings));
+      }
     }
-
-    this.rebuild();
     return result;
   }
 
@@ -373,6 +394,7 @@ export class TopologyEngine {
     for (const [id, node] of this.nodes) {
       if (node.kind === "file") continue;
       stats.set(id, {
+        filePath: node.filePath,
         kind: node.kind,
         qualifiedName: node.qualifiedName ?? node.name,
         complexity: node.complexity ?? 1,

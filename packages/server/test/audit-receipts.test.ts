@@ -26,7 +26,6 @@ describe("project audit receipts route", () => {
     ).toBe(201);
   });
   afterEach(() => {
-    // Dispose only test-owned resources; retain temp fixture files (no cleanup deletion).
     t.deps.hmr.dispose();
     t.deps.channels.dispose();
     t.deps.db.close();

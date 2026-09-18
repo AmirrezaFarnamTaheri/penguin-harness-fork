@@ -252,10 +252,43 @@ export interface ParsedPromptFrontmatter {
   readonly description: string | null;
   readonly ccVersion: string | null;
   readonly variables: string[];
+  /** The agent-metadata block, when the frontmatter carries one. */
+  readonly agentMetadata?: PromptAgentMetadata;
   readonly body: string;
 }
 
 const FRONTMATTER_KEYS = ["name", "description", "ccVersion", "variables"] as const;
+
+/** Scalar agent-metadata fields, as {@link renderPromptFrontmatter} emits them. */
+const METADATA_SCALAR_KEYS = [
+  "agentType",
+  "model",
+  "color",
+  "permissionMode",
+  "toolsNote",
+  "whenToUse",
+  "criticalSystemReminder",
+] as const;
+
+type MetadataScalarKey = (typeof METADATA_SCALAR_KEYS)[number];
+
+/** Metadata fields that can be a single string or a list of them. */
+type MetadataListKey = "tools" | "disallowedTools";
+
+/** A metadata block being filled in by {@link parsePromptFrontmatter}. */
+type MutableAgentMetadata = {
+  agentType?: string;
+  model?: string;
+  color?: string;
+  permissionMode?: string;
+  maxTurns?: number;
+  whenToUseDynamic?: boolean;
+  tools?: string | string[];
+  toolsNote?: string;
+  disallowedTools?: string | string[];
+  whenToUse?: string;
+  criticalSystemReminder?: string;
+};
 
 /**
  * Render the HTML-comment frontmatter used by generated prompt Markdown files. Every
@@ -330,6 +363,9 @@ export function renderPromptFrontmatter(prompt: PromptRecord): string {
  * Parse generated prompt Markdown back into metadata plus body. Returns `null` when the
  * file carries no HTML-comment frontmatter, so a plain prompt file degrades to body-only
  * instead of throwing.
+ *
+ * Every field {@link renderPromptFrontmatter} emits is read back, including the
+ * `agentMetadata` block, so a render→parse round trip keeps agent metadata intact.
  */
 export function parsePromptFrontmatter(content: string): ParsedPromptFrontmatter | null {
   const commentMatch = /^[\t ]*<!--([\s\S]*?)-->/u.exec(content);
@@ -343,11 +379,71 @@ export function parsePromptFrontmatter(content: string): ParsedPromptFrontmatter
   const lines = metadataSection.split("\n");
   const values = new Map<string, string>();
   const variables: string[] = [];
+  const agentMetadata: MutableAgentMetadata = {};
 
   let inVariables = false;
+  let inAgentMetadata = false;
+  let metadataListKey: MetadataListKey | null = null;
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
+
+    if (inAgentMetadata) {
+      // A list item continues the tool list that the previous line opened.
+      const item = /^-\s*(.*)$/u.exec(trimmed);
+      if (item !== null && item[1] !== undefined && metadataListKey !== null) {
+        const existing = agentMetadata[metadataListKey];
+        const list = Array.isArray(existing) ? existing : [];
+        list.push(parseYamlString(item[1]));
+        agentMetadata[metadataListKey] = list;
+        continue;
+      }
+      metadataListKey = null;
+
+      const entry = /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/su.exec(trimmed);
+      if (entry === null || entry[1] === undefined || entry[2] === undefined) continue;
+      const key = entry[1];
+      const raw = entry[2];
+
+      if (key === "tools" || key === "disallowedTools") {
+        if (raw.trim().length === 0) {
+          agentMetadata[key] = [];
+          metadataListKey = key;
+        } else {
+          agentMetadata[key] = parseYamlString(raw);
+        }
+        continue;
+      }
+      if (key === "maxTurns") {
+        const parsed = Number(parseYamlString(raw));
+        if (Number.isFinite(parsed)) agentMetadata.maxTurns = parsed;
+        continue;
+      }
+      if (key === "whenToUseDynamic") {
+        agentMetadata.whenToUseDynamic = parseYamlString(raw) === "true";
+        continue;
+      }
+      if ((METADATA_SCALAR_KEYS as readonly string[]).includes(key)) {
+        agentMetadata[key as MetadataScalarKey] = parseYamlString(raw);
+        continue;
+      }
+
+      // An unknown key at this indent is not metadata: the renderer emits the block last,
+      // so this is a hand edit, and it belongs to whatever follows.
+      inAgentMetadata = false;
+      continue;
+    }
+
+    // The renderer emits variables before metadata, so this header can arrive while a
+    // variables list is still open — and it always ends that list, since a list item is
+    // quoted and cannot match the bare header.
+    if (/^agentMetadata:\s*$/u.test(trimmed)) {
+      inAgentMetadata = true;
+      inVariables = false;
+      metadataListKey = null;
+      continue;
+    }
 
     if (!inVariables && /^variables:\s*$/u.test(trimmed)) {
       inVariables = true;
@@ -379,6 +475,8 @@ export function parsePromptFrontmatter(content: string): ParsedPromptFrontmatter
     description: description === undefined ? null : parseYamlString(description),
     ccVersion: ccVersion === undefined ? null : parseYamlString(ccVersion),
     variables,
+    // An empty block (`agentMetadata:` with nothing under it) carries no metadata.
+    agentMetadata: Object.keys(agentMetadata).length === 0 ? undefined : agentMetadata,
     body,
   };
 }
@@ -488,20 +586,208 @@ export function scanTemplateLiterals(source: string): ExtractedTemplate[] {
   return templates;
 }
 
-/** Find the index of the `}` that closes a `${` opened at `openIndex`, ignoring nesting. */
+/**
+ * Find the index of the `}` that closes a `${` opened just before `openIndex`.
+ *
+ * The body of an interpolation is real JavaScript — a ternary, a method call, a nested
+ * template — so a `}` inside a quoted string, a comment, a regex literal or a nested
+ * `${...}` is not the terminator. Each of those states is tracked here, which is what makes
+ * the scanner usable over minified and bundled source, where an interpolation body is rarely
+ * a plain identifier. Returns `-1` when no balanced close exists.
+ */
 function findInterpolationClose(source: string, openIndex: number): number {
   let depth = 1;
   let i = openIndex;
+  // The `${` opener starts an expression, so a `/` at the very start of the body is a regex
+  // literal rather than division.
+  let previous = "(";
+
   while (i < source.length) {
     const char = source.charAt(i);
-    if (char === "{") depth += 1;
-    else if (char === "}") {
+
+    if (char === '"' || char === "'") {
+      i = skipQuotedString(source, i);
+      previous = char;
+      continue;
+    }
+    if (char === "`") {
+      i = skipNestedTemplate(source, i);
+      previous = char;
+      continue;
+    }
+    if (char === "/") {
+      const next = source.charAt(i + 1);
+      if (next === "/") {
+        i = skipLineComment(source, i);
+        previous = "/";
+        continue;
+      }
+      if (next === "*") {
+        i = skipBlockComment(source, i);
+        previous = "/";
+        continue;
+      }
+      if (startsRegexLiteral(previous)) {
+        i = skipRegexLiteral(source, i);
+        previous = "/";
+        continue;
+      }
+    }
+    if (char === "{") {
+      depth += 1;
+      previous = "{";
+      i += 1;
+      continue;
+    }
+    if (char === "}") {
       depth -= 1;
       if (depth === 0) return i;
+      previous = "}";
+      i += 1;
+      continue;
+    }
+    if (IDENTIFIER_START.test(char)) {
+      // A whole word at once, so `previous` can carry the keyword that lets a following `/`
+      // be a regex (`return /re/`) instead of division.
+      const identifier = identifierAt(source, i);
+      previous = identifier;
+      i += identifier.length;
+      continue;
+    }
+    previous = char;
+    i += 1;
+  }
+
+  return -1;
+}
+
+const IDENTIFIER_START = /[A-Za-z_$]/u;
+const IDENTIFIER_PATTERN = /[A-Za-z_$][A-Za-z0-9_$]*/uy;
+
+/** Read the identifier that starts at `index`, or `""` when none does. */
+function identifierAt(source: string, index: number): string {
+  IDENTIFIER_PATTERN.lastIndex = index;
+  const match = IDENTIFIER_PATTERN.exec(source);
+  return match === null || match[0] === undefined ? "" : match[0];
+}
+
+/**
+ * Characters after which a `/` opens a regex literal rather than division. Division cannot
+ * follow any of these in valid JavaScript, so the heuristic cannot fire on real code.
+ */
+const REGEX_PRECEDING_CHARS = new Set([
+  "(",
+  ",",
+  "=",
+  ":",
+  "[",
+  "!",
+  "&",
+  "|",
+  "?",
+  "{",
+  ";",
+  "+",
+  "-",
+  "*",
+  "%",
+  "<",
+  ">",
+  "^",
+  "~",
+]);
+
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "case",
+  "void",
+  "delete",
+  "throw",
+  "new",
+  "else",
+  "do",
+  "yield",
+  "await",
+]);
+
+function startsRegexLiteral(previous: string): boolean {
+  return REGEX_PRECEDING_CHARS.has(previous) || REGEX_PRECEDING_KEYWORDS.has(previous);
+}
+
+/** Skip a single- or double-quoted string starting at `start`, honouring backslash escapes. */
+function skipQuotedString(source: string, start: number): number {
+  const quote = source.charAt(start);
+  let i = start + 1;
+  while (i < source.length) {
+    const char = source.charAt(i);
+    if (char === "\\") {
+      i += 2;
+      continue;
+    }
+    if (char === quote) return i + 1;
+    // A bare line break ends an unterminated string; report where it ran out.
+    if (char === "\n" || char === "\r") return i;
+    i += 1;
+  }
+  return source.length;
+}
+
+/** Skip a template literal starting at `start`, descending into the `${...}` it interpolates. */
+function skipNestedTemplate(source: string, start: number): number {
+  let i = start + 1;
+  while (i < source.length) {
+    const char = source.charAt(i);
+    if (char === "\\") {
+      i += 2;
+      continue;
+    }
+    if (char === "`") return i + 1;
+    if (char === "$" && source.charAt(i + 1) === "{") {
+      const close = findInterpolationClose(source, i + 2);
+      if (close === -1) return source.length;
+      i = close + 1;
+      continue;
     }
     i += 1;
   }
-  return -1;
+  return source.length;
+}
+
+function skipLineComment(source: string, start: number): number {
+  const end = source.indexOf("\n", start);
+  return end === -1 ? source.length : end;
+}
+
+function skipBlockComment(source: string, start: number): number {
+  const end = source.indexOf("*/", start + 2);
+  return end === -1 ? source.length : end + 2;
+}
+
+/** Skip a `/.../` regex literal with its trailing flags. */
+function skipRegexLiteral(source: string, start: number): number {
+  let i = start + 1;
+  let inClass = false;
+  while (i < source.length) {
+    const char = source.charAt(i);
+    if (char === "\\") {
+      i += 2;
+      continue;
+    }
+    if (char === "\n" || char === "\r") return i;
+    if (char === "[") inClass = true;
+    else if (char === "]") inClass = false;
+    else if (char === "/" && !inClass) {
+      i += 1;
+      while (i < source.length && IDENTIFIER_START.test(source.charAt(i))) i += 1;
+      return i;
+    }
+    i += 1;
+  }
+  return source.length;
 }
 
 /** Result of a template-literal extraction run. */

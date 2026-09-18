@@ -6,8 +6,33 @@ import {
   ARCHIVAL_STOPWORDS,
   lexicalScore,
 } from "../../src/memory/archival-store.js";
+import {
+  type EmbeddingFunction,
+  localEmbeddingFunction,
+} from "../../src/memory/embedding-pipeline.js";
 
 const DOC = "# Redis Cache\n\nThe redis cache stores session data for the api gateway.";
+
+/**
+ * An embedding whose similarity to a fixed query is written into the text as
+ * `@sim=<n>`. A document marked `@sim=0.95` is nearer the query than one marked
+ * `@sim=0.5`, deterministically, which is what the scoped-retrieval test needs
+ * to place another source's chunks ahead of the scoped one in the global ranking.
+ */
+function similarityTaggedEmbedding(): EmbeddingFunction {
+  return Object.assign(
+    async (inputs: readonly string[]): Promise<number[][]> =>
+      inputs.map((text) => {
+        const match = /@sim=([0-9.]+)/u.exec(text);
+        const value = match ? Number(match[1]!) : 0;
+        const vector = new Array<number>(256).fill(0);
+        vector[0] = value;
+        vector[1] = Math.sqrt(Math.max(0, 1 - value * value));
+        return vector;
+      }),
+    { dimensions: 256, label: "Test similarity-tagged projection" },
+  );
+}
 
 describe("archival-store", () => {
   describe("lexicalScore", () => {
@@ -93,10 +118,89 @@ describe("archival-store", () => {
       const store = new ArchivalStore();
       const lines = Array.from({ length: 50 }, (_, i) => `log line number ${i}`).join("\n");
       const result = await store.ingest("log.txt", lines, {
-        plainText: 1,
+        plainText: true,
         linesPerChunk: 10,
       });
       expect(result.chunkCount).toBe(5);
+    });
+
+    it("treats plainText as a boolean choice between the two chunkers", async () => {
+      const store = new ArchivalStore();
+      const markdown = "# Heading one\n\nbody\n\n# Heading two\n\nmore body";
+      // The Markdown chunker splits on headings; the plain-text chunker, given
+      // the same short document, keeps it whole.
+      const asMarkdown = await store.ingest("doc.md", markdown);
+      const asPlain = await store.ingest("doc.txt", markdown, { plainText: true });
+      const asMarkdownExplicitly = await store.ingest("doc2.md", markdown, {
+        plainText: false,
+      });
+      expect(asMarkdown.chunkCount).toBe(2);
+      expect(asPlain.chunkCount).toBe(1);
+      expect(asMarkdownExplicitly.chunkCount).toBe(asMarkdown.chunkCount);
+    });
+
+    it("reports an unchanged re-ingest and the chunk ids it produced", async () => {
+      const store = new ArchivalStore();
+      const first = await store.ingest("notes.md", DOC);
+      const second = await store.ingest("notes.md", DOC);
+      expect(first.unchanged).toBe(false);
+      expect(second.unchanged).toBe(true);
+      expect(second.documentId).toBe(first.documentId);
+      // The ids are the ones the chunk index actually holds, and they are what
+      // the knowledge graph records as its evidence.
+      expect(second.chunkIds).toEqual(first.chunkIds);
+      expect(second.chunkIds.length).toBe(first.chunkCount);
+      for (const id of second.chunkIds) expect(id.startsWith("chunk:")).toBe(true);
+      const fetched = await store.getByIds(second.chunkIds);
+      expect(fetched.map((chunk) => chunk.chunkId)).toEqual(second.chunkIds);
+    });
+
+    it("keeps the previous version when the replacement's embedding fails", async () => {
+      // The rebuild is built before the old version is retired, so a failed
+      // embedding leaves the last good copy indexed and queryable instead of
+      // deleting it first and having nothing to fall back on.
+      const failing = Object.assign(
+        async (inputs: readonly string[]): Promise<number[][]> => {
+          for (const input of inputs) {
+            if (input.includes("[embed-failure]")) throw new Error("embedding service is down");
+          }
+          return localEmbeddingFunction(inputs);
+        },
+        { dimensions: localEmbeddingFunction.dimensions, label: "Test failing embedding" },
+      );
+      const store = new ArchivalStore({ embedding: failing });
+      const first = await store.ingest("notes.md", DOC);
+      expect(first.unchanged).toBe(false);
+
+      await expect(
+        store.ingest("notes.md", "# Kafka [embed-failure]\n\nA streaming store, not a cache."),
+      ).rejects.toThrow("embedding service is down");
+
+      expect(store.hasDocument("notes.md")).toBe(true);
+      expect(store.documentCount()).toBe(1);
+      expect(store.size()).toBe(first.chunkCount);
+      const survivors = await store.query("redis cache", { topK: 5 });
+      expect(survivors.length).toBeGreaterThan(0);
+      expect(survivors.every((chunk) => chunk.source === "notes.md")).toBe(true);
+    });
+
+    it("leaves a re-ingest of byte-identical content a genuine no-op", async () => {
+      // The no-op must hold for the store's own observable state, not just the
+      // reported flag: the chunk set, the chunk ids and the vector index are all
+      // exactly what the first ingest left.
+      const store = new ArchivalStore();
+      const first = await store.ingest("notes.md", DOC);
+      const before = await store.query("redis cache", { topK: 5, lexical: true });
+      expect(before.length).toBeGreaterThan(0);
+
+      const second = await store.ingest("notes.md", DOC);
+
+      expect(second.unchanged).toBe(true);
+      expect(second.chunkIds).toEqual(first.chunkIds);
+      expect(store.size()).toBe(first.chunkCount);
+      // Re-querying through the store the graph hands ids to: the same results.
+      const after = await store.query("redis cache", { topK: 5, lexical: true });
+      expect(after.map((chunk) => chunk.chunkId)).toEqual(before.map((chunk) => chunk.chunkId));
     });
   });
 
@@ -193,6 +297,40 @@ describe("archival-store", () => {
       const results = await store.query("redis", { topK: 10, sourceKind: "code" });
       expect(results.length).toBeGreaterThan(0);
       expect(results.every((result) => result.sourceKind === "code")).toBe(true);
+    });
+
+    it("returns a scoped source's own matches even when another source owns the global top-K", async () => {
+      // Retrieval must be filter-aware: the source filter narrows the pool
+      // *before* the semantic top-K is taken. Filtering afterwards lets another
+      // source's nearer chunks fill every global slot, so the scoped query hands
+      // back nothing even though the scoped source has valid matches.
+      const store = new ArchivalStore({ embedding: similarityTaggedEmbedding() });
+      await store.ingest(
+        "decoy.md",
+        "# one\n\n@sim=0.95 decoy\n\n# two\n\n@sim=0.95 decoy\n\n# three\n\n@sim=0.95 decoy",
+        // A different kind from the target, so a `sourceKind` filter narrows to
+        // the target the way a `source` filter does.
+        { sourceKind: "code" },
+      );
+      await store.ingest("target.md", "@sim=0.5 the target holds the answer", {
+        sourceKind: "document",
+      });
+      expect(store.size()).toBe(4);
+
+      const query = "@sim=1";
+      // Precondition: the three nearest chunks globally are all decoys, so a
+      // filter-after-topK implementation returns [] for the scoped query.
+      const unscoped = await store.query(query, { topK: 3 });
+      expect(unscoped).toHaveLength(3);
+      expect(unscoped.every((result) => result.source === "decoy.md")).toBe(true);
+
+      const scoped = await store.query(query, { topK: 3, source: "target.md" });
+      expect(scoped.map((result) => result.source)).toEqual(["target.md"]);
+      expect(scoped[0]!.similarity).toBeGreaterThan(0);
+
+      // A sourceKind filter goes through the same path and must behave the same.
+      const byKind = await store.query(query, { topK: 3, sourceKind: "document" });
+      expect(byKind.map((result) => result.source)).toEqual(["target.md"]);
     });
   });
 

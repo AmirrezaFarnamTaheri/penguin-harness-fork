@@ -32,6 +32,14 @@ export interface VectorQueryOptions {
   threshold?: number;
   /** Pre-computed query vector, to avoid re-embedding a query used twice. */
   queryVector?: number[];
+  /**
+   * Restrict the search to records whose id is in this set. A scoped query must
+   * narrow the pool before its top-K is applied; without this, the globally-
+   * nearest records can fill every slot and the scope's own matches never
+   * surface. Implementations that cannot push the filter down must document
+   * that, and callers re-check scope on the results they get back.
+   */
+  ids?: Set<string>;
 }
 
 export interface VectorQueryResult {
@@ -107,11 +115,12 @@ export class InProcessVectorStore implements VectorStore {
     if (queryVector.length !== this.dimensions) return [];
 
     const scored: VectorQueryResult[] = [];
-    for (const record of this.records.values()) {
+    for (const [id, record] of this.records) {
+      if (options.ids !== undefined && !options.ids.has(id)) continue;
       const similarity = cosineSimilarity(queryVector, record.vector);
       if (!passesThreshold(similarity, threshold)) continue;
       scored.push({
-        id: record.id,
+        id,
         similarity,
         payload: record.payload,
       });

@@ -207,8 +207,88 @@ describe("knowledge-graph-store", () => {
       const second = await store.upsertRelation({ source: "Api", target: "Redis", weight: 2 });
       expect(store.relationCount()).toBe(1);
       expect(second.id).toBe(first.id);
-      expect(second.weight).toBe(3);
       expect(second.endpoints).toEqual(["Api", "Redis"]);
+      // Repeated evidence-free upserts contribute nothing new, so the weight
+      // reflects the first write rather than accumulating a second one.
+      expect(second.weight).toBe(1);
+    });
+
+    it("accumulates weight only for evidence the graph did not already hold", async () => {
+      const store = new KnowledgeGraphStore();
+      await store.upsertRelation({ source: "Redis", target: "Api", sourceIds: ["c1"], weight: 1 });
+      // A genuinely new chunk id is new evidence, so its weight counts.
+      const grown = await store.upsertRelation({
+        source: "Api",
+        target: "Redis",
+        sourceIds: ["c2"],
+        weight: 2,
+      });
+      expect(grown.weight).toBe(3);
+      // A new description fragment is new evidence too.
+      const described = await store.upsertRelation({
+        source: "Redis",
+        target: "Api",
+        descriptions: ["co-occur in the caching section"],
+        weight: 4,
+      });
+      expect(described.weight).toBe(7);
+      // Repeating evidence already held moves nothing.
+      const repeated = await store.upsertRelation({
+        source: "Api",
+        target: "Redis",
+        sourceIds: ["c2"],
+        descriptions: ["co-occur in the caching section"],
+        weight: 4,
+      });
+      expect(repeated.weight).toBe(7);
+    });
+
+    it("leaves an edge untouched when a repeated upsert brings the same evidence", async () => {
+      const store = new KnowledgeGraphStore();
+      const first = await store.upsertRelation({
+        source: "Redis",
+        target: "Api",
+        descriptions: ['co-occur in "# Cache"'],
+        sourceIds: ["c1", "c2"],
+        filePath: "doc.md",
+        weight: 1,
+      });
+      const repeated = await store.upsertRelation({
+        source: "Api", // Endpoints reversed: still the one canonical edge.
+        target: "Redis",
+        descriptions: ['co-occur in "# Cache"'],
+        sourceIds: ["c2", "c1"], // Same ids, different order.
+        filePath: "doc.md",
+        weight: 5, // A weight the repeat must not add.
+      });
+      expect(store.relationCount()).toBe(1);
+      // The stored edge object itself is returned untouched: an idempotent write
+      // is observable as one, so ranking cannot drift on re-ingestion.
+      expect(repeated).toBe(first);
+      expect(repeated.weight).toBe(1);
+      expect(repeated.descriptions).toEqual(first.descriptions);
+      expect(repeated.sourceIds).toEqual(first.sourceIds);
+    });
+
+    it("leaves a node untouched when a repeated upsert brings the same evidence", async () => {
+      const store = new KnowledgeGraphStore();
+      const first = await store.upsertEntity({
+        entityName: "Redis",
+        entityType: "software",
+        descriptions: ["a cache"],
+        sourceIds: ["c1"],
+        filePath: "doc.md",
+      });
+      const repeated = await store.upsertEntity({
+        entityName: "Redis",
+        entityType: "software",
+        descriptions: ["a cache"],
+        sourceIds: ["c1"],
+        filePath: "doc.md",
+      });
+      expect(store.entityCount()).toBe(1);
+      // `updatedAt` drives eviction order, so a no-op must not churn it.
+      expect(repeated).toBe(first);
     });
 
     it("defaults a non-positive weight to one", async () => {
@@ -324,6 +404,78 @@ describe("knowledge-graph-store", () => {
       expect(await store.deleteRelation("A", "B")).toBe(false);
       expect(store.relationCount()).toBe(0);
       expect(store.entityCount()).toBe(2);
+    });
+  });
+
+  describe("clearSource", () => {
+    it("is a no-op for a source the graph never learned from", async () => {
+      const store = new KnowledgeGraphStore();
+      await store.upsertEntity({ entityName: "Redis", sourceIds: ["c1"], filePath: "a.md" });
+      expect(await store.clearSource("nope.md")).toEqual({ entities: 0, relations: 0 });
+      expect(store.entityCount()).toBe(1);
+    });
+
+    it("strips one source's chunk ids while keeping another's", async () => {
+      const store = new KnowledgeGraphStore();
+      await store.upsertEntity({
+        entityName: "Redis",
+        sourceIds: ["c1"],
+        filePath: "a.md",
+      });
+      await store.upsertEntity({
+        entityName: "Redis",
+        sourceIds: ["c2"],
+        filePath: "b.md",
+      });
+      expect(store.getEntity("Redis")?.sourceIds).toEqual(["c1", "c2"]);
+
+      const removed = await store.clearSource("a.md");
+      // Redis is still evidenced by b.md, so only the retracted id is gone.
+      expect(removed).toEqual({ entities: 0, relations: 0 });
+      expect(store.getEntity("Redis")?.sourceIds).toEqual(["c2"]);
+    });
+
+    it("drops a node and its edges when no evidence is left", async () => {
+      const store = new KnowledgeGraphStore();
+      await store.upsertEntity({ entityName: "Redis", sourceIds: ["c1"], filePath: "a.md" });
+      await store.upsertEntity({ entityName: "Kafka", sourceIds: ["c2"], filePath: "a.md" });
+      await store.upsertRelation({
+        source: "Redis",
+        target: "Kafka",
+        sourceIds: ["c1", "c2"],
+        filePath: "a.md",
+      });
+
+      // The whole document is retracted, so its entity, its relation and the
+      // edge's dangling endpoints all go together.
+      expect(await store.clearSource("a.md")).toEqual({ entities: 2, relations: 1 });
+      expect(store.entityCount()).toBe(0);
+      expect(store.relationCount()).toBe(0);
+    });
+
+    it("leaves a relation from another source alone when one endpoint survives", async () => {
+      const store = new KnowledgeGraphStore();
+      await store.upsertEntity({ entityName: "Redis", sourceIds: ["c1"], filePath: "a.md" });
+      await store.upsertEntity({ entityName: "Kafka", sourceIds: ["c2"], filePath: "b.md" });
+      await store.upsertRelation({
+        source: "Redis",
+        target: "Kafka",
+        sourceIds: ["c1"],
+        filePath: "a.md",
+      });
+      await store.upsertRelation({
+        source: "Redis",
+        target: "Kafka",
+        sourceIds: ["c2"],
+        filePath: "b.md",
+      });
+      expect((await store.getEdgesBatch([["Kafka", "Redis"]])).size).toBe(1);
+
+      await store.clearSource("a.md");
+      // Redis had no other evidence, so the edge goes even though Kafka stays.
+      expect(store.hasEntity("Redis")).toBe(false);
+      expect(store.hasEntity("Kafka")).toBe(true);
+      expect(store.relationCount()).toBe(0);
     });
   });
 

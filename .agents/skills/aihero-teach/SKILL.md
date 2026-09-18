@@ -1,6 +1,6 @@
 ---
 name: aihero-teach
-description: "Teach the user a new skill or concept, within this workspace."
+description: "Teach a new skill or concept across multiple sessions in a workspace of lessons, building a reusable component library under ./assets that later lessons share rather than re-create."
 ---
 
 The user has asked you to teach them something. This is a stateful request - they intend to learn the topic over multiple sessions.

@@ -3,7 +3,9 @@
  *
  * Donor lineage (algorithms only, ported to dependency-free TypeScript):
  *  - AnyGraph `data_handler.normalize_adj` — symmetric normalization `D^-1/2 A D^-1/2` and the
- *    column-normalized asymmetric variant (degree raised to -0.5, infinities zeroed).
+ *    column-normalized asymmetric variant (degree raised to -0.5, infinities zeroed). The degree
+ *    is the weighted degree — the self-loop plus the sum of all incident edge weights — matching
+ *    the weighted adjacency `buildWeightedAdjacency` produces.
  *  - AnyGraph `TopoEncoder.forward` — layer-wise propagation `E <- A_norm @ E`, summed across
  *    layers, which is the multi-hop neighbourhood aggregation used for weighted impact radius.
  *  - Plan Tier-5 requirement: PageRank centrality weighting.
@@ -53,7 +55,10 @@ export function buildWeightedAdjacency(
 /**
  * Symmetric normalization `D^-1/2 (A + I) D^-1/2`, the graph-convolution propagation used for
  * weighted impact analysis. Self-loops are added so each node retains part of its own signal.
- * Isolated degrees (0, giving 1/0 = Infinity) are floored to 0 exactly as the donor does.
+ * The degree is the weighted degree (self-loop plus incident edge weights); because the adjacency
+ * accumulates parallel edges as weight rather than count, a repeated edge re-weights the
+ * propagated signal instead of amplifying it. Isolated degrees (0, giving 1/0 = Infinity) are
+ * floored to 0 exactly as the donor does.
  */
 export function symmetricNormalize(adj: WeightedAdjacency): WeightedAdjacency {
   const nodes = new Set<string>();
@@ -64,9 +69,13 @@ export function symmetricNormalize(adj: WeightedAdjacency): WeightedAdjacency {
   const degree = new Map<string, number>();
   for (const node of nodes) degree.set(node, 1); // self-loop
   for (const [source, targets] of adj) {
-    for (const target of targets.keys()) {
-      degree.set(source, (degree.get(source) ?? 0) + 1);
-      degree.set(target, (degree.get(target) ?? 0) + 1);
+    for (const [target, weight] of targets) {
+      // The degree is the WEIGHTED degree: parallel edges accumulate into `weight` in
+      // buildWeightedAdjacency, so the weight must accumulate into the degree too. Counting each
+      // such edge as 1 left D^-1/2 A D^-1/2 inflated, and a repeated edge amplified the signal it
+      // propagated instead of merely re-weighting it.
+      degree.set(source, (degree.get(source) ?? 0) + weight);
+      degree.set(target, (degree.get(target) ?? 0) + weight);
     }
   }
   const invSqrt = new Map<string, number>();

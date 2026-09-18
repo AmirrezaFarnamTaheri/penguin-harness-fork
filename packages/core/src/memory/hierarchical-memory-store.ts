@@ -64,11 +64,12 @@ import {
 import {
   apportionByWeight,
   availableChunkTokens,
+  CHARS_PER_TOKEN,
   contextTokensFromUsage,
   estimateTokens,
   type UsageRecord,
 } from "./token-math.js";
-import { truncateListByTokenSize } from "./chunking.js";
+import { charSafePrefix, truncateListByTokenSize } from "./chunking.js";
 
 /** Default flood-guard policy: a single greedy actor is throttled, not blinded. */
 export const DEFAULT_FLOOD_GUARD: FloodGuardConfig = {
@@ -260,6 +261,13 @@ export class HierarchicalMemoryStore {
    * one section become relations. That is enough to exercise and to reason
    * about the graph, and the extraction seam is where a real extractor plugs
    * in — the store's retrieval paths do not care how the graph was populated.
+   *
+   * The evidence the graph records is *chunk* ids, not the document id: the
+   * graph→chunk retrieval path resolves evidence against the chunk index, and a
+   * document id resolves to nothing there. A chunk evidences an entity when the
+   * entity's extracted name occurs in the chunk, which keeps the evidence honest
+   * — an entity whose name the chunker placed elsewhere carries no evidence
+   * rather than the whole document's.
    */
   async ingestDocument(
     source: string,
@@ -276,9 +284,29 @@ export class HierarchicalMemoryStore {
       maxChunkBytes: this.preset.chunkSize.maxChunkBytes,
     });
 
+    // The extractor runs regardless, so the reported counts describe the
+    // document rather than what the graph happened to hold.
+    const sections = this.extractSections(text);
+    if (ingested.unchanged) {
+      // Byte-identical re-ingest: the graph this document produced is already in
+      // place, so nothing is written. Writing again would churn `updatedAt`,
+      // reorder the node table, and re-accumulate relation weights — a no-op
+      // must be observable as one.
+      return {
+        documentId: ingested.documentId,
+        chunkCount: ingested.chunkCount,
+        entityCount: sum(sections.map((section) => section.names.length)),
+        relationCount: sum(sections.map((section) => pairCount(section.names.length))),
+      };
+    }
+
+    // A changed document replaced the old chunks, so the evidence pointing at
+    // them has to go before the new extraction writes anything.
+    await this.graph.clearSource(source);
+
+    const chunks = await this.archival.getByIds(ingested.chunkIds);
     let entityCount = 0;
     let relationCount = 0;
-    const sections = this.extractSections(text);
     for (const section of sections) {
       const names: string[] = [];
       for (const name of section.names) {
@@ -286,7 +314,7 @@ export class HierarchicalMemoryStore {
           entityName: name,
           entityType: "concept",
           descriptions: [section.heading],
-          sourceIds: [ingested.documentId],
+          sourceIds: chunkIdsMentioning(chunks, name),
           filePath: source,
         });
         if (node) {
@@ -295,14 +323,15 @@ export class HierarchicalMemoryStore {
         }
       }
       // Co-occurrence within one section is the weakest possible relation
-      // signal, which is why its weight is 1 and it is always mergeable.
+      // signal, which is why its weight is 1 and it is always mergeable. The
+      // evidence is the chunk(s) that mention both endpoints.
       for (let i = 0; i < names.length; i++) {
         for (let j = i + 1; j < names.length; j++) {
           await this.graph.upsertRelation({
             source: names[i]!,
             target: names[j]!,
             descriptions: [`co-occur in "${section.heading}"`],
-            sourceIds: [ingested.documentId],
+            sourceIds: chunkIdsMentioning(chunks, names[i]!, names[j]!),
             weight: 1,
             filePath: source,
           });
@@ -334,7 +363,7 @@ export class HierarchicalMemoryStore {
       if (!current) {
         current = { heading: sourceTitle(text), names: [] };
       }
-      for (const match of line.matchAll(/`{2}([^`]{2,80})`{2}/g)) {
+      for (const match of line.matchAll(/`{1,2}([^`]{2,80})`{1,2}/g)) {
         const name = match[1]?.trim();
         if (name) current.names.push(name);
       }
@@ -570,8 +599,14 @@ export class HierarchicalMemoryStore {
    * re-checked and, if it is still over, trimmed from the least valuable
    * section downward. The recall tier is dropped first (it is the most
    * replaceable — the same events are still in the transcript), then chunks,
-   * then relations. Core is never dropped: an agent without its identity
-   * instructions is not a trim, it is a different agent.
+   * then relations, then entities. Core is never dropped: an agent without its
+   * identity instructions is not a trim, it is a different agent.
+   *
+   * The guarantee is enforced on the budget that is *left*, not the gross one:
+   * the system prompt, the query and the framing headroom are spent before any
+   * section is sized, and the sections compete for the remainder. Summing
+   * sections against the total while the fixed costs are unaccounted is what
+   * let an assembled context sail past the window.
    */
   async assemble(args: {
     query: string;
@@ -583,17 +618,20 @@ export class HierarchicalMemoryStore {
     const totalBudget = Math.min(mode.maxTotalTokens, this.contextWindow);
     const systemPromptTokens = args.systemPromptTokens ?? 0;
     const queryTokens = estimateTokens(args.query);
-    const chunkAllowance = availableChunkTokens({
-      maxTotalTokens: totalBudget,
-      systemPromptTokens,
-      queryTokens,
-    });
+    const remainingBudget = Math.max(
+      0,
+      availableChunkTokens({
+        maxTotalTokens: totalBudget,
+        systemPromptTokens,
+        queryTokens,
+      }),
+    );
 
     const sections: ContextSectionBudget = {
       core: 0,
       entities: mode.maxEntityTokens,
       relations: mode.maxRelationTokens,
-      chunks: Math.max(0, chunkAllowance),
+      chunks: remainingBudget,
       total: totalBudget,
     };
 
@@ -631,7 +669,10 @@ export class HierarchicalMemoryStore {
     }));
 
     const recall = await this.recentRecall(args.recallCount ?? 8);
-    const recallBudget = Math.max(0, this.preset.retention.recallMaxTokens);
+    // The recall budget follows the mode in force, not the retention profile the
+    // tier was built with: a minimal-mode session narrows everything, recall
+    // included.
+    const recallBudget = Math.max(0, mode.recallMaxTokens);
     const trimmedRecall = truncateListByTokenSize(
       recall,
       (event) => event.data,
@@ -639,7 +680,9 @@ export class HierarchicalMemoryStore {
       recallBudget,
     );
 
-    let budget: Record<string, number> = {
+    // Section keys are fixed, so the accounting is a shaped object rather than a
+    // string map: `budget.core` is a number a reader can rely on.
+    let budget = {
       core: coreTokens,
       entities: estimateTokens(entities.join("\n")),
       relations: estimateTokens(relations.join("\n")),
@@ -648,33 +691,51 @@ export class HierarchicalMemoryStore {
     };
 
     let tokens = sum(Object.values(budget));
-    let trimmed = false;
 
     // Final, unconditional guarantee: if the assembled context still does not
-    // fit (section budgets that sum past the total, or a core tier that grew),
-    // drop sections from least to most valuable until it does.
-    for (const section of ["recall", "chunks", "relations"] as const) {
-      if (tokens <= totalBudget) break;
+    // fit (section budgets that sum past the remainder, or a core tier that
+    // grew), drop sections from least to most valuable until it does.
+    for (const section of ["recall", "chunks", "relations", "entities"] as const) {
+      if (tokens <= remainingBudget) break;
       budget = { ...budget, [section]: 0 };
       if (section === "recall") trimmedRecall.length = 0;
       if (section === "chunks") chunks.length = 0;
       if (section === "relations") relations.length = 0;
+      if (section === "entities") entities.length = 0;
       tokens = sum(Object.values(budget));
-      trimmed = true;
     }
 
-    if (tokens > totalBudget) {
-      // Core alone is over budget. Truncate the core text rather than drop it:
-      // an agent without its identity instructions is a different agent, so the
-      // head of the core tier is kept and the tail is cut. The section is
-      // re-counted from the truncated text so the accounting stays truthful.
-      const allowedChars = totalBudget * 4;
-      const truncated = core.slice(0, allowedChars);
-      assembledCore = truncated;
-      budget = { ...budget, core: estimateTokens(truncated) };
+    if (tokens > remainingBudget) {
+      // Only core is left to spend. Truncate it rather than drop it: an agent
+      // without its identity instructions is a different agent, so the head of
+      // the core tier is kept and the tail is cut. The allowance is what remains
+      // after every other surviving section has been paid for, and the section
+      // is re-counted from the truncated text so the accounting stays truthful.
+      const coreAllowance = Math.max(0, remainingBudget - (tokens - budget.core));
+      assembledCore = charSafePrefix(core, coreAllowance * CHARS_PER_TOKEN);
+      budget = { ...budget, core: estimateTokens(assembledCore) };
       tokens = sum(Object.values(budget));
-      trimmed = true;
     }
+
+    // The invariant the whole subsystem advertises, checked rather than assumed:
+    // whatever the sections produced, the emitted context is within the budget
+    // that was left. `estimateTokens` of a 4n-character prefix is at most n, so
+    // this converges in one pass in practice and never drops core outright.
+    while (tokens > remainingBudget && assembledCore.length > 0) {
+      const coreAllowance = Math.max(0, remainingBudget - (tokens - budget.core));
+      assembledCore = charSafePrefix(assembledCore, coreAllowance * CHARS_PER_TOKEN);
+      budget = { ...budget, core: estimateTokens(assembledCore) };
+      tokens = sum(Object.values(budget));
+    }
+
+    // Trimming is reported when trimming happened: a section cut to its own
+    // budget is trimmed even when the overflow pass never needed to run.
+    const trimmed =
+      assembledCore !== core ||
+      entities.length < entityLines.length ||
+      relations.length < relationLines.length ||
+      chunks.length < retrieval.chunks.length ||
+      trimmedRecall.length < recall.length;
 
     return {
       core: assembledCore,
@@ -716,6 +777,31 @@ function dedupe<T>(values: readonly T[]): T[] {
     }
   }
   return out;
+}
+
+/** Number of distinct pairs in a set of `count` names — the co-occurrence count. */
+function pairCount(count: number): number {
+  return (count * (count - 1)) / 2;
+}
+
+/**
+ * Ids of the chunks that mention every one of the given names.
+ *
+ * Extraction reads the document's text and the chunker cuts it, so a name found
+ * in a section is found in the chunk that section became — except when a section
+ * is split across a chunk boundary or a name is longer than the chunk holds. In
+ * those cases the intersection is honestly empty rather than spuriously full.
+ */
+function chunkIdsMentioning(
+  chunks: ReadonlyArray<{ chunkId: string; content: string }>,
+  ...names: string[]
+): string[] {
+  if (chunks.length === 0 || names.length === 0) return [];
+  const ids: string[] = [];
+  for (const chunk of chunks) {
+    if (names.every((name) => chunk.content.includes(name))) ids.push(chunk.chunkId);
+  }
+  return ids;
 }
 
 function sourceTitle(text: string): string {

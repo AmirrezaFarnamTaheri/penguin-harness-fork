@@ -15,6 +15,16 @@ export default defineConfig({
     // The plugin contract: types only, so a plugin package compiles against the SDK
     // without depending on whatever embeds it.
     "src/plugin/index.ts",
+    // Semantic code topology, AST diffing and automated review: its own subpath so a host
+    // (the web topology page, a review CLI) composes TopologyEngine/ReviewEngine without the
+    // rest of the SDK.
+    "src/codegraph/index.ts",
+    // Prompt archaeology, vendor catalog and persona presets: its own subpath so prompt tooling
+    // reaches the catalog and the fingerprint/extraction toolkit on its own.
+    "src/prompts/index.ts",
+    // Hierarchical memory / RAG: its own subpath so a host composes the three-tier store, the
+    // vector retrieval, and the context-mode sizing machine without the rest of the SDK.
+    "src/memory/index.ts",
     "src/state/model-catalog.ts",
     // Window/threshold arithmetic plus its two defaults: pure numbers, no Node dependency, so
     // the web app can bundle the compaction-threshold derivation its context ring fills against.

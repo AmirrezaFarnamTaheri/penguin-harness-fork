@@ -29,6 +29,7 @@
  * (AgentHub maintains the history); each turn the engine only hands it the "new" messages:
  * the user Prompt on the first turn, and the previous turn's tool_call_output afterward.
  */
+import { randomUUID } from "node:crypto";
 import {
   abortEvent,
   approvalDecision,
@@ -58,8 +59,6 @@ import {
   transcribeUserInput,
   unwrapSyntheticBlock,
   userSteeringText,
-  markerBlock,
-  MARKER_TAGS,
 } from "../omnimessage/markers/index.js";
 import { RepeatToolGuard } from "../agent/repeat-tool-guard.js";
 import type { RepeatToolReminder } from "../agent/repeat-tool-guard.js";
@@ -327,15 +326,16 @@ export interface ContextEngineDeps {
    */
   backgroundNotices?: { drain(): OmniMessage[]; pending(): number };
   /**
-   * Advisory repeat-call guard consulted before each approved tool executes (see
-   * {@link RepeatToolGuard}): identical consecutive calls for the same agent id build a chain,
-   * and reaching a threshold produces a non-blocking `[repeat_tool_reminder]` message that is
-   * streamed, written to Trace, and appended to the next turn's input so the model is told to
-   * change approach without the loop being interrupted. Constructed by default; pass an instance
-   * to share one across a Session's contexts, or `null` to disable (a host that runs its own loop
-   * guard).
+   * Advisory repeat-call guard: observes approved tool calls and emits a non-blocking reminder
+   * when the same call with identical arguments repeats past a threshold — the reminder is
+   * delivered into the next turn's input to steer the agent out of an autonomous loop without
+   * crashing the session. `undefined` means the engine constructs a default `RepeatToolGuard`
+   * (thresholds [3, 5, 8]); `null` disables it entirely for a host that runs its own loop
+   * protection. One guard may be shared across engines: each keys its history by session id,
+   * or by a distinct per-engine key when the context carries no session metadata, so the
+   * engines' repeat chains never collide.
    */
-  repeatGuard?: RepeatToolGuard | null;
+  repeatToolGuard?: RepeatToolGuard | null;
 }
 
 const isImageMessage = (m: OmniMessage): boolean =>
@@ -360,6 +360,19 @@ function parseRepeatArguments(argumentsValue: string | undefined): unknown {
   } catch {
     return argumentsValue;
   }
+}
+
+/**
+ * The repeat guard's per-agent key for this engine. The session id is exact when the context
+ * carries one — one engine serves one agent for its whole lifetime, and the id survives a
+ * process restart. When it does not, the key is a distinct per-engine value rather than a
+ * constant: a host that intentionally shares one guard across several `ContextEngine`s without
+ * publishing session metadata would otherwise alias every engine to the same key and collide
+ * their repeat histories, so engine B's first identical call reads as engine A's repeat #N.
+ */
+function repeatGuardKey(sessionMeta: OmniMessage | undefined): string {
+  const payload = sessionMeta?.payload as { session_id?: string } | undefined;
+  return payload?.session_id ?? `context:${randomUUID()}`;
 }
 
 /** Whether compaction is possible; when not `ok`, `compact()` is a no-op and yields no messages (see ContextEngine.compactability). */
@@ -553,7 +566,11 @@ export class ContextEngine {
    * (`deps.repeatToolGuard === null`); otherwise the engine's own default instance.
    */
   private readonly repeatGuard: RepeatToolGuard | undefined;
-  /** The guard's per-agent key: one engine serves exactly one agent, so the session id is exact. */
+  /**
+   * The guard's per-agent key: the session id when the context carries one, else a distinct
+   * per-engine value — see {@link repeatGuardKey}. What this key must never be is a constant
+   * shared by every engine that omits session metadata.
+   */
   private readonly repeatAgentKey: string;
 
   /** Whether a `run` is in flight (the Session's notice routing keys on this: a running task delivers notices at the next boundary; an idle one goes through the host). */
@@ -605,11 +622,10 @@ export class ContextEngine {
       this.pendingTraceRotation = init.pendingTraceRotation ?? false;
     }
     // undefined -> the engine runs its own default guard; null -> disabled (the host owns loop
-    // protection). The key is the session: one engine serves one agent for its whole lifetime.
+    // protection).
     this.repeatGuard =
-      deps.repeatGuard === null ? undefined : (deps.repeatGuard ?? new RepeatToolGuard());
-    const sessionMetaPayload = deps.sessionMeta?.payload as { session_id?: string } | undefined;
-    this.repeatAgentKey = sessionMetaPayload?.session_id ?? "self";
+      deps.repeatToolGuard === null ? undefined : (deps.repeatToolGuard ?? new RepeatToolGuard());
+    this.repeatAgentKey = repeatGuardKey(deps.sessionMeta);
   }
 
   /** Moves the Session's thinking level mid-context (see the `thinkingLevel` field); applies from the next turn request. */
@@ -641,6 +657,11 @@ export class ContextEngine {
     // Steering window: only while this generator is being driven. The finally also covers
     // abort/failure exits — anything still queued is discarded (see steeringQueue).
     this.taskRunning = true;
+    // A new Task starts a fresh repeat chain: `run` is a new user task, so a previous task's
+    // trailing repeats must not make this task's first identical call read as repeat #N — the
+    // same reset a user interjection performs (see `steer`), at the same place the guard's
+    // history becomes this task's business.
+    this.repeatGuard?.reset(this.repeatAgentKey);
     try {
       // The return value says how the run ended (yield* propagates it): null = ran to
       // completion; a RunCutoff = ended early, with the terminal record's error pair.
@@ -718,17 +739,14 @@ export class ContextEngine {
    * real harness-authored input the consumer has never seen), and returned to ride the next
    * request's input alongside this turn's tool outputs. The reminder exists only to change what
    * the model does next, so that is where it must arrive; non-blocking by construction, this runs
-   * at the next-input assembly after every tool output has settled. The `[repeat_tool_reminder]`
-   * block marks it machine-inserted, and `sender: "harness"` is the structured origin fact (core
-   * builds markers but never branches on them).
+   * at the next-input assembly after every tool output has settled. `sender: "harness"` records
+   * the origin in Trace; it is never sent to the provider.
    */
   private async *deliverRepeatReminders(
     reminders: RepeatToolReminder[],
   ): AsyncGenerator<OmniMessage, OmniMessage[]> {
     if (reminders.length === 0) return [];
-    const messages = reminders.map((reminder) =>
-      userText(markerBlock(MARKER_TAGS.repeatToolReminder, reminder.message), "harness"),
-    );
+    const messages = reminders.map((reminder) => userText(reminder.message, "harness"));
     for (const msg of messages) {
       yield msg;
       await this.write(msg);

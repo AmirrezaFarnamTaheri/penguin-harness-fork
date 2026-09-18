@@ -185,7 +185,9 @@ export class VendorPromptCatalog {
 
   /**
    * Add a prompt. Throws on a duplicate or non-slug id — a catalog that silently
-   * overwrote an entry would lose a prompt to an unrelated typo.
+   * overwrote an entry would lose a prompt to an unrelated typo — and when the
+   * text still carries a harness-injection marker, which is the other contract
+   * the catalog exists to enforce.
    */
   register(entry: VendorPromptEntry): void {
     if (!ID_PATTERN.test(entry.id)) {
@@ -193,6 +195,13 @@ export class VendorPromptCatalog {
     }
     if (this.entries.has(entry.id)) {
       throw new Error(`Vendor prompt id "${entry.id}" is already registered`);
+    }
+    const markers = findInjectionMarkers(entry.text);
+    if (markers.length > 0) {
+      throw new Error(
+        `Vendor prompt "${entry.id}" contains a harness-injection marker (${markers[0]!.opener}); ` +
+          "strip it with stripInjectionMarkers before cataloguing",
+      );
     }
 
     this.entries.set(entry.id, entry);

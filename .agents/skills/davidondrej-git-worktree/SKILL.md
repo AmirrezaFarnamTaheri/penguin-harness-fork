@@ -65,7 +65,7 @@ In Cursor, `.cursor/worktrees.json` runs setup on creation (`$ROOT_WORKTREE_PATH
 }
 ```
 
-Otherwise, put the checklist in `scripts/setup-worktree.sh` and run it first in each new worktree. Find the primary checkout from a worktree with:
+Otherwise, write the checklist above to a `setup-worktree.sh` script under the target repo's `scripts/` directory and run it first in each new worktree. Find the primary checkout from a worktree with:
 
 ```bash
 dirname "$(git rev-parse --path-format=absolute --git-common-dir)"

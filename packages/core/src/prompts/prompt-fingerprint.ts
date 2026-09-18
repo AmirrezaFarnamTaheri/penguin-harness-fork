@@ -43,28 +43,23 @@ export interface PromptSimilarity {
 const FNV_64_OFFSET_BASIS = 0xcbf29ce484222325n;
 const FNV_64_PRIME = 0x100000001b3n;
 const HEX_64_MASK = 0xffffffffffffffffn;
+const TEXT_ENCODER = new TextEncoder();
 
 /**
  * FNV-1a 64 hash over a UTF-8 byte sequence.
  *
- * Implemented with BigInt because ES2022 has no u64. Roughly 40MB/s of text per second on
- * a warm V8 — a 500KB leaked prompt fingerprints in ~12ms, which is what makes full-catalog
- * de-duplication cheap enough to run at load time.
+ * Each byte of the UTF-8 encoding is folded in (XOR, then multiply), which is what makes the
+ * digest agree with every other FNV-1a-64 implementation over the same text — provenance and
+ * de-duplication across tools. Folding UTF-16 code units instead would diverge from the standard
+ * on any non-ASCII text: "café" hashes the bytes c3 a9, not the single code unit e9. Implemented
+ * with BigInt because ES2022 has no u64. Roughly 40MB/s of text per second on a warm V8 — a 500KB
+ * leaked prompt fingerprints in ~12ms, which is what makes full-catalog de-duplication cheap enough
+ * to run at load time.
  */
 export function fnv1a64(data: string): string {
   let hash = FNV_64_OFFSET_BASIS;
-  for (let i = 0; i < data.length; i++) {
-    const code = data.charCodeAt(i);
-    // Fast path for the BMP; surrogate pairs are hashed as two UTF-16 units, which stays
-    // consistent with the byte view below for BMP text and is stable either way.
-    hash = ((hash ^ BigInt(code)) * FNV_64_PRIME) & HEX_64_MASK;
-    if (code >= 0xd800 && code <= 0xdbff && i + 1 < data.length) {
-      const low = data.charCodeAt(i + 1);
-      if (low >= 0xdc00 && low <= 0xdfff) {
-        hash = ((hash ^ BigInt(low)) * FNV_64_PRIME) & HEX_64_MASK;
-        i += 1;
-      }
-    }
+  for (const byte of TEXT_ENCODER.encode(data)) {
+    hash = ((hash ^ BigInt(byte)) * FNV_64_PRIME) & HEX_64_MASK;
   }
   return hash.toString(16).padStart(16, "0");
 }

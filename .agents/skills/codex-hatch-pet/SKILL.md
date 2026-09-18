@@ -388,7 +388,7 @@ Parent responsibilities:
 - prepare the run and inspect `imagegen-jobs.json`
 - assign the base job, row jobs, and final contact-sheet QA to lightweight workers
 - copy selected worker outputs into their decoded paths and mark jobs complete in `imagegen-jobs.json`
-- create `references/canonical-base.png` from the selected base output
+- create the run's canonical base reference (`$RUN_DIR/references/canonical-base.png`) from the selected base output
 - run the approved `running-left` mirror derivation when appropriate
 - run deterministic image processing, packaging, repair regeneration, and cleanup
 

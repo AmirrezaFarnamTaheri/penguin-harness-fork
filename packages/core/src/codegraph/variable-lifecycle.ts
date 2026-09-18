@@ -12,7 +12,11 @@
 
 import type { SymbolScope, VariableBinding } from "./types.js";
 import { findScopeForLine } from "./scope-tracker.js";
-import { splitLines, stripLiteralsAndComments } from "./symbol-extractors/language-detect.js";
+import {
+  lineCommentForFile,
+  splitLines,
+  stripLiteralsAndComments,
+} from "./symbol-extractors/language-detect.js";
 
 /** A resolved variable lifecycle within one scope. */
 export interface VariableLifecycle {
@@ -49,8 +53,10 @@ const LOCAL_ASSIGN_RE =
 export function extractInstanceTypes(
   content: string,
   scopes: SymbolScope[],
+  filePath?: string,
 ): Record<string, Record<string, string[]>> {
   const lines = splitLines(content);
+  const lineComment = lineCommentForFile(filePath ?? scopes[0]?.filePath ?? "");
   const table: Record<string, Record<string, string[]>> = {};
 
   const add = (scopeId: string, name: string, type: string): void => {
@@ -62,7 +68,7 @@ export function extractInstanceTypes(
 
   for (let i = 0; i < lines.length; i++) {
     const lineNo = i + 1;
-    const clean = stripLiteralsAndComments(lines[i]!, { lineComment: "#" });
+    const clean = stripLiteralsAndComments(lines[i]!, { lineComment });
     if (clean.trim() === "") continue;
     const scope = findScopeForLine(scopes, lineNo);
     const scopeId = scope?.id ?? "global";
@@ -142,12 +148,34 @@ export function extractVariableBindings(
   filePath: string,
 ): VariableBinding[] {
   const lines = splitLines(content);
+  const lineComment = lineCommentForFile(filePath);
   const bindings: VariableBinding[] = [];
   const firstSeen = new Map<string, number>();
 
+  // Seed declared parameters as definitions: they are live from the signature line on, so a read
+  // inside the body records a use and a later assignment records a reassignment rather than a
+  // first definition (which would mislabel the variable `local` instead of `parameter`).
+  for (const scope of scopes) {
+    if (scope.kind !== "function" && scope.kind !== "method") continue;
+    for (const rawParam of scope.parameters ?? []) {
+      const name = parameterName(rawParam);
+      if (!name) continue;
+      const key = `${scope.id}::${name}`;
+      if (firstSeen.has(key)) continue;
+      firstSeen.set(key, scope.startLine);
+      bindings.push({
+        name,
+        scopeId: scope.id,
+        kind: "parameter",
+        line: scope.startLine,
+        column: 1,
+      });
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const lineNo = i + 1;
-    const clean = stripLiteralsAndComments(lines[i]!, { lineComment: "#" });
+    const clean = stripLiteralsAndComments(lines[i]!, { lineComment });
     if (clean.trim() === "") continue;
     const scope = findScopeForLine(scopes, lineNo);
     const scopeId = scope?.id ?? "global";
@@ -165,18 +193,44 @@ export function extractVariableBindings(
         line: lineNo,
         column: assign.index ? assign.index + 1 : 1,
       });
-      continue;
+      // Fall through to the use scan: the assignment's right-hand side reads its operands, so
+      // `x = x + y` must record the `x` and `y` reads on this line too.
     }
 
     // Uses: identifiers that reference a variable already defined in this scope.
+    // The assigned target itself is excluded by span — it is a write, not a read.
+    const lhsStart = assign?.index ?? -1;
+    const lhsEnd = assign ? lhsStart + assign[0]!.length : -1;
     for (const use of clean.matchAll(/([A-Za-z_$][A-Za-z0-9_$]*)/g)) {
       const name = use[1]!;
+      if (use.index >= lhsStart && use.index < lhsEnd) continue;
       const key = `${scopeId}::${name}`;
       if (!firstSeen.has(key)) continue;
       bindings.push({ name, scopeId, kind: "use", line: lineNo, column: use.index + 1 });
     }
   }
   return bindings;
+}
+
+/**
+ * Reduce one declared-parameter spelling to a plain name.
+ *
+ * Extractors keep the annotation/default (`loader: Loader`, `name = 'x'`, `...args: string[]`,
+ * Go's `name Type`, Rust's `name: Vec<u8>`); callers need the bare identifier. Destructuring and
+ * receivers (`self`, `cls`, `this`, `&self`) have no single name and are skipped.
+ */
+function parameterName(param: string): string | undefined {
+  let value = param.trim();
+  if (!value || value.startsWith("{") || value.startsWith("[")) return undefined;
+  if (value.startsWith("...")) value = value.slice(3);
+  // Cut at an annotation (`:`) or default (`=`), then take the trailing identifier word so leading
+  // modifiers (`private`, `readonly`, ...) drop off.
+  const head = value.split(/[:=]/)[0] ?? "";
+  const match = /[A-Za-z_$][A-Za-z0-9_$]*\s*$/.exec(head);
+  if (!match) return undefined;
+  const name = match[0]!;
+  if (name === "self" || name === "cls" || name === "this") return undefined;
+  return name;
 }
 
 /** Compute the lifecycle of one variable within one scope. */
@@ -187,14 +241,23 @@ export function computeLifecycle(
 ): VariableLifecycle | undefined {
   const own = bindings.filter((binding) => binding.name === name && binding.scopeId === scopeId);
   if (own.length === 0) return undefined;
-  const definition = own.find((binding) => binding.kind === "def");
+  const definition = own.find((binding) => binding.kind === "def" || binding.kind === "parameter");
   const reassigned = own
     .filter((binding) => binding.kind === "reassign")
     .map((binding) => binding.line);
   const used = own.filter((binding) => binding.kind === "use").map((binding) => binding.line);
   const allLines = own.map((binding) => binding.line);
+  const isParameter = definition?.kind === "parameter";
+  // A parameter declared on the signature line is the definition; without that seed the lifecycle
+  // fell back to the first *use* line and mislabelled the variable `local`.
   const kind: VariableLifecycle["kind"] =
-    scopeId === "global" ? "module" : definition ? "local" : "parameter";
+    scopeId === "global"
+      ? "module"
+      : isParameter
+        ? "parameter"
+        : definition
+          ? "local"
+          : "parameter";
   return {
     name,
     scopeId,

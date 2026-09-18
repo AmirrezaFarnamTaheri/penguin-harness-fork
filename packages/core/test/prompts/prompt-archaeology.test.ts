@@ -209,6 +209,81 @@ describe("prompt-archaeology / frontmatter", () => {
     expect(parsed!.body).toContain("You are in the workspace.");
   });
 
+  it("round-trips the whole agentMetadata block without losing a field", () => {
+    const record: PromptRecord = {
+      name: "Agent Prompt: Metadata round trip",
+      description: "Description: with # YAML syntax",
+      version: "2.1.215",
+      identifierMap: { 0: "cwd", 1: "task" },
+      agentMetadata: {
+        agentType: "example",
+        model: "inherit",
+        color: "violet",
+        permissionMode: "bubble",
+        maxTurns: 200,
+        whenToUseDynamic: true,
+        tools: ["*", "Read"],
+        toolsNote: "Tools: all inherited",
+        disallowedTools: ["Agent"],
+        whenToUse: "Use when: needed\nAcross lines",
+        criticalSystemReminder: "Do not treat # as a comment",
+      },
+    };
+
+    const parsed = parsePromptFrontmatter(`${renderPromptFrontmatter(record)}\n\n# Body`);
+    expect(parsed).not.toBeNull();
+    // Before the parser read this block, every field below was silently dropped.
+    expect(parsed!.agentMetadata).toEqual(record.agentMetadata);
+  });
+
+  it("round-trips scalar tool metadata emitted by the legacy form", () => {
+    const record: PromptRecord = {
+      name: "Agent Prompt: Legacy scalar example",
+      description: "Legacy scalar metadata",
+      version: "2.1.216",
+      agentMetadata: { tools: "*", disallowedTools: "Agent" },
+    };
+
+    const parsed = parsePromptFrontmatter(renderPromptFrontmatter(record));
+    expect(parsed!.agentMetadata).toEqual(record.agentMetadata);
+  });
+
+  it("leaves agentMetadata unset when the frontmatter carries no block", () => {
+    const record: PromptRecord = {
+      name: "Agent Prompt: No metadata",
+      description: "Plain record",
+      version: "2.1.215",
+    };
+    expect(parsePromptFrontmatter(renderPromptFrontmatter(record))!.agentMetadata).toBeUndefined();
+  });
+
+  it("parses a hand-written frontmatter block with metadata after variables", () => {
+    const content = [
+      "<!--",
+      'name: "Agent Prompt: Hand written"',
+      'description: "Hand edited"',
+      'ccVersion: "2.1.300"',
+      "variables:",
+      '  - "cwd"',
+      "agentMetadata:",
+      '  agentType: "example"',
+      "  maxTurns: 25",
+      "  tools:",
+      '    - "Read"',
+      '    - "Write"',
+      "-->",
+      "Body.",
+    ].join("\n");
+
+    const parsed = parsePromptFrontmatter(content);
+    expect(parsed!.variables).toEqual(["cwd"]);
+    expect(parsed!.agentMetadata).toEqual({
+      agentType: "example",
+      maxTurns: 25,
+      tools: ["Read", "Write"],
+    });
+  });
+
   it("parsePromptFrontmatter returns null without a metadata comment", () => {
     expect(parsePromptFrontmatter("Just a prompt body.")).toBeNull();
   });
@@ -235,11 +310,61 @@ describe("prompt-archaeology / template extraction", () => {
     expect(source.slice(prompt.end - 1, prompt.end)).toBe("`");
   });
 
+  it("finds the interpolation close past a brace in a string, comment or nested template", () => {
+    // Each body holds a `}` that a naive brace counter takes for the terminator. Minified
+    // and bundled source interpolates look like this, not like `${name}`.
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      // A `}` inside a single-quoted string in the body.
+      [
+        "const a = `count is ${count > 0 ? 'has } items' : 'none'}`;",
+        "count > 0 ? 'has } items' : 'none'",
+      ],
+      // A `}` inside a double-quoted string in the body.
+      ['const b = `path ${fn("a}b")}`;', 'fn("a}b")'],
+      // A line comment in the body swallows a brace, and the newline after it.
+      ["const c = `x ${value // a } brace\n}`;", "value // a } brace"],
+      // A regex literal in the body carrying a brace.
+      ["const e = `ok ${/\}/.test(s)}`;", "/\}/.test(s)"],
+    ];
+    for (const [source, interpolated] of cases) {
+      const templates = scanTemplateLiterals(source);
+      // The whole source is one template: an early termination splits it in two.
+      expect(templates, source).toHaveLength(1);
+      expect(templates[0]!.interpolated, source).toEqual([interpolated]);
+      // ...and the literal still runs to its real closing backtick.
+      expect(templates[0]!.decoded, source).toBe(
+        source.slice(source.indexOf("`") + 1, source.lastIndexOf("`")),
+      );
+    }
+  });
+
   it("scanTemplateLiterals decodes escaped backticks without losing the pair", () => {
     const source = "const x = `Reply \\`go\\` now`;";
     const templates = scanTemplateLiterals(source);
     expect(templates).toHaveLength(1);
     expect(templates[0]!.decoded).toBe("Reply `go` now");
+  });
+
+  it("scanTemplateLiterals treats a brace in a nested template as part of the body", () => {
+    // The inner backtick string holds an unbalanced brace, and the interpolation's own `}`
+    // follows it: a naive brace counter closes the interpolation inside the nested template
+    // and splits one literal into two.
+    const source = "`pre ${`suffix}`} post`";
+    const templates = scanTemplateLiterals(source);
+    expect(templates).toHaveLength(1);
+    expect(templates[0]!.interpolated).toEqual(["`suffix}`"]);
+    expect(templates[0]!.decoded).toBe("pre ${`suffix}`} post");
+  });
+
+  it("scanTemplateLiterals reads division as division, not a regex literal", () => {
+    const source = [
+      "const half = `Ratio: ${total / 2}.`;",
+      "const scale = `Scale: ${(size / 2).toFixed(0)}.`;",
+    ].join("\n");
+    const templates = scanTemplateLiterals(source);
+    expect(templates).toHaveLength(2);
+    expect(templates[0]!.interpolated).toEqual(["total / 2"]);
+    expect(templates[1]!.interpolated).toEqual(["(size / 2).toFixed(0)"]);
   });
 
   it("extractTemplateLiterals keeps prompts and drops code or markup", () => {

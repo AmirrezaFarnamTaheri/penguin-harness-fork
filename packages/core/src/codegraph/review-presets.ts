@@ -14,7 +14,7 @@
  * citable to a real hunk line.
  */
 
-import type { ReviewRule, SymbolReviewStats } from "./review-engine.js";
+import type { ReviewRuleContext, ReviewRule, SymbolReviewStats } from "./review-engine.js";
 
 /** Security audit preset (OWASP-flavoured, per the security checklist). */
 export const SECURITY_PRESET: ReviewRule[] = [
@@ -351,11 +351,11 @@ export const ARCHITECTURE_PRESET: ReviewRule[] = [
   },
 ];
 
-/** A symbol's line range touches the diff under review. */
-function overlapsHunk(
-  stats: SymbolReviewStats,
-  ctx: { addedLines: Array<{ line: number }> },
-): boolean {
+/** A symbol's line range touches the diff under review *in the same file*. */
+function overlapsHunk(stats: SymbolReviewStats, ctx: ReviewRuleContext): boolean {
+  // The stats map is global, but a hunk line number only means anything for its own file: without
+  // this filter a symbol on lines 10-30 of A numerically overlaps a hunk at line 20 of B.
+  if (stats.filePath !== ctx.filePath) return false;
   const touched = new Set(ctx.addedLines.map((entry) => entry.line));
   for (let line = stats.startLine; line <= stats.endLine; line++) {
     if (touched.has(line)) return true;

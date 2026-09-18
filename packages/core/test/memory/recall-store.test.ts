@@ -266,6 +266,20 @@ describe("recall-store", () => {
       expect(store.tokens()).toBeLessThanOrEqual(10);
     });
 
+    it("keeps evicting when one insert requires a purge larger than the tier", async () => {
+      // The tier is already at its 10-token cap when an event arrives that costs
+      // three times the cap, so getting back under it means deleting every
+      // event. A guard measured against the shrinking event count stops about
+      // halfway and leaves the window over its hard limit.
+      const store = new RecallStore({ maxEvents: 1_000, maxTokens: 10 });
+      await store.record("e1", "user", "message", "abcdefghij", "info", 100);
+      await store.record("e2", "user", "message", "abcdefghij", "info", 200);
+      await store.record("e3", "user", "message", "abcdefghij", "info", 300);
+      await store.record("big", "user", "message", "x".repeat(120), "info", 400);
+      expect(store.tokens()).toBeLessThanOrEqual(10);
+      expect(store.size()).toBe(0);
+    });
+
     it("reports how many events it removed", async () => {
       const store = new RecallStore({ maxEvents: 1 });
       await store.record("e1", "user", "message", "one", "info", 100);

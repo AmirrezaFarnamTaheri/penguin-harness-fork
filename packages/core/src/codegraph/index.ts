@@ -27,7 +27,7 @@ export {
 } from "./symbol-index.js";
 
 export { ImpactRadiusEngine } from "./impact-radius.js";
-export type { ImpactOptions } from "./impact-radius.ts";
+export type { ImpactOptions } from "./impact-radius.js";
 export {
   buildDirectedAdjacency,
   buildWeightedAdjacency,

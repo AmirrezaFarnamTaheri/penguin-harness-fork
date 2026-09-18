@@ -241,10 +241,15 @@ export class RecallStore {
     // Then drop from the oldest end until both caps hold. Sorting per eviction
     // is O(n log n) on a bounded tier, which is cheaper than maintaining a
     // sorted structure on every insert.
+    // The loop bound is captured before the first deletion: every iteration
+    // removes exactly one event, so the tier can only shrink, and a bound
+    // measured against the shrinking `events.size` terminates a large purge
+    // early and can leave the window over its token cap.
+    const maxIterations = this.events.size;
     let guarded = 0;
     while (
       (this.events.size > this.options.maxEvents || this.tokens() > this.options.maxTokens) &&
-      guarded++ < this.events.size + 1
+      guarded++ < maxIterations
     ) {
       const oldest = this.oldestId();
       if (oldest === undefined) break;

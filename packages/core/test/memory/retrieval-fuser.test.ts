@@ -13,6 +13,7 @@ import {
   proximityBoost,
   reciprocalRankFusion,
   roundRobinMerge,
+  UNSCORED_RERANK_SCORE,
   vectorPickQuota,
 } from "../../src/memory/retrieval-fuser.js";
 
@@ -30,13 +31,51 @@ describe("retrieval-fuser", () => {
       expect(out).toEqual(["a", "b"]);
     });
 
-    it("allocates on a linear gradient from maxQuota down to minQuota", () => {
+    it("allocates the total budget on a linear gradient from the top item down", () => {
+      // `maxQuota` is the budget across every item, not the first item's share:
+      // four chunks for two items means two each here, not four for the first.
       const out = pickByWeightedPolling(
         [{ sortedChunks: ["a1", "a2", "a3", "a4", "a5"] }, { sortedChunks: ["b1", "b2", "b3"] }],
         4,
         1,
       );
-      expect(out).toEqual(["a1", "a2", "a3", "a4", "b1"]);
+      expect(out).toEqual(["a1", "a2", "b1", "b2"]);
+    });
+
+    it("never hands out more than the total budget", () => {
+      // Every item has chunks to spare, so the allocation must land exactly on
+      // the budget rather than spending the first item's gradient share plus
+      // everyone else's.
+      const out = pickByWeightedPolling(
+        [
+          { sortedChunks: Array.from({ length: 10 }, (_, i) => `a${i}`) },
+          { sortedChunks: Array.from({ length: 10 }, (_, i) => `b${i}`) },
+          { sortedChunks: Array.from({ length: 10 }, (_, i) => `c${i}`) },
+        ],
+        6,
+        1,
+      );
+      expect(out).toHaveLength(6);
+      // Preference order is still top-down: the first item contributes most.
+      const counts = new Map<string, number>();
+      for (const chunk of out) counts.set(chunk[0]!, (counts.get(chunk[0]!) ?? 0) + 1);
+      expect(counts.get("a")).toBeGreaterThanOrEqual(counts.get("b")!);
+      expect(counts.get("b")).toBeGreaterThanOrEqual(counts.get("c")!);
+    });
+
+    it("honours the budget even when it cannot afford the floor for every item", () => {
+      // A budget of two across three items cannot give each item one, so the
+      // two chunks go to the two highest-ranked items and nothing is oversold.
+      const out = pickByWeightedPolling(
+        [
+          { sortedChunks: ["a1", "a2"] },
+          { sortedChunks: ["b1", "b2"] },
+          { sortedChunks: ["c1", "c2"] },
+        ],
+        2,
+        1,
+      );
+      expect(out).toEqual(["a1", "b1"]);
     });
 
     it("redistributes leftover quota to the highest-ranked items that still have chunks", () => {
@@ -45,18 +84,19 @@ describe("retrieval-fuser", () => {
         4,
         1,
       );
-      expect(out).toEqual(["a1", "b1", "b2", "b3", "b4"]);
+      expect(out).toEqual(["a1", "b1", "b2", "b3"]);
     });
 
     it("deduplicates a chunk that evidences several items", () => {
       // A chunk already taken from a higher-ranked item burns the lower item's
-      // slot without being re-added: allocation consumes on the duplicate.
+      // slot without being re-added: allocation consumes on the duplicate, so
+      // the total can fall one short of the budget.
       const out = pickByWeightedPolling(
         [{ sortedChunks: ["x", "a"] }, { sortedChunks: ["x", "b"] }],
         2,
         1,
       );
-      expect(out).toEqual(["x", "a"]);
+      expect(out).toEqual(["x"]);
     });
 
     it("stops when every item is exhausted", () => {
@@ -407,10 +447,23 @@ describe("retrieval-fuser", () => {
         { index: 2, relevanceScore: 0.9 },
         { index: 0, relevanceScore: 0.1 },
       ]);
+      // The reranker scored c and a; b is unscored, so it keeps its original
+      // place at the tail rather than disappearing from the context.
       expect(out).toEqual([
         { chunkId: "c", rerankScore: 0.9 },
         { chunkId: "a", rerankScore: 0.1 },
+        { chunkId: "b", rerankScore: UNSCORED_RERANK_SCORE },
       ]);
+    });
+
+    it("keeps every document when the reranker scores them all", async () => {
+      const docs = [{ chunkId: "a" }, { chunkId: "b" }];
+      const out = await applyRerank("q", docs, async () => [
+        { index: 1, relevanceScore: 0.9 },
+        { index: 0, relevanceScore: 0.2 },
+      ]);
+      expect(out).toHaveLength(2);
+      expect(out.map((item) => item.chunkId)).toEqual(["b", "a"]);
     });
 
     it("truncates to topN", async () => {
@@ -427,7 +480,7 @@ describe("retrieval-fuser", () => {
       expect(out).toEqual([{ chunkId: "a", rerankScore: 0.1 }]);
     });
 
-    it("drops invalid results rather than trusting them", async () => {
+    it("never trusts an invalid score, and keeps the document as unscored instead", async () => {
       const docs = [{ chunkId: "a" }, { chunkId: "b" }];
       const out = await applyRerank("q", docs, async () => [
         { index: 5, relevanceScore: 0.9 },
@@ -435,7 +488,16 @@ describe("retrieval-fuser", () => {
         { index: 0, relevanceScore: Number.NaN },
         { index: 1, relevanceScore: 0.5 },
       ]);
-      expect(out).toEqual([{ chunkId: "b", rerankScore: 0.5 }]);
+      // The one valid score ranks its document first; nothing invalid is trusted,
+      // so no NaN reaches the context and no out-of-range index places anything.
+      // The document whose score was invalid is not deleted with it — a partial
+      // rerank degrades to "ranked first, rest as retrieved" rather than shrinking
+      // the set, which is the behaviour the fixed contract documents.
+      expect(out).toEqual([
+        { chunkId: "b", rerankScore: 0.5 },
+        { chunkId: "a", rerankScore: UNSCORED_RERANK_SCORE },
+      ]);
+      expect(out.every((item) => Number.isFinite(item.rerankScore))).toBe(true);
     });
 
     it("keeps only the first score for a duplicated index", async () => {
@@ -444,7 +506,12 @@ describe("retrieval-fuser", () => {
         { index: 0, relevanceScore: 0.9 },
         { index: 0, relevanceScore: 0.1 },
       ]);
-      expect(out).toEqual([{ chunkId: "a", rerankScore: 0.9 }]);
+      // The duplicate does not overwrite the first score, and the document the
+      // reranker never mentioned keeps its place at the tail.
+      expect(out).toEqual([
+        { chunkId: "a", rerankScore: 0.9 },
+        { chunkId: "b", rerankScore: UNSCORED_RERANK_SCORE },
+      ]);
     });
   });
 
@@ -492,6 +559,32 @@ describe("retrieval-fuser", () => {
       });
       expect(out).toHaveLength(2);
       expect(out.every((item) => typeof item.rerankScore === "number")).toBe(true);
+    });
+
+    it("applies the reranker even when proximity is not configured", async () => {
+      // The rerank callback is an independent stage, not a sub-step of
+      // proximity: configuring one without the other must still call it, and its
+      // query is the empty string. An implementation that gated rerank on
+      // `proximity` would silently drop the caller's reranker here and hand back
+      // the plain fused order with no rerankScore at all.
+      const calls: Array<{ query: string; ids: string[] }> = [];
+      const out = await fuseAndRerank({
+        candidateLists: lists,
+        topN: 3,
+        rerank: async (query, documents) => {
+          calls.push({ query, ids: documents.map((document) => document.chunkId) });
+          // Reverse the fused order, so the output is observably the reranker's
+          // and not the fused one.
+          return [...documents.keys()].reverse().map((index) => ({ index, relevanceScore: index }));
+        },
+      });
+      // The reranker saw the fused list, and the empty query is what it gets
+      // when proximity supplies none.
+      expect(calls).toEqual([{ query: "", ids: ["b", "a", "c"] }]);
+      expect(out.map((item) => item.chunkId)).toEqual(["c", "a", "b"]);
+      expect(out.map((item) => item.rerankScore)).toEqual([2, 1, 0]);
+      // The fused score survives the rerank stage alongside the new one.
+      expect(out.every((item) => typeof item.fusedScore === "number")).toBe(true);
     });
   });
 });

@@ -50,14 +50,18 @@ export const PROXIMITY_MIN_TERM_LENGTH = 2;
 export const DEFAULT_VECTOR_PICK_THRESHOLD = 0.2;
 
 /**
- * Linear-gradient weighted polling.
+ * Linear-gradient weighted polling over a shared chunk budget.
  *
- * The highest-ranked item gets `maxQuota` chunks and the lowest gets
- * `minQuota`, interpolated linearly across the rest. Leftover quota — an item
- * that had fewer chunks available than its allocation — is re-distributed in
- * single-chunk passes over the items that still have unused chunks, which is
- * what makes the allocation land on `maxQuota` total rather than shorting the
- * budget because a well-ranked entity was thin on evidence.
+ * `maxQuota` is the *total* number of chunks to hand out across every item, not
+ * the first item's share. `minQuota` is a per-item floor the budget honours when
+ * it can afford one for each item; the discretionary remainder is split on a
+ * decreasing linear gradient, so the shares sum to the budget instead of
+ * multiplying past it. Leftover quota — an item that had fewer chunks available
+ * than its allocation — is re-distributed in single-chunk passes over the items
+ * that still have unused chunks, which is what makes the allocation land on the
+ * budget rather than shorting it because a well-ranked entity was thin on
+ * evidence. A chunk that evidences two items still burns the lower item's slot
+ * without being re-added, so the budget is a ceiling, not a guarantee.
  *
  * Input items carry their chunks pre-sorted by importance, so allocation order
  * is also preference order.
@@ -73,9 +77,34 @@ export function pickByWeightedPolling(
   if (n === 1) return items[0]!.sortedChunks.slice(0, maxQuota);
 
   const expected = new Array<number>(n);
-  for (let i = 0; i < n; i++) {
-    const ratio = i / (n - 1);
-    expected[i] = Math.round(maxQuota - ratio * (maxQuota - minQuota));
+  if (maxQuota <= n * minQuota) {
+    // The budget cannot afford the floor for every item, so hand out whole
+    // chunks in importance order until it is spent rather than overselling.
+    let remaining = maxQuota;
+    for (let i = 0; i < n; i++) {
+      const share = Math.min(remaining, Math.max(1, minQuota));
+      expected[i] = share;
+      remaining -= share;
+    }
+  } else {
+    // `n - i` over the triangular total is a decreasing linear gradient whose
+    // weights sum to 1. Largest-remainder rounding keeps the shares summing to
+    // the discretionary budget exactly: naive `Math.round` per item can leave
+    // the total a chunk or two over, which is the overshoot this policy exists
+    // to prevent.
+    const totalWeight = (n * (n + 1)) / 2;
+    const discretionary = maxQuota - n * minQuota;
+    const raw = new Array<number>(n);
+    for (let i = 0; i < n; i++) {
+      raw[i] = discretionary * ((n - i) / totalWeight);
+    }
+    const shares = raw.map((value) => Math.floor(value));
+    let remainder = discretionary - shares.reduce((sum, value) => sum + value, 0);
+    const byFraction = raw
+      .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+      .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+    for (let k = 0; k < remainder; k++) shares[byFraction[k]!.index]! += 1;
+    for (let i = 0; i < n; i++) expected[i] = minQuota + shares[i]!;
   }
 
   const used = new Array<number>(n).fill(0);
@@ -349,9 +378,20 @@ export function extractProximityTerms(query: string, stopwords?: Set<string>): s
 }
 
 /**
+ * The `rerankScore` given to a document the reranker never scored. Unscoed
+ * documents keep their place at the end of the list rather than being dropped,
+ * so a reranker that returns a partial list shrinks the context by less than it
+ * was asked to.
+ */
+export const UNSCORED_RERANK_SCORE = 0;
+
+/**
  * Apply a reranker to a retrieved set, keeping original order for anything
  * the reranker did not score. Invalid results are dropped rather than trusted:
  * an out-of-range index or non-finite score must never reorder the context.
+ * Unscoed documents follow the scored ones in their original order, so a
+ * partial rerank degrades to "ranked first, rest as retrieved" instead of
+ * silently truncating the set.
  */
 export async function applyRerank<T>(
   query: string,
@@ -373,14 +413,23 @@ export async function applyRerank<T>(
     used.add(result.index);
     ranked.push({ ...documents[result.index]!, rerankScore: result.relevanceScore });
   }
+  if (used.size < documents.length) {
+    for (let index = 0; index < documents.length; index++) {
+      if (used.has(index)) continue;
+      ranked.push({ ...documents[index]!, rerankScore: UNSCORED_RERANK_SCORE });
+    }
+  }
   return topN !== undefined ? ranked.slice(0, topN) : ranked;
 }
 
 /**
  * Fuse then rerank: RRF over any number of ranked candidate lists, optional
  * proximity reranking of the fused top-N, and an optional model reranker as
- * the final authority. Each stage is skipped cleanly when it is not
- * configured, so the same function serves a cheap path and a precise one.
+ * the final authority. Proximity and rerank are independent: a reranker is
+ * applied to the fused list whether or not proximity is configured, and the
+ * fused order stands on its own when neither is. The query handed to the
+ * reranker comes from `proximity.query`, and is the empty string when proximity
+ * is not configured.
  */
 export async function fuseAndRerank<T extends { chunkId: string }>(args: {
   candidateLists: ReadonlyArray<ReadonlyArray<T>>;
@@ -398,29 +447,45 @@ export async function fuseAndRerank<T extends { chunkId: string }>(args: {
   ) => Promise<Array<{ index: number; relevanceScore: number }>>;
 }): Promise<Array<T & { fusedScore: number; rerankScore?: number }>> {
   const fused = reciprocalRankFusion(args.candidateLists, (item) => item.chunkId, args.topN);
-  if (!args.proximity) return fused;
+  if (!args.proximity && !args.rerank) return fused;
 
+  // Proximity reranking reorders the fused top-N. Without it the fused order
+  // stands, and the reranker — when one is configured — applies to whichever
+  // list survived, so an explicit rerank callback is never silently skipped.
+  const query = args.proximity?.query ?? "";
+  const ranked = args.proximity ? proximityReorder(fused, args.proximity) : fused;
+  if (!args.rerank) return ranked;
+  return applyRerank(query, ranked, args.rerank, args.topN);
+}
+
+/** Reorder a fused list by proximity boost, fused score breaking ties. */
+function proximityReorder<T extends { chunkId: string }>(
+  fused: ReadonlyArray<T & { fusedScore: number }>,
+  proximity: {
+    query: string;
+    titleOf: (item: T) => string;
+    contentOf: (item: T) => string;
+    isCode: (item: T) => boolean;
+    stopwords?: Set<string>;
+  },
+): Array<T & { fusedScore: number }> {
   const boostOf = new Map<string, number>();
   for (const item of fused) {
     boostOf.set(
       item.chunkId,
       proximityBoost({
-        query: args.proximity.query,
-        title: args.proximity.titleOf(item),
-        content: args.proximity.contentOf(item),
-        isCode: args.proximity.isCode(item),
-        stopwords: args.proximity.stopwords,
+        query: proximity.query,
+        title: proximity.titleOf(item),
+        content: proximity.contentOf(item),
+        isCode: proximity.isCode(item),
+        stopwords: proximity.stopwords,
       }),
     );
   }
-  const reordered = [...fused].sort((a, b) => {
+  return [...fused].sort((a, b) => {
     const delta = (boostOf.get(b.chunkId) ?? 0) - (boostOf.get(a.chunkId) ?? 0);
     return delta !== 0 ? delta : b.fusedScore - a.fusedScore;
   });
-
-  if (!args.rerank) return reordered;
-  const reranked = await applyRerank(args.proximity.query, reordered, args.rerank, args.topN);
-  return reranked;
 }
 
 /**

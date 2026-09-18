@@ -3,35 +3,15 @@ import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
 import { QuorumBoard } from "./quorum-board";
 import { MailboxBureau } from "./mailbox-bureau";
 import { HandoffTimeline } from "./handoff-timeline";
-import {
-  useCockpitTelemetry,
-  type LiveMailboxEntry,
-  type LiveHandoffEvent,
-} from "../agent/use-cockpit-telemetry.js";
-import { useProject } from "../../state/project";
-import { S } from "../../lib/strings";
+import type { LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
   /** Live mailbox queues from the cockpit WS feed; absent keeps the local demo. */
   mailboxEntries?: LiveMailboxEntry[];
-  /** Observed project handoffs; absent keeps the local demo. */
-  handoffs?: LiveHandoffEvent[];
 }
 
-export function LiveConsensusPage({ embedded }: Pick<ConsensusPageProps, "embedded">) {
-  const { currentProject } = useProject();
-  const telemetry = useCockpitTelemetry(currentProject?.projectId ?? null);
-  return (
-    <ConsensusPage
-      embedded={embedded}
-      mailboxEntries={currentProject ? telemetry.mailboxEntries : undefined}
-      handoffs={currentProject ? telemetry.handoffs : undefined}
-    />
-  );
-}
-
-export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: ConsensusPageProps) {
+export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPageProps) {
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
   const [engine] = useState(() => new QuorumConsensusEngine());
   const [version, setVersion] = useState(0);
@@ -40,22 +20,22 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
       className={`min-w-0 overflow-y-auto text-sm text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
     >
       <header className="mb-6 space-y-2">
-        <h1 className="text-xl font-semibold">{S.consensus.title}</h1>
+        <h1 className="text-xl font-semibold">Agent coordination</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          {mailboxEntries === undefined && handoffs === undefined
-            ? S.consensus.demoDescription
-            : S.consensus.liveDescription}
+          {mailboxEntries === undefined
+            ? "Try proposals, messages and handoffs with local sample data. Changes are not sent to agents or saved after leaving this page."
+            : "Mailbox queues reflect the current project. Decisions and handoffs remain local demos."}
         </p>
       </header>
       <nav
-        aria-label={S.consensus.navigation}
+        aria-label="Coordination views"
         className="mb-6 flex flex-wrap gap-2 border-b border-gray-200 pb-3 dark:border-gray-800"
       >
         {(
           [
-            { value: "quorum", label: S.consensus.decisions },
-            { value: "mailbox", label: S.consensus.messages },
-            { value: "handoff", label: S.consensus.handoffs },
+            { value: "quorum", label: "Decisions" },
+            { value: "mailbox", label: "Messages" },
+            { value: "handoff", label: "Handoffs" },
           ] as const
         ).map((item) => (
           <button
@@ -76,7 +56,7 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
         <MailboxBureau entries={mailboxEntries} />
       </div>
       <div hidden={tab !== "handoff"}>
-        <HandoffTimeline handoffs={handoffs} />
+        <HandoffTimeline />
       </div>
     </div>
   );

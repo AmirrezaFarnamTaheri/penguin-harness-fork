@@ -151,7 +151,7 @@ export interface IngestOptions {
   /** Override the chunk byte cap for this document. */
   maxChunkBytes?: number;
   /** Treat the input as plain text rather than Markdown. */
-  plainText?: number;
+  plainText?: boolean;
   /** Lines per chunk when chunking plain text. */
   linesPerChunk?: number;
 }
@@ -216,7 +216,7 @@ export function lexicalScore(
  */
 export class ArchivalStore {
   private readonly chunks = new Map<string, ArchivalChunk>();
-  private readonly documents = new Map<string, { chunkCount: number }>();
+  private readonly documents = new Map<string, { documentId: string; chunkIds: string[] }>();
   private readonly vectorStore: InProcessVectorStore;
   private readonly embedding: EmbeddingFunction;
   private readonly stopwords: Set<string>;
@@ -260,22 +260,46 @@ export class ArchivalStore {
    *
    * Re-ingesting the same source replaces it, so a changed document does not
    * leave orphan chunks behind. The document id is content-derived, which makes
-   * an unchanged re-ingest observable as a no-op rather than as a duplicate.
+   * an unchanged re-ingest observable as a no-op rather than as a duplicate —
+   * and the chunk ids the ingestion produced are returned, because the graph
+   * stores them as its evidence and cannot derive them from a document id.
    */
   async ingest(
     source: string,
     text: string,
     options: IngestOptions = {},
-  ): Promise<{ documentId: string; chunkCount: number }> {
+  ): Promise<{
+    documentId: string;
+    chunkCount: number;
+    /** Chunk ids created for this document, in document order. */
+    chunkIds: string[];
+    /** Whether the source was already indexed with byte-identical content. */
+    unchanged: boolean;
+  }> {
     const documentId = contentId(`${source}\n${text}`, "doc:");
-    if (this.documents.has(source)) await this.deleteDocument(source);
+    const existing = this.documents.get(source);
+    if (existing !== undefined && existing.documentId === documentId) {
+      // Nothing to do: the index already holds this exact document, and
+      // re-chunking and re-embedding it would produce identical records.
+      return {
+        documentId,
+        chunkCount: existing.chunkIds.length,
+        chunkIds: [...existing.chunkIds],
+        unchanged: true,
+      };
+    }
 
+    // Build the replacement before retiring the old version. Chunking and
+    // embedding are the calls that can fail — a downed embedding service is the
+    // realistic one — and deleting the source first would make a failed rebuild
+    // destroy the last good copy. Everything below mutates state only after the
+    // replacement is fully formed, so a failure leaves the previous version
+    // intact and queryable.
     const chunks: Chunk[] = options.plainText
       ? chunkPlainText(text, options.maxChunkBytes, options.linesPerChunk ?? 40)
       : chunkMarkdown(text, options.maxChunkBytes);
 
     const vectors = await this.embedding(chunks.map((chunk) => chunk.content));
-    const createdAt = Date.now();
 
     const records = chunks.map((chunk, index) => ({
       id: contentId(`${documentId}:${chunk.order}`, "chunk:"),
@@ -284,6 +308,14 @@ export class ArchivalStore {
     }));
     await this.vectorStore.upsert(records);
 
+    // Swap. The new chunk ids differ from the old ones (the document id is
+    // content-derived, so a changed document hashes to new ids), and the old
+    // chunks are gone before the new ones are indexed by source, so the
+    // replacement never deletes itself.
+    if (existing !== undefined) await this.deleteDocument(source);
+
+    const createdAt = Date.now();
+    const chunkIds = records.map((record) => record.id);
     records.forEach((record, index) => {
       const chunk = chunks[index]!;
       this.chunks.set(record.id, {
@@ -299,8 +331,8 @@ export class ArchivalStore {
       });
     });
 
-    this.documents.set(source, { chunkCount: records.length });
-    return { documentId, chunkCount: records.length };
+    this.documents.set(source, { documentId, chunkIds });
+    return { documentId, chunkCount: chunkIds.length, chunkIds, unchanged: false };
   }
 
   /** Remove a document and every chunk that belonged to it. */
@@ -328,11 +360,21 @@ export class ArchivalStore {
 
     const [queryVector] = await this.embedding([query], "archival-query");
 
+    // The source filter narrows the pool *before* the semantic top-K, not after.
+    // The vector store ranks every chunk in the store regardless of scope, so
+    // asking it for the globally-nearest `topK` first and then dropping the
+    // non-matching ones can starve a scoped query: if another source's chunks
+    // hold every one of the top slots, this source's real matches never make the
+    // cut and the query returns empty despite having valid matches. The filter
+    // is pushed into the store query itself, so the top-K is taken over the
+    // scoped pool. The `candidates` check below is kept as the guarantee for a
+    // backend that ignores the optional filter.
     const semantic: ArchivalQueryResult[] = [];
     const semanticResults = await this.vectorStore.query(query, {
       topK,
       threshold: options.semanticThreshold,
       queryVector,
+      ids: new Set([...candidates].map((chunk) => chunk.chunkId)),
     });
     for (const result of semanticResults) {
       const chunk = this.chunks.get(result.id);

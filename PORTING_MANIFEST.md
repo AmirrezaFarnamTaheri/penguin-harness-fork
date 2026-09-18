@@ -1,8 +1,26 @@
 # Penguin Harness Master Porting & Convergence Manifest
 
 **Target Workspace**: `D:\GitHub\penguin-harness-fork`  
-**Source Archives**: `D:\GitHub\penguin port` (163 archives)  
-**Porting Status**: 100% Completed across all 7 Clusters (163/163 archives audited, merged, absorbed, and verified).  
+**Source Archives**: `D:\GitHub\HPORT` (138 zips on disk = 118 unique archives + 20 `(N)` snapshot duplicates; 123 tracked in the plan's track map, 144 task titles counting snapshots separately — these are three counts of one corpus under three dedup policies, reconciled in `porting_progress.json`)
+
+> **Read this first.** The cluster tables below are the absorption log: which assets each
+> archive contributed and which module they landed in. The **"Status" column reflects the
+> 2026-09-12 first-pass audit, not a measured state** — several of its per-archive claims were
+> later found to be name-only (assets named after upstream projects that violate the plan's §8
+> naming rules, and statuses hard-coded rather than measured). Verified state lives in
+> `porting_progress.json`, which resolves every project's `target_dirs` against the workspace.
+> Where a row below and the tracker disagree, **the tracker is authoritative.**
+>
+> Corrections established against the source: this manifest's earlier header claimed
+> "163/163 archives, 100% complete" (the real corpus is 118 unique archives, and only a subset
+> were ever tracked here) and "2,255 production skills / 38 aliases" (the audited figures are
+> 2,567 skills and 120 aliases, with the skills-integrity gate now at 0 errors / 0 warnings).
+
+**Cluster-level absorption status** — all 7 clusters audited and their assets absorbed into the
+modules named in the tables below; per-archive verification is in `porting_progress.json`.
+
+*First-pass cluster statuses as recorded at audit time (see the caveat above — these are the
+2026-09-12 claims, not a re-measurement):*
 - **Cluster 1** (Gateways, Proxies, Key Rotation & Quota Management — 28 archives): Completed & Verified  
 - **Cluster 2** (Desktop Overlays, HUDs, Status Bars & Native Panels — 11 archives): Completed & Verified  
 - **Cluster 3** (Agent Core Frameworks, Autonomous Loops, Memory & Swarms — 54 archives): Completed & Verified  

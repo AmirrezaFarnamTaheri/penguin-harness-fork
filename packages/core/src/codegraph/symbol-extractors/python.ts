@@ -98,6 +98,10 @@ export const pythonExtractor: SymbolExtractor = {
           className: enclosing,
           parameters: params,
           isAsync: /\basync\b/.test(clean),
+          // Python has no export keyword: every top-level def is importable, so a module-level
+          // function belongs in its module's export map. Without this, `from pkg.mod import f`
+          // found nothing exported and fell back to same-name global resolution.
+          isExported: !isMethod,
           decorators: pendingDecorators.length ? [...pendingDecorators] : undefined,
         });
         pendingDecorators.length = 0;
@@ -120,12 +124,27 @@ export const pythonExtractor: SymbolExtractor = {
           level = dots;
           module = moduleText.slice(dots);
         }
-        const names = fromMatch[2]
-          .replace(/[()]/g, "")
-          .split(",")
-          .map((part) => part.trim().split(/\s+as\s+/)[0]!)
-          .filter((part) => part.length > 0 && part !== "*");
-        imports.push({ module, names, level, line: lineNo });
+        // `from x import a as b` binds the local name b to the source name a; both spellings are
+        // kept because the export map is keyed by the source name, not the local one.
+        const aliasMap: Record<string, string> = {};
+        const names: string[] = [];
+        for (const part of fromMatch[2].replace(/[()]/g, "").split(",")) {
+          const [source, local] = part.trim().split(/\s+as\s+/);
+          const src = source?.trim() ?? "";
+          if (!src || src === "*") continue;
+          names.push(src);
+          const renamed = local?.trim();
+          if (renamed && renamed !== src) aliasMap[renamed] = src;
+        }
+        const alias = Object.keys(aliasMap).length === 1 ? Object.keys(aliasMap)[0] : undefined;
+        imports.push({
+          module,
+          names,
+          alias,
+          aliasMap: Object.keys(aliasMap).length ? aliasMap : undefined,
+          level,
+          line: lineNo,
+        });
         if (names.length) exports.push(...names);
         continue;
       }

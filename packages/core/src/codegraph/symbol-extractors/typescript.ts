@@ -236,18 +236,28 @@ export const typescriptExtractor: SymbolExtractor = {
       const importMatch = raw.match(IMPORT_RE);
       if (importMatch?.[2]) {
         const named = importMatch[1] ?? "";
-        const names = named
-          .replace(/[{}]/g, "")
-          .split(",")
-          .map(
-            (part) =>
-              part
-                .trim()
-                .replace(/^type\s+/, "")
-                .split(/\s+as\s+/)[0]!,
-          )
-          .filter((part) => part.length > 0 && part !== "*");
-        imports.push({ module: importMatch[2], names, level: 0, line: lineNo });
+        // `import { a as x }` binds the local name x to the exported name a; both spellings are
+        // kept because the module's exports are keyed by the source name, not the local one.
+        const aliasMap: Record<string, string> = {};
+        const names: string[] = [];
+        for (const part of named.replace(/[{}]/g, "").split(",")) {
+          const cleaned = part.trim().replace(/^type\s+/, "");
+          const [source, local] = cleaned.split(/\s+as\s+/);
+          const src = source?.trim() ?? "";
+          if (!src || src === "*") continue;
+          names.push(src);
+          const renamed = local?.trim();
+          if (renamed && renamed !== src) aliasMap[renamed] = src;
+        }
+        const alias = Object.keys(aliasMap).length === 1 ? Object.keys(aliasMap)[0] : undefined;
+        imports.push({
+          module: importMatch[2],
+          names,
+          alias,
+          aliasMap: Object.keys(aliasMap).length ? aliasMap : undefined,
+          level: 0,
+          line: lineNo,
+        });
         continue;
       }
       const bareImport = raw.match(BARE_IMPORT_RE);
@@ -267,7 +277,14 @@ export const typescriptExtractor: SymbolExtractor = {
 
     const resolved = resolveBraceDelimitedRanges(lines, defs);
     const classes = resolved.filter((def) => def.kind === "class");
-    const methods = classes.flatMap((classDef) => collectMethods(lines, classDef));
+    // Methods are collected from the RESOLVED class ranges (the collector needs each class's end
+    // line to bound its scan), then ranged themselves: a method that never gets its braces resolved
+    // ends on its declaration line, and the body's calls and variables fall back to the enclosing
+    // class scope.
+    const methods = resolveBraceDelimitedRanges(
+      lines,
+      classes.flatMap((classDef) => collectMethods(lines, classDef)),
+    );
     const all = [...resolved, ...methods].map((def) => {
       const end = def.endLine ?? def.startLine;
       return {

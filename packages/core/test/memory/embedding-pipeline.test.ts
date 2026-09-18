@@ -99,6 +99,27 @@ describe("embedding-pipeline", () => {
       const b = [{ type: "code", value: "x" }];
       expect(contentListDocumentId(a)).not.toBe(contentListDocumentId(b));
     });
+
+    it("distinguishes documents whose blocks differ only in field values", () => {
+      // A shape-only id hashes both of these to the same value: the blocks have
+      // identical types, keys and value types, and the values were never part
+      // of the digest.
+      const short = [{ type: "text", text: "A" }];
+      const different = [{ type: "text", text: "totally different" }];
+      expect(contentListDocumentId(short)).not.toBe(contentListDocumentId(different));
+    });
+
+    it("distinguishes one changed value in a multi-block document", () => {
+      const base = [
+        { type: "text", text: "one" },
+        { type: "code", code: "x = 1" },
+      ];
+      const changed = [
+        { type: "text", text: "one" },
+        { type: "code", code: "x = 2" },
+      ];
+      expect(contentListDocumentId(base)).not.toBe(contentListDocumentId(changed));
+    });
   });
 
   describe("localEmbeddingVector", () => {

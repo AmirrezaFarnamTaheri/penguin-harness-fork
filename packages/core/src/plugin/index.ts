@@ -39,6 +39,7 @@ import type { WorkflowFactory, WorkflowInstances } from "./workflow.js";
 
 export type { WorkflowFactory, WorkflowInstance, WorkflowInstances } from "./workflow.js";
 export type * from "./sandbox.js";
+export * from "./isolated-execution.js";
 
 /** A tool factory — RESERVED. The shape lands with the first plugin-provided tool. */
 export type ToolFactory = unknown;

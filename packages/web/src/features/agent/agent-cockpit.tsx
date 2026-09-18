@@ -503,11 +503,7 @@ function CockpitWorkspace({ projectId, sessionId }: { projectId: string; session
             {tool === "topology" && <TopologyPage embedded />}
             {tool === "guardian" && <GuardianPage embedded />}
             {tool === "consensus" && (
-              <ConsensusPage
-                embedded
-                mailboxEntries={telemetry.mailboxEntries}
-                handoffs={telemetry.handoffs}
-              />
+              <ConsensusPage embedded mailboxEntries={telemetry.mailboxEntries} />
             )}
             {tool === "context" && <ContextBreakdownPage embedded sessionId={sessionId} />}
             {tool === "memory" && <MemoryPage embedded />}

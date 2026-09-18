@@ -52,6 +52,16 @@ export function detectLanguage(filePath: string): SupportedLanguage {
   return EXTENSION_LANGUAGE[ext] ?? "unknown";
 }
 
+/**
+ * Line-comment token for a file's language: `#` for Python, `//` for every C-family language the
+ * extractors serve. Callers that strip an arbitrary file's source must select the syntax from the
+ * file path rather than hard-coding one: a fixed `#` leaves `//` comments live in JS/TS/Go/Rust and
+ * lets calls and bindings hidden in those comments reach the graph as real edges.
+ */
+export function lineCommentForFile(filePath: string): string {
+  return detectLanguage(filePath) === "python" ? "#" : "//";
+}
+
 /** Split content into lines, preserving a 1-indexed line universe. */
 export function splitLines(content: string): string[] {
   return content.split("\n");

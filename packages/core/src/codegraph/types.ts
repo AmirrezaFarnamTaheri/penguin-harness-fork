@@ -73,6 +73,8 @@ export interface SymbolScope {
   startLine: number;
   endLine: number;
   className?: string;
+  /** Declared parameter spellings of a function/method scope, for def-use seeding. */
+  parameters?: string[];
 }
 
 /** A single call occurrence, with enough context to resolve caller and callee. */
@@ -93,7 +95,7 @@ export interface CallSite {
 export interface VariableBinding {
   name: string;
   scopeId: string;
-  kind: "def" | "reassign" | "use";
+  kind: "def" | "reassign" | "use" | "parameter";
   line: number;
   column: number;
   /** Inferred concrete type name when discoverable from constructor or annotation. */
@@ -103,8 +105,16 @@ export interface VariableBinding {
 /** An import statement normalised across languages. */
 export interface ImportRecord {
   module: string;
+  /** Names as spelled in the exporting module (`import { a }` / `from x import a`). */
   names: string[];
+  /** Local rename when exactly one name is aliased (`from x import a as b`). */
   alias?: string;
+  /**
+   * Every local rename to its source name, covering imports that alias more than one name
+   * (`import { a as x, b as y } from "m"`). A single `alias` can only carry one rename, so this map
+   * is the general form; resolution consults it before falling back to `alias`.
+   */
+  aliasMap?: Record<string, string>;
   /** Relative-import depth: 0 absolute, 1 = `.` level, 2 = `..` level. */
   level: number;
   line: number;
