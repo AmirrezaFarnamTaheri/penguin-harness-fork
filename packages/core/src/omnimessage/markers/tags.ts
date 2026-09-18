@@ -27,6 +27,8 @@ export const MARKER_TAGS = {
   orgTrigger: "org_trigger",
   /** Background-task completion report injected as a harness user message (exec_command / run_subagent with run_in_background). */
   backgroundTaskDone: "background_task_done",
+  /** Advisory repeat-tool reminder injected between turns when the agent repeats an identical tool call (RepeatToolGuard). */
+  repeatToolReminder: "repeat_tool_reminder",
   /** `/model` switch origin block, first message of the continued conversation (Web). */
   modelSwitchFrom: "model_switch_from",
   /** AGENTS.md wrapper inside the system prompt (static template text). */
