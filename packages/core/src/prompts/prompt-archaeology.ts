@@ -758,10 +758,14 @@ export function reconstructPrompt(prompt: SplitPromptRecord): string {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Normalisation and injection defence                                        */
+/* Normalisation and provenance cleaning                                      */
 /* -------------------------------------------------------------------------- */
 
-/** Marker kinds that a captured prompt may carry and that shipping code must strip. */
+/**
+ * Marker kinds that a captured prompt may carry and that shipping code must
+ * strip, because each one reproduces *another* harness's runtime control flow
+ * rather than the vendor's own instructions.
+ */
 export type InjectionMarkerKind =
   | "frontmatter"
   | "system-reminder"
@@ -770,14 +774,7 @@ export type InjectionMarkerKind =
   | "system-reminder-tag"
   | "user-prompt-tag"
   | "session-tag"
-  | "user-query-tag"
-  /** Reminder/warning tags a safety layer appends to user turns. */
-  | "image_reminder"
-  | "cyber_warning"
-  | "ethics_reminder"
-  | "ip_reminder"
-  | "system_warning"
-  | "long_conversation_reminder";
+  | "user-query-tag";
 
 /** A marker occurrence found in a prompt text. */
 export interface InjectionMarker {
@@ -809,15 +806,6 @@ const INJECTION_TAG_PAIRS: ReadonlyArray<readonly [InjectionMarkerKind, string, 
   ["user-query-tag", "<user_query>", "</user_query>"],
 ];
 
-const REMINDER_TAG_KINDS = new Set<InjectionMarkerKind>([
-  "image_reminder",
-  "cyber_warning",
-  "ethics_reminder",
-  "ip_reminder",
-  "system_warning",
-  "long_conversation_reminder",
-]);
-
 /**
  * List every harness-injected marker in a captured prompt. A vendor prompt that still
  * carries `<system-reminder>` or a `[USER_PROMPT]` wrapper will reproduce the *source*
@@ -840,20 +828,6 @@ export function findInjectionMarkers(text: string): InjectionMarker[] {
       if (match[0]) {
         markers.push({ kind, opener, closer, length: match[0].length });
       }
-    }
-  }
-
-  // Bare closing tags of the reminder family: a prompt quoting its own reminder wrapper
-  // (e.g. `</image_reminder>`) still counts as carrying the marker.
-  for (const match of text.matchAll(/<\/([a-z_]+)>/gu)) {
-    const tag = match[1];
-    if (tag && REMINDER_TAG_KINDS.has(tag as InjectionMarkerKind) && match[0]) {
-      markers.push({
-        kind: tag as InjectionMarkerKind,
-        opener: `<${tag}>`,
-        closer: `</${tag}>`,
-        length: match[0].length,
-      });
     }
   }
 
@@ -887,18 +861,6 @@ export function stripInjectionMarkers(
 
   for (const [kind, opener, closer] of INJECTION_TAG_PAIRS) {
     if (allow.has(kind)) continue;
-    const pair = new RegExp(escapeRegExp(opener) + "[\\s\\S]*?" + escapeRegExp(closer), "gu");
-    out = out.replace(pair, "");
-    out = out.replace(new RegExp(escapeRegExp(opener), "gu"), "");
-    out = out.replace(new RegExp(escapeRegExp(closer), "gu"), "");
-  }
-
-  for (const match of out.matchAll(/<\/([a-z_]+)>/gu)) {
-    const tag = match[1];
-    if (!tag || !REMINDER_TAG_KINDS.has(tag as InjectionMarkerKind)) continue;
-    if (allow.has(tag as InjectionMarkerKind)) continue;
-    const closer = match[0];
-    const opener = `<${tag}>`;
     const pair = new RegExp(escapeRegExp(opener) + "[\\s\\S]*?" + escapeRegExp(closer), "gu");
     out = out.replace(pair, "");
     out = out.replace(new RegExp(escapeRegExp(opener), "gu"), "");

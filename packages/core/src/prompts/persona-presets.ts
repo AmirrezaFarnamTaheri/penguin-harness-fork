@@ -34,7 +34,7 @@ import { estimateTokens } from "./prompt-fingerprint.js";
 export const INSTRUCTION_OPEN = "<INSTRUCTION>";
 /** Closing tag of the instruction block. */
 export const INSTRUCTION_CLOSE = "</INSTRUCTION>";
-/** Opening tag of the context block — task data, possibly untrusted. */
+/** Opening tag of the context block — task data supplied at runtime. */
 export const CONTEXT_OPEN = "<CONTEXT>";
 /** Closing tag of the context block. */
 export const CONTEXT_CLOSE = "</CONTEXT>";
@@ -150,7 +150,7 @@ export interface PersonaPreset {
   readonly sourcePromptIds: readonly string[];
   /** Placeholder names the preset's rules expect interpolated at compile time. */
   readonly variables?: readonly string[];
-  /** Tools the preset forbids, inherited from its source prompts' agent metadata. */
+  /** Tools outside this preset's scope, inherited from its source prompts' agent metadata. */
   readonly disallowedTools?: readonly string[];
   readonly notes?: string;
 }
@@ -381,7 +381,7 @@ export function compilePreset(
 
   if (preset.disallowedTools && preset.disallowedTools.length > 0) {
     sections.push(
-      `## Forbidden tools\n${preset.disallowedTools.map((tool) => `- \`${tool}\``).join("\n")}`,
+      `## Tools out of scope\n${preset.disallowedTools.map((tool) => `- \`${tool}\``).join("\n")}`,
     );
   }
 
@@ -419,7 +419,7 @@ export function compilePreset(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Obedience verification                                                     */
+/* Compiled-prompt well-formedness                                            */
 /* -------------------------------------------------------------------------- */
 
 /** A defect found by {@link verifyCompiled}. */
@@ -429,13 +429,14 @@ export interface CompiledPromptIssue {
 }
 
 /**
- * Structural verification of a compiled prompt: the boundary tags are present, closed and
- * ordered; the instruction block precedes any context; no harness-injection marker
- * survived compilation; and the text fits its budget.
+ * Structural checks on a compiled prompt: the boundary tags are present, closed and
+ * ordered; the instruction block precedes any context; no harness marker survived
+ * compilation; and the text fits its budget.
  *
- * This is the cheap, deterministic half of behavioural-contract verification — it cannot
- * tell whether the model obeys the prompt, only whether the prompt is well-formed enough
- * to be obeyed.
+ * These are what make a compiled prompt *usable* — the tags are the seam the harness
+ * splits on, so a prompt whose tags are out of order cannot be separated into instruction
+ * and context at all. The checks are structural by design: they report the state of the
+ * text, never whether a model will follow it.
  */
 export function verifyCompiled(compiled: CompiledPersonaPrompt): CompiledPromptIssue[] {
   const issues: CompiledPromptIssue[] = [];

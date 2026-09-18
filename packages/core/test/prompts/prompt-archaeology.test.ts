@@ -298,14 +298,21 @@ describe("prompt-archaeology / injection markers", () => {
       "-->",
       "<system-reminder>you are in cwd</system-reminder>",
       "[USER_PROMPT]hello[/USER_PROMPT]",
-      "A stray </image_reminder> closer.",
       "Clean prompt body.",
     ].join("\n");
 
     const markers = findInjectionMarkers(text);
     expect(markers.map((m) => m.kind).sort()).toEqual(
-      ["frontmatter", "image_reminder", "system-reminder", "user-prompt-tag"].sort(),
+      ["frontmatter", "system-reminder", "user-prompt-tag"].sort(),
     );
+  });
+
+  it("leaves a vendor's own tags alone: only another harness's control flow is a marker", () => {
+    // A prompt that quotes its own reminder wrapper or a few-shot tag is writing
+    // its own instructions, not re-producing a harness's runtime control flow.
+    const text = "A stray </image_reminder> closer.\n<example>tool call</example>";
+    expect(findInjectionMarkers(text)).toEqual([]);
+    expect(stripInjectionMarkers(text)).toBe(text);
   });
 
   it("reports nothing for a prompt that carries only its own instructions", () => {

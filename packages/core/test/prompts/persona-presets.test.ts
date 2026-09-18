@@ -143,7 +143,7 @@ describe("persona-presets / compilation", () => {
     });
     const instructionEnd = compiled.text.indexOf(INSTRUCTION_CLOSE);
     expect(compiled.text.indexOf("## Permitted tools")).toBeLessThan(instructionEnd);
-    expect(compiled.text).toContain("## Forbidden tools");
+    expect(compiled.text).toContain("## Tools out of scope");
     expect(compiled.text).toContain("`run_command`");
   });
 

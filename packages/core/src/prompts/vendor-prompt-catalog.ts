@@ -120,7 +120,7 @@ export interface VendorPromptEntry {
   readonly variables?: readonly string[];
   /** Model the vendor targets, when the prompt is model-specific. */
   readonly model?: string;
-  /** Tools the prompt forbids, as captured in its agent metadata. */
+  /** Tools outside the prompt's scope, as captured in its agent metadata. */
   readonly disallowedTools?: readonly string[];
   readonly notes?: string;
 }
