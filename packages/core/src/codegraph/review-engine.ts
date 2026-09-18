@@ -10,10 +10,16 @@
  * reproducible, and adds graph-integrated rules that the donor could not express.
  */
 
-import type { DiffCitation, ReviewCategory, ReviewIssue, Severity } from "./types.js";
+import type {
+  DiffCitation,
+  DiffFile,
+  DiffHunk,
+  ReviewCategory,
+  ReviewIssue,
+  Severity,
+} from "./types.js";
 import { SEVERITY_ORDER } from "./types.js";
 import { extractSideLines, parseHunks, validateCitations } from "./diff-graph.js";
-import type { DiffFile, DiffHunk } from "./types.js";
 
 /** Per-file context handed to each rule. */
 export interface ReviewRuleContext {
