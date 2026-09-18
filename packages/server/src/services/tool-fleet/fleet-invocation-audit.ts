@@ -199,7 +199,11 @@ export class FleetInvocationAudit {
     const sealed = encryptEnvelope(payload, this.sealKey());
     const dir = path.dirname(this.options.filePath);
     await fs.mkdir(dir, { recursive: true });
-    const tmp = `${this.options.filePath}.tmp-${process.pid}`;
+    // A unique suffix per write: two records landing on the same trail (the service's own
+    // entry and a mirrored mesh entry, both autoflushing) share a static tmp name, and the
+    // second rename would find the first's file already gone — ENOENT. A per-write name makes
+    // the write-rename pair immune to interleaving.
+    const tmp = `${this.options.filePath}.tmp-${process.pid}-${randomUUID()}`;
     await fs.writeFile(tmp, sealed);
     await fs.rename(tmp, this.options.filePath);
     this.dirty = false;

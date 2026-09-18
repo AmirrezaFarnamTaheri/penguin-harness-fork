@@ -44,7 +44,7 @@ import {
   detectHostEnvironment,
   translatePath,
 } from "./host-environment.js";
-import type { EnvironmentFacts } from "./host-environment.js";
+import type { EnvironmentFacts, HostEnvironment } from "./host-environment.js";
 
 /** Tool name constant (used only within this tool module, never exposed to Environment). */
 export const ENVIRONMENT_INFO_NAME = "environment_info";
@@ -80,10 +80,15 @@ function safeSlice(text: string, limit: number): string {
   return text.slice(0, limit);
 }
 
-/** One line of the translate_path answer, or the failure explanation when the path does not resolve. */
-function describeTranslation(value: string): string {
+/**
+ * One line of the translate_path answer, or the failure explanation when the path does not resolve.
+ * Path forms are recognized against `env` — the same facts the summary reports — so a tool posed
+ * as another machine translates paths the way that machine would. Consulting the live process
+ * instead would make the summary and the resolution disagree about which kernel is running.
+ */
+function describeTranslation(value: string, env: HostEnvironment): string {
   try {
-    const resolved = translatePath(value);
+    const resolved = translatePath(value, env);
     const where =
       resolved.form === "windows-native" || resolved.form === "unc"
         ? `native ${resolved.native}`
@@ -158,7 +163,7 @@ export function createEnvironmentInfoTool(
           : DEFAULT_OUTPUT_BUDGET;
       const summary = describeEnvironment(env);
       if (typeof value === "string" && value.trim() !== "") {
-        const line = describeTranslation(value.trim());
+        const line = describeTranslation(value.trim(), env);
         const failed = line.startsWith("cannot resolve");
         // Keep the summary whole and let the resolution line land after it; only a resolution
         // failure ends the call as failed, so the model knows it has to fix the path.

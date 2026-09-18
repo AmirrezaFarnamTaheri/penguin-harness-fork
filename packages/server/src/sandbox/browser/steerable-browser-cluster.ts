@@ -42,8 +42,8 @@
  * on something no number of attempts will fix.
  */
 
-import { EventEmitter } from "events";
-import { spawn } from "node:child_process";
+import { EventEmitter, once } from "events";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1044,6 +1044,10 @@ export class SteerableBrowserCluster extends EventEmitter {
         /* group gone */
       }
     }
+    // A signal is not a reaping: the pid stays in the process table until the kernel tears the
+    // process down, so a "no zombies" promise checked the instant shutdown returns would race
+    // the teardown without waiting for the exit first.
+    if (child) await waitForProcessExit(child, 1000);
     const survivors = this.sweepBrowserProcesses(pid);
     if (survivors.length > 0) {
       this.zombieProcesses += survivors.length;
@@ -1060,13 +1064,15 @@ export class SteerableBrowserCluster extends EventEmitter {
   }
 
   /**
-   * Sweeps the process table for browser processes the cluster started. On Linux it reads
-   * `/proc` directly; on Windows it falls back to the tasklist, which is the reliable enumeration
-   * there. The sweep is what makes the zero-zombie exit criterion verifiable rather than hoped-for.
+   * Sweeps for browser processes the group kill missed, scoped to the browser's own process
+   * group. The browser is spawned `detached` as a group leader, so its pid is its group id and
+   * only processes in that group are the cluster's to reap. A global match would count — and
+   * then SIGKILL — an unrelated browser belonging to whoever else shares the host, which also
+   * made this check flaky on shared CI runners.
    */
-  sweepBrowserProcesses(excludePid: number | null = null): number[] {
+  sweepBrowserProcesses(browserGroupPid: number | null = null): number[] {
     if (process.platform === "linux") {
-      return sweepLinuxProcesses(excludePid);
+      return sweepLinuxProcesses(browserGroupPid);
     }
     return [];
   }
@@ -1212,10 +1218,10 @@ export function dedupe(args: string[]): string[] {
   return out;
 }
 
-/** Sweeps `/proc` for browser processes, excluding the cluster's own pid. */
-export function sweepLinuxProcesses(excludePid: number | null = null): number[] {
+/** Sweeps the browser's own process group for processes the group kill missed. */
+export function sweepLinuxProcesses(browserGroupPid: number | null = null): number[] {
   if (process.platform !== "linux") return [];
-  let entries: Array<{ pid: number; cmdline: string }>;
+  let entries: Array<{ pid: number; pgrp: number | null; cmdline: string }>;
   try {
     // Lazy import keeps the fs read off the module-eval path on non-Linux hosts.
     entries = readProcEntries();
@@ -1225,26 +1231,69 @@ export function sweepLinuxProcesses(excludePid: number | null = null): number[] 
   const myPid = process.pid;
   const victims: number[] = [];
   for (const entry of entries) {
-    if (entry.pid === myPid || entry.pid === excludePid) continue;
+    if (entry.pid === myPid) continue;
+    // Only the cluster's own group: the browser is spawned detached as a group leader, so its
+    // children share that group. Without this bound the sweep is a global scan that would reap
+    // an unrelated browser belonging to another user of a shared host — wrong, and flaky on
+    // shared CI runners.
+    if (browserGroupPid === null || entry.pgrp !== browserGroupPid) continue;
     if (BROWSER_PROCESS_PATTERNS.test(entry.cmdline)) victims.push(entry.pid);
   }
   return victims;
 }
 
-function readProcEntries(): Array<{ pid: number; cmdline: string }> {
+function readProcEntries(): Array<{ pid: number; pgrp: number | null; cmdline: string }> {
   // Imported here, rather than at module scope, so a Windows host never touches /proc code.
   const fs = require("node:fs");
   const dirs = fs.readdirSync("/proc").filter((dir: string) => /^\d+$/.test(dir));
-  const entries: Array<{ pid: number; cmdline: string }> = [];
+  const entries: Array<{ pid: number; pgrp: number | null; cmdline: string }> = [];
   for (const dir of dirs) {
     const pid = Number.parseInt(dir, 10);
     try {
-      entries.push({ pid, cmdline: fs.readFileSync(`/proc/${dir}/cmdline`, "utf-8") });
+      entries.push({
+        pid,
+        pgrp: readProcessGroup(pid),
+        cmdline: fs.readFileSync(`/proc/${dir}/cmdline`, "utf-8"),
+      });
     } catch {
       /* process vanished or is unreadable */
     }
   }
   return entries;
+}
+
+/**
+ * The process group of a pid, read from `/proc/<pid>/stat`; null when it cannot be read. Field 2
+ * (comm) may contain spaces and is parenthesised, so parsing starts after the last `)` — the
+ * group is the third field after it (state, ppid, pgrp).
+ */
+function readProcessGroup(pid: number): number | null {
+  try {
+    const fs = require("node:fs");
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf-8");
+    const afterComm = stat.slice(stat.lastIndexOf(")") + 1).trimStart();
+    const pgrp = Number.parseInt(afterComm.split(/\s+/)[2], 10);
+    return Number.isInteger(pgrp) ? pgrp : null;
+  } catch {
+    /* the process is gone, or its stat is unreadable */
+    return null;
+  }
+}
+
+/**
+ * Waits until a killed child is actually gone from the process table. `kill` only queues a
+ * signal and the kernel reaps asynchronously, so the zero-zombie guarantee would be racy — a
+ * caller checking the pid the instant shutdown returns — without waiting for the exit first.
+ * Bounded, because a process wedged past SIGKILL must not be allowed to hang shutdown.
+ */
+async function waitForProcessExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await Promise.race([
+    once(child, "close").catch(() => {
+      /* the handle already closed, or emitted an error first */
+    }),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
 }
 
 /** Local shim so the module avoids a top-level net import while keeping the probe testable. */
