@@ -2,7 +2,10 @@
  * write_file — whole-file writing tool, a builtin tool implementation (BuiltinTool).
  *
  * Writes `content` to a file, creating it (including missing parent directories) or
- * overwriting it entirely; an empty string is a valid content (creates an empty file).
+ * overwriting it entirely; an empty string is a valid content (creates an empty file). A
+ * file being overwritten keeps its own dominant line ending (an LF write into a CRLF file
+ * would leave it with mixed endings, which read_file's display hides) — a new file, or one
+ * with no line terminators at all, keeps the caller's bytes exactly; see line-endings.ts.
  * The output distinguishes "Created" from "Overwrote" and reports the size written, so
  * the model notices when it clobbered an existing file; an overwrite additionally shows a
  * git-style unified diff against the previous content when the change is small, and a
@@ -24,9 +27,11 @@
  * Docs: /docs/tools § "File tools".
  */
 import path from "node:path";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, open, readFile, stat } from "node:fs/promises";
 import { atomicWriteFile, resolveWriteTarget } from "../../internal/atomic-write.js";
 import { buildLineDiffHunks, renderHunk } from "./diff.js";
+import { dominantTerminatorForWrite, restoreLineEndings } from "./line-endings.js";
+import type { LineTerminator } from "./line-endings.js";
 import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
 import type { ToolDefinitionConfig } from "../../interfaces/index.js";
@@ -39,6 +44,9 @@ export const WRITE_FILE_NAME = "write_file";
 /** Max bytes of previous content read back for the overwrite diff; larger files get no diff. */
 const DIFF_SOURCE_CAP_BYTES = 1024 * 1024;
 
+/** Bytes read from the head of a file too large (or binary) for a full read back, to detect its dominant line ending. */
+const STYLE_PROBE_BYTES = 256 * 1024;
+
 /** Max rendered diff lines (headers included) shown inline; larger diffs collapse to a +X/−Y summary. */
 const MAX_DIFF_DISPLAY_LINES = 60;
 
@@ -47,6 +55,35 @@ const NOTE_RESERVE = 120;
 
 /** Fallback output budget when the definition carries no maxOutputLength (mirrors the default config entry). */
 const DEFAULT_OUTPUT_BUDGET = 16000;
+
+/**
+ * The dominant line terminator of a file that was NOT read back whole — too large for the
+ * diff cap, or skipped as binary — probed from its head alone (one bounded read, no full
+ * load). `null` when nothing can be learned: empty file, unreadable, or a NUL byte in the
+ * head marking it binary. A terminator from the head is what a text file uses everywhere;
+ * a genuinely mixed file's tail is not worth a second full read to detect.
+ */
+async function probeDominantTerminator(
+  resolved: string,
+  signal?: AbortSignal,
+): Promise<LineTerminator | null> {
+  let fd;
+  try {
+    fd = await open(resolved, "r");
+    const buf = Buffer.alloc(STYLE_PROBE_BYTES);
+    const { bytesRead } = await fd.read(buf, 0, STYLE_PROBE_BYTES, 0);
+    if (bytesRead === 0) return null;
+    const text = buf.subarray(0, bytesRead).toString("utf8");
+    if (text.includes("\u0000")) return null; // Binary head: no style to preserve.
+    return dominantTerminatorForWrite(text);
+  } catch {
+    // Unreadable or gone: the caller's content is written as supplied.
+    return null;
+  } finally {
+    if (fd !== undefined) await fd.close().catch(() => undefined);
+    if (signal?.aborted) return null;
+  }
+}
 
 /** Counts content lines the way `cat -n` numbers them: a trailing newline ends the last line instead of adding an empty one. */
 function countLines(content: string): number {
@@ -115,12 +152,26 @@ export function createWriteFileTool(definition: ToolDefinitionConfig): BuiltinTo
       }
       if (signal?.aborted) return { stopReason: "aborted" };
 
+      // A file being overwritten keeps its own dominant line ending — an LF write into a CRLF
+      // file would leave the file with mixed endings, exactly what read_file's display hides.
+      // A new file, or one whose bytes carry no terminator at all, keeps the caller's content
+      // exactly (nothing to preserve; converting would invent structure the file never had).
+      const writeTerminator =
+        previous !== null
+          ? dominantTerminatorForWrite(previous)
+          : existed
+            ? await probeDominantTerminator(resolved, signal)
+            : null;
+      if (signal?.aborted) return { stopReason: "aborted" };
+      const finalContent =
+        writeTerminator === null ? content : restoreLineEndings(content, writeTerminator);
+
       try {
         // The parent to create is the one holding the file that will actually be written:
         // through a symlink that is the target's directory, not the link's (a link pointing
         // into a directory that does not exist yet is created the way `>` would).
         await mkdir(path.dirname(await resolveWriteTarget(resolved)), { recursive: true });
-        await atomicWriteFile(resolved, content, {
+        await atomicWriteFile(resolved, finalContent, {
           ...(fileMode !== undefined ? { mode: fileMode } : {}),
           ...(signal ? { signal } : {}),
           followSymlinks: true,
@@ -132,8 +183,9 @@ export function createWriteFileTool(definition: ToolDefinitionConfig): BuiltinTo
         return { stopReason: "fatal" };
       }
 
-      const lines = countLines(content);
-      const bytes = Buffer.byteLength(content, "utf8");
+      // The reported size and diff describe the bytes actually written.
+      const lines = countLines(finalContent);
+      const bytes = Buffer.byteLength(finalContent, "utf8");
       const out: string[] = [
         `${existed ? "Overwrote" : "Created"} "${filePath}" (${lines} line${lines === 1 ? "" : "s"}, ${bytes} byte${bytes === 1 ? "" : "s"}).`,
       ];
@@ -141,7 +193,7 @@ export function createWriteFileTool(definition: ToolDefinitionConfig): BuiltinTo
       // one-line +X/−Y summary otherwise. Self-budgeted below the tool's output cap so
       // the leading summary line always survives Environment's front-keep truncation.
       if (existed && previous !== null) {
-        const diff = buildLineDiffHunks(previous, content);
+        const diff = buildLineDiffHunks(previous, finalContent);
         if (diff.kind === "identical") {
           out.push("(content unchanged)");
         } else if (diff.kind === "too-large") {

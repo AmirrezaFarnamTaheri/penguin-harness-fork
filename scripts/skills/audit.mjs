@@ -5,11 +5,13 @@ import {
   DEFAULT_SKILL_ROOT,
   REPO_ROOT,
   SKILL_NAME_PATTERN,
+  bodyFingerprint,
   listSkillDirectories,
   loadAliases,
   normalizeDescription,
   normalizedStem,
   readSkillRecord,
+  readRedirectTarget,
   resolveAlias,
   stableStringify,
 } from "./lib.mjs";
@@ -113,6 +115,27 @@ for (const dirName of dirNames) {
     addError("missing-description", `${dirName}/SKILL.md needs a non-empty description.`, dirName);
   }
 
+  // Frontmatter alone is not a skill: the runtime hands the body to a model as
+  // instructions. A body that is only comments, links or whitespace looks
+  // installed but delivers nothing, which is worse than an missing entrypoint
+  // because nothing else flags it.
+  const redirectTarget = readRedirectTarget(metadata);
+  if (!redirectTarget) {
+    const instructions = record.body
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/\[[^\]]*\]\([^)]*\)/g, " ")
+      .replace(/`[^`]*`/g, " ")
+      .replace(/[#>*_|\-]/g, " ")
+      .trim();
+    if (instructions.length < 20) {
+      addError(
+        "no-instructions",
+        `${dirName}/SKILL.md has frontmatter but no instruction body — only comments, links or whitespace.`,
+        dirName,
+      );
+    }
+  }
+
   for (const rel of record.references) {
     if (rel.includes("..") || path.isAbsolute(rel)) {
       addError("unsafe-relative-reference", `Unsafe relative reference '${rel}'.`, dirName);
@@ -125,6 +148,8 @@ for (const dirName of dirNames) {
     }
   }
 }
+
+const descriptionByName = new Map(records.map((record) => [record.dirName, record]));
 
 const { aliases } = await loadAliases();
 for (const [alias, target] of Object.entries(aliases)) {
@@ -147,6 +172,14 @@ for (const [alias, target] of Object.entries(aliases)) {
     );
   }
   if (canonicalNames.has(alias)) {
+    // A redirect skill keeps its directory AND its name is registered as an
+    // alias of the canonical it points at. Exact-name lookup then resolves to
+    // the redirect's forwarding stub, and alias resolution resolves to the
+    // canonical — both end at the same skill, so the shadow is intentional and
+    // is validated separately by the redirect-alias-mismatch check. Only a
+    // shadow cast by a real, non-redirect skill is a silent routing hazard.
+    const redirect = readRedirectTarget(descriptionByName.get(alias)?.metadata);
+    if (redirect === resolved.target) continue;
     addWarning(
       "shadowed-alias",
       `Alias '${alias}' is also a canonical skill directory; exact-name lookup will shadow the alias.`,
@@ -182,6 +215,10 @@ if (runtimeAliases === null) {
 
 const descriptions = new Map();
 for (const record of records) {
+  // A redirect skill is an intentional routing stub for a canonical skill; its
+  // description deliberately echoes the canonical's, so it must not be reported
+  // as an accidental description collision.
+  if (readRedirectTarget(record.metadata)) continue;
   const description = normalizeDescription(record.metadata?.description);
   if (!description) continue;
   const bucket = descriptions.get(description) ?? [];
@@ -197,6 +234,35 @@ for (const names of descriptions.values()) {
   }
 }
 
+const fingerprints = new Map();
+for (const record of records) {
+  if (readRedirectTarget(record.metadata)) continue;
+  const fingerprint = bodyFingerprint(record.body);
+  if (!fingerprint) continue;
+  const bucket = fingerprints.get(fingerprint) ?? [];
+  bucket.push(record.dirName);
+  fingerprints.set(fingerprint, bucket);
+}
+for (const names of fingerprints.values()) {
+  if (names.length > 1) {
+    addWarning(
+      "exact-body-duplicate",
+      `Skills carry byte-equivalent instruction bodies: ${names.join(", ")}. Consolidate into one canonical skill and redirect the rest.`,
+    );
+  }
+}
+
+// A stem family (e.g. `flink` + `flink-best-practices`) only signals real overlap
+// when its members cannot be told apart: the same description, or a missing one.
+// Distinguishing descriptions are the sanctioned way to keep both skills, so a
+// family whose descriptions are all distinct is resolved rather than warned at.
+const stemDescriptions = new Map();
+for (const name of dirNames) {
+  const description = normalizeDescription(descriptionByName.get(name)?.metadata?.description);
+  const bucket = stemDescriptions.get(name) ?? [];
+  if (description) bucket.push(description);
+  stemDescriptions.set(name, bucket);
+}
 const stems = new Map();
 for (const name of dirNames) {
   const stem = normalizedStem(name);
@@ -207,13 +273,58 @@ for (const name of dirNames) {
 }
 for (const [stem, names] of stems) {
   if (canonicalNames.has(stem)) names.unshift(stem);
-  if (names.length > 1) {
+  if (names.length < 2) continue;
+  const familyDescriptions = names.flatMap((name) => stemDescriptions.get(name) ?? []);
+  const allDistinct = new Set(familyDescriptions).size === familyDescriptions.length;
+  if (allDistinct) continue;
+  addWarning(
+    "overlap-family",
+    `Potential overlap family '${stem}': ${[...new Set(names)].join(", ")}. Members share a description; consolidate or give each a distinguishing description.`,
+  );
+}
+
+for (const record of records) {
+  const redirect = readRedirectTarget(record.metadata);
+  if (!redirect) continue;
+  if (!SKILL_NAME_PATTERN.test(redirect) || redirect.length > 64) {
+    addError(
+      "invalid-redirect-target",
+      `Redirect target '${redirect}' is not a canonical skill name.`,
+      record.dirName,
+    );
+    continue;
+  }
+  if (redirect === record.dirName) {
+    addError("self-redirect", `Skill '${record.dirName}' redirects to itself.`, record.dirName);
+    continue;
+  }
+  if (readRedirectTarget(descriptionByName.get(redirect)?.metadata)) {
+    addError(
+      "redirect-chain",
+      `Redirect '${record.dirName}' targets another redirect '${redirect}' instead of a canonical skill.`,
+      record.dirName,
+    );
+    continue;
+  }
+  if (!canonicalNames.has(redirect)) {
+    addError(
+      "dangling-redirect",
+      `Redirect '${record.dirName}' targets missing skill '${redirect}'.`,
+      record.dirName,
+    );
+    continue;
+  }
+  const manifestTarget = aliases[record.dirName];
+  if (manifestTarget !== redirect) {
     addWarning(
-      "overlap-family",
-      `Potential overlap family '${stem}': ${[...new Set(names)].join(", ")}.`,
+      "redirect-alias-mismatch",
+      `Redirect '${record.dirName}' declares target '${redirect}' but the alias manifest maps it to '${manifestTarget ?? "nothing"}'. Run sync-aliases.mjs --write.`,
+      record.dirName,
     );
   }
 }
+
+const redirectCount = records.filter((record) => readRedirectTarget(record.metadata)).length;
 
 const report = {
   generatedAt: new Date().toISOString(),
@@ -221,6 +332,7 @@ const report = {
   summary: {
     skills: dirNames.length,
     aliases: Object.keys(aliases).length,
+    redirects: redirectCount,
     errors: errors.length,
     warnings: warnings.length,
   },

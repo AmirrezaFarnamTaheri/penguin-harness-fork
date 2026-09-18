@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
-import { glob, readFile } from "node:fs/promises";
+import { readFile, glob } from "node:fs/promises";
 let script;
 let css = "";
 test.use({ locale: "en-US" });

@@ -92,22 +92,6 @@ export function createSubagentTool(
         );
         return { stopReason: "fatal" };
       }
-      let cascade: { taskType: string; failureCount: number } | undefined;
-      if (args.task_type !== undefined || args.failure_count !== undefined) {
-        const failureCount = args.failure_count ?? 0;
-        if (
-          typeof args.task_type !== "string" ||
-          typeof failureCount !== "number" ||
-          !Number.isSafeInteger(failureCount) ||
-          failureCount < 0
-        ) {
-          yield* fail(
-            "[run_subagent error: task_type must be a string and failure_count a non-negative safe integer]",
-          );
-          return { stopReason: "fatal" };
-        }
-        cascade = { taskType: args.task_type, failureCount };
-      }
       const agentId = typeof args.agent_id === "string" ? args.agent_id : undefined;
       const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
       const provider = typeof args.provider === "string" ? args.provider : undefined;
@@ -164,7 +148,6 @@ export function createSubagentTool(
       let session: ManagedSubagentSession;
       try {
         const handle = await runner.spawn({
-          ...(cascade ? { cascade } : {}),
           ...(agentId !== undefined ? { agentId } : {}),
           ...(modelId !== undefined ? { modelId } : {}),
           ...(provider !== undefined ? { provider } : {}),

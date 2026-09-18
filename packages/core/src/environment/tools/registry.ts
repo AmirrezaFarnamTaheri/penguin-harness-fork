@@ -24,6 +24,7 @@ import { INPUT_COMMAND_NAME, createInputCommandTool } from "./input-command.js";
 import { SUBAGENT_NAME, createSubagentTool } from "./run-subagent.js";
 import { INPUT_SUBAGENT_NAME, createInputSubagentTool } from "./input-subagent.js";
 import { WEB_SEARCH_NAME, createWebSearchTool } from "./web-search.js";
+import { ENVIRONMENT_INFO_NAME, createEnvironmentInfoTool } from "./environment-info.js";
 
 /**
  * A factory that constructs a BuiltinTool instance from a tool config entry; optionally
@@ -46,4 +47,7 @@ export const BUILTIN_TOOL_FACTORIES: Record<string, BuiltinToolFactory> = {
   [INPUT_COMMAND_NAME]: createInputCommandTool,
   [SUBAGENT_NAME]: createSubagentTool,
   [INPUT_SUBAGENT_NAME]: createInputSubagentTool,
+  // environment_info detects the real host at construction; its optional `facts` override is for
+  // tests posing as another machine, which call the factory directly. No service is injected.
+  [ENVIRONMENT_INFO_NAME]: (definition) => createEnvironmentInfoTool(definition),
 };

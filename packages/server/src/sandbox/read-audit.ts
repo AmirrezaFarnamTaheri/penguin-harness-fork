@@ -49,6 +49,10 @@ function verifyLine(line: string, secret: string): AuditReceipt | null {
     return null;
   // Derive execution scope only from authenticated origin metadata. Keep ownership
   // unchanged; a child session ID does not establish the child's Agent State identity.
+  // The recorder always stores an array (absent origin on the wire normalizes to []),
+  // so a live receipt's executor is the chain's innermost session, and [] falls back to
+  // the owning session. `undefined` only reaches here from a hand-written or legacy line,
+  // where the scope is unknown rather than self-executed.
   const { origin } = payload;
   if (
     origin !== undefined &&

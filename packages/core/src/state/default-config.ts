@@ -27,6 +27,7 @@ import type { CompactionMode } from "../omnimessage/types.js";
 // The seeded compaction threshold is declared beside the derivation that caps it, so the
 // default and the cap cannot drift apart.
 import { DEFAULT_MAX_CONTEXT_LENGTH } from "../llm/context-limits.js";
+import { ENVIRONMENT_INFO_PARAMETERS } from "../environment/tools/environment-info.js";
 import { KERNEL_VERSION } from "./kernel-history.js";
 
 /** Docs: /docs/configuration § "System prompt placeholders". */
@@ -971,6 +972,20 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
       // Same generous timeout tier as run_subagent: an empty poll can wait a long time for the subagent to wrap up.
       timeoutMs: 600000,
       maxOutputLength: 16000,
+    },
+    {
+      name: "environment_info",
+      description:
+        "Report the host environment this agent runs on — platform, whether it is WSL/MSYS/Cygwin, " +
+        "the detected shell, and how paths are spelled here — and optionally resolve one path. Use it " +
+        "before quoting or opening a path when the platform form is unclear (C:\\Users\\x vs /c/Users/x " +
+        "vs /mnt/c/Users/x), so a path is tried in the form this machine actually uses instead of guessed. " +
+        "It is the authoritative answer to 'is this Windows-native or a POSIX layer', which exec_command " +
+        "and the file tools' behaviour both depend on.",
+      parameters: ENVIRONMENT_INFO_PARAMETERS,
+      permission: "r",
+      timeoutMs: 10000,
+      maxOutputLength: 4000,
     },
   ];
 }

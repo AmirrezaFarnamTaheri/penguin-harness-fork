@@ -1,0 +1,1694 @@
+[
+  {
+    "archive": "hermes-agent-main.zip",
+    "tracked": true,
+    "extracted_dir": "hermes-agent-main",
+    "files": 4080,
+    "top_languages": ["TypeScript:2291", "Python:360", "Markdown:26", "JSON:19"],
+    "code_samples": [
+      "hermes-agent-main\\acp_adapter\\auth.py",
+      "hermes-agent-main\\acp_adapter\\commands.py",
+      "hermes-agent-main\\acp_adapter\\content.py",
+      "hermes-agent-main\\acp_adapter\\edit_approval.py",
+      "hermes-agent-main\\acp_adapter\\entry.py",
+      "hermes-agent-main\\acp_adapter\\events.py"
+    ]
+  },
+  {
+    "archive": "deepseek-harness-master.zip",
+    "tracked": true,
+    "extracted_dir": "deepseek-harness-master",
+    "files": 4051,
+    "top_languages": ["Markdown:2387", "TypeScript:336", "JSON:49", "JavaScript:13"],
+    "code_samples": [
+      "deepseek-harness-master\\.agents\\skills\\record-browser-gif\\scripts\\encode_gif.py",
+      "deepseek-harness-master\\.agents\\skills\\record-browser-gif\\scripts\\test_encode_gif.py",
+      "deepseek-harness-master\\.claude\\skills\\record-browser-gif\\scripts\\encode_gif.py",
+      "deepseek-harness-master\\.claude\\skills\\record-browser-gif\\scripts\\test_encode_gif.py",
+      "deepseek-harness-master\\apps\\cli\\src\\args.ts",
+      "deepseek-harness-master\\apps\\cli\\src\\bin.ts"
+    ]
+  },
+  {
+    "archive": "rtp-llm-main.zip",
+    "tracked": false,
+    "extracted_dir": "rtp-llm-main",
+    "files": 4043,
+    "top_languages": ["Python:444", "Markdown:201", "JavaScript:101", "CSS:36"],
+    "code_samples": [
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\ci.py",
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\ci_service.py",
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\comment.py",
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\common.py",
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\github.py",
+      "rtp-llm-main\\.github\\scripts\\ci_gate\\merge.py"
+    ]
+  },
+  {
+    "archive": "skills-main.zip",
+    "tracked": false,
+    "extracted_dir": "skills-main",
+    "files": 4041,
+    "top_languages": ["Markdown:2170", "Python:221", "JSON:178", "TypeScript:141"],
+    "code_samples": [
+      "skills-main\\.claude\\skills\\pr-review\\scripts\\validate_skills.py",
+      "skills-main\\apps\\evals-leaderboard\\app.py",
+      "skills-main\\apps\\evals-leaderboard\\collect_evals.py",
+      "skills-main\\apps\\hackers-leaderboard\\app.py",
+      "skills-main\\apps\\hackers-leaderboard\\collect_points.py",
+      "skills-main\\corral-skill-backups\\corral-launch-agents-codex-20260805T203558Z-70736\\scripts\\corral_agents.py"
+    ]
+  },
+  {
+    "archive": "penpot-develop.zip",
+    "tracked": false,
+    "extracted_dir": "penpot-develop",
+    "files": 4036,
+    "top_languages": ["JSON:303", "Clojure:260", "JavaScript:197", "Markdown:176"],
+    "code_samples": [
+      "penpot-develop\\.clj-kondo\\config.edn",
+      "penpot-develop\\.clj-kondo\\hooks\\export.clj",
+      "penpot-develop\\.cljfmt.edn",
+      "penpot-develop\\.devenv\\scripts\\merge-mcp-config.py",
+      "penpot-develop\\.devenv\\shared\\codex.toml",
+      "penpot-develop\\.devenv\\templates\\codex.toml"
+    ]
+  },
+  {
+    "archive": "open-design-main.zip",
+    "tracked": true,
+    "extracted_dir": "open-design-main",
+    "files": 4027,
+    "top_languages": ["TypeScript:3499", "CSS:120", "JSON:56", "Markdown:44"],
+    "code_samples": [
+      "open-design-main\\.github\\scripts\\convergence.py",
+      "open-design-main\\.github\\scripts\\dsh-upstream-drift.ts",
+      "open-design-main\\.github\\scripts\\handoff.py",
+      "open-design-main\\.github\\scripts\\lib\\config.py",
+      "open-design-main\\.github\\scripts\\lib\\feishu\\client.ts",
+      "open-design-main\\.github\\scripts\\lib\\feishu\\release.ts"
+    ]
+  },
+  {
+    "archive": "langflow-main.zip",
+    "tracked": false,
+    "extracted_dir": "langflow-main",
+    "files": 4021,
+    "top_languages": ["Python:1072", "JavaScript:429", "JSON:258", "Markdown:79"],
+    "code_samples": [
+      "langflow-main\\.agents\\skills\\frontend-testing\\assets\\component-test.template.tsx",
+      "langflow-main\\.agents\\skills\\frontend-testing\\assets\\hook-test.template.ts",
+      "langflow-main\\.agents\\skills\\frontend-testing\\assets\\utility-test.template.ts",
+      "langflow-main\\docs\\aceconfig.js",
+      "langflow-main\\docs\\babel.config.js",
+      "langflow-main\\docs\\css\\code.css"
+    ]
+  },
+  {
+    "archive": "open-science-main.zip",
+    "tracked": false,
+    "extracted_dir": "open-science-main",
+    "files": 4018,
+    "top_languages": ["TypeScript:2948", "Markdown:210", "JSON:66", "Python:25"],
+    "code_samples": [
+      "open-science-main\\build\\packaging.test.ts",
+      "open-science-main\\cli\\config-root.test.ts",
+      "open-science-main\\cli\\connector-management.test.ts",
+      "open-science-main\\cli\\index.test.ts",
+      "open-science-main\\cli\\lifecycle.test.ts",
+      "open-science-main\\cli\\locate-app.test.ts"
+    ]
+  },
+  {
+    "archive": "LibreChat-main.zip",
+    "tracked": false,
+    "extracted_dir": "LibreChat-main",
+    "files": 4015,
+    "top_languages": ["TypeScript:2991", "JavaScript:697", "JSON:67", "Markdown:37"],
+    "code_samples": [
+      "LibreChat-main\\.husky\\lint-staged.config.js",
+      "LibreChat-main\\api\\app\\clients\\BaseClient.js",
+      "LibreChat-main\\api\\app\\clients\\index.js",
+      "LibreChat-main\\api\\app\\clients\\OllamaClient.js",
+      "LibreChat-main\\api\\app\\clients\\prompts\\artifacts.js",
+      "LibreChat-main\\api\\app\\clients\\prompts\\createContextHandlers.js"
+    ]
+  },
+  {
+    "archive": "warp-master.zip",
+    "tracked": false,
+    "extracted_dir": "warp-master",
+    "files": 4014,
+    "top_languages": ["Rust:2878", "JSON:134", "Markdown:100", "TOML:50"],
+    "code_samples": [
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\add_tui_updates.py",
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\build_slack_payload.py",
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\classify_contributors.py",
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\convert_to_release_json.py",
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\extract_feature_flags.py",
+      "warp-master\\.agents\\skills\\changelog-draft\\scripts\\fetch_issue_reporters.py"
+    ]
+  },
+  {
+    "archive": "awesome-dsh-plugin-main.zip",
+    "tracked": false,
+    "extracted_dir": "awesome-dsh-plugin-main",
+    "files": 3820,
+    "top_languages": ["Python:31", "JSON:21", "Markdown:12"],
+    "code_samples": [
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\core.py",
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\design_system.py",
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\reasoning_contract.py",
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\search.py",
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\tests\\test_catalog_refresh.py",
+      "awesome-dsh-plugin-main\\.agents\\skills\\ui-ux-pro-max\\scripts\\tests\\test_core.py"
+    ]
+  },
+  {
+    "archive": "open-pencil-master.zip",
+    "tracked": true,
+    "extracted_dir": "open-pencil-master",
+    "files": 3461,
+    "top_languages": ["TypeScript:2346", "Markdown:354", "Vue:275", "JSON:266"],
+    "code_samples": [
+      "open-pencil-master\\.gitleaks.toml",
+      "open-pencil-master\\.storybook\\main.ts",
+      "open-pencil-master\\.storybook\\preview.ts",
+      "open-pencil-master\\bunfig.toml",
+      "open-pencil-master\\desktop\\build.rs",
+      "open-pencil-master\\desktop\\Cargo.toml"
+    ]
+  },
+  {
+    "archive": "composio-next.zip",
+    "tracked": false,
+    "extracted_dir": "composio-next",
+    "files": 3314,
+    "top_languages": ["TypeScript:1251", "Markdown:643", "JSON:251", "Python:210"],
+    "code_samples": [
+      "composio-next\\.gitleaks.toml",
+      "composio-next\\docs\\agent\\agent.ts",
+      "composio-next\\docs\\agent\\channels\\eve.ts",
+      "composio-next\\docs\\agent\\lib\\docs-search.ts",
+      "composio-next\\docs\\agent\\lib\\docs.ts",
+      "composio-next\\docs\\agent\\tools\\bash.ts"
+    ]
+  },
+  {
+    "archive": "DeepTutor-main.zip",
+    "tracked": false,
+    "extracted_dir": "DeepTutor-main\\DeepTutor-main",
+    "files": 3081,
+    "top_languages": ["Python:1574", "TypeScript:966", "Markdown:146", "JSON:25"],
+    "code_samples": [
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\base_agent.py",
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\chat\\agentic_pipeline.py",
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\chat\\capability.py",
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\chat\\__init__.py",
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\loop\\agent_loop.py",
+      "DeepTutor-main\\DeepTutor-main\\deeptutor\\agents\\loop\\ask_user_drafts.py"
+    ]
+  },
+  {
+    "archive": "pydantic-ai-main.zip",
+    "tracked": false,
+    "extracted_dir": "pydantic-ai-main",
+    "files": 2756,
+    "top_languages": ["Python:800", "Markdown:354", "TOML:7", "JSON:5"],
+    "code_samples": [
+      "pydantic-ai-main\\.claude\\skills\\testing-skill\\parse_cassette.py",
+      "pydantic-ai-main\\.github\\scripts\\agentic_workflow_guard.py",
+      "pydantic-ai-main\\.github\\scripts\\agent_spend_report.py",
+      "pydantic-ai-main\\.github\\scripts\\check_api_compatibility.py",
+      "pydantic-ai-main\\.github\\scripts\\check_http_dependencies.py",
+      "pydantic-ai-main\\.github\\scripts\\ci_duration.py"
+    ]
+  },
+  {
+    "archive": "OpenCLI-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenCLI-main",
+    "files": 2595,
+    "top_languages": ["JavaScript:1962", "Markdown:313", "TypeScript:249", "JSON:19"],
+    "code_samples": [
+      "OpenCLI-main\\autoresearch\\commands\\debug.ts",
+      "OpenCLI-main\\autoresearch\\commands\\fix.ts",
+      "OpenCLI-main\\autoresearch\\commands\\plan.ts",
+      "OpenCLI-main\\autoresearch\\commands\\run.ts",
+      "OpenCLI-main\\autoresearch\\config.ts",
+      "OpenCLI-main\\autoresearch\\engine.ts"
+    ]
+  },
+  {
+    "archive": "letta-code-main.zip",
+    "tracked": false,
+    "extracted_dir": "letta-code-main",
+    "files": 2279,
+    "top_languages": ["TypeScript:1960", "Markdown:148", "JSON:62", "JavaScript:22"],
+    "code_samples": [
+      "letta-code-main\\bin\\letta.js",
+      "letta-code-main\\build.js",
+      "letta-code-main\\bunfig.toml",
+      "letta-code-main\\docs\\examples\\mods\\memory-citations.ts",
+      "letta-code-main\\hooks\\get-api-key.ts",
+      "letta-code-main\\hooks\\memory_logger.py"
+    ]
+  },
+  {
+    "archive": "OpenHands-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenHands-main",
+    "files": 2272,
+    "top_languages": ["TypeScript:1949", "Markdown:30", "JSON:13", "Python:10"],
+    "code_samples": [
+      "OpenHands-main\\.github\\scripts\\check_issue_readiness.py",
+      "OpenHands-main\\.github\\scripts\\check_pr_description.py",
+      "OpenHands-main\\.github\\scripts\\markdown_sections.py",
+      "OpenHands-main\\.github\\scripts\\tests\\test_issue_readiness.py",
+      "OpenHands-main\\.github\\scripts\\tests\\test_markdown_sections.py",
+      "OpenHands-main\\.github\\scripts\\tests\\test_pr_description.py"
+    ]
+  },
+  {
+    "archive": "Kiln-main.zip",
+    "tracked": false,
+    "extracted_dir": "Kiln-main",
+    "files": 2033,
+    "top_languages": ["Python:681", "Markdown:427", "TypeScript:256", "JSON:254"],
+    "code_samples": [
+      "Kiln-main\\.agents\\scripts\\provider_utils.py",
+      "Kiln-main\\.agents\\skills\\kiln-check-deprecation\\scripts\\check_provider.py",
+      "Kiln-main\\.agents\\skills\\kiln-check-deprecation\\scripts\\extract_models.py",
+      "Kiln-main\\.agents\\skills\\kiln-check-finetune-deprecation\\scripts\\check_finetune.py",
+      "Kiln-main\\.agents\\skills\\release-digest\\scripts\\gather_changes.py",
+      "Kiln-main\\.config\\wt\\config.toml"
+    ]
+  },
+  {
+    "archive": "CLI-Anything-main.zip",
+    "tracked": false,
+    "extracted_dir": "CLI-Anything-main\\CLI-Anything-main",
+    "files": 1870,
+    "top_languages": ["Python:1267", "Markdown:441", "JSON:24", "JavaScript:8"],
+    "code_samples": [
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\generate_meta_skill.py",
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\pr-labeler.js",
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\sync_root_skills.py",
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\tests\\pr-labeler.test.js",
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\tests\\test_update_registry_dates.py",
+      "CLI-Anything-main\\CLI-Anything-main\\.github\\scripts\\update_registry_dates.py"
+    ]
+  },
+  {
+    "archive": "just-bash-main.zip",
+    "tracked": false,
+    "extracted_dir": "just-bash-main",
+    "files": 1772,
+    "top_languages": ["TypeScript:1100", "JSON:67", "Markdown:38", "JavaScript:18"],
+    "code_samples": [
+      "just-bash-main\\examples\\bash-agent\\agent.ts",
+      "just-bash-main\\examples\\bash-agent\\main.ts",
+      "just-bash-main\\examples\\bash-agent\\shell.ts",
+      "just-bash-main\\examples\\cjs-consumer\\index.ts",
+      "just-bash-main\\examples\\custom-command\\commands.ts",
+      "just-bash-main\\examples\\custom-command\\main.ts"
+    ]
+  },
+  {
+    "archive": "cockpit-tools-main.zip",
+    "tracked": true,
+    "extracted_dir": "cockpit-tools-main",
+    "files": 1668,
+    "top_languages": ["Go:470", "TypeScript:456", "Rust:390", "CSS:69"],
+    "code_samples": [
+      "cockpit-tools-main\\Cargo.toml",
+      "cockpit-tools-main\\crates\\cockpit-cli\\Cargo.toml",
+      "cockpit-tools-main\\crates\\cockpit-cli\\src\\main.rs",
+      "cockpit-tools-main\\crates\\cockpit-core\\Cargo.toml",
+      "cockpit-tools-main\\crates\\cockpit-core\\src\\error.rs",
+      "cockpit-tools-main\\crates\\cockpit-core\\src\\lib.rs"
+    ]
+  },
+  {
+    "archive": "autogen-main.zip",
+    "tracked": false,
+    "extracted_dir": "autogen-main",
+    "files": 1531,
+    "top_languages": ["Python:392", "Markdown:159", "JSON:38", "TypeScript:25"],
+    "code_samples": [
+      "autogen-main\\docs\\dotnet\\template\\public\\main.css",
+      "autogen-main\\docs\\dotnet\\template\\public\\main.js",
+      "autogen-main\\dotnet\\test\\Microsoft.AutoGen.Integration.Tests.AppHosts\\core_xlang_hello_python_agent\\hello_python_agent.py",
+      "autogen-main\\dotnet\\test\\Microsoft.AutoGen.Integration.Tests.AppHosts\\core_xlang_hello_python_agent\\protos\\agent_events_pb2.py",
+      "autogen-main\\dotnet\\test\\Microsoft.AutoGen.Integration.Tests.AppHosts\\core_xlang_hello_python_agent\\protos\\agent_events_pb2_grpc.py",
+      "autogen-main\\dotnet\\test\\Microsoft.AutoGen.Integration.Tests.AppHosts\\core_xlang_hello_python_agent\\protos\\__init__.py"
+    ]
+  },
+  {
+    "archive": "nanobot-main.zip",
+    "tracked": true,
+    "extracted_dir": "nanobot-main",
+    "files": 1440,
+    "top_languages": ["Python:737", "TypeScript:361", "JSON:191", "Markdown:101"],
+    "code_samples": [
+      "nanobot-main\\conftest.py",
+      "nanobot-main\\hatch_build.py",
+      "nanobot-main\\nanobot\\agent\\autocompact.py",
+      "nanobot-main\\nanobot\\agent\\automation_turns.py",
+      "nanobot-main\\nanobot\\agent\\context.py",
+      "nanobot-main\\nanobot\\agent\\context_governance.py"
+    ]
+  },
+  {
+    "archive": "OpenSpace-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenSpace-main",
+    "files": 1310,
+    "top_languages": ["Python:440", "Markdown:275", "TypeScript:248", "JSON:21"],
+    "code_samples": [
+      "OpenSpace-main\\apps\\dashboard\\postcss.config.js",
+      "OpenSpace-main\\apps\\dashboard\\src\\api\\client.ts",
+      "OpenSpace-main\\apps\\dashboard\\src\\api\\evolution.ts",
+      "OpenSpace-main\\apps\\dashboard\\src\\api\\index.ts",
+      "OpenSpace-main\\apps\\dashboard\\src\\api\\overview.ts",
+      "OpenSpace-main\\apps\\dashboard\\src\\api\\skills.ts"
+    ]
+  },
+  {
+    "archive": "LightRAG-main.zip",
+    "tracked": false,
+    "extracted_dir": "LightRAG-main",
+    "files": 1271,
+    "top_languages": ["Python:768", "TypeScript:232", "Markdown:79", "JSON:40"],
+    "code_samples": [
+      "LightRAG-main\\examples\\generate_query.py",
+      "LightRAG-main\\examples\\graph_visual_with_html.py",
+      "LightRAG-main\\examples\\graph_visual_with_neo4j.py",
+      "LightRAG-main\\examples\\graph_visual_with_opensearch.py",
+      "LightRAG-main\\examples\\insert_custom_kg.py",
+      "LightRAG-main\\examples\\lightrag_ag2_multiagent_demo.py"
+    ]
+  },
+  {
+    "archive": "ConfigStream-main.zip",
+    "tracked": false,
+    "extracted_dir": "ConfigStream-main",
+    "files": 1169,
+    "top_languages": ["Python:621", "JavaScript:68", "Markdown:67", "JSON:42"],
+    "code_samples": [
+      "ConfigStream-main\\.gitleaks.toml",
+      "ConfigStream-main\\assets\\architecture-dashboard.css",
+      "ConfigStream-main\\assets\\architecture-dashboard.js",
+      "ConfigStream-main\\frontend\\assets\\css\\error-handler.css",
+      "ConfigStream-main\\frontend\\assets\\css\\header-animation.css",
+      "ConfigStream-main\\frontend\\assets\\css\\loading.css"
+    ]
+  },
+  {
+    "archive": "awesome-claude-skills-master.zip",
+    "tracked": false,
+    "extracted_dir": "awesome-claude-skills-master",
+    "files": 1142,
+    "top_languages": ["Markdown:892", "Python:62", "JSON:2", "JavaScript:1"],
+    "code_samples": [
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\pack.py",
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\unpack.py",
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\validate.py",
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\validation\\base.py",
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\validation\\docx.py",
+      "awesome-claude-skills-master\\document-skills\\docx\\ooxml\\scripts\\validation\\pptx.py"
+    ]
+  },
+  {
+    "archive": "AntigravityManager-main.zip",
+    "tracked": true,
+    "extracted_dir": "AntigravityManager-main",
+    "files": 1092,
+    "top_languages": ["TypeScript:651", "Markdown:284", "JSON:17", "Python:10"],
+    "code_samples": [
+      "AntigravityManager-main\\.agent\\skills\\ui-ux-pro-max\\scripts\\core.py",
+      "AntigravityManager-main\\.agent\\skills\\ui-ux-pro-max\\scripts\\design_system.py",
+      "AntigravityManager-main\\.agent\\skills\\ui-ux-pro-max\\scripts\\search.py",
+      "AntigravityManager-main\\.codex\\skills\\ui-ux-pro-max\\scripts\\core.py",
+      "AntigravityManager-main\\.codex\\skills\\ui-ux-pro-max\\scripts\\design_system.py",
+      "AntigravityManager-main\\.codex\\skills\\ui-ux-pro-max\\scripts\\search.py"
+    ]
+  },
+  {
+    "archive": "DeepCode-main.zip",
+    "tracked": true,
+    "extracted_dir": "DeepCode-main\\DeepCode-main",
+    "files": 998,
+    "top_languages": ["Python:587", "TypeScript:142", "Markdown:73", "CSS:26"],
+    "code_samples": [
+      "DeepCode-main\\DeepCode-main\\app_server\\blocking_client.py",
+      "DeepCode-main\\DeepCode-main\\app_server\\browser_auth.py",
+      "DeepCode-main\\DeepCode-main\\app_server\\config_watch.py",
+      "DeepCode-main\\DeepCode-main\\app_server\\connection.py",
+      "DeepCode-main\\DeepCode-main\\app_server\\dispatcher.py",
+      "DeepCode-main\\DeepCode-main\\app_server\\errors.py"
+    ]
+  },
+  {
+    "archive": "CowAgent-master.zip",
+    "tracked": false,
+    "extracted_dir": "CowAgent-master",
+    "files": 983,
+    "top_languages": ["Python:464", "TypeScript:92", "Markdown:30", "JavaScript:17"],
+    "code_samples": [
+      "CowAgent-master\\agent\\admin.py",
+      "CowAgent-master\\agent\\chat\\service.py",
+      "CowAgent-master\\agent\\chat\\session_service.py",
+      "CowAgent-master\\agent\\chat\\__init__.py",
+      "CowAgent-master\\agent\\evolution\\backup.py",
+      "CowAgent-master\\agent\\evolution\\config.py"
+    ]
+  },
+  {
+    "archive": "pinpoint-master.zip",
+    "tracked": false,
+    "extracted_dir": "pinpoint-master",
+    "files": 983,
+    "top_languages": ["Markdown:172", "JSON:63", "JavaScript:12", "TypeScript:7"],
+    "code_samples": [
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\apps\\web\\eslint.config.js",
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\apps\\web\\playwright.config.ts",
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\apps\\web\\postcss.config.js",
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\apps\\web\\tailwind.config.js",
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\apps\\web\\vite.config.ts",
+      "pinpoint-master\\web-frontend\\src\\main\\v3\\packages\\datetime-picker\\eslint.config.js"
+    ]
+  },
+  {
+    "archive": "rowboat-main.zip",
+    "tracked": false,
+    "extracted_dir": "rowboat-main",
+    "files": 976,
+    "top_languages": ["TypeScript:806", "JSON:44", "Markdown:38", "CSS:8"],
+    "code_samples": [
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\api.ts",
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\blob.ts",
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\changeset.ts",
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\core.ts",
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\errors.ts",
+      "rowboat-main\\apps\\harbor\\packages\\protocol\\src\\events.ts"
+    ]
+  },
+  {
+    "archive": "HELIX-main.zip",
+    "tracked": false,
+    "extracted_dir": "HELIX-main\\HELIX-main",
+    "files": 974,
+    "top_languages": ["TypeScript:454", "JSON:296", "Markdown:82", "Python:2"],
+    "code_samples": [
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\index.ts",
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\plugin.ts",
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\profile.ts",
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\prompt.ts",
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\provider.ts",
+      "HELIX-main\\HELIX-main\\packages\\adapters-hermes\\src\\atoms\\session.ts"
+    ]
+  },
+  {
+    "archive": "AI-Researcher-main.zip",
+    "tracked": false,
+    "extracted_dir": "AI-Researcher-main\\AI-Researcher-main",
+    "files": 964,
+    "top_languages": ["Python:182", "JSON:62", "Markdown:17", "TOML:1"],
+    "code_samples": [
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\diffu_flow\\metaprompt.py",
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\gnn\\metaprompt.py",
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\reasoning\\math_reasoning\\constant.py",
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\reasoning\\math_reasoning\\get_score.py",
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\reasoning\\math_reasoning\\prompts.py",
+      "AI-Researcher-main\\AI-Researcher-main\\benchmark\\process\\dataset_candidate\\reasoning\\math_reasoning\\run_infer.py"
+    ]
+  },
+  {
+    "archive": "E2B-main.zip",
+    "tracked": false,
+    "extracted_dir": "E2B-main",
+    "files": 897,
+    "top_languages": ["Python:433", "TypeScript:301", "Markdown:29", "JSON:20"],
+    "code_samples": [
+      "E2B-main\\packages\\cli\\src\\api.ts",
+      "E2B-main\\packages\\cli\\src\\commands\\auth\\configure.ts",
+      "E2B-main\\packages\\cli\\src\\commands\\auth\\index.ts",
+      "E2B-main\\packages\\cli\\src\\commands\\auth\\info.ts",
+      "E2B-main\\packages\\cli\\src\\commands\\auth\\login.ts",
+      "E2B-main\\packages\\cli\\src\\commands\\auth\\logout.ts"
+    ]
+  },
+  {
+    "archive": "OpenRefine-master.zip",
+    "tracked": false,
+    "extracted_dir": "OpenRefine-master",
+    "files": 869,
+    "top_languages": ["JSON:187", "JavaScript:125", "CSS:51", "Markdown:15"],
+    "code_samples": [
+      "OpenRefine-master\\.github\\workflows\\label_transfer\\script.py",
+      "OpenRefine-master\\extensions\\database\\module\\MOD-INF\\controller.js",
+      "OpenRefine-master\\extensions\\database\\module\\scripts\\database-extension.js",
+      "OpenRefine-master\\extensions\\database\\module\\scripts\\index\\database-import-controller.js",
+      "OpenRefine-master\\extensions\\database\\module\\scripts\\index\\database-source-ui.js",
+      "OpenRefine-master\\extensions\\database\\module\\scripts\\index\\jquery.contextMenu.js"
+    ]
+  },
+  {
+    "archive": "open-code-review-main.zip",
+    "tracked": false,
+    "extracted_dir": "open-code-review-main",
+    "files": 833,
+    "top_languages": ["Go:335", "Markdown:200", "TypeScript:115", "JSON:35"],
+    "code_samples": [
+      "open-code-review-main\\bin\\ocr.js",
+      "open-code-review-main\\bin\\ocr.test.js",
+      "open-code-review-main\\cmd\\opencodereview\\apply_provider_field_test.go",
+      "open-code-review-main\\cmd\\opencodereview\\arg_errors.go",
+      "open-code-review-main\\cmd\\opencodereview\\arg_errors_test.go",
+      "open-code-review-main\\cmd\\opencodereview\\background_file.go"
+    ]
+  },
+  {
+    "archive": "extensions-main.zip",
+    "tracked": false,
+    "extracted_dir": "extensions-main",
+    "files": 822,
+    "top_languages": ["JSON:342", "Markdown:310", "Python:93", "JavaScript:7"],
+    "code_samples": [
+      "extensions-main\\.github\\scripts\\check_issue_readiness.py",
+      "extensions-main\\.github\\scripts\\check_pr_description.py",
+      "extensions-main\\.github\\scripts\\refresh_linked_pr_checks.py",
+      "extensions-main\\automations\\bundle-index.js",
+      "extensions-main\\automations\\catalog-index.js",
+      "extensions-main\\automations\\index.d.ts"
+    ]
+  },
+  {
+    "archive": "llama-agents-main.zip",
+    "tracked": false,
+    "extracted_dir": "llama-agents-main",
+    "files": 795,
+    "top_languages": ["Python:485", "Markdown:101", "Go:21", "JSON:19"],
+    "code_samples": [
+      "llama-agents-main\\.github\\scripts\\test_appserver_package.py",
+      "llama-agents-main\\.taplo.toml",
+      "llama-agents-main\\docs\\api_docs\\docs\\api_reference\\_static\\css\\algolia.css",
+      "llama-agents-main\\docs\\api_docs\\docs\\api_reference\\_static\\css\\custom.css",
+      "llama-agents-main\\docs\\api_docs\\docs\\api_reference\\_static\\js\\algolia.js",
+      "llama-agents-main\\docs\\api_docs\\docs\\api_reference\\_static\\js\\leadfeeder.js"
+    ]
+  },
+  {
+    "archive": "claude-code-tools-main.zip",
+    "tracked": false,
+    "extracted_dir": "claude-code-tools-main",
+    "files": 773,
+    "top_languages": ["Python:345", "Markdown:101", "TypeScript:94", "JSON:38"],
+    "code_samples": [
+      "claude-code-tools-main\\.codex\\workflows\\architect-workflow-monitor-cli.js",
+      "claude-code-tools-main\\.codex\\workflows\\certify-workflow-monitor-cli.js",
+      "claude-code-tools-main\\.codex\\workflows\\continue-workflow-monitor-cli.js",
+      "claude-code-tools-main\\.codex\\workflows\\finish-workflow-monitor-cli.js",
+      "claude-code-tools-main\\claude_code_tools\\action_rpc.py",
+      "claude-code-tools-main\\claude_code_tools\\agent_tunnel\\backends.py"
+    ]
+  },
+  {
+    "archive": "dsh-desktop-main.zip",
+    "tracked": false,
+    "extracted_dir": "dsh-desktop-main",
+    "files": 747,
+    "top_languages": ["TypeScript:209", "Markdown:70", "JSON:48", "JavaScript:24"],
+    "code_samples": [
+      "dsh-desktop-main\\.github\\scripts\\feishu_release_notes.py",
+      "dsh-desktop-main\\.github\\scripts\\github_release_notes.py",
+      "dsh-desktop-main\\electron.vite.config.ts",
+      "dsh-desktop-main\\packages\\dsh-desktop-client-ui\\client.js",
+      "dsh-desktop-main\\packages\\dsh-desktop-client-ui\\index.js",
+      "dsh-desktop-main\\packages\\dsh-desktop-hmr-fallback\\index.js"
+    ]
+  },
+  {
+    "archive": "claude-code-system-prompts-main.zip",
+    "tracked": false,
+    "extracted_dir": "claude-code-system-prompts-main",
+    "files": 713,
+    "top_languages": ["Markdown:708", "JavaScript:1"],
+    "code_samples": ["claude-code-system-prompts-main\\tools\\updatePrompts.js"]
+  },
+  {
+    "archive": "colibri-main.zip",
+    "tracked": false,
+    "extracted_dir": "colibri-main",
+    "files": 696,
+    "top_languages": ["Python:205", "Markdown:63", "JSON:39", "TypeScript:29"],
+    "code_samples": [
+      "colibri-main\\c\\autotune.py",
+      "colibri-main\\c\\cluster.py",
+      "colibri-main\\c\\doctor.py",
+      "colibri-main\\c\\download_fp8.py",
+      "colibri-main\\c\\experiment_manifest.py",
+      "colibri-main\\c\\family_registry.py"
+    ]
+  },
+  {
+    "archive": "Async-master.zip",
+    "tracked": false,
+    "extracted_dir": "Async-master",
+    "files": 675,
+    "top_languages": ["TypeScript:561", "Markdown:43", "CSS:8", "JSON:3"],
+    "code_samples": [
+      "Async-master\\main-src\\agent\\agentConversationContext.test.ts",
+      "Async-master\\main-src\\agent\\agentConversationContext.ts",
+      "Async-master\\main-src\\agent\\agentForkPolicy.test.ts",
+      "Async-master\\main-src\\agent\\agentForkPolicy.ts",
+      "Async-master\\main-src\\agent\\agentLoop.ts",
+      "Async-master\\main-src\\agent\\agentMemory.test.ts"
+    ]
+  },
+  {
+    "archive": "awesome-claude-code-toolkit-main.zip",
+    "tracked": false,
+    "extracted_dir": "awesome-claude-code-toolkit-main",
+    "files": 636,
+    "top_languages": ["Markdown:473", "JSON:139", "JavaScript:19", "Python:1"],
+    "code_samples": [
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\auto-test.js",
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\block-dev-server.js",
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\block-md-creation.js",
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\bundle-check.js",
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\commit-guard.js",
+      "awesome-claude-code-toolkit-main\\hooks\\scripts\\context-loader.js"
+    ]
+  },
+  {
+    "archive": "context-mode-main.zip",
+    "tracked": false,
+    "extracted_dir": "context-mode-main",
+    "files": 599,
+    "top_languages": ["TypeScript:320", "Markdown:58", "JSON:56", "TOML:1"],
+    "code_samples": [
+      "context-mode-main\\.openclaw-plugin\\index.ts",
+      "context-mode-main\\.pi\\extensions\\context-mode\\index.ts",
+      "context-mode-main\\configs\\codex\\config.toml",
+      "context-mode-main\\scripts\\prove-narrative-render.ts",
+      "context-mode-main\\src\\adapters\\antigravity\\index.ts",
+      "context-mode-main\\src\\adapters\\antigravity-cli\\index.ts"
+    ]
+  },
+  {
+    "archive": "DeepSearchAgents-main.zip",
+    "tracked": false,
+    "extracted_dir": "DeepSearchAgents-main",
+    "files": 523,
+    "top_languages": ["Python:208", "Markdown:128", "TypeScript:81", "CSS:17"],
+    "code_samples": [
+      "DeepSearchAgents-main\\config.template.toml",
+      "DeepSearchAgents-main\\debug-archive\\scripts\\check_ui_status.py",
+      "DeepSearchAgents-main\\debug-archive\\scripts\\test_action_thought_e2e.py",
+      "DeepSearchAgents-main\\debug-archive\\scripts\\test_agent_status_indicator.py",
+      "DeepSearchAgents-main\\debug-archive\\scripts\\test_badge_fixes.py",
+      "DeepSearchAgents-main\\debug-archive\\scripts\\test_bagua_badges.py"
+    ]
+  },
+  {
+    "archive": "agent-guides-main.zip",
+    "tracked": false,
+    "extracted_dir": "agent-guides-main",
+    "files": 520,
+    "top_languages": ["Markdown:451", "Rust:23", "TOML:10", "Python:7"],
+    "code_samples": [
+      "agent-guides-main\\areas\\software\\full-stack\\skills\\api-design-principles\\assets\\rest-api-template.py",
+      "agent-guides-main\\areas\\software\\full-stack\\skills\\api-patterns\\scripts\\api_validator.py",
+      "agent-guides-main\\bin\\agentic.js",
+      "agent-guides-main\\Cargo.toml",
+      "agent-guides-main\\docs\\site\\app.js",
+      "agent-guides-main\\docs\\site\\styles.css"
+    ]
+  },
+  {
+    "archive": "pydantic-ai-harness-main.zip",
+    "tracked": false,
+    "extracted_dir": "pydantic-ai-harness-main",
+    "files": 505,
+    "top_languages": ["Python:359", "Markdown:110", "JSON:2", "TOML:2"],
+    "code_samples": [
+      "pydantic-ai-harness-main\\examples\\coding_agent.py",
+      "pydantic-ai-harness-main\\examples\\research_agent.py",
+      "pydantic-ai-harness-main\\integration_tests\\localstack\\test_live_localstack.py",
+      "pydantic-ai-harness-main\\integration_tests\\mongodb\\test_live_mongodb.py",
+      "pydantic-ai-harness-main\\integration_tests\\redis\\test_live_redis.py",
+      "pydantic-ai-harness-main\\pydantic_ai_harness\\advisor\\_capability.py"
+    ]
+  },
+  {
+    "archive": "system_prompts_leaks-main.zip",
+    "tracked": true,
+    "extracted_dir": "system_prompts_leaks-main",
+    "files": 489,
+    "top_languages": ["Markdown:431", "TypeScript:12", "JavaScript:12", "Python:2"],
+    "code_samples": [
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\artifact.d.ts",
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\assets.d.ts",
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\claude.d.ts",
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\db.d.ts",
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\downloads.d.ts",
+      "system_prompts_leaks-main\\Anthropic\\claude-code\\skills\\artifact-capabilities\\0.2.46\\mcp.d.ts"
+    ]
+  },
+  {
+    "archive": "OpenHarness-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenHarness-main",
+    "files": 484,
+    "top_languages": ["Python:381", "TypeScript:34", "Markdown:26", "JSON:9"],
+    "code_samples": [
+      "OpenHarness-main\\autopilot-dashboard\\src\\App.tsx",
+      "OpenHarness-main\\autopilot-dashboard\\src\\components\\HeroBackground.tsx",
+      "OpenHarness-main\\autopilot-dashboard\\src\\components\\PipelineAnimation.tsx",
+      "OpenHarness-main\\autopilot-dashboard\\src\\index.css",
+      "OpenHarness-main\\autopilot-dashboard\\src\\main.tsx",
+      "OpenHarness-main\\autopilot-dashboard\\src\\types.ts"
+    ]
+  },
+  {
+    "archive": "vibekit-main.zip",
+    "tracked": true,
+    "extracted_dir": "vibekit-main",
+    "files": 483,
+    "top_languages": ["TypeScript:254", "JSON:43", "JavaScript:31", "Markdown:19"],
+    "code_samples": [
+      "vibekit-main\\packages\\auth\\src\\browser.ts",
+      "vibekit-main\\packages\\auth\\src\\index.ts",
+      "vibekit-main\\packages\\auth\\src\\node.ts",
+      "vibekit-main\\packages\\auth\\src\\oauth-web.ts",
+      "vibekit-main\\packages\\auth\\src\\oauth.ts",
+      "vibekit-main\\packages\\auth\\tsup.config.ts"
+    ]
+  },
+  {
+    "archive": "agent-browser-main.zip",
+    "tracked": false,
+    "extracted_dir": "agent-browser-main",
+    "files": 474,
+    "top_languages": ["TypeScript:206", "Rust:83", "Markdown:38", "JSON:28"],
+    "code_samples": [
+      "agent-browser-main\\benchmarks\\bench.ts",
+      "agent-browser-main\\benchmarks\\scenarios.ts",
+      "agent-browser-main\\bin\\agent-browser.js",
+      "agent-browser-main\\cli\\build.rs",
+      "agent-browser-main\\cli\\Cargo.toml",
+      "agent-browser-main\\cli\\src\\ca_bundle.rs"
+    ]
+  },
+  {
+    "archive": "Antigravity-Manager-main.zip",
+    "tracked": true,
+    "extracted_dir": "Antigravity-Manager-main",
+    "files": 452,
+    "top_languages": ["Rust:155", "TypeScript:93", "Markdown:30", "JSON:20"],
+    "code_samples": [
+      "Antigravity-Manager-main\\src\\App.css",
+      "Antigravity-Manager-main\\src\\App.tsx",
+      "Antigravity-Manager-main\\src\\components\\accounts\\AccountCard.tsx",
+      "Antigravity-Manager-main\\src\\components\\accounts\\AccountDetailsDialog.tsx",
+      "Antigravity-Manager-main\\src\\components\\accounts\\AccountErrorDialog.tsx",
+      "Antigravity-Manager-main\\src\\components\\accounts\\AccountGrid.tsx"
+    ]
+  },
+  {
+    "archive": "swe-agent-main.zip",
+    "tracked": false,
+    "extracted_dir": "swe-agent-main",
+    "files": 447,
+    "top_languages": ["Python:115", "Markdown:80", "JSON:16", "CSS:6"],
+    "code_samples": [
+      "swe-agent-main\\agent\\architect\\graph.py",
+      "swe-agent-main\\agent\\architect\\state.py",
+      "swe-agent-main\\agent\\common\\entities.py",
+      "swe-agent-main\\agent\\developer\\graph.py",
+      "swe-agent-main\\agent\\developer\\state.py",
+      "swe-agent-main\\agent\\graph.py"
+    ]
+  },
+  {
+    "archive": "AntigravityProxyLauncher-main.zip",
+    "tracked": false,
+    "extracted_dir": "AntigravityProxyLauncher-main",
+    "files": 442,
+    "top_languages": ["Go:17", "JSON:10", "Markdown:5", "Python:3"],
+    "code_samples": [
+      "AntigravityProxyLauncher-main\\cloudflare\\license-api.js",
+      "AntigravityProxyLauncher-main\\cloudflare\\wrangler.toml",
+      "AntigravityProxyLauncher-main\\tools\\mitm_proxy\\config\\config.go",
+      "AntigravityProxyLauncher-main\\tools\\mitm_proxy\\config\\config_test.go",
+      "AntigravityProxyLauncher-main\\tools\\mitm_proxy\\config\\content_extractor.go",
+      "AntigravityProxyLauncher-main\\tools\\mitm_proxy\\handler\\anthropic_handler.go"
+    ]
+  },
+  {
+    "archive": "OpenResearch-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenResearch-main",
+    "files": 435,
+    "top_languages": ["TypeScript:133", "Rust:110", "Markdown:38", "Python:38"],
+    "code_samples": [
+      "OpenResearch-main\\agent-skills\\orx-figures\\assets\\orx_figstyle.py",
+      "OpenResearch-main\\build.rs",
+      "OpenResearch-main\\Cargo.toml",
+      "OpenResearch-main\\demo\\nanochat\\base\\nanochat\\checkpoint_manager.py",
+      "OpenResearch-main\\demo\\nanochat\\base\\nanochat\\common.py",
+      "OpenResearch-main\\demo\\nanochat\\base\\nanochat\\core_eval.py"
+    ]
+  },
+  {
+    "archive": "Codex-App-Manager-main.zip",
+    "tracked": false,
+    "extracted_dir": "Codex-App-Manager-main",
+    "files": 408,
+    "top_languages": ["TypeScript:81", "Rust:80", "Markdown:51", "JSON:13"],
+    "code_samples": [
+      "Codex-App-Manager-main\\cloudflare\\manager-download-router\\src\\index.js",
+      "Codex-App-Manager-main\\cloudflare\\manager-download-router\\test\\index.test.js",
+      "Codex-App-Manager-main\\crates\\codex-mac-engine\\Cargo.toml",
+      "Codex-App-Manager-main\\crates\\codex-mac-engine\\src\\appcast.rs",
+      "Codex-App-Manager-main\\crates\\codex-mac-engine\\src\\apply.rs",
+      "Codex-App-Manager-main\\crates\\codex-mac-engine\\src\\bin\\mac_fetch.rs"
+    ]
+  },
+  {
+    "archive": "obscura-main.zip",
+    "tracked": false,
+    "extracted_dir": "obscura-main",
+    "files": 393,
+    "top_languages": ["Rust:203", "Markdown:32", "TOML:14", "Python:10"],
+    "code_samples": [
+      "obscura-main\\.cargo\\config.toml",
+      "obscura-main\\Cargo.toml",
+      "obscura-main\\crates\\obscura\\Cargo.toml",
+      "obscura-main\\crates\\obscura\\examples\\basic.rs",
+      "obscura-main\\crates\\obscura\\src\\browser.rs",
+      "obscura-main\\crates\\obscura\\src\\config.rs"
+    ]
+  },
+  {
+    "archive": "steel-browser-main.zip",
+    "tracked": false,
+    "extracted_dir": "steel-browser-main",
+    "files": 334,
+    "top_languages": ["TypeScript:192", "JSON:19", "Markdown:14", "JavaScript:5"],
+    "code_samples": [
+      "steel-browser-main\\api\\extensions\\recorder\\src\\background.js",
+      "steel-browser-main\\api\\extensions\\recorder\\src\\inject.js",
+      "steel-browser-main\\api\\openapi\\generate.ts",
+      "steel-browser-main\\api\\src\\config.ts",
+      "steel-browser-main\\api\\src\\env.ts",
+      "steel-browser-main\\api\\src\\index.ts"
+    ]
+  },
+  {
+    "archive": "agent-master.zip",
+    "tracked": false,
+    "extracted_dir": "agent-master",
+    "files": 313,
+    "top_languages": ["Go:123", "JavaScript:38", "JSON:25", "Markdown:14"],
+    "code_samples": [
+      "agent-master\\machinery\\cmd\\mp4analyze\\main.go",
+      "agent-master\\machinery\\doc.go",
+      "agent-master\\machinery\\docs\\docs.go",
+      "agent-master\\machinery\\logging.go",
+      "agent-master\\machinery\\logging_test.go",
+      "agent-master\\machinery\\main.go"
+    ]
+  },
+  {
+    "archive": "MGP-main.zip",
+    "tracked": false,
+    "extracted_dir": "MGP-main",
+    "files": 309,
+    "top_languages": ["Python:122", "Markdown:83", "JSON:71", "TOML:2"],
+    "code_samples": [
+      "MGP-main\\adapters\\base.py",
+      "MGP-main\\adapters\\file\\adapter.py",
+      "MGP-main\\adapters\\file\\__init__.py",
+      "MGP-main\\adapters\\graph\\adapter.py",
+      "MGP-main\\adapters\\graph\\__init__.py",
+      "MGP-main\\adapters\\lancedb\\adapter.py"
+    ]
+  },
+  {
+    "archive": "Copilot-manager-master.zip",
+    "tracked": false,
+    "extracted_dir": "Copilot-manager-master",
+    "files": 290,
+    "top_languages": ["Rust:97", "TypeScript:46", "Markdown:19", "JSON:16"],
+    "code_samples": [
+      "Copilot-manager-master\\src\\App.css",
+      "Copilot-manager-master\\src\\App.tsx",
+      "Copilot-manager-master\\src\\components\\accounts\\AccountCard.tsx",
+      "Copilot-manager-master\\src\\components\\accounts\\AccountDetailsDialog.tsx",
+      "Copilot-manager-master\\src\\components\\accounts\\AccountGrid.tsx",
+      "Copilot-manager-master\\src\\components\\accounts\\AccountRow.tsx"
+    ]
+  },
+  {
+    "archive": "gitui-master.zip",
+    "tracked": false,
+    "extracted_dir": "gitui-master",
+    "files": 288,
+    "top_languages": ["Rust:162", "Markdown:23", "TOML:14", "JSON:2"],
+    "code_samples": [
+      "gitui-master\\.cargo\\config.toml",
+      "gitui-master\\.clippy.toml",
+      "gitui-master\\asyncgit\\Cargo.toml",
+      "gitui-master\\asyncgit\\src\\asyncjob\\mod.rs",
+      "gitui-master\\asyncgit\\src\\blame.rs",
+      "gitui-master\\asyncgit\\src\\branches.rs"
+    ]
+  },
+  {
+    "archive": "trustclaw-main.zip",
+    "tracked": false,
+    "extracted_dir": "trustclaw-main",
+    "files": 275,
+    "top_languages": ["TypeScript:189", "Markdown:6", "JSON:6", "JavaScript:4"],
+    "code_samples": [
+      "trustclaw-main\\cli\\src\\auth.ts",
+      "trustclaw-main\\cli\\src\\bin.ts",
+      "trustclaw-main\\cli\\src\\composio-auth.ts",
+      "trustclaw-main\\cli\\src\\config.ts",
+      "trustclaw-main\\cli\\src\\cron-config.ts",
+      "trustclaw-main\\cli\\src\\deploy.ts"
+    ]
+  },
+  {
+    "archive": "AIHawk-main.zip",
+    "tracked": false,
+    "extracted_dir": "AIHawk-main",
+    "files": 255,
+    "top_languages": ["Python:106", "Markdown:100", "JavaScript:10", "JSON:7"],
+    "code_samples": [
+      "AIHawk-main\\articles\\web-research-audited\\ground_truth.py",
+      "AIHawk-main\\pyproject.toml",
+      "AIHawk-main\\scripts\\build_wiki.py",
+      "AIHawk-main\\scripts\\bundle_speaks_mcp.py",
+      "AIHawk-main\\scripts\\check_content.py",
+      "AIHawk-main\\scripts\\check_english_only.py"
+    ]
+  },
+  {
+    "archive": "agent-toolkit-main.zip",
+    "tracked": false,
+    "extracted_dir": "agent-toolkit-main",
+    "files": 247,
+    "top_languages": ["Markdown:212", "Python:12", "CSS:7", "JSON:3"],
+    "code_samples": [
+      "agent-toolkit-main\\scripts\\build_plugins.py",
+      "agent-toolkit-main\\scripts\\bump_version.py",
+      "agent-toolkit-main\\skills\\daily-meeting-update\\scripts\\claude_digest.py",
+      "agent-toolkit-main\\skills\\design-system-starter\\templates\\component-template.tsx",
+      "agent-toolkit-main\\skills\\draw-io\\scripts\\find_aws_icon.py",
+      "agent-toolkit-main\\skills\\marp-slide\\assets\\theme-business.css"
+    ]
+  },
+  {
+    "archive": "page-agent-main.zip",
+    "tracked": false,
+    "extracted_dir": "page-agent-main",
+    "files": 236,
+    "top_languages": ["TypeScript:132", "JSON:26", "Markdown:24", "JavaScript:24"],
+    "code_samples": [
+      "page-agent-main\\eslint.config.js",
+      "page-agent-main\\packages\\core\\src\\env.d.ts",
+      "page-agent-main\\packages\\core\\src\\PageAgentCore.test.ts",
+      "page-agent-main\\packages\\core\\src\\PageAgentCore.ts",
+      "page-agent-main\\packages\\core\\src\\tools\\index.ts",
+      "page-agent-main\\packages\\core\\src\\types.ts"
+    ]
+  },
+  {
+    "archive": "antigravity-pm-course-main.zip",
+    "tracked": false,
+    "extracted_dir": "antigravity-pm-course-main",
+    "files": 236,
+    "top_languages": ["Markdown:147", "TypeScript:7", "JavaScript:4", "JSON:3"],
+    "code_samples": [
+      "antigravity-pm-course-main\\website\\components\\EmailPopup.jsx",
+      "antigravity-pm-course-main\\website\\fix-frontmatter-v2.py",
+      "antigravity-pm-course-main\\website\\fix-frontmatter.py",
+      "antigravity-pm-course-main\\website\\next-env.d.ts",
+      "antigravity-pm-course-main\\website\\next-sitemap.config.js",
+      "antigravity-pm-course-main\\website\\pages\\advanced\\_meta.ts"
+    ]
+  },
+  {
+    "archive": "agent-skills-main.zip",
+    "tracked": true,
+    "extracted_dir": "agent-skills-main",
+    "files": 226,
+    "top_languages": ["Markdown:124", "JSON:33", "JavaScript:32", "TOML:18"],
+    "code_samples": [
+      "agent-skills-main\\.gemini\\commands\\build.toml",
+      "agent-skills-main\\.gemini\\commands\\code-simplify.toml",
+      "agent-skills-main\\.gemini\\commands\\constraints.toml",
+      "agent-skills-main\\.gemini\\commands\\planning.toml",
+      "agent-skills-main\\.gemini\\commands\\review.toml",
+      "agent-skills-main\\.gemini\\commands\\ship.toml"
+    ]
+  },
+  {
+    "archive": "vibe-tools-main.zip",
+    "tracked": false,
+    "extracted_dir": "vibe-tools-main",
+    "files": 224,
+    "top_languages": ["TypeScript:104", "Markdown:45", "JSON:17", "JavaScript:3"],
+    "code_samples": [
+      "vibe-tools-main\\build.js",
+      "vibe-tools-main\\eslint.config.js",
+      "vibe-tools-main\\infra\\alchemy\\alchemy-utils.ts",
+      "vibe-tools-main\\infra\\alchemy\\alchemy.run.ts",
+      "vibe-tools-main\\infra\\app\\app.vue",
+      "vibe-tools-main\\infra\\app\\index.ts"
+    ]
+  },
+  {
+    "archive": "camofox-browser-master.zip",
+    "tracked": false,
+    "extracted_dir": "camofox-browser-master",
+    "files": 222,
+    "top_languages": ["JavaScript:155", "Markdown:10", "JSON:10", "TypeScript:2"],
+    "code_samples": [
+      "camofox-browser-master\\bin\\camofox-browser.js",
+      "camofox-browser-master\\lib\\auth.js",
+      "camofox-browser-master\\lib\\browser-errors.js",
+      "camofox-browser-master\\lib\\browser-key.js",
+      "camofox-browser-master\\lib\\browser-processes.js",
+      "camofox-browser-master\\lib\\camoufox-executable.js"
+    ]
+  },
+  {
+    "archive": "mini-swe-agent-main.zip",
+    "tracked": false,
+    "extracted_dir": "mini-swe-agent-main",
+    "files": 221,
+    "top_languages": ["Python:113", "Markdown:62", "CSS:7", "JSON:4"],
+    "code_samples": [
+      "mini-swe-agent-main\\.github\\bump_version.py",
+      "mini-swe-agent-main\\docs\\assets\\bubbles.css",
+      "mini-swe-agent-main\\docs\\assets\\custom.css",
+      "mini-swe-agent-main\\docs\\assets\\gif-controls.css",
+      "mini-swe-agent-main\\docs\\assets\\image_theme.css",
+      "mini-swe-agent-main\\docs\\assets\\js\\gif-controls.js"
+    ]
+  },
+  {
+    "archive": "agents-main.zip",
+    "tracked": true,
+    "extracted_dir": "agents-main",
+    "files": 215,
+    "top_languages": ["Python:113", "Markdown:72", "TOML:6", "JSON:5"],
+    "code_samples": [
+      "agents-main\\astro-airflow-mcp\\prek.toml",
+      "agents-main\\astro-airflow-mcp\\pyproject.toml",
+      "agents-main\\astro-airflow-mcp\\src\\astro_airflow_mcp\\adapters\\airflow_v2.py",
+      "agents-main\\astro-airflow-mcp\\src\\astro_airflow_mcp\\adapters\\airflow_v3.py",
+      "agents-main\\astro-airflow-mcp\\src\\astro_airflow_mcp\\adapters\\base.py",
+      "agents-main\\astro-airflow-mcp\\src\\astro_airflow_mcp\\adapters\\__init__.py"
+    ]
+  },
+  {
+    "archive": "superpowers-main.zip",
+    "tracked": false,
+    "extracted_dir": "superpowers-main",
+    "files": 195,
+    "top_languages": ["Markdown:94", "JSON:14", "JavaScript:10", "Python:6"],
+    "code_samples": [
+      "superpowers-main\\.hermes-plugin\\__init__.py",
+      "superpowers-main\\.opencode\\plugins\\superpowers.js",
+      "superpowers-main\\.pi\\extensions\\superpowers.ts",
+      "superpowers-main\\skills\\brainstorming\\scripts\\helper.js",
+      "superpowers-main\\skills\\systematic-debugging\\condition-based-waiting-example.ts",
+      "superpowers-main\\skills\\writing-skills\\render-graphs.js"
+    ]
+  },
+  {
+    "archive": "tools-main.zip",
+    "tracked": false,
+    "extracted_dir": "tools-main",
+    "files": 190,
+    "top_languages": ["Python:165", "Markdown:7", "TOML:1"],
+    "code_samples": [
+      "tools-main\\.github\\scripts\\group-release-notes.py",
+      "tools-main\\pyproject.toml",
+      "tools-main\\src\\strands_tools\\a2a_client.py",
+      "tools-main\\src\\strands_tools\\agent_core_memory.py",
+      "tools-main\\src\\strands_tools\\agent_graph.py",
+      "tools-main\\src\\strands_tools\\batch.py"
+    ]
+  },
+  {
+    "archive": "smolagents-main.zip",
+    "tracked": false,
+    "extracted_dir": "smolagents-main",
+    "files": 185,
+    "top_languages": ["Markdown:83", "Python:75", "TOML:2"],
+    "code_samples": [
+      "smolagents-main\\docs\\source\\en\\_config.py",
+      "smolagents-main\\docs\\source\\es\\_config.py",
+      "smolagents-main\\docs\\source\\hi\\_config.py",
+      "smolagents-main\\docs\\source\\ko\\_config.py",
+      "smolagents-main\\docs\\source\\zh\\_config.py",
+      "smolagents-main\\e2b.toml"
+    ]
+  },
+  {
+    "archive": "antigravity-panel-main.zip",
+    "tracked": true,
+    "extracted_dir": "antigravity-panel-main",
+    "files": 173,
+    "top_languages": ["TypeScript:90", "JSON:37", "Markdown:18", "JavaScript:7"],
+    "code_samples": [
+      "antigravity-panel-main\\esbuild.js",
+      "antigravity-panel-main\\scripts\\check_l10n.js",
+      "antigravity-panel-main\\scripts\\debug\\fetch-real-quota.js",
+      "antigravity-panel-main\\scripts\\debug\\inspect-language-server-processes.js",
+      "antigravity-panel-main\\scripts\\debug\\inspect-windows-process-tree.js",
+      "antigravity-panel-main\\scripts\\debug\\language-server-process-utils.js"
+    ]
+  },
+  {
+    "archive": "agenticSeek-main.zip",
+    "tracked": false,
+    "extracted_dir": "agenticSeek-main",
+    "files": 156,
+    "top_languages": ["Python:62", "Markdown:14", "JavaScript:12", "JSON:5"],
+    "code_samples": [
+      "agenticSeek-main\\api.py",
+      "agenticSeek-main\\cli.py",
+      "agenticSeek-main\\frontend\\agentic-seek-front\\src\\App.css",
+      "agenticSeek-main\\frontend\\agentic-seek-front\\src\\App.js",
+      "agenticSeek-main\\frontend\\agentic-seek-front\\src\\App.test.js",
+      "agenticSeek-main\\frontend\\agentic-seek-front\\src\\colors.js"
+    ]
+  },
+  {
+    "archive": "FastAgent-main.zip",
+    "tracked": false,
+    "extracted_dir": "FastAgent-main\\FastAgent-main",
+    "files": 151,
+    "top_languages": ["Python:133", "JSON:5", "Markdown:3"],
+    "code_samples": [
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\agent_data_manager.py",
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\base.py",
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\content_processor.py",
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\coordinator.py",
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\eval_agent.py",
+      "FastAgent-main\\FastAgent-main\\fastagent\\agents\\grounding_agent.py"
+    ]
+  },
+  {
+    "archive": "HyperAgent-main.zip",
+    "tracked": false,
+    "extracted_dir": "HyperAgent-main",
+    "files": 151,
+    "top_languages": ["TypeScript:115", "Markdown:22", "JSON:3", "JavaScript:2"],
+    "code_samples": [
+      "HyperAgent-main\\examples\\browser-providers\\hyperbrowser.ts",
+      "HyperAgent-main\\examples\\custom-tool\\search\\exa.ts",
+      "HyperAgent-main\\examples\\custom-tool\\wikipedia-random-article\\run-custom-tool.ts",
+      "HyperAgent-main\\examples\\llms\\anthropic.ts",
+      "HyperAgent-main\\examples\\llms\\deepseek.ts",
+      "HyperAgent-main\\examples\\llms\\gemini.ts"
+    ]
+  },
+  {
+    "archive": "agentation-main.zip",
+    "tracked": false,
+    "extracted_dir": "agentation-main",
+    "files": 150,
+    "top_languages": ["TypeScript:83", "Markdown:14", "JSON:12", "JavaScript:1"],
+    "code_samples": [
+      "agentation-main\\mcp\\src\\cli.ts",
+      "agentation-main\\mcp\\src\\index.ts",
+      "agentation-main\\mcp\\src\\server\\events.ts",
+      "agentation-main\\mcp\\src\\server\\http.ts",
+      "agentation-main\\mcp\\src\\server\\index.ts",
+      "agentation-main\\mcp\\src\\server\\mcp.ts"
+    ]
+  },
+  {
+    "archive": "antigravity-storage-manager-master.zip",
+    "tracked": false,
+    "extracted_dir": "antigravity-storage-manager-master",
+    "files": 146,
+    "top_languages": ["TypeScript:60", "JSON:38", "JavaScript:9", "Markdown:5"],
+    "code_samples": [
+      "antigravity-storage-manager-master\\check_l10n_bundles.js",
+      "antigravity-storage-manager-master\\check_nls_keys.js",
+      "antigravity-storage-manager-master\\esbuild.js",
+      "antigravity-storage-manager-master\\jest.config.js",
+      "antigravity-storage-manager-master\\l10n\\check_consistency.js",
+      "antigravity-storage-manager-master\\l10n\\check_untranslated.js"
+    ]
+  },
+  {
+    "archive": "AnyTool-main.zip",
+    "tracked": false,
+    "extracted_dir": "AnyTool-main\\AnyTool-main",
+    "files": 134,
+    "top_languages": ["Python:117", "JSON:4", "Markdown:3", "TOML:1"],
+    "code_samples": [
+      "AnyTool-main\\AnyTool-main\\anytool\\agents\\base.py",
+      "AnyTool-main\\AnyTool-main\\anytool\\agents\\grounding_agent.py",
+      "AnyTool-main\\AnyTool-main\\anytool\\agents\\__init__.py",
+      "AnyTool-main\\AnyTool-main\\anytool\\config\\constants.py",
+      "AnyTool-main\\AnyTool-main\\anytool\\config\\grounding.py",
+      "AnyTool-main\\AnyTool-main\\anytool\\config\\loader.py"
+    ]
+  },
+  {
+    "archive": "AI-Cubby-main.zip",
+    "tracked": false,
+    "extracted_dir": "AI-Cubby-main",
+    "files": 129,
+    "top_languages": ["TypeScript:41", "Vue:15", "JSON:6", "Markdown:4"],
+    "code_samples": [
+      "AI-Cubby-main\\app\\backend\\account.ts",
+      "AI-Cubby-main\\app\\backend\\ai\\ai-manager.ts",
+      "AI-Cubby-main\\app\\backend\\ai\\content-worker.ts",
+      "AI-Cubby-main\\app\\backend\\clipboard-preload.ts",
+      "AI-Cubby-main\\app\\backend\\db\\index.ts",
+      "AI-Cubby-main\\app\\backend\\db\\profiles.ts"
+    ]
+  },
+  {
+    "archive": "agent-service-toolkit-main.zip",
+    "tracked": false,
+    "extracted_dir": "agent-service-toolkit-main",
+    "files": 127,
+    "top_languages": ["Python:81", "Markdown:18", "JSON:3", "TOML:1"],
+    "code_samples": [
+      "agent-service-toolkit-main\\pyproject.toml",
+      "agent-service-toolkit-main\\scripts\\check_live_models.py",
+      "agent-service-toolkit-main\\scripts\\create_chroma_db.py",
+      "agent-service-toolkit-main\\scripts\\e2e_ui_tests.py",
+      "agent-service-toolkit-main\\scripts\\smoke_live_app.py",
+      "agent-service-toolkit-main\\src\\agents\\agents.py"
+    ]
+  },
+  {
+    "archive": "openbrowser-master.zip",
+    "tracked": false,
+    "extracted_dir": "openbrowser-master",
+    "files": 122,
+    "top_languages": ["TypeScript:100", "JSON:10", "Markdown:5", "TOML:1"],
+    "code_samples": [
+      "openbrowser-master\\bunfig.toml",
+      "openbrowser-master\\packages\\cli\\src\\commands\\click.ts",
+      "openbrowser-master\\packages\\cli\\src\\commands\\eval.ts",
+      "openbrowser-master\\packages\\cli\\src\\commands\\extract.ts",
+      "openbrowser-master\\packages\\cli\\src\\commands\\interactive.ts",
+      "openbrowser-master\\packages\\cli\\src\\commands\\open.ts"
+    ]
+  },
+  {
+    "archive": "FastCode-main.zip",
+    "tracked": false,
+    "extracted_dir": "FastCode-main\\FastCode-main",
+    "files": 121,
+    "top_languages": ["Python:81", "Markdown:11", "TypeScript:4", "JSON:3"],
+    "code_samples": [
+      "FastCode-main\\FastCode-main\\api.py",
+      "FastCode-main\\FastCode-main\\fastcode\\agent_tools.py",
+      "FastCode-main\\FastCode-main\\fastcode\\answer_generator.py",
+      "FastCode-main\\FastCode-main\\fastcode\\cache.py",
+      "FastCode-main\\FastCode-main\\fastcode\\call_extractor.py",
+      "FastCode-main\\FastCode-main\\fastcode\\definition_extractor.py"
+    ]
+  },
+  {
+    "archive": "OpenGraph-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenGraph-main",
+    "files": 116,
+    "top_languages": ["Python:18", "Markdown:1"],
+    "code_samples": [
+      "OpenGraph-main\\graph_generation\\embedding_generation.py",
+      "OpenGraph-main\\graph_generation\\Exp_Utils\\Emailer.py",
+      "OpenGraph-main\\graph_generation\\Exp_Utils\\TimeLogger.py",
+      "OpenGraph-main\\graph_generation\\human_item_generation_gibbsSampling_embedEstimation.py",
+      "OpenGraph-main\\graph_generation\\instance_number_estimation_hierarchical.py",
+      "OpenGraph-main\\graph_generation\\itemCollecting_dfsIterator.py"
+    ]
+  },
+  {
+    "archive": "OpenRLHF-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenRLHF-main",
+    "files": 112,
+    "top_languages": ["Python:76", "Markdown:7", "TOML:1"],
+    "code_samples": [
+      "OpenRLHF-main\\examples\\python\\agent_func.py",
+      "OpenRLHF-main\\examples\\python\\agent_func_gem_multiturn.py",
+      "OpenRLHF-main\\examples\\python\\agent_func_openai_server_executor.py",
+      "OpenRLHF-main\\examples\\python\\math_reward_func.py",
+      "OpenRLHF-main\\examples\\python\\reward_func.py",
+      "OpenRLHF-main\\examples\\python\\vlm_multiturn_agent.py"
+    ]
+  },
+  {
+    "archive": "system-prompts-and-models-of-ai-tools-main.zip",
+    "tracked": false,
+    "extracted_dir": "system-prompts-and-models-of-ai-tools-main",
+    "files": 111,
+    "top_languages": ["JSON:17", "Markdown:3"],
+    "code_samples": []
+  },
+  {
+    "archive": "bVisor-main.zip",
+    "tracked": false,
+    "extracted_dir": "bVisor-main",
+    "files": 110,
+    "top_languages": ["TypeScript:10", "JSON:7", "Markdown:5"],
+    "code_samples": [
+      "bVisor-main\\src\\sdks\\node\\examples\\hello-world.ts",
+      "bVisor-main\\src\\sdks\\node\\examples\\nested-dirs.ts",
+      "bVisor-main\\src\\sdks\\node\\examples\\python-hello.ts",
+      "bVisor-main\\src\\sdks\\node\\examples\\sandbox-boundaries.ts",
+      "bVisor-main\\src\\sdks\\node\\index.ts",
+      "bVisor-main\\src\\sdks\\node\\scripts\\publish.ts"
+    ]
+  },
+  {
+    "archive": "AsyncReview-main.zip",
+    "tracked": false,
+    "extracted_dir": "AsyncReview-main",
+    "files": 109,
+    "top_languages": ["Python:50", "TypeScript:19", "Markdown:14", "JSON:8"],
+    "code_samples": [
+      "AsyncReview-main\\cli\\github_fetcher.py",
+      "AsyncReview-main\\cli\\main.py",
+      "AsyncReview-main\\cli\\output_formatter.py",
+      "AsyncReview-main\\cli\\virtual_runner.py",
+      "AsyncReview-main\\cli\\__init__.py",
+      "AsyncReview-main\\cr\\cli.py"
+    ]
+  },
+  {
+    "archive": "RAG-Anything-main.zip",
+    "tracked": false,
+    "extracted_dir": "RAG-Anything-main",
+    "files": 107,
+    "top_languages": ["Python:78", "Markdown:10", "TOML:1"],
+    "code_samples": [
+      "RAG-Anything-main\\examples\\batch_dry_run_example.py",
+      "RAG-Anything-main\\examples\\batch_processing_example.py",
+      "RAG-Anything-main\\examples\\enhanced_markdown_example.py",
+      "RAG-Anything-main\\examples\\image_format_test.py",
+      "RAG-Anything-main\\examples\\insert_content_list_example.py",
+      "RAG-Anything-main\\examples\\lmstudio_integration_example.py"
+    ]
+  },
+  {
+    "archive": "awesome-ai-system-prompts-main.zip",
+    "tracked": false,
+    "extracted_dir": "awesome-ai-system-prompts-main",
+    "files": 89,
+    "top_languages": ["Markdown:52", "JavaScript:11", "Python:6", "JSON:6"],
+    "code_samples": [
+      "awesome-ai-system-prompts-main\\Augment\\part_a.js",
+      "awesome-ai-system-prompts-main\\Augment\\part_b.js",
+      "awesome-ai-system-prompts-main\\Blackbox.ai\\Blackbox-Complete.ts",
+      "awesome-ai-system-prompts-main\\Blackbox.ai\\extraction-scripts\\v0.py",
+      "awesome-ai-system-prompts-main\\Blackbox.ai\\extraction-scripts\\v1a.py",
+      "awesome-ai-system-prompts-main\\Blackbox.ai\\extraction-scripts\\v1b.py"
+    ]
+  },
+  {
+    "archive": "async-code-main.zip",
+    "tracked": false,
+    "extracted_dir": "async-code-main",
+    "files": 85,
+    "top_languages": ["TypeScript:37", "Python:11", "JSON:4", "Markdown:4"],
+    "code_samples": [
+      "async-code-main\\async-code-web\\app\\globals.css",
+      "async-code-main\\async-code-web\\app\\layout.tsx",
+      "async-code-main\\async-code-web\\app\\page.tsx",
+      "async-code-main\\async-code-web\\app\\projects\\page.tsx",
+      "async-code-main\\async-code-web\\app\\projects\\[id]\\tasks\\page.tsx",
+      "async-code-main\\async-code-web\\app\\settings\\page.tsx"
+    ]
+  },
+  {
+    "archive": "llm-functions-main.zip",
+    "tracked": false,
+    "extracted_dir": "llm-functions-main",
+    "files": 80,
+    "top_languages": ["Markdown:15", "JavaScript:9", "Python:6", "JSON:3"],
+    "code_samples": [
+      "llm-functions-main\\agents\\demo\\tools.js",
+      "llm-functions-main\\agents\\demo\\tools.py",
+      "llm-functions-main\\agents\\json-viewer\\tools.js",
+      "llm-functions-main\\mcp\\bridge\\index.js",
+      "llm-functions-main\\mcp\\server\\index.js",
+      "llm-functions-main\\scripts\\build-declarations.js"
+    ]
+  },
+  {
+    "archive": "MiniRAG-main.zip",
+    "tracked": false,
+    "extracted_dir": "MiniRAG-main",
+    "files": 74,
+    "top_languages": ["Python:45", "Markdown:8", "JavaScript:2", "JSON:1"],
+    "code_samples": [
+      "MiniRAG-main\\graph-visuals\\graph_with_html.py",
+      "MiniRAG-main\\graph-visuals\\graph_with_neo4j.py",
+      "MiniRAG-main\\main.py",
+      "MiniRAG-main\\minirag\\api\\minirag_server.py",
+      "MiniRAG-main\\minirag\\api\\static\\js\\api.js",
+      "MiniRAG-main\\minirag\\api\\static\\js\\graph.js"
+    ]
+  },
+  {
+    "archive": "Auto-Deep-Research-main.zip",
+    "tracked": false,
+    "extracted_dir": "Auto-Deep-Research-main\\Auto-Deep-Research-main",
+    "files": 73,
+    "top_languages": ["Python:63", "Markdown:3", "TOML:1"],
+    "code_samples": [
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\agents\\system_agent\\filesurfer_agent.py",
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\agents\\system_agent\\programming_agent.py",
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\agents\\system_agent\\system_triage_agent.py",
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\agents\\system_agent\\websurfer_agent.py",
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\agents\\__init__.py",
+      "Auto-Deep-Research-main\\Auto-Deep-Research-main\\autoagent\\cli.py"
+    ]
+  },
+  {
+    "archive": "swarm-forge-main.zip",
+    "tracked": false,
+    "extracted_dir": "swarm-forge-main",
+    "files": 71,
+    "top_languages": ["Markdown:6", "Clojure:5", "JavaScript:2", "JSON:2"],
+    "code_samples": [
+      "swarm-forge-main\\bb.edn",
+      "swarm-forge-main\\test\\dashboard\\dashboard.spec.js",
+      "swarm-forge-main\\test\\dashboard\\playwright.config.js",
+      "swarm-forge-main\\test\\swarmforge\\coverage_in_process_test.clj",
+      "swarm-forge-main\\test\\swarmforge\\handoff_test.clj",
+      "swarm-forge-main\\test\\swarmforge\\pack_ui_test.clj"
+    ]
+  },
+  {
+    "archive": "dsh-agy-link-main.zip",
+    "tracked": false,
+    "extracted_dir": "dsh-agy-link-main",
+    "files": 70,
+    "top_languages": ["TypeScript:43", "Markdown:13", "JSON:3"],
+    "code_samples": [
+      "dsh-agy-link-main\\src\\client\\brand-icons.ts",
+      "dsh-agy-link-main\\src\\client\\index.ts",
+      "dsh-agy-link-main\\src\\common\\config.ts",
+      "dsh-agy-link-main\\src\\common\\pool-types.ts",
+      "dsh-agy-link-main\\src\\common\\types.ts",
+      "dsh-agy-link-main\\src\\host\\adapter.ts"
+    ]
+  },
+  {
+    "archive": "autogen-ui-main.zip",
+    "tracked": false,
+    "extracted_dir": "autogen-ui-main",
+    "files": 68,
+    "top_languages": ["TypeScript:14", "Python:13", "JavaScript:13", "JSON:5"],
+    "code_samples": [
+      "autogen-ui-main\\autogenui\\cli.py",
+      "autogen-ui-main\\autogenui\\datamodel\\app.py",
+      "autogen-ui-main\\autogenui\\datamodel\\web.py",
+      "autogen-ui-main\\autogenui\\datamodel\\__init__.py",
+      "autogen-ui-main\\autogenui\\flow.py",
+      "autogen-ui-main\\autogenui\\manager.py"
+    ]
+  },
+  {
+    "archive": "DiffGraph-main.zip",
+    "tracked": false,
+    "extracted_dir": "DiffGraph-main\\DiffGraph-main",
+    "files": 67,
+    "top_languages": ["Python:12", "Markdown:1"],
+    "code_samples": [
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\DataHandler.py",
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\main.py",
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\Model.py",
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\params.py",
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\Utils\\TimeLogger.py",
+      "DiffGraph-main\\DiffGraph-main\\DiffGraph-Rec\\Utils\\Utils.py"
+    ]
+  },
+  {
+    "archive": "MailDesk-0.2.1.zip",
+    "tracked": false,
+    "extracted_dir": "MailDesk-0.2.1",
+    "files": 44,
+    "top_languages": ["Python:22", "Markdown:6", "JavaScript:2", "CSS:1"],
+    "code_samples": [
+      "MailDesk-0.2.1\\mailmerge_app\\browser_profiles.py",
+      "MailDesk-0.2.1\\mailmerge_app\\desktop.py",
+      "MailDesk-0.2.1\\mailmerge_app\\gmail_client.py",
+      "MailDesk-0.2.1\\mailmerge_app\\google_sheets.py",
+      "MailDesk-0.2.1\\mailmerge_app\\instance.py",
+      "MailDesk-0.2.1\\mailmerge_app\\main.py"
+    ]
+  },
+  {
+    "archive": "web-ui-main.zip",
+    "tracked": false,
+    "extracted_dir": "web-ui-main",
+    "files": 42,
+    "top_languages": ["Python:28", "Markdown:2", "JSON:1"],
+    "code_samples": [
+      "web-ui-main\\src\\agent\\browser_use\\browser_use_agent.py",
+      "web-ui-main\\src\\agent\\deep_research\\deep_research_agent.py",
+      "web-ui-main\\src\\agent\\__init__.py",
+      "web-ui-main\\src\\browser\\custom_browser.py",
+      "web-ui-main\\src\\browser\\custom_context.py",
+      "web-ui-main\\src\\browser\\__init__.py"
+    ]
+  },
+  {
+    "archive": "lingxiao-ai-manager-main.zip",
+    "tracked": false,
+    "extracted_dir": "lingxiao-ai-manager-main",
+    "files": 37,
+    "top_languages": ["Rust:22", "Markdown:5", "JSON:4", "TOML:1"],
+    "code_samples": [
+      "lingxiao-ai-manager-main\\build.rs",
+      "lingxiao-ai-manager-main\\Cargo.toml",
+      "lingxiao-ai-manager-main\\src\\commands\\account.rs",
+      "lingxiao-ai-manager-main\\src\\commands\\account_store.rs",
+      "lingxiao-ai-manager-main\\src\\commands\\mod.rs",
+      "lingxiao-ai-manager-main\\src\\cursor\\account\\mod.rs"
+    ]
+  },
+  {
+    "archive": "AnyGraph-main.zip",
+    "tracked": false,
+    "extracted_dir": "AnyGraph-main\\AnyGraph-main",
+    "files": 33,
+    "top_languages": ["Python:10", "Markdown:2"],
+    "code_samples": [
+      "AnyGraph-main\\AnyGraph-main\\data_handler.py",
+      "AnyGraph-main\\AnyGraph-main\\main.py",
+      "AnyGraph-main\\AnyGraph-main\\model.py",
+      "AnyGraph-main\\AnyGraph-main\\node_classification\\data_handler.py",
+      "AnyGraph-main\\AnyGraph-main\\node_classification\\main.py",
+      "AnyGraph-main\\AnyGraph-main\\node_classification\\model.py"
+    ]
+  },
+  {
+    "archive": "LightReasoner-main.zip",
+    "tracked": false,
+    "extracted_dir": "LightReasoner-main",
+    "files": 31,
+    "top_languages": ["Python:12", "Markdown:4"],
+    "code_samples": [
+      "LightReasoner-main\\analysis\\case_study.py",
+      "LightReasoner-main\\analysis\\PPL_analysis.py",
+      "LightReasoner-main\\analysis\\preliminary_analysis.py",
+      "LightReasoner-main\\analysis\\pre_analysis_stats.py",
+      "LightReasoner-main\\analysis\\testspace\\check_vocab_alignment.py",
+      "LightReasoner-main\\analysis\\testspace\\early_test.py"
+    ]
+  },
+  {
+    "archive": "open-antigravity-patcher-main.zip",
+    "tracked": false,
+    "extracted_dir": "open-antigravity-patcher-main",
+    "files": 30,
+    "top_languages": ["Python:22", "Markdown:1"],
+    "code_samples": [
+      "open-antigravity-patcher-main\\source\\main.py",
+      "open-antigravity-patcher-main\\source\\patcher\\agy\\discovery.py",
+      "open-antigravity-patcher-main\\source\\patcher\\agy\\patcher.py",
+      "open-antigravity-patcher-main\\source\\patcher\\agy\\__init__.py",
+      "open-antigravity-patcher-main\\source\\patcher\\cli.py",
+      "open-antigravity-patcher-main\\source\\patcher\\constants.py"
+    ]
+  },
+  {
+    "archive": "gui-master.zip",
+    "tracked": false,
+    "extracted_dir": "gui-master",
+    "files": 13,
+    "top_languages": ["JSON:2", "Markdown:1"],
+    "code_samples": []
+  },
+  {
+    "archive": "letta-main.zip",
+    "tracked": false,
+    "extracted_dir": "letta-main",
+    "files": 12,
+    "top_languages": ["Markdown:7"],
+    "code_samples": []
+  },
+  {
+    "archive": "awesome-deepseek-harness-main.zip",
+    "tracked": false,
+    "extracted_dir": "awesome-deepseek-harness-main",
+    "files": 10,
+    "top_languages": ["Markdown:4", "Python:1"],
+    "code_samples": ["awesome-deepseek-harness-main\\scripts\\generate-catalog.py"]
+  },
+  {
+    "archive": "async-bash-master.zip",
+    "tracked": false,
+    "extracted_dir": "async-bash-master",
+    "files": 8,
+    "top_languages": ["Markdown:1"],
+    "code_samples": []
+  },
+  {
+    "archive": "Antigravity_sync-main.zip",
+    "tracked": false,
+    "extracted_dir": "Antigravity_sync-main",
+    "files": 6,
+    "top_languages": ["Markdown:3", "Python:1"],
+    "code_samples": ["Antigravity_sync-main\\sync_app.py"]
+  },
+  {
+    "archive": "agent-main.zip",
+    "tracked": false,
+    "extracted_dir": "agent-main",
+    "files": 6,
+    "top_languages": ["Markdown:4"],
+    "code_samples": []
+  },
+  {
+    "archive": "OpenDeepResearcher-main.zip",
+    "tracked": false,
+    "extracted_dir": "OpenDeepResearcher-main",
+    "files": 4,
+    "top_languages": ["Markdown:1"],
+    "code_samples": []
+  }
+]

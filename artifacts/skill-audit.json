@@ -1,0 +1,13 @@
+{
+  "errors": [],
+  "generatedAt": "2026-09-18T16:58:19.063Z",
+  "root": ".agents\\skills",
+  "summary": {
+    "aliases": 250,
+    "errors": 0,
+    "redirects": 14,
+    "skills": 2567,
+    "warnings": 0
+  },
+  "warnings": []
+}

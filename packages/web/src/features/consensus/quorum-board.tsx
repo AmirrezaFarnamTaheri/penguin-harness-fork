@@ -1,4 +1,3 @@
-import { S } from "../../lib/strings";
 import { useState, useMemo } from "react";
 import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
 import type { TopicStanding, TopicConsensusStatus } from "@prismshadow/penguin-core/browser";
@@ -88,7 +87,7 @@ export function QuorumBoard({
         <div className="flex flex-wrap items-center gap-1 bg-white dark:bg-gray-950 p-1 rounded-lg border border-gray-200 dark:border-gray-800">
           {(["all", "debating", "settled", "refuted"] as const).map((status) => (
             <button
-              key={S.consensus.quorum[status]}
+              key={status}
               type="button"
               aria-pressed={filter === status}
               onClick={() => setFilter(status)}
@@ -98,13 +97,13 @@ export function QuorumBoard({
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               }`}
             >
-              {S.consensus.quorum[status]}
+              {status}
             </button>
           ))}
         </div>
 
         <Button size="sm" variant="primary" onClick={() => setProposeOpen(true)}>
-          {S.consensus.quorum.propose}
+          Propose decision
         </Button>
       </div>
 
@@ -112,7 +111,7 @@ export function QuorumBoard({
       <div className="grid grid-cols-1 md:grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 gap-3.5">
         {topics.length === 0 ? (
           <div className="col-span-full p-8 text-center text-sm text-gray-600 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-800 rounded-md">
-            {S.consensus.quorum.empty}
+            No decisions in this view. Propose a decision to collect peer feedback.
           </div>
         ) : (
           topics.map((t) => {
@@ -132,7 +131,7 @@ export function QuorumBoard({
                       {t.topic}
                     </span>
                     <span className="text-sm text-gray-600 dark:text-gray-400">
-                      {S.consensus.quorum.proposer}{" "}
+                      Proposer:{" "}
                       <strong className="text-gray-600 dark:text-gray-400">{t.proposerId}</strong>
                     </span>
                   </div>
@@ -145,17 +144,16 @@ export function QuorumBoard({
                           : "bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
                     }`}
                   >
-                    {S.consensus.quorum[t.status]}
+                    {t.status}
                   </span>
                 </div>
 
                 {/* Consensus Progress Bar */}
                 <div className="flex flex-col gap-1">
                   <div className="flex flex-wrap items-center justify-between text-sm text-gray-600 dark:text-gray-400">
-                    <span>{S.consensus.quorum.peers}</span>
+                    <span>Peer endorsements:</span>
                     <span className="font-semibold text-gray-900 dark:text-gray-100">
-                      {peerEndorsements} / {threshold} {S.consensus.quorum.required} ({progressPct}
-                      %)
+                      {peerEndorsements} / {threshold} required ({progressPct}%)
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-white dark:bg-gray-950 rounded-full overflow-hidden">
@@ -174,18 +172,16 @@ export function QuorumBoard({
 
                 <details>
                   <summary className="cursor-pointer py-2 font-medium">
-                    {S.consensus.quorum.evidence}
+                    Evidence and objections
                   </summary>
                   {/* Grounded Evidence Supporters */}
                   <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800">
                     <div className="flex flex-wrap items-center justify-between text-sm text-gray-600 dark:text-gray-400 font-semibold ">
-                      <span>
-                        {S.consensus.quorum.endorsements} ({t.supporters.length})
-                      </span>
+                      <span>Endorsements ({t.supporters.length})</span>
                     </div>
                     {t.supporters.length === 0 ? (
                       <div className="text-sm text-gray-600 dark:text-gray-400 italic">
-                        {S.consensus.quorum.noEndorsements}
+                        No peer endorsements yet.
                       </div>
                     ) : (
                       t.supporters.map((s, idx) => (
@@ -201,7 +197,7 @@ export function QuorumBoard({
                               {s.agentId}:
                             </strong>{" "}
                             <span className="text-gray-600 dark:text-gray-400">
-                              {s.grounds ?? S.consensus.quorum.approved}
+                              {s.grounds ?? "Approved"}
                             </span>
                           </div>
                         </div>
@@ -213,7 +209,7 @@ export function QuorumBoard({
                   {t.refuters.length > 0 && (
                     <div className="flex flex-col gap-1.5 p-2.5 rounded-lg bg-rose-950/20 border border-rose-900/30">
                       <div className="text-sm text-rose-700 dark:text-rose-400 font-semibold ">
-                        {S.consensus.quorum.refutations} ({t.refuters.length})
+                        Refutations ({t.refuters.length})
                       </div>
                       {t.refuters.map((r, idx) => (
                         <div
@@ -244,7 +240,7 @@ export function QuorumBoard({
                         setActionError(null);
                       }}
                     >
-                      {S.consensus.quorum.refute}
+                      Refute
                     </Button>
                     <Button
                       size="sm"
@@ -257,7 +253,7 @@ export function QuorumBoard({
                         setActionError(null);
                       }}
                     >
-                      {S.consensus.quorum.endorse}
+                      Endorse with evidence
                     </Button>
                   </div>
                 )}
@@ -270,12 +266,12 @@ export function QuorumBoard({
       {/* Propose Topic Modal */}
       <Modal
         open={proposeOpen}
-        title={S.consensus.quorum.proposeTitle}
+        title="Propose a decision"
         onClose={() => setProposeOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setProposeOpen(false)}>
-              {S.consensus.quorum.cancel}
+              Cancel
             </Button>
             <Button
               size="sm"
@@ -289,7 +285,7 @@ export function QuorumBoard({
                 newThreshold > 5
               }
             >
-              {S.consensus.quorum.create}
+              Create Proposal
             </Button>
           </div>
         }
@@ -297,13 +293,13 @@ export function QuorumBoard({
         <div className="flex flex-col gap-3 text-sm text-gray-900 dark:text-gray-100">
           <div>
             <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-              {S.consensus.quorum.summary} <RequiredMark />
+              Decision Topic Summary <RequiredMark />
             </label>
             <Input
-              aria-label={S.consensus.quorum.newTopic}
+              aria-label="New topic"
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
-              placeholder={S.consensus.quorum.topicPlaceholder}
+              placeholder="e.g. Refactor AST indexing to background worker thread"
               size="sm"
             />
           </div>
@@ -311,10 +307,10 @@ export function QuorumBoard({
           <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                {S.consensus.quorum.proposerAgent}
+                Proposer Agent
               </label>
               <Input
-                aria-label={S.consensus.quorum.newProposer}
+                aria-label="New proposer"
                 value={newProposer}
                 onChange={(e) => setNewProposer(e.target.value)}
                 size="sm"
@@ -322,10 +318,10 @@ export function QuorumBoard({
             </div>
             <div>
               <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-                {S.consensus.quorum.threshold}
+                Endorsements Threshold
               </label>
               <Input
-                aria-label={S.consensus.quorum.newThreshold}
+                aria-label="New threshold"
                 type="number"
                 min="1"
                 max="5"
@@ -341,16 +337,12 @@ export function QuorumBoard({
       {/* Endorse / Refute Modal */}
       <Modal
         open={activeActionTopic !== null}
-        title={
-          actionKind === "endorse"
-            ? S.consensus.quorum.endorseTitle
-            : S.consensus.quorum.refuteTitle
-        }
+        title={actionKind === "endorse" ? "Endorse Decision Topic" : "Refute Decision Topic"}
         onClose={() => setActiveActionTopic(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setActiveActionTopic(null)}>
-              {S.consensus.quorum.cancel}
+              Cancel
             </Button>
             <Button
               size="sm"
@@ -358,9 +350,7 @@ export function QuorumBoard({
               disabled={!actionAgent.trim() || !actionGrounds.trim()}
               onClick={handleExecuteAction}
             >
-              {actionKind === "endorse"
-                ? S.consensus.quorum.confirmEndorse
-                : S.consensus.quorum.confirmRefute}
+              Confirm {actionKind === "endorse" ? "Endorsement" : "Refutation"}
             </Button>
           </div>
         }
@@ -372,16 +362,16 @@ export function QuorumBoard({
                 {actionError}
               </p>
             )}
-            {S.consensus.quorum.topic}{" "}
+            Topic:{" "}
             <strong className="text-gray-900 dark:text-gray-100">{activeActionTopic?.topic}</strong>
           </div>
 
           <div>
             <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-              {S.consensus.quorum.actingAgent}
+              Acting Agent Role
             </label>
             <Input
-              aria-label={S.consensus.quorum.actionAgent}
+              aria-label="Action agent"
               value={actionAgent}
               onChange={(e) => setActionAgent(e.target.value)}
               size="sm"
@@ -390,13 +380,13 @@ export function QuorumBoard({
 
           <div>
             <label className="block mb-1 text-gray-600 dark:text-gray-400 font-medium">
-              {S.consensus.quorum.citation} <RequiredMark />
+              Evidence or citation <RequiredMark />
             </label>
             <Input
-              aria-label={S.consensus.quorum.grounds}
+              aria-label="Action grounds"
               value={actionGrounds}
               onChange={(e) => setActionGrounds(e.target.value)}
-              placeholder={S.consensus.quorum.groundsPlaceholder}
+              placeholder="Cite the benchmark, file, or test proving this assertion..."
               size="sm"
             />
           </div>

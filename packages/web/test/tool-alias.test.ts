@@ -26,6 +26,7 @@ const EN_ALIASES: Record<string, string> = {
   input_command: "follow",
   run_subagent: "subagent",
   input_subagent: "communicate",
+  environment_info: "environment",
 };
 
 const ZH_ALIASES: Record<string, string> = {
@@ -37,6 +38,7 @@ const ZH_ALIASES: Record<string, string> = {
   input_command: "跟进命令",
   run_subagent: "子智能体",
   input_subagent: "交流",
+  environment_info: "环境",
 };
 
 /** Names that must pass through: an MCP tool, and tools no longer assembled but still in old Traces. */

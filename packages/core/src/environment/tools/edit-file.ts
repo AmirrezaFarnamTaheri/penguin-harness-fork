@@ -1,18 +1,22 @@
 /**
  * edit_file — exact-string file editing tool, a builtin tool implementation (BuiltinTool).
  *
- * Replaces `old_string` with `new_string` in an existing file. `old_string` must match the
- * file content exactly (including whitespace/indentation) and, unless `replace_all` is set,
- * occur exactly once — zero or multiple occurrences fail with an explanation telling the
- * model to fix the match or widen the context. On success the output confirms the
- * replacement count and shows a git-style unified diff of the changed regions (one hunk
- * per replacement site, nearby sites merged; capped for replace_all storms), so both the
- * model and the user can verify exactly what changed without re-reading the file. The
- * write is atomic (temp file + rename, preserving the original permission bits), so a
- * crash mid-write cannot leave the file half-edited; a symlinked path is followed to the
- * file it names, the same way the read that produced the diff was. Relative paths resolve
- * against the Workspace; absolute paths are allowed (tools run with the user's full
- * permissions, same as the shell tool).
+ * Replaces `old_string` with `new_string` in an existing file. `old_string` is matched against
+ * the file's **LF view** — the content with every line terminator normalized to LF — so a
+ * multi-line `old_string` quoted from read_file's output (which strips the `\r`) matches a file
+ * whose bytes are CRLF, and `new_string` may be written in either style too: the result is
+ * written back in the file's own dominant terminator, preserving it (see line-endings.ts).
+ * A file with no line terminators at all keeps exactly the bytes supplied. `old_string` must
+ * still be unique in that view unless `replace_all` is set (whitespace/indentation included) —
+ * zero or multiple occurrences fail with an explanation telling the model to fix the match or
+ * widen the context. On success the output confirms the replacement count and shows a
+ * git-style unified diff of the changed regions (one hunk per replacement site, nearby sites
+ * merged; capped for replace_all storms), so both the model and the user can verify exactly
+ * what changed without re-reading the file. The write is atomic (temp file + rename,
+ * preserving the original permission bits), so a crash mid-write cannot leave the file
+ * half-edited; a symlinked path is followed to the file it names, the same way the read that
+ * produced the diff was. Relative paths resolve against the Workspace; absolute paths are
+ * allowed (tools run with the user's full permissions, same as the shell tool).
  *
  * Division of responsibility with Environment (see environment.ts): non-streaming — yields
  * one final text delta; failures are explanatory text finalized as `failed`; anything
@@ -30,6 +34,14 @@ import type { ToolDefinitionConfig } from "../../interfaces/index.js";
 import type { BuiltinTool, ToolExecutionContext, ToolResult } from "./types.js";
 import { atomicWriteFile } from "../../internal/atomic-write.js";
 import { buildReplacementHunks, renderHunk } from "./diff.js";
+import {
+  countLineEndings,
+  dominantTerminatorForWrite,
+  lineEndingStyleFromCounts,
+  lineEndingStyleLabel,
+  normalizeLineEndings,
+  restoreLineEndings,
+} from "./line-endings.js";
 import { missingPathHint } from "./path-hint.js";
 import { describeArgumentError } from "./tool-arguments.js";
 
@@ -145,15 +157,28 @@ export function createEditFileTool(definition: ToolDefinitionConfig): BuiltinToo
       }
       if (signal?.aborted) return { stopReason: "aborted" };
 
-      const occurrences = countOccurrences(content, oldString);
+      // The file's line endings are the whole reason this tool normalizes: read_file strips
+      // every \r from what it shows, so an old_string quoted from that display has bare \n
+      // while the file's bytes carry \r\n. Match in the file's LF view, and write the result
+      // back in the file's dominant terminator (see line-endings.ts). An LF file's view is the
+      // content itself and the write-back is a no-op, so nothing changes for the common case.
+      const writeTerminator = dominantTerminatorForWrite(content);
+      const view = writeTerminator === null ? content : normalizeLineEndings(content, "lf");
+      const oldView = normalizeLineEndings(oldString, "lf");
+      const newView = normalizeLineEndings(newString, "lf");
+
+      const occurrences = countOccurrences(view, oldView);
       if (occurrences === 0) {
-        // A CRLF file is the classic silent mismatch: text copied from read_file's display
-        // has bare \n while the file has \r\n — say so explicitly.
-        const crlfHint = content.includes("\r\n")
-          ? " Note: the file uses CRLF (\\r\\n) line endings — a multi-line old_string must include the \\r characters."
-          : "";
+        // Matching is normalized, so a miss is genuinely about the text; the file's style is
+        // still worth naming, because it tells the model the tool has already handled \r and
+        // the fix is in the content, not the line endings.
+        const style = lineEndingStyleFromCounts(countLineEndings(content));
+        const styleHint =
+          style === "lf" || style === "none"
+            ? ""
+            : ` Note: the file uses ${lineEndingStyleLabel(style)} line endings — line endings are normalized for matching, so quote the text exactly as read_file displays it (no \\r).`;
         yield delta(
-          `old_string not found in "${filePath}". Make sure it matches the file content exactly, including whitespace and indentation.${crlfHint}`,
+          `old_string not found in "${filePath}". Make sure it matches the file content exactly, including whitespace and indentation.${styleHint}`,
         );
         return { stopReason: "fatal" };
       }
@@ -164,12 +189,13 @@ export function createEditFileTool(definition: ToolDefinitionConfig): BuiltinToo
         return { stopReason: "fatal" };
       }
 
-      const replaceStart = content.indexOf(oldString);
-      const newContent = replaceAll
-        ? content.split(oldString).join(newString)
-        : content.slice(0, replaceStart) +
-          newString +
-          content.slice(replaceStart + oldString.length);
+      const replaceStart = view.indexOf(oldView);
+      const replacedView = replaceAll
+        ? view.split(oldView).join(newView)
+        : view.slice(0, replaceStart) + newView + view.slice(replaceStart + oldView.length);
+      // Back to the file's own terminator (or the caller's bytes when the file had none).
+      const newContent =
+        writeTerminator === null ? replacedView : restoreLineEndings(replacedView, writeTerminator);
       try {
         await atomicWriteFile(resolved, newContent, {
           ...(fileMode !== undefined ? { mode: fileMode } : {}),
@@ -194,13 +220,10 @@ export function createEditFileTool(definition: ToolDefinitionConfig): BuiltinToo
       // Git-style unified diff of the changed regions, self-budgeted below the tool's
       // output cap so the leading summary line (and the elision note) always survive
       // Environment's front-keep truncation.
-      const { hunks } = buildReplacementHunks(
-        content,
-        oldString,
-        newString,
-        replaceAll,
-        MAX_DIFF_HUNKS,
-      );
+      // The diff is built in the same LF view the replacement was matched in — its site
+      // search would not find an LF old_string in CRLF content, and the rendered lines stay
+      // \r-free either way (renderHunk strips a trailing \r for display).
+      const { hunks } = buildReplacementHunks(view, oldView, newView, replaceAll, MAX_DIFF_HUNKS);
       const budget =
         definition.maxOutputLength !== undefined && definition.maxOutputLength > 0
           ? definition.maxOutputLength

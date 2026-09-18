@@ -45,9 +45,9 @@ import type {
   MemoryImportMode,
   MemoryImportResponse,
   MemoryOverviewResponse,
-  MemorySearchResponse,
   MemoryScopeExport,
   MemoryScopeInfo,
+  MemorySearchResponse,
   MemoryTransferFile,
 } from "../api/types.js";
 import { HttpError } from "../http/errors.js";
@@ -226,6 +226,44 @@ export class MemoryService {
   }
 
   /**
+   * Full-text search across every scope's topic files. Terms are matched case-insensitively
+   * against the file name and body together; relevance is the fraction of query terms present.
+   * Bound: the query is 1–1000 characters, and every file read is one already listed by
+   * `listScopes`/`topicFileNames`, so search cannot walk outside the memory directory.
+   */
+  async search(projectId: string, agentId: string, query: string): Promise<MemorySearchResponse> {
+    await this.agentConfigService.requireExists(projectId, agentId);
+    query = query.trim();
+    if (!query || query.length > 1000) throw badRequest("q must contain 1–1000 characters.");
+    const terms = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])];
+    const results: MemorySearchResponse["results"] = [];
+    if (!terms.length) return { query, results };
+    for (const scope of await this.listScopes(projectId, agentId)) {
+      if (!scope.fileCount) continue;
+      const dir = await this.requireScopeDir(projectId, agentId, scope.scopeKey);
+      for (const fileName of await this.topicFileNames(dir)) {
+        const content = await this.readTextFile(this.resolveFile(dir, fileName));
+        if (content === null) continue;
+        const corpus = `${fileName} ${content}`.toLowerCase();
+        const hits = terms.filter((term) => corpus.includes(term)).length;
+        if (!hits) continue;
+        const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
+        results.push({
+          scopeKey: scope.scopeKey,
+          fileName,
+          relevance: hits / terms.length,
+          tokens: Math.ceil(Buffer.byteLength(content, "utf8") / 4),
+          snippet: (body.split(/\r?\n/).find((line) => line.trim()) ?? fileName)
+            .trim()
+            .slice(0, 120),
+        });
+      }
+    }
+    results.sort((a, b) => b.relevance - a.relevance);
+    return { query, results };
+  }
+
+  /**
    * Inserts the `{{MEMORY}}` placeholder into the Agent's prompt template — the explicit
    * adoption path for an Agent created before Memory shipped; nothing inserts automatically.
    * Idempotent: a template that already carries it is left as it is (the refreshed overview
@@ -322,39 +360,6 @@ export class MemoryService {
     } catch {
       return [];
     }
-  }
-
-  /** Read-only lexical search; this is not the model's retrieval or an embedding score. */
-  async search(projectId: string, agentId: string, query: string): Promise<MemorySearchResponse> {
-    await this.agentConfigService.requireExists(projectId, agentId);
-    query = query.trim();
-    if (!query || query.length > 1000) throw badRequest("q must contain 1–1000 characters.");
-    const terms = [...new Set(query.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])];
-    const results: MemorySearchResponse["results"] = [];
-    if (!terms.length) return { query, results };
-    for (const scope of await this.listScopes(projectId, agentId)) {
-      if (!scope.fileCount) continue;
-      const dir = await this.requireScopeDir(projectId, agentId, scope.scopeKey);
-      for (const fileName of await this.topicFileNames(dir)) {
-        const content = await this.readTextFile(this.resolveFile(dir, fileName));
-        if (content === null) continue;
-        const corpus = `${fileName} ${content}`.toLowerCase();
-        const hits = terms.filter((term) => corpus.includes(term)).length;
-        if (!hits) continue;
-        const body = content.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, "");
-        results.push({
-          scopeKey: scope.scopeKey,
-          fileName,
-          relevance: hits / terms.length,
-          tokens: Math.ceil(Buffer.byteLength(content, "utf8") / 4),
-          snippet: (body.split(/\r?\n/).find((line) => line.trim()) ?? fileName)
-            .trim()
-            .slice(0, 120),
-        });
-      }
-    }
-    results.sort((a, b) => b.relevance - a.relevance);
-    return { query, results };
   }
 
   async listFiles(

@@ -121,7 +121,7 @@ import { AgentCockpit } from "../agent/agent-cockpit";
 import { SpendFlowPanel } from "../hud/spend-flow-panel";
 import { TopologyPage } from "../topology/topology-page";
 import { GuardianPage } from "../guardian/guardian-page";
-import { LiveConsensusPage } from "../consensus/consensus-page";
+import { ConsensusPage } from "../consensus/consensus-page";
 import { ContextBreakdownPage } from "../context/context-breakdown-page";
 import { MemoryPage } from "../memory/memory-page";
 import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
@@ -1748,7 +1748,7 @@ export function ChatPage() {
       case "guardian":
         return <GuardianPage key={selected.sessionId} embedded />;
       case "consensus":
-        return <LiveConsensusPage key={selected.sessionId} embedded />;
+        return <ConsensusPage key={selected.sessionId} embedded />;
       case "contextBreakdown":
         return (
           <ContextBreakdownPage key={selected.sessionId} embedded sessionId={selected.sessionId} />

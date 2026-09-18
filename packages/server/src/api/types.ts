@@ -1256,23 +1256,23 @@ export interface MemoryFileResponse {
   content: string;
 }
 
-/** One topic file a memory search matched, in the response's own order (most relevant first). */
+/** One topic file a lexical memory search surfaced, addressed the loaded scopes are keyed by. */
 export interface MemorySearchHit {
-  /** The scope directory the topic lives in. */
+  /** Scope directory the hit was found in, matching a listed scope's `scopeKey`. */
   scopeKey: string;
-  /** Topic file name inside that scope. */
+  /** File name inside that scope directory, e.g. `db.md`. */
   fileName: string;
-  /** Matched terms over total query terms, 0–1. */
+  /** Word-overlap relevance the server scored the file against (0–1); never an embedding score. */
   relevance: number;
-  /** Rough token count (bytes ÷ 4) of the whole file, as the recall simulator displays it. */
+  /** Estimated tokens of the matched file, bytes ÷ 4. */
   tokens: number;
-  /** First line of the topic's body, bounded — what the simulator shows as a preview. */
+  /** The matched excerpt, for a preview that quotes the line the words were found on. */
   snippet: string;
 }
 
-/** GET …/memory/search — a lexical scan of every scope's topic files. */
+/** GET …/memory/search?q= — lexical search across every scope's topic files. */
 export interface MemorySearchResponse {
-  /** The query as received, trimmed. */
+  /** The query as the server received it, so a stale answer is identifiable by its own text. */
   query: string;
   results: MemorySearchHit[];
 }

@@ -29,6 +29,7 @@
  * (AgentHub maintains the history); each turn the engine only hands it the "new" messages:
  * the user Prompt on the first turn, and the previous turn's tool_call_output afterward.
  */
+import { randomUUID } from "node:crypto";
 import {
   abortEvent,
   approvalDecision,
@@ -59,6 +60,8 @@ import {
   unwrapSyntheticBlock,
   userSteeringText,
 } from "../omnimessage/markers/index.js";
+import { RepeatToolGuard } from "../agent/repeat-tool-guard.js";
+import type { RepeatToolReminder } from "../agent/repeat-tool-guard.js";
 import type {
   ErrorCode,
   ApprovalDecision,
@@ -322,6 +325,17 @@ export interface ContextEngineDeps {
    * embedders).
    */
   backgroundNotices?: { drain(): OmniMessage[]; pending(): number };
+  /**
+   * Advisory repeat-call guard: observes approved tool calls and emits a non-blocking reminder
+   * when the same call with identical arguments repeats past a threshold — the reminder is
+   * delivered into the next turn's input to steer the agent out of an autonomous loop without
+   * crashing the session. `undefined` means the engine constructs a default `RepeatToolGuard`
+   * (thresholds [3, 5, 8]); `null` disables it entirely for a host that runs its own loop
+   * protection. One guard may be shared across engines: each keys its history by session id,
+   * or by a distinct per-engine key when the context carries no session metadata, so the
+   * engines' repeat chains never collide.
+   */
+  repeatToolGuard?: RepeatToolGuard | null;
 }
 
 const isImageMessage = (m: OmniMessage): boolean =>
@@ -332,6 +346,34 @@ const carriesSteering = (m: OmniMessage): boolean => {
   const p = m.payload as { type?: string; text?: string };
   return p.type === "image_url" || (p.type === "text" && (p.text ?? "").trim().length > 0);
 };
+
+/**
+ * Tool arguments handed to the repeat guard: parsed so the guard's deep key-sort makes two
+ * calls identical regardless of property order. A non-JSON arguments string is passed through
+ * as-is: the guard canonicalizes whatever it receives, and the same opaque string repeated is
+ * exactly the repetition the guard exists to catch.
+ */
+function parseRepeatArguments(argumentsValue: string | undefined): unknown {
+  if (!argumentsValue) return {};
+  try {
+    return JSON.parse(argumentsValue);
+  } catch {
+    return argumentsValue;
+  }
+}
+
+/**
+ * The repeat guard's per-agent key for this engine. The session id is exact when the context
+ * carries one — one engine serves one agent for its whole lifetime, and the id survives a
+ * process restart. When it does not, the key is a distinct per-engine value rather than a
+ * constant: a host that intentionally shares one guard across several `ContextEngine`s without
+ * publishing session metadata would otherwise alias every engine to the same key and collide
+ * their repeat histories, so engine B's first identical call reads as engine A's repeat #N.
+ */
+function repeatGuardKey(sessionMeta: OmniMessage | undefined): string {
+  const payload = sessionMeta?.payload as { session_id?: string } | undefined;
+  return payload?.session_id ?? `context:${randomUUID()}`;
+}
 
 /** Whether compaction is possible; when not `ok`, `compact()` is a no-op and yields no messages (see ContextEngine.compactability). */
 export type CompactAvailability = "ok" | "unsupported" | "empty" | "just_compacted";
@@ -395,6 +437,8 @@ interface TurnResult {
   receivedContent: boolean;
   /** Terminal state of this turn's LLM request (completed / failed / aborted / timeout / malformed). */
   outcome: LLMOutcome;
+  /** Advisory repeat-guard reminders raised while dispatching this turn's approved tool calls. */
+  reminders: RepeatToolReminder[];
 }
 
 /**
@@ -517,6 +561,17 @@ export class ContextEngine {
   private steeringQueue: OmniMessage[][] = [];
   /** Whether a `run` is currently in flight (gates `steer`; compaction does not count). */
   private taskRunning = false;
+  /**
+   * Advisory repeat-call guard: `undefined` only when the host explicitly disabled it
+   * (`deps.repeatToolGuard === null`); otherwise the engine's own default instance.
+   */
+  private readonly repeatGuard: RepeatToolGuard | undefined;
+  /**
+   * The guard's per-agent key: the session id when the context carries one, else a distinct
+   * per-engine value — see {@link repeatGuardKey}. What this key must never be is a constant
+   * shared by every engine that omits session metadata.
+   */
+  private readonly repeatAgentKey: string;
 
   /** Whether a `run` is in flight (the Session's notice routing keys on this: a running task delivers notices at the next boundary; an idle one goes through the host). */
   get isTaskRunning(): boolean {
@@ -566,6 +621,11 @@ export class ContextEngine {
       this.lastRequestTotal = init.lastRequestTotal ?? 0;
       this.pendingTraceRotation = init.pendingTraceRotation ?? false;
     }
+    // undefined -> the engine runs its own default guard; null -> disabled (the host owns loop
+    // protection).
+    this.repeatGuard =
+      deps.repeatToolGuard === null ? undefined : (deps.repeatToolGuard ?? new RepeatToolGuard());
+    this.repeatAgentKey = repeatGuardKey(deps.sessionMeta);
   }
 
   /** Moves the Session's thinking level mid-context (see the `thinkingLevel` field); applies from the next turn request. */
@@ -597,6 +657,11 @@ export class ContextEngine {
     // Steering window: only while this generator is being driven. The finally also covers
     // abort/failure exits — anything still queued is discarded (see steeringQueue).
     this.taskRunning = true;
+    // A new Task starts a fresh repeat chain: `run` is a new user task, so a previous task's
+    // trailing repeats must not make this task's first identical call read as repeat #N — the
+    // same reset a user interjection performs (see `steer`), at the same place the guard's
+    // history becomes this task's business.
+    this.repeatGuard?.reset(this.repeatAgentKey);
     try {
       // The return value says how the run ended (yield* propagates it): null = ran to
       // completion; a RunCutoff = ended early, with the terminal record's error pair.
@@ -625,6 +690,9 @@ export class ContextEngine {
   steer(input: OmniMessage[]): boolean {
     if (!this.taskRunning) return false;
     if (!input.some(carriesSteering)) return true;
+    // A user interjection resets the repeat chain: the guard's reminders are about the agent's
+    // own stuck loop, and the user has just changed what it should do next.
+    this.repeatGuard?.reset(this.repeatAgentKey);
     this.steeringQueue.push(input);
     return true;
   }
@@ -658,6 +726,27 @@ export class ContextEngine {
     this.steeringQueue = [];
     const messages: OmniMessage[] = [];
     for (const input of drained) messages.push(...(await this.steeringMessages(input)));
+    for (const msg of messages) {
+      yield msg;
+      await this.write(msg);
+    }
+    return messages;
+  }
+
+  /**
+   * Drains a turn's repeat-guard reminders into standalone user messages: each is yielded to the
+   * output stream and written to Trace (the user sees the nudge, like a background notice — it is
+   * real harness-authored input the consumer has never seen), and returned to ride the next
+   * request's input alongside this turn's tool outputs. The reminder exists only to change what
+   * the model does next, so that is where it must arrive; non-blocking by construction, this runs
+   * at the next-input assembly after every tool output has settled. `sender: "harness"` records
+   * the origin in Trace; it is never sent to the provider.
+   */
+  private async *deliverRepeatReminders(
+    reminders: RepeatToolReminder[],
+  ): AsyncGenerator<OmniMessage, OmniMessage[]> {
+    if (reminders.length === 0) return [];
+    const messages = reminders.map((reminder) => userText(reminder.message, "harness"));
     for (const msg of messages) {
       yield msg;
       await this.write(msg);
@@ -982,6 +1071,9 @@ export class ContextEngine {
       // OmniMessage stream and the Trace.
       const injected = [
         ...(yield* this.deliverBackgroundNotices()),
+        // A repeat-guard reminder is harness-authored advisory input, so it rides with the
+        // notices — before the user's own steering, which always comes last.
+        ...(yield* this.deliverRepeatReminders(turn.reminders)),
         ...(yield* this.deliverSteering()),
       ];
       // No tool_call this turn and nothing injected -> the Task ends (the final reply has
@@ -1174,6 +1266,8 @@ export class ContextEngine {
     const toolOutputs: OmniMessage[] = [];
     const toolCalls: OmniMessage<ToolCallPayload>[] = [];
     const callOrder: string[] = [];
+    /** Advisory reminders raised by the repeat guard while dispatching this turn's tool calls. */
+    const reminders: RepeatToolReminder[] = [];
     // This turn's complete thinking/text segments produced by the model (including partial
     // segments finalized on interruption), for carry-over flatten.
     const assistantSegments: OmniMessage[] = [];
@@ -1342,6 +1436,17 @@ export class ContextEngine {
               toolOutputs.push(denied);
               continue;
             }
+            // Advisory repeat guard (RepeatToolGuard): observe only calls that were actually
+            // approved — a denied call never ran, so it is not evidence of a loop. A returned
+            // reminder is collected on the turn and delivered with the next request's input
+            // (deliverRepeatReminders, at the next-input assembly); non-blocking by design, this
+            // never holds execution or the LLM stream.
+            const reminder = this.repeatGuard?.observe(
+              this.repeatAgentKey,
+              tc.payload.name,
+              parseRepeatArguments(tc.payload.arguments),
+            );
+            if (reminder) reminders.push(reminder);
             // Approved: run concurrently, without blocking further consumption of the LLM
             // stream or approval of the next tool.
             queue.addProducer();
@@ -1380,7 +1485,14 @@ export class ContextEngine {
       const out = byId.get(id);
       if (out) orderedOutputs.push(out);
     }
-    return { toolOutputs: orderedOutputs, toolCalls, assistantSegments, receivedContent, outcome };
+    return {
+      toolOutputs: orderedOutputs,
+      toolCalls,
+      assistantSegments,
+      receivedContent,
+      outcome,
+      reminders,
+    };
   }
 
   /**

@@ -33,6 +33,18 @@
       "types": "./dist/plugin/index.d.ts",
       "import": "./dist/plugin/index.js"
     },
+    "./codegraph": {
+      "types": "./dist/codegraph/index.d.ts",
+      "import": "./dist/codegraph/index.js"
+    },
+    "./prompts": {
+      "types": "./dist/prompts/index.d.ts",
+      "import": "./dist/prompts/index.js"
+    },
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "import": "./dist/memory/index.js"
+    },
     "./context-limits": {
       "types": "./dist/llm/context-limits.d.ts",
       "import": "./dist/llm/context-limits.js"

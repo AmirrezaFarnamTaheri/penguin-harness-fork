@@ -1,0 +1,88 @@
+{
+  "consolidations": [
+    {
+      "canonical": "android-native-dev",
+      "superseded": "minimax-android-native-dev",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies; the unprefixed name carries the full description, description_en, license and metadata that the minimax- copy drops."
+    },
+    {
+      "canonical": "fullstack-dev",
+      "superseded": "minimax-fullstack-dev",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies; canonical keeps the multi-line TRIGGER description and provenance metadata."
+    },
+    {
+      "canonical": "gif-sticker-maker",
+      "superseded": "minimax-gif-sticker-maker",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies; canonical keeps description_en, license, display_name and MiniMax source metadata."
+    },
+    {
+      "canonical": "ios-application-dev",
+      "superseded": "minimax-ios-application-dev",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical references/ trees; canonical keeps the full trigger description and Apple HIG provenance."
+    },
+    {
+      "canonical": "pptx-generator",
+      "superseded": "minimax-pptx-generator",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies; canonical keeps version, license, category and PptxGenJS/markitdown sources."
+    },
+    {
+      "canonical": "react-native-dev",
+      "superseded": "minimax-react-native-dev",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical references/ trees; canonical keeps the full trigger description and Expo/React Native provenance."
+    },
+    {
+      "canonical": "shader-dev",
+      "superseded": "minimax-shader-dev",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical reference/ and techniques/ trees; canonical keeps description_en, license and graphics category."
+    },
+    {
+      "canonical": "security-best-practices",
+      "superseded": "codex-security-best-practices",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical agents/ + references/ trees; the unprefixed name is the discoverable one and keeps the full trigger description."
+    },
+    {
+      "canonical": "security-ownership-map",
+      "superseded": "codex-security-ownership-map",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical agents/, references/ and scripts/ trees; canonical keeps the full trigger description."
+    },
+    {
+      "canonical": "security-threat-model",
+      "superseded": "codex-security-threat-model",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies and identical agents/ + references/ trees; canonical keeps the full trigger description."
+    },
+    {
+      "canonical": "linear",
+      "superseded": "codex-linear",
+      "mode": "exact",
+      "rationale": "Byte-equivalent bodies; the service name is the corpus convention for MCP-backed skills and matches the Linear product name, while the codex- copy only repeats it."
+    },
+    {
+      "canonical": "emil-design-eng",
+      "superseded": "animations-emil-design-eng",
+      "mode": "contained",
+      "rationale": "Canonical is the upstream original (triggers, od provenance, source-commit) and a near-superset of the copy; the animations- prefix also misdescribes a design-engineering skill."
+    },
+    {
+      "canonical": "review-animations",
+      "superseded": "animations-review-animations",
+      "mode": "contained",
+      "rationale": "Canonical is the upstream original with triggers and provenance and a near-superset; the animations- prefix inverts the verb-noun routing order of the corpus."
+    },
+    {
+      "canonical": "deploy-to-vercel",
+      "superseded": "codex-vercel-deploy",
+      "mode": "subsumed",
+      "rationale": "Canonical is the official vercel-labs skill (v3.0.0, upstream provenance) and is 3x larger with a richer git-link-first workflow; the codex- copy is an older, thinner port of the same capability."
+    }
+  ]
+}

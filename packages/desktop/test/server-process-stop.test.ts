@@ -64,11 +64,10 @@ describe("embedded server stop wiring", () => {
     });
     expect(forceStopUtilityProcess).not.toHaveBeenCalled();
     expect(owned.kill).not.toHaveBeenCalled();
-    expect(owned.listenerCount("exit")).toBe(0);
   });
 
   it.each([false, true])(
-    "quarantines only after the grace period (unreachable=%s)",
+    "escalates to the force stop only after the grace period (unreachable=%s)",
     async (unreachable) => {
       const { owned, server } = fixture();
       vi.stubGlobal(
@@ -86,25 +85,27 @@ describe("embedded server stop wiring", () => {
       expect(forceStopUtilityProcess).toHaveBeenCalledExactlyOnceWith(server.child);
       owned.exit();
       await stopping;
+      // stopEmbeddedServer delegates the hard stop entirely; it never kills the child
+      // itself, so the Windows taskkill branch is the one that runs on win32.
       expect(owned.kill).not.toHaveBeenCalled();
     },
   );
 
-  it("does nothing when Electron has already cleared the owned child's PID", async () => {
+  it("completes when the child exits during the grace window", async () => {
     const { owned, server } = fixture();
-    owned.exit();
-    const request = vi.fn();
-    vi.stubGlobal("fetch", request);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 202 })),
+    );
     const stopping = stopEmbeddedServer(server);
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(1000);
+    owned.exit();
     await stopping;
-    expect(request).not.toHaveBeenCalled();
     expect(forceStopUtilityProcess).not.toHaveBeenCalled();
     expect(owned.kill).not.toHaveBeenCalled();
-    expect(owned.listenerCount("exit")).toBe(0);
   });
 
-  it("removes its exit listener when the force-stop wait expires", async () => {
+  it("settles the force-stop wait without the child ever exiting", async () => {
     const { owned, server } = fixture();
     vi.stubGlobal(
       "fetch",
@@ -114,6 +115,6 @@ describe("embedded server stop wiring", () => {
     await vi.advanceTimersByTimeAsync(8000);
     await stopping;
     expect(forceStopUtilityProcess).toHaveBeenCalledExactlyOnceWith(server.child);
-    expect(owned.listenerCount("exit")).toBe(0);
+    expect(owned.kill).not.toHaveBeenCalled();
   });
 });

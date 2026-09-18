@@ -11,8 +11,6 @@ export interface ModelComboTarget {
   label?: string;
   maxRetries?: number;
   timeoutMs?: number;
-  /** Explicit host classification; never inferred from a vendor or model name. */
-  tier?: "local_slm" | "frontier";
 }
 
 export type FallbackTrigger =
@@ -33,14 +31,7 @@ export interface ModelCombo {
   updatedAt?: string;
 }
 
-export interface CascadeRequest {
-  taskType: string;
-  /** Caller-reported failed task attempts, not provider errors or key failures. */
-  failureCount: number;
-}
-
 export interface ComboResolutionContext {
-  cascade?: CascadeRequest;
   failedTargets?: Array<{ provider: string; modelId: string; reason?: string }>;
   coolingModels?: Set<string>;
   triggerReason?: FallbackTrigger;
@@ -142,20 +133,7 @@ export class ModelComboRegistry {
     );
     const cooling = context.coolingModels ?? new Set<string>();
 
-    let targets = combo.targets;
-    if (context.cascade) {
-      const { taskType, failureCount } = context.cascade;
-      if (!Number.isSafeInteger(failureCount) || failureCount < 0) {
-        throw new Error("failureCount must be a non-negative safe integer");
-      }
-      const frontier = targets.filter((target) => target.tier === "frontier");
-      targets =
-        failureCount >= 2 || taskType === "architecture"
-          ? frontier
-          : [...targets.filter((target) => target.tier === "local_slm"), ...frontier];
-    }
-
-    for (const target of targets) {
+    for (const target of combo.targets) {
       const key = `${target.provider}:${target.modelId}`;
       if (failedKeys.has(key) || cooling.has(key)) continue;
       return { ...target };

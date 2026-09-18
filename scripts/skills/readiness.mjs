@@ -9,6 +9,7 @@ import {
   listSkillDirectories,
   pathType,
   readSkillRecord,
+  readRedirectTarget,
   stableStringify,
 } from "./lib.mjs";
 
@@ -99,7 +100,11 @@ for (const name of await listSkillDirectories(root)) {
 
   let status = "ready";
   let reason = "No missing concrete local resources detected.";
-  if (missingResources.length > 0) {
+  const redirect = readRedirectTarget(record.metadata);
+  if (redirect) {
+    status = "redirect";
+    reason = `Superseded by ${redirect}; kept only so the name still resolves.`;
+  } else if (missingResources.length > 0) {
     status = "incomplete-local-resources";
     reason = `${missingResources.length} referenced local resource(s) are absent.`;
   } else if (referenceOnly) {

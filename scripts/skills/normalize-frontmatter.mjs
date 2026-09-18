@@ -13,6 +13,12 @@ const valueArg = (prefix) =>
 const root = path.resolve(valueArg("--root") ?? DEFAULT_SKILL_ROOT);
 
 const DESCRIPTION_OVERRIDES = {
+  // Distinguishing descriptions: aihero-teach and davidondrej-teach share a
+  // common ancestor but have diverged — each keeps the emphasis its author added.
+  "aihero-teach":
+    "Teach a new skill or concept across multiple sessions in a workspace of lessons, building a reusable component library under ./assets that later lessons share rather than re-create.",
+  "davidondrej-teach":
+    "Teach a new skill or concept across multiple sessions, keeping chat replies short and putting all length into the lesson documents, with high-expectation feedback on the learner's work.",
   "agent-skills-schema":
     "Design database schemas, migrations, and multi-tenant architecture including RLS, tenant routing, provisioning, quotas, and isolation. Not for query-plan tuning.",
   boltz:

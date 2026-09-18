@@ -4,7 +4,7 @@
  * port from the PENGUIN_PORT_FILE announcement, probes HTTP readiness, and stops the
  * server gracefully — shutdown endpoint first (the only graceful path on Windows, where
  * kill() is a hard TerminateProcess), then a Windows tree kill or Electron's
- * direct-child kill as fallback on other platforms.
+ * direct-child kill as fallback.
  */
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
@@ -158,34 +158,28 @@ export async function startEmbeddedServer(opts: {
  * server's wrap-up, then kill as a last resort. Safe to call when the child already died.
  */
 export async function stopEmbeddedServer(server: EmbeddedServer): Promise<void> {
-  // Electron clears pid after exit: don't target a stale server or wait for an event
-  // that already fired before this stop request.
-  if (server.child.pid === undefined) return;
   let exited = false;
-  let onExit: () => void;
-  const exit = new Promise<void>((resolve) => {
-    onExit = () => {
+  const exit = new Promise<void>((resolve) =>
+    server.child.once("exit", () => {
       exited = true;
       resolve();
-    };
-    server.child.once("exit", onExit);
-  });
+    }),
+  );
   try {
-    try {
-      await fetch(`${server.origin}/api/desktop/shutdown`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${server.token}` },
-        signal: AbortSignal.timeout(3000),
-      });
-    } catch {
-      // Server unreachable (already dead or wedged): fall through to forced stop.
-    }
-    await Promise.race([exit, delay(SHUTDOWN_GRACE_MS)]);
-    if (!exited) {
-      await forceStopUtilityProcess(server.child);
-      await Promise.race([exit, delay(2000)]);
-    }
-  } finally {
-    server.child.removeListener("exit", onExit!);
+    await fetch(`${server.origin}/api/desktop/shutdown`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${server.token}` },
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch {
+    // Server unreachable (already dead or wedged): fall through to kill.
+  }
+  await Promise.race([exit, delay(SHUTDOWN_GRACE_MS)]);
+  if (!exited) {
+    // Escalation is delegated: on win32 this force-kills the process tree (taskkill
+    // /T /F) before the root, so the server's own children cannot survive and hold
+    // the port; elsewhere it is Electron's direct-child kill.
+    await forceStopUtilityProcess(server.child);
+    await Promise.race([exit, delay(2000)]);
   }
 }
