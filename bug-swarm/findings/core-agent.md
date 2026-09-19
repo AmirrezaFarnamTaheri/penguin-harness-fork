@@ -15,10 +15,10 @@ surface**: `poll()` ignoring the lease it shares with `pollAndLease()`, the loop
 detector keying only on name+canonical-args, and the untrusted-content boundary that
 can be closed early by the payload it is supposed to contain.
 
-> Note: this file was overwritten once by a second pass over the research stack; that
-> pass is preserved as `core-agent-research.md`. The 17 records below are the original
-> pass and are the ones the state-machines and security-ids-graph fixers were briefed
-> from. Evidence quotes for each are reproduced in the fixer briefs.
+> Note: a second pass over the research stack (`evidence-verifier.ts`,
+> `research-loop.ts`, `citation-network.ts`, `symbol-indexer.ts`, `claim-extractor.ts`)
+> produced 11 further findings — records 1–5, 7 and 9–11 of that pass. All were fixed
+> and differentially verified; see the "Research stack" rows of `../REPORT.md`.
 
 ---
 

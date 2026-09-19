@@ -35,7 +35,14 @@ The two baseline failures (docs + landing) were the unfinished
 | types & public API | 12 | 9 | 3 |
 | infra / docs / packaging | 17 | 8 | 9 |
 | tests (coverage) | 15 | 5 | 10 |
-| **core-llm** | in flight | — | — |
+
+**Not covered: `core-llm`** (key rotation, quota parser, pricing, context limits,
+tool-call ids). Two finder attempts stalled without producing a findings file, so
+the domain was excluded rather than reported from partial memory. The paths the
+attempts did verify before stalling — `usageToTokenCounts` and the pricing catalog's
+token accounting — were clean. A dedicated pass over `packages/core/src/llm/` is the
+single biggest remaining gap; `tests/quota-parser` and `tests/pricing-catalog` above
+are the two untested modules in it.
 
 ## Fixed — by severity
 
@@ -182,6 +189,14 @@ failing closed only by accident of `$ErrorActionPreference` (now explicit
   the real `shell-evaluator.test.ts` was written alongside it; removing the
   probe is a cleanup the suite owner should confirm.
 
+## Cleanup of this report set
+
+- `bug-swarm/scratch/sec-probe.ts` and `sec-probe2.ts` — throwaway probes whose
+  output is recorded as SEC-5/SEC-6 in `findings/security-sandbox.md`. Deleted.
+- `bug-swarm/findings/core-agent-research.md` — a second pass over the research
+  stack that duplicated `findings/core-agent.md` and whose 11 findings are all
+  fixed. Deleted; `findings/core-agent.md` now points at the REPORT rows instead.
+
 ## Files
 
 - Fixes: 35 files under `packages/core/src`, 27 under `packages/core/test`, plus
@@ -190,7 +205,6 @@ failing closed only by accident of `$ErrorActionPreference` (now explicit
 - Per-fixer logs with per-test before→after columns:
   `bug-swarm/fixes/{security-egress-redactor,security-ids-graph,state-machines}.md`
 - Findings with quoted evidence: `bug-swarm/findings/*.md`
-
 ## How to re-verify
 
 ```bash
