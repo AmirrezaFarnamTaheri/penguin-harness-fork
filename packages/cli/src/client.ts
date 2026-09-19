@@ -223,9 +223,12 @@ export class ServerClient {
   /**
    * One JSON request. 401 with a file-sourced token re-reads the file once (the server
    * may have restarted and rotated it) and retries; every other non-2xx becomes an
-   * ApiError carrying the server's code and message.
+   * ApiError carrying the server's code and message. A 204 or an empty body resolves
+   * `undefined` — the signature says so — so a caller whose contract promises a body
+   * uses {@link requestJson}: it turns a missing body into an ApiError instead of
+   * handing back an `undefined` the caller will destructure into a TypeError.
    */
-  async request<T>(method: string, apiPath: string, body?: unknown): Promise<T> {
+  async request<T>(method: string, apiPath: string, body?: unknown): Promise<T | undefined> {
     const res = await this.fetchAuthed(apiPath, {
       method,
       headers: this.headers(body !== undefined ? { "content-type": "application/json" } : {}),
@@ -234,10 +237,24 @@ export class ServerClient {
     if (!res.ok) throw await this.toError(res);
     if (res.status === 204 || res.headers.get("content-length") === "0") {
       void res.body?.cancel();
-      return undefined as T;
+      return undefined;
     }
     const text = await res.text();
-    return (text === "" ? undefined : JSON.parse(text)) as T;
+    return text === "" ? undefined : (JSON.parse(text) as T);
+  }
+
+  /**
+   * One JSON request whose route promises a body: a 204 or an empty body is an
+   * `ApiError("empty_body")` naming the route, never an `undefined` typed as `T`. The
+   * CLI's callers destructure immediately (`const { agents } = …`), so an empty body
+   * would otherwise surface as a bare `TypeError` the type system cannot see.
+   */
+  async requestJson<T>(method: string, apiPath: string, body?: unknown): Promise<T> {
+    const data = await this.request<T>(method, apiPath, body);
+    if (data === undefined) {
+      throw new ApiError(0, "empty_body", `Empty response body for ${method} ${apiPath}`);
+    }
+    return data;
   }
 
   /** The authenticated fetch with the one-shot 401 file-token refresh. */
@@ -390,13 +407,13 @@ export async function resolveSessionRef(
 ): Promise<string> {
   const trimmed = ref.trim();
   if (SESSION_ID_RE.test(trimmed)) return trimmed;
-  const { agents } = await client.request<{ agents: Array<{ agentId: string }> }>(
+  const { agents } = await client.requestJson<{ agents: Array<{ agentId: string }> }>(
     "GET",
     `/api/projects/${encodeURIComponent(projectId)}/agents`,
   );
   const candidates: string[] = [];
   for (const agent of agents) {
-    const { sessions } = await client.request<{ sessions: SessionRef[] }>(
+    const { sessions } = await client.requestJson<{ sessions: SessionRef[] }>(
       "GET",
       `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agent.agentId)}/sessions`,
     );

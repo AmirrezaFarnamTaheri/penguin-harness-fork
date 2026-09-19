@@ -114,4 +114,56 @@ describe("QuorumConsensusEngine", () => {
     ).toThrow(/already exists/);
     expect(engine.getStanding("stable-id")?.topic).toBe("First");
   });
+
+  it("treats settle and refute as mutually exclusive terminal states", () => {
+    const engine = new QuorumConsensusEngine({ threshold: 2 });
+
+    const topic = engine.proposeTopic({
+      topicId: "settled-topic",
+      topic: "Ship the feature flag rollout",
+      proposerId: "agent-1",
+      initialGrounds: "Gate data attached",
+    });
+    engine.endorseTopic(topic.topicId, "agent-2", "Metrics confirm 0.01% error rate");
+    const settled = engine.endorseTopic(topic.topicId, "agent-3", "Canary held for 72h");
+    expect(settled.status).toBe("settled");
+
+    // A settled topic can no longer be flipped: refuting it would leave both settledAt and
+    // refutedAt set, and peers reading either field would disagree about the outcome.
+    expect(() => engine.refuteTopic(topic.topicId, "agent-4", "Rollout regressed latency")).toThrow(
+      /Cannot refute settled topic/,
+    );
+    expect(() => engine.endorseTopic(topic.topicId, "agent-5", "Late support")).toThrow(
+      /Cannot endorse settled topic/,
+    );
+
+    const after = engine.getStanding(topic.topicId)!;
+    expect(after.status).toBe("settled");
+    expect(after.refutedAt).toBeUndefined();
+    expect(after.refuters).toEqual([]);
+  });
+
+  it("refuses re-refutation and proposer self-refutation", () => {
+    const engine = new QuorumConsensusEngine({ refutationCap: 1 });
+
+    const topic = engine.proposeTopic({
+      topicId: "weak-topic",
+      topic: "Delete all integration tests",
+      proposerId: "agent-1",
+      initialGrounds: "They are slow",
+    });
+
+    // The proposer retracting its own proposal needs no peer evidence — that is exactly the
+    // echo-chamber escape hatch this engine exists to close.
+    expect(() => engine.refuteTopic(topic.topicId, "agent-1", "I changed my mind")).toThrow(
+      /cannot refute their own topic/,
+    );
+
+    engine.refuteTopic(topic.topicId, "agent-2", "They catch real regressions");
+    expect(engine.getStanding(topic.topicId)?.status).toBe("refuted");
+
+    expect(() => engine.refuteTopic(topic.topicId, "agent-3", "Second thoughts")).toThrow(
+      /Cannot refute refuted topic/,
+    );
+  });
 });

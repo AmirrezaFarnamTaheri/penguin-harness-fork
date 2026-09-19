@@ -238,11 +238,15 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
    */
   private async bootSandbox(command: IsolatedCommand, startedAt: number): Promise<MicrovmInfo> {
     try {
-      return await this.client.create({
+      const info = await this.client.create({
         templateId: this.templateId,
         timeoutMs: DEFAULT_SANDBOX_TIMEOUT_MS,
         env: command.env,
       });
+      // Egress is part of the boot, not the command: the allow-list has to be in place before the
+      // first script runs, and a sandbox reused across commands keeps the policy of its boot.
+      await this.applyEgressPolicy(info.id, command);
+      return info;
     } catch (error) {
       const failure = this.classifyFailure(error);
       this.record({
@@ -260,6 +264,26 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
       this.log(`microvm boot failed (${failure}): ${this.describe(error)}`);
       throw this.translate(error, failure);
     }
+  }
+
+  /**
+   * Push the command's egress allow-list into the freshly booted sandbox. The runtime has already
+   * decided this escalation may reach the network; the allow-list is the limit on *where*, and
+   * without this call the sandbox keeps whatever egress its template defaults to.
+   *
+   * Failing the boot rather than falling back: a sandbox whose egress could not be constrained
+   * must not run an escalation the harness granted `network:outbound` to. A command without an
+   * allow-list is left on the template default, matching the caller's contract.
+   */
+  private async applyEgressPolicy(sandboxId: MicrovmId, command: IsolatedCommand): Promise<void> {
+    if (!command.allowList || command.allowList.length === 0) return;
+    const egressAllowList = command.allowList.map((entry) =>
+      typeof entry === "string" ? entry : entry.url,
+    );
+    this.log(
+      `constraining egress for sandbox ${String(sandboxId)} to ${egressAllowList.length} allowed origin(s)`,
+    );
+    await this.client.updateNetwork(sandboxId, { egressAllowList });
   }
 
   /** Map a client failure onto the backend's failure vocabulary. */

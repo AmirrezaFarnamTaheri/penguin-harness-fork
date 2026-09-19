@@ -6,6 +6,10 @@ import {
   truncateKeepEnds,
 } from "../src/llm/tool-call-repair.js";
 
+// Assembled from parts so the markers stay literal in this file rather than being parsed as tags.
+const OPEN_THINK = "<" + "think" + ">";
+const CLOSE_THINK = "<" + "/think" + ">";
+
 describe("isTruncatedJSON", () => {
   it("returns false for valid complete JSON", () => {
     expect(isTruncatedJSON('{"name": "test", "value": 123}')).toBe(false);
@@ -116,6 +120,41 @@ Here is my plan.`;
 
     const calls = scavengeToolCalls(response);
     expect(calls.length).toBe(1);
+  });
+
+  it("keeps two identical parallel calls from the same source", () => {
+    // A retry after a transient error, or two reasoning branches each reading the same path: these
+    // are distinct calls that must not be collapsed into one.
+    const response = [
+      '{"name": "read_file", "arguments": {"path": "src/a.ts"}}',
+      "meanwhile, unrelated reasoning happens here",
+      '{"name": "read_file", "arguments": {"path": "src/a.ts"}}',
+    ].join("\n");
+
+    const found = scavengeToolCalls(response);
+    expect(found.length).toBe(2);
+    expect(found.every((c) => c.source === "inline_pattern")).toBe(true);
+    expect(new Set(found.map((c) => c.id)).size).toBe(2);
+  });
+
+  it("keeps identical calls living in two separate think tags", () => {
+    const call = '{"name": "read_file", "arguments": {"path": "src/a.ts"}}';
+    const response = [OPEN_THINK, call, CLOSE_THINK, OPEN_THINK, call, CLOSE_THINK].join("\n");
+
+    const found = scavengeToolCalls(response);
+    expect(found.length).toBe(2);
+    expect(found.every((c) => c.source === "think_tag")).toBe(true);
+  });
+
+  it("still collapses one call re-extracted across overlapping passes", () => {
+    // The same call surfacing in a think tag and again in inline text is one call, not two: the
+    // inline pass re-scans the think tag's text, so the repeat reaches a different source.
+    const call = '{"name": "read_file", "arguments": {"path": "src/a.ts"}}';
+    const response = [OPEN_THINK, call, CLOSE_THINK, `Inline echo: ${call}`].join("\n");
+
+    const found = scavengeToolCalls(response);
+    expect(found.length).toBe(1);
+    expect(found[0]!.source).toBe("think_tag");
   });
 });
 

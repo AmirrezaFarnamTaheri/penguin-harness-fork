@@ -12,9 +12,19 @@ function emptyGraphJson(): string {
   return new WikiEngine().exportGraphJson();
 }
 
-function validateGraphJson(raw: string): string {
-  JSON.parse(raw);
-  return raw;
+/**
+ * Decodes a persisted graph as the raw string the engine will re-read: a document that is
+ * not a graph (a hand edit, a truncated write) reads as empty rather than 500ing every
+ * route — and the next write repairs the file, since a corrupted store can never be fixed
+ * through the API otherwise.
+ */
+function decodeGraphJson(raw: string): string {
+  try {
+    hydrateWiki(raw);
+    return raw;
+  } catch {
+    return emptyGraphJson();
+  }
 }
 
 function hydrateWiki(raw: string): WikiEngine {
@@ -29,7 +39,7 @@ export function wikiRoutes(deps: AppDeps): Hono<AppEnv> {
     deps.config.root,
     ".wiki_graph.json",
     emptyGraphJson,
-    validateGraphJson,
+    decodeGraphJson,
     (value) => value,
   );
 

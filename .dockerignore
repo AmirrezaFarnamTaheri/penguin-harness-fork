@@ -41,3 +41,22 @@ CLAUDE.md
 .idea
 .vscode
 **/*.swp
+
+# Tracked but never part of a build: audit/porting debris from past sessions, the generated
+# interface index, and the local tool caches a working copy accumulates. .gitignore carries
+# most of these; a dirty tree would otherwise change what the image builds from.
+artifacts
+dist-ifaces
+_port_staging
+.cocoindex_code
+.statamcp
+.serena
+.data
+cache
+.penguin
+.live-artifacts
+bug-swarm
+hport-*
+porting_progress.json
+AGORA_*.md
+*_Master_*.md

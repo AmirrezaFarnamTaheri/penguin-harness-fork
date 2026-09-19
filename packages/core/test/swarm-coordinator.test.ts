@@ -232,4 +232,65 @@ describe("SwarmCoordinator", () => {
     expect(result.artifacts.length).toBe(0);
     expect(result.standing?.status).not.toBe("settled");
   });
+
+  it("prefers a step's real outcome when it lands within the deadline's grace window", async () => {
+    const coordinator = new SwarmCoordinator({ watchdogConfig: { stepTimeoutMs: 20 } });
+
+    const result = await coordinator.runTask(
+      { id: "task-grace", goal: "Late but valid" },
+      {
+        onPlan: async () => {
+          // Past the 20ms deadline but well inside the grace window that waits for the
+          // handler: the plan must be used, not discarded as a timeout.
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return { steps: ["late_step"] };
+        },
+        onExecute: async () => ({
+          artifacts: [{ path: "late.ts", summary: "arrived late" }],
+          summary: "arrived late",
+        }),
+        onReview: async () => ({ approved: true, grounds: "worth the wait" }),
+      },
+    );
+
+    expect(result.status).toBe("settled");
+    expect(result.artifacts.length).toBe(1);
+  });
+
+  it("surfaces a handler's real error instead of swallowing it past the deadline", async () => {
+    const coordinator = new SwarmCoordinator({ watchdogConfig: { stepTimeoutMs: 20 } });
+
+    const result = await coordinator.runTask(
+      { id: "task-handler-error", goal: "Fail late" },
+      {
+        onExecute: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          throw new Error("handler blew up after its deadline");
+        },
+      },
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.log.some((line) => line.includes("handler blew up after its deadline"))).toBe(
+      true,
+    );
+  });
+
+  it("reports the round reached when a step fails deep in the deliberation loop", async () => {
+    const coordinator = new SwarmCoordinator();
+
+    const result = await coordinator.runTask(
+      { id: "task-deep-failure", goal: "Die in round 3", maxRounds: 5 },
+      {
+        onExecute: async (_task, _step, round) => {
+          if (round === 3) throw new Error("boom in round 3");
+          return { artifacts: [], summary: `round ${round}` };
+        },
+        onReview: async () => ({ approved: false, grounds: "another pass" }),
+      },
+    );
+
+    expect(result.status).toBe("error");
+    expect(result.rounds).toBe(3);
+  });
 });

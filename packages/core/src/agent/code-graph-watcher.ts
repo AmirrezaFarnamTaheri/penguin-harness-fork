@@ -79,6 +79,10 @@ export class CodeGraphWatcher extends EventEmitter {
   private readonly debounceMs: number;
 
   private fsWatcher: fs.FSWatcher | null = null;
+  // Non-recursive fallback (see startPerDirectoryWatch): one watcher per directory when the
+  // platform does not support `fs.watch({ recursive: true })`.
+  private readonly dirWatchers = new Map<string, fs.FSWatcher>();
+  private degradationWarned = false;
   // Coalesced dirty paths set to prevent timer starvation and handle burst writes efficiently
   private dirtyPaths = new Set<string>();
   private flushTimer: NodeJS.Timeout | null = null;
@@ -263,9 +267,52 @@ export class CodeGraphWatcher extends EventEmitter {
 
   /**
    * Starts native filesystem watching.
+   *
+   * `fs.watch({ recursive: true })` is documented as macOS/Windows-only and is silently ignored
+   * on Linux, where it would make the watcher blind to everything outside the workspace root.
+   * When recursion is unavailable, fall back to one non-recursive watcher per directory.
    */
   public startWatching(): void {
-    if (this.fsWatcher || this.isClosed || !fs.existsSync(this.rootDir)) return;
+    if (this.isClosed || !fs.existsSync(this.rootDir)) return;
+
+    if (this.supportsRecursiveWatch()) {
+      this.startRecursiveWatch();
+    } else {
+      if (!this.degradationWarned) {
+        this.degradationWarned = true;
+        this.emit(
+          "warn",
+          `Recursive filesystem watching is unavailable on ${process.platform}; installing one ` +
+            `watcher per directory instead. Subdirectory file changes are still tracked; newly ` +
+            `created directories are picked up as they appear inside a watched directory.`,
+        );
+      }
+      this.startPerDirectoryWatch();
+    }
+  }
+
+  /**
+   * Whether `fs.watch({ recursive: true })` is honored on this platform. Overridable in tests so
+   * the per-directory fallback can be exercised on platforms that do support recursion.
+   */
+  protected supportsRecursiveWatch(): boolean {
+    return process.platform === "darwin" || process.platform === "win32";
+  }
+
+  /**
+   * Coalesces a dirty path into a single debounced flush pass (shared by both watch paths).
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer || this.isFlushing || this.isClosed) return;
+    // Source: https://nodejs.org/api/timers.html#setimmediatecallback-args
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushDirtyPaths();
+    }, this.debounceMs);
+  }
+
+  private startRecursiveWatch(): void {
+    if (this.fsWatcher || this.isClosed) return;
 
     try {
       this.fsWatcher = fs.watch(
@@ -278,17 +325,8 @@ export class CodeGraphWatcher extends EventEmitter {
           if (this.isPathIgnored(relPath)) return;
           if (!this.hasSupportedExtension(relPath)) return;
 
-          const fullPath = path.join(this.rootDir, filename);
-          this.dirtyPaths.add(fullPath);
-
-          // Schedule a single flush worker if none is currently scheduled
-          // Source: https://nodejs.org/api/timers.html#setimmediatecallback-args
-          if (!this.flushTimer && !this.isFlushing) {
-            this.flushTimer = setTimeout(() => {
-              this.flushTimer = null;
-              void this.flushDirtyPaths();
-            }, this.debounceMs);
-          }
+          this.dirtyPaths.add(path.join(this.rootDir, filename));
+          this.scheduleFlush();
         },
       );
 
@@ -297,6 +335,118 @@ export class CodeGraphWatcher extends EventEmitter {
       });
     } catch (err) {
       this.emit("error", err);
+    }
+  }
+
+  /**
+   * Fallback used when recursive watching is unavailable: walks the tree once and installs one
+   * non-recursive watcher per (non-ignored) directory. New directories are watched as they are
+   * created inside a watched directory; watchers on removed directories are dropped.
+   */
+  private startPerDirectoryWatch(): void {
+    for (const dir of this.collectWatchedDirectories()) {
+      this.watchDirectory(dir);
+    }
+  }
+
+  private collectWatchedDirectories(): string[] {
+    const dirs: string[] = [this.rootDir];
+    const walk = (dir: string): void => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (this.isPathIgnored(path.relative(this.rootDir, fullPath))) continue;
+        dirs.push(fullPath);
+        walk(fullPath);
+      }
+    };
+    walk(this.rootDir);
+    return dirs;
+  }
+
+  private watchDirectory(dir: string): void {
+    if (this.isClosed || this.dirWatchers.has(dir)) return;
+
+    let watcher: fs.FSWatcher;
+    try {
+      watcher = fs.watch(dir, (_eventType: string, filename: string | null) => {
+        if (!filename || this.isClosed) return;
+
+        const fullPath = path.join(dir, filename);
+        const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
+
+        let isDirectory = false;
+        try {
+          isDirectory = fs.statSync(fullPath).isDirectory();
+        } catch {
+          // The entry is already gone; a watched subdirectory may have been removed.
+        }
+        if (isDirectory) {
+          if (!this.isPathIgnored(relPath)) this.discoverDirectory(fullPath);
+          return;
+        }
+        if (this.dirWatchers.has(fullPath)) this.closeDirectoryWatcher(fullPath);
+        if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(relPath)) return;
+
+        this.dirtyPaths.add(fullPath);
+        this.scheduleFlush();
+      });
+    } catch (err) {
+      this.emit("error", err);
+      return;
+    }
+
+    watcher.on("error", (err) => {
+      // A deleted/renamed directory stops being watchable: drop the handle rather than leak it.
+      this.closeDirectoryWatcher(dir);
+      this.emit("error", err);
+    });
+    this.dirWatchers.set(dir, watcher);
+  }
+
+  /**
+   * Installs a watcher on a directory discovered at runtime and sweeps it once: files may have
+   * appeared between the directory's creation and this notification, and they would otherwise be
+   * missed forever (the new watcher only sees changes from installation onward).
+   */
+  private discoverDirectory(dir: string): void {
+    this.watchDirectory(dir);
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!this.isPathIgnored(path.relative(this.rootDir, fullPath))) {
+          this.discoverDirectory(fullPath);
+        }
+        continue;
+      }
+      const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
+      if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(entry.name)) continue;
+      this.dirtyPaths.add(fullPath);
+    }
+    this.scheduleFlush();
+  }
+
+  private closeDirectoryWatcher(dir: string): void {
+    const watcher = this.dirWatchers.get(dir);
+    if (!watcher) return;
+    this.dirWatchers.delete(dir);
+    try {
+      watcher.close();
+    } catch {
+      // ignore
     }
   }
 
@@ -372,6 +522,10 @@ export class CodeGraphWatcher extends EventEmitter {
         // ignore
       }
       this.fsWatcher = null;
+    }
+
+    for (const dir of [...this.dirWatchers.keys()]) {
+      this.closeDirectoryWatcher(dir);
     }
 
     this.emit("closed");

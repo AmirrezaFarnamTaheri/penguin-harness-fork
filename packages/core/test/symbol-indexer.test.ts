@@ -4,6 +4,27 @@ import { SymbolIndexer } from "../src/agent/symbol-indexer.js";
 describe("SymbolIndexer", () => {
   const indexer = new SymbolIndexer();
 
+  it("tracks columns across a block comment and treats `/*/` as complete", () => {
+    // Two defects at once: only newlines advanced `col` inside a block comment, so every
+    // token after one was understated by the comment's width; and the closer scan started
+    // after the opener, so `/*/` swallowed the rest of the file as an unterminated
+    // comment. `tokenize` is public, so both are observable here.
+    const tokens = indexer.tokenize("/* a block comment */ const value = 1;\n");
+    // `const` sits at column 23 — the pre-fix scanner left `col` near 1 here, because a
+    // block comment only advanced `col` on newlines.
+    const keyword = tokens.find((token) => token.value === "const");
+    expect(keyword).toBeDefined();
+    expect(keyword!.line).toBe(1);
+    expect(keyword!.column).toBe(23);
+    const ident = tokens.find((token) => token.kind === "TIDENT" && token.value === "value");
+    expect(ident!.column).toBe(29);
+
+    // `/*/` is a complete empty comment — the `x` after it must still be scanned as an
+    // identifier, not absorbed into the comment.
+    const afterMinimal = indexer.tokenize("/*/ x = 1;\n");
+    expect(afterMinimal.some((token) => token.value === "x")).toBe(true);
+  });
+
   it("parses TypeScript source files correctly", () => {
     const code = `
       import { createHash } from "node:crypto";

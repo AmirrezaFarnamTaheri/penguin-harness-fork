@@ -16,7 +16,12 @@ import {
 import type { IsolatedCommand } from "@prismshadow/penguin-core/plugin";
 
 /** A scripted control plane: canned responses in order, plus the calls made against it. */
-type PlaneCall = { method: string; sandboxId?: MicrovmId; command?: string };
+type PlaneCall = {
+  method: string;
+  sandboxId?: MicrovmId;
+  command?: string;
+  egressAllowList?: readonly string[];
+};
 class ScriptedPlane {
   readonly calls: PlaneCall[] = [];
   constructor(private readonly script: ReadonlyArray<() => unknown>) {}
@@ -27,6 +32,17 @@ class ScriptedPlane {
     if (!step) {
       // Name the missing step rather than letting a bare TypeError escape, so a test
       // that under-scripts the plane reports what it actually forgot.
+      throw new MicrovmError(
+        `scripted plane has no step for call #${this.calls.length} (${method})`,
+      );
+    }
+    return step();
+  }
+
+  nextNetwork(method: string, sandboxId: MicrovmId, egressAllowList: readonly string[]): unknown {
+    this.calls.push({ method, sandboxId, egressAllowList });
+    const step = this.script[this.calls.length - 1];
+    if (!step) {
       throw new MicrovmError(
         `scripted plane has no step for call #${this.calls.length} (${method})`,
       );
@@ -45,6 +61,9 @@ function planeClient(plane: ScriptedPlane): MicrovmSandboxClient {
     },
     runCommand: async (id: MicrovmId, command: { cmd: string }) =>
       plane.next("runCommand", id, command.cmd) as MicrovmCommandResult,
+    updateNetwork: async (id: MicrovmId, network: { egressAllowList?: readonly string[] }) => {
+      plane.nextNetwork("updateNetwork", id, network.egressAllowList ?? []);
+    },
   } as unknown as MicrovmSandboxClient;
 }
 
@@ -135,6 +154,54 @@ describe("microvm-escalation-runtime", () => {
 
       // One boot, two commands.
       expect(plane.calls.map((c) => c.method)).toEqual(["create", "runCommand", "runCommand"]);
+    });
+
+    it("constrains egress to the command's allow-list before the first command runs", async () => {
+      // Without this call the sandbox keeps whatever egress its template defaults to, which is
+      // how an escalation granted `network:outbound` silently reaches anywhere.
+      const plane = new ScriptedPlane([
+        () => ({ id: "sb1" }),
+        () => undefined, // updateNetwork
+        () => ok("ran"),
+      ]);
+      const run = runtime(plane);
+
+      const result = await run.run(
+        command({ allowList: ["https://api.example.test", { url: "https://cdn.example.test" }] }),
+      );
+
+      expect(result.stdout).toBe("ran");
+      expect(plane.calls.map((c) => c.method)).toEqual(["create", "updateNetwork", "runCommand"]);
+      expect(plane.calls[1]).toMatchObject({
+        method: "updateNetwork",
+        sandboxId: "sb1",
+        egressAllowList: ["https://api.example.test", "https://cdn.example.test"],
+      });
+    });
+
+    it("refuses to run when the egress policy could not be applied", async () => {
+      // Fail closed: a sandbox whose egress is unconstrained must not run a networked escalation,
+      // so a rejected updateNetwork fails the boot instead of falling back to the template default.
+      const plane = new ScriptedPlane([
+        () => ({ id: "sb1" }),
+        () => {
+          throw new MicrovmError("egress policy rejected");
+        },
+      ]);
+      const logs: string[] = [];
+      const logged = new MicrovmEscalationRuntime({
+        client: planeClient(plane),
+        templateId: "base",
+        log: (message: string) => {
+          logs.push(message);
+        },
+      });
+
+      await expect(
+        logged.run(command({ allowList: ["https://api.example.test"] })),
+      ).rejects.toBeInstanceOf(MicrovmError);
+      expect(plane.calls.map((c) => c.method)).toEqual(["create", "updateNetwork"]);
+      expect(logs.some((m) => m.includes("constraining egress"))).toBe(true);
     });
 
     it("re-boots after a command timed out, since that sandbox is dead", async () => {

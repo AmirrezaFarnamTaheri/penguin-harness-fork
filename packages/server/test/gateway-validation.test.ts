@@ -58,6 +58,62 @@ describe("gateway input validation", () => {
     expect(body.formattedSavings).toBe("Unknown");
   });
 
+  it("computes a real dollar cost for a priced model", async () => {
+    // openai/gpt-4o from the default catalog: prompt $2.50/M, completion $10.00/M,
+    // cache read $1.25/M. With 1M prompt and 1M completion tokens the arithmetic is
+    //   prompt 2.5 + completion 10.0 = $12.500
+    // and nothing was read from cache, so the savings are a real $0.00 rather than "Unknown".
+    const response = await client.post(`/api/projects/${projectId}/gateway/cost`, {
+      provider: "openai",
+      modelId: "gpt-4o",
+      promptTokens: 1_000_000,
+      completionTokens: 1_000_000,
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      breakdown: {
+        priced: boolean;
+        promptCost: number;
+        completionCost: number;
+        cacheReadCost: number;
+        totalCost: number;
+        savingsFromCache: number;
+      };
+      formattedTotal: string;
+      formattedSavings: string;
+    };
+    expect(body.breakdown.priced).toBe(true);
+    expect(body.breakdown.promptCost).toBe(2.5);
+    expect(body.breakdown.completionCost).toBe(10.0);
+    expect(body.breakdown.cacheReadCost).toBe(0);
+    expect(body.breakdown.totalCost).toBe(12.5);
+    expect(body.formattedTotal).toBe("$12.500");
+    expect(body.formattedSavings).toBe("$0.00");
+
+    // With cache reads, the same model reports the cache-write fallback (1.25x prompt, since
+    // gpt-4o lists no cacheWrite rate) and a non-zero saving:
+    //   prompt 2.5 + completion 5.0 + cacheRead 0.25 + cacheWrite 0.3125 = $8.063
+    //   savings = (1.2M uncached prompt) - (prompt + cacheRead) = 3.0 - 2.75 = $0.250
+    const cached = await client.post(`/api/projects/${projectId}/gateway/cost`, {
+      provider: "openai",
+      modelId: "gpt-4o",
+      promptTokens: 1_000_000,
+      completionTokens: 500_000,
+      cacheReadTokens: 200_000,
+      cacheWriteTokens: 100_000,
+    });
+    expect(cached.status).toBe(200);
+    const cachedBody = (await cached.json()) as {
+      breakdown: { totalCost: number; savingsFromCache: number };
+      formattedTotal: string;
+      formattedSavings: string;
+    };
+    expect(cachedBody.breakdown.totalCost).toBe(8.0625);
+    expect(cachedBody.breakdown.savingsFromCache).toBe(0.25);
+    expect(cachedBody.formattedTotal).toBe("$8.063");
+    expect(cachedBody.formattedSavings).toBe("$0.250");
+  });
+
   it("rejects malformed spend-flow sessions, breakdowns, and limits", async () => {
     const badSession = await client.post(`/api/projects/${projectId}/gateway/spend-flow`, {
       sessions: [null],

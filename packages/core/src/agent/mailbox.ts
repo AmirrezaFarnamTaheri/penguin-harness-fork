@@ -208,6 +208,14 @@ export class MailboxKernel {
     const queue = this.queues.get(name);
     if (!queue || queue.length === 0) return null;
 
+    // `pollAndLease` refuses to pop while a lease holds; a consumer mixing the two APIs would
+    // otherwise double-process a message the lease owner has reserved.
+    const existing = this.leases.get(name);
+    const now = Date.now();
+    if (existing && existing.leaseState === "acquired" && existing.expiresAt > now) {
+      return null;
+    }
+
     const msg = queue.shift() as MailboxMessage<T>;
     msg.attempts++;
     this.lastActivity.set(name, Date.now());
@@ -358,16 +366,24 @@ export class EventBroker {
       .then(() => Promise.resolve().then(() => sub(event)));
     const orderedTail = execute
       .finally(() => {
-        const depth = this.pendingBuffers.get(sub) ?? 1;
-        this.pendingBuffers.set(sub, Math.max(0, depth - 1));
+        // The delivery outlived an unsubscribe whose cleanup already deleted this subscriber's
+        // bookkeeping; re-creating the entry here would resurrect per-subscriber state after
+        // death, so only account for the delivery while the subscriber is still registered.
+        if (this.subscriberStillRegistered(sub)) {
+          const depth = this.pendingBuffers.get(sub) ?? 1;
+          this.pendingBuffers.set(sub, Math.max(0, depth - 1));
+        }
       })
       .then(() => undefined);
 
     // Ordering follows the actual callback lifetime, not the caller's observation deadline.
-    this.deliveryTails.set(
-      sub,
-      orderedTail.catch(() => undefined),
-    );
+    // Written only while the subscriber is still registered, for the same reason as the depth.
+    if (this.subscriberStillRegistered(sub)) {
+      this.deliveryTails.set(
+        sub,
+        orderedTail.catch(() => undefined),
+      );
+    }
 
     if (options.timeoutMs === undefined) return orderedTail;
 

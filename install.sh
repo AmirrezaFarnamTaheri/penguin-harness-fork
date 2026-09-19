@@ -86,7 +86,7 @@ validate_https_url() {
 
 is_release_tag() {
   case "$1" in
-    v[0-9A-Za-z]* ) ;;
+    v[0-9]* ) ;;
     *) return 1 ;;
   esac
   case "$1" in

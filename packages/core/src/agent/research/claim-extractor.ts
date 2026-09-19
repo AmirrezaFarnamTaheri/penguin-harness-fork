@@ -66,9 +66,6 @@ export interface ClaimExtractorOptions {
   readonly maxClaims?: number;
 }
 
-const NUMBER_WORD =
-  /(?:\d+(?:[.,]\d+)?)|(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve|twenty|fifty| hundred|thousand|million|billion)/gi;
-
 const QUANTITY_PATTERNS: ReadonlyArray<{ pattern: RegExp; kind: Quantity["direction"] }> = [
   // "improves throughput by 12.4%", "accelerates decoding by 30 ms". The measured value is
   // usually separated from the verb by a noun phrase, so a bounded non-greedy scan covers

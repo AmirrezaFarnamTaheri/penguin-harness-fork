@@ -139,6 +139,13 @@ describe("isolated-execution-runtime", () => {
       expect(classifyReason("ls -la")).toBe("external_command");
       expect(classifyReason("(echo hi)")).toBe("subshell");
 
+      // A newline ends a command as surely as `;` does, so a binary named on a later line is in
+      // command position, not an argument of the first line — otherwise the verdict would read
+      // the script as in-memory safe and ask no approval for it.
+      expect(classifyReason("echo hi\nls -la")).toBe("external_command");
+      expect(classifyReason("true\nrm")).toBe("external_command");
+      expect(classifyReason("echo hi && ls -la")).toBe("external_command");
+
       // Every construct the in-memory tier does not model escalates for the same
       // stated cause: the tier is unavailable for it, not merely unimplemented.
       expect(decideTier("echo hi > /tmp/out").reason).toBe("unsupported_construct");
@@ -307,7 +314,31 @@ describe("isolated-execution-runtime", () => {
         maxMemoryBytes: DEFAULT_ISOLATION_CEILINGS.maxMemoryBytes,
         sigkillTimeoutMs: DEFAULT_ISOLATION_CEILINGS.sigkillTimeoutMs,
       });
-      expect(command.allowList).toEqual(["https://example.com"]);
+      // No `network:outbound` capability was granted, so the escalation is network-off: the
+      // configured allow-list is the limit *under a grant*, and handing it to the backend here
+      // would let the script reach a host the policy never permitted.
+      expect(command.allowList).toEqual([]);
+    });
+
+    it("hands the backend the allow-list only when the policy grants the network", async () => {
+      const granted = new RecordingBackend();
+      const grantedRuntime = new IsolatedExecutionRuntime({
+        backend: granted,
+        allowList: ["https://example.com"],
+        policyBox: policyBox("shell:exec", "shell:native-binary", "network:outbound"),
+      });
+      await grantedRuntime.execute("ls -la /");
+      expect(granted.commands[0]!.allowList).toEqual(["https://example.com"]);
+
+      // The same configuration without the capability: same script, same preset, network-off.
+      const denied = new RecordingBackend();
+      const deniedRuntime = new IsolatedExecutionRuntime({
+        backend: denied,
+        allowList: ["https://example.com"],
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+      await deniedRuntime.execute("ls -la /");
+      expect(denied.commands[0]!.allowList).toEqual([]);
     });
 
     it("carries the isolated result into telemetry", async () => {

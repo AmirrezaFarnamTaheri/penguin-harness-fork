@@ -1,0 +1,20 @@
+{
+  "name": "@penguinharness/language-porting",
+  "version": "0.2.16",
+  "description": "Port a product from TypeScript into other languages: decide which subsystem goes where, port one file or module at a time without changing behavior, and prove the port matches the original.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Prism-Shadow/penguin-harness.git",
+    "directory": "plugins/language-porting"
+  },
+  "files": [
+    "plugin.json",
+    "icon.svg",
+    "skills",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

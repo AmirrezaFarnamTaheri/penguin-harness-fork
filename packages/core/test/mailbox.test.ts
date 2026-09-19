@@ -126,6 +126,21 @@ describe("MailboxKernel", () => {
     mb.send("worker-capacity", "caller", "event", { n: 2 });
     expect(() => mb.requeue("worker-capacity", polled)).toThrow(/reached maximum queue capacity/);
   });
+
+  it("poll() respects a lease held by another consumer", () => {
+    const mb = new MailboxKernel();
+    mb.send("worker-fenced", "caller", "work", { job: 1 });
+
+    // pollAndLease reserves the message behind a lease; poll() must honour the same fence or a
+    // consumer mixing the two APIs double-processes the reserved message.
+    const lease = mb.acquireLease("worker-fenced", "evt-lease", 10_000);
+    expect(lease.leaseState).toBe("acquired");
+    expect(mb.poll("worker-fenced")).toBeNull();
+    expect(mb.getSummary("worker-fenced").queueDepth).toBe(1);
+
+    mb.releaseLease("worker-fenced", lease.leaseToken);
+    expect(mb.poll<{ job: number }>("worker-fenced")?.payload.job).toBe(1);
+  });
 });
 
 describe("EventBroker", () => {
@@ -195,5 +210,33 @@ describe("EventBroker", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(received).toEqual(["a1", "b1", "b2"]);
     unsubscribeB();
+  });
+
+  it("does not resurrect per-subscriber state for a delivery that outlives its subscription", async () => {
+    const broker = new EventBroker();
+    let releaseBlocked!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      releaseBlocked = resolve;
+    });
+    let calls = 0;
+    const callback = async () => {
+      calls++;
+      if (calls === 1) await blocked;
+    };
+
+    const unsubscribe = broker.subscribe("afterlife", callback);
+    broker.publish("afterlife", { turnId: 1 }); // delivery blocks, so it is still in flight
+    unsubscribe(); // cleanup deletes the subscriber's pendingBuffers/deliveryTails entries
+    releaseBlocked(); // the delivery finishes and must not write those entries back into existence
+
+    const received: number[] = [];
+    const unsubscribeAgain = broker.subscribe<{ turnId: number }>("afterlife", async (event) => {
+      received.push(event.payload.turnId);
+    });
+    broker.publish("afterlife", { turnId: 2 });
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(received).toEqual([2]);
+    unsubscribeAgain();
   });
 });

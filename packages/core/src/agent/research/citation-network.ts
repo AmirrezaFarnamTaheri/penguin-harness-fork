@@ -68,7 +68,14 @@ export class CitationNetwork {
   /** Adds a paper to the network, keyed by a stable id. */
   addNode(node: CitationNode): string {
     const existing = this.nodes.get(node.id);
-    this.nodes.set(node.id, { ...node, text: node.text ?? existing?.text });
+    // `fetched` must be preserved for the same reason `text` is: a caller that upserts a
+    // node (metadata first, then text) would otherwise carry full text while reporting
+    // unfetched, and `verifyMarkers` would flag its citations as hallucinated.
+    this.nodes.set(node.id, {
+      ...node,
+      text: node.text ?? existing?.text,
+      fetched: node.fetched || existing?.fetched || Boolean(node.text),
+    });
     this.indexMarker(node);
     if (!this.outgoing.has(node.id)) this.outgoing.set(node.id, new Map());
     if (!this.incoming.has(node.id)) this.incoming.set(node.id, new Set());

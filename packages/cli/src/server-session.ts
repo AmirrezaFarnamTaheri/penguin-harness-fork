@@ -68,7 +68,7 @@ export async function createServerSession(
   args: CreateSessionArgs,
 ): Promise<SessionInfo> {
   const { projectId, agentId, ...body } = args;
-  const res = await client.request<SessionCreateResponse>(
+  const res = await client.requestJson<SessionCreateResponse>(
     "POST",
     `/api/projects/${enc(projectId)}/agents/${enc(agentId)}/sessions`,
     { ...body, client: "cli" },
@@ -89,12 +89,15 @@ export async function getSessionInfo(
   client: ServerClient,
   sessionId: string,
 ): Promise<SessionInfo> {
-  const res = await client.request<SessionResponse>("GET", `/api/sessions/${enc(sessionId)}`);
+  const res = await client.requestJson<SessionResponse>("GET", `/api/sessions/${enc(sessionId)}`);
   return res.session;
 }
 
 export async function listAgents(client: ServerClient, projectId: string): Promise<AgentSummary[]> {
-  const res = await client.request<AgentsResponse>("GET", `/api/projects/${enc(projectId)}/agents`);
+  const res = await client.requestJson<AgentsResponse>(
+    "GET",
+    `/api/projects/${enc(projectId)}/agents`,
+  );
   return res.agents;
 }
 
@@ -103,7 +106,7 @@ export async function listAgentSessions(
   projectId: string,
   agentId: string,
 ): Promise<SessionInfo[]> {
-  const res = await client.request<SessionsResponse>(
+  const res = await client.requestJson<SessionsResponse>(
     "GET",
     `/api/projects/${enc(projectId)}/agents/${enc(agentId)}/sessions`,
   );
@@ -142,7 +145,7 @@ export async function getSessionMessages(
   client: ServerClient,
   sessionId: string,
 ): Promise<OmniMessage[]> {
-  const res = await client.request<MessagesResponse>(
+  const res = await client.requestJson<MessagesResponse>(
     "GET",
     `/api/sessions/${enc(sessionId)}/messages`,
   );

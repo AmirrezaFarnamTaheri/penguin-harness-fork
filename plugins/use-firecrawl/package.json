@@ -12,7 +12,6 @@
     "plugin.json",
     "icon.svg",
     "skills",
-    "hooks",
     "LICENSE"
   ],
   "publishConfig": {

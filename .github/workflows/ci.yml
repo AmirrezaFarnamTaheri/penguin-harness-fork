@@ -44,6 +44,20 @@ jobs:
       - name: Release publishing regression tests
         run: node --test scripts/test-release-publishing.test.mjs
 
+      # Two verification gates that existed only as npm scripts and no workflow ran:
+      # en<->zh string parity, and provenance for the published benchmark claims.
+      - name: i18n parity (en <-> zh)
+        run: pnpm check:i18n
+
+      # Non-blocking until the benchmark provenance artifacts exist: the verifier
+      # deliberately fails closed (its own test asserts exit 1 on the real landing data),
+      # and the claim-linked run artifacts it asks for are not in the repo yet. Running it
+      # keeps the gap visible on every CI style job instead of buried in an unrun script;
+      # drop continue-on-error the day the artifacts land.
+      - name: Benchmark data provenance
+        continue-on-error: true
+        run: pnpm verify:benchmark-data
+
       # A workflow that does not parse produces a run with zero jobs and no annotation
       # anywhere useful -- the failure this very file shipped once, over a double-quoted
       # string in a ${{ }} expression, where only single quotes are legal. Cheap to catch.
@@ -89,12 +103,18 @@ jobs:
             tests: pnpm --filter @prismshadow/penguin-server test
           - shard: web-cli
             build: "@prismshadow/penguin-core...,@prismshadow/penguin-web..."
-            tests: pnpm --filter @prismshadow/penguin-web --filter @prismshadow/penguin-cli test
+            # One invocation per package: a single `pnpm --filter A --filter B test` stops at
+            # the first package whose script fails, so a red `web` suite would hide every
+            # `cli` failure from this shard.
+            tests: >-
+              failed=0; for pkg in @prismshadow/penguin-web @prismshadow/penguin-cli;
+              do pnpm --filter "$pkg" test || failed=1; done; exit $failed
           - shard: rest
             build: "@prismshadow/penguin-desktop..."
             tests: >-
-              pnpm --filter @prismshadow/penguin-desktop --filter @prismshadow/penguin-landing
-              --filter @prismshadow/penguin-docs test
+              failed=0; for pkg in @prismshadow/penguin-desktop @prismshadow/penguin-landing
+              @prismshadow/penguin-docs; do pnpm --filter "$pkg" test || failed=1; done;
+              exit $failed
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup

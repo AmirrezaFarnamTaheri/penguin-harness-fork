@@ -101,4 +101,46 @@ describe("SignalChainManager", () => {
       }),
     ).toThrow(/Exceeded maximum causal depth/);
   });
+
+  it("releases a source together with its signals and actions", () => {
+    const manager = new SignalChainManager({ maxRetries: 1 });
+    const source = manager.registerSource({ sourceId: "retire-me", sourceType: "task" });
+    const signal = manager.emitSignal({
+      signalId: "retire-sig",
+      sourceId: source.sourceId,
+      signalType: "tool_call_request",
+    });
+    const action = manager.dispatchAction({
+      actionId: "retire-act",
+      signalId: signal.signalId,
+      actionType: "execute_tool",
+    });
+
+    expect(manager.releaseSource("retire-me")).toBe(3);
+    expect(manager.getAction(action.actionId)).toBeUndefined();
+    expect(() => manager.getTrace(action.actionId)).toThrow(/missing node/);
+
+    // An unknown source releases nothing.
+    expect(manager.releaseSource("never-registered")).toBe(0);
+  });
+
+  it("leaves unrelated chains intact when one source is released", () => {
+    const manager = new SignalChainManager();
+    const retire = manager.registerSource({ sourceId: "retire", sourceType: "task" });
+    manager.emitSignal({ signalId: "retire-sig", sourceId: retire.sourceId, signalType: "go" });
+    const keep = manager.registerSource({ sourceId: "keep", sourceType: "task" });
+    const keepSignal = manager.emitSignal({
+      signalId: "keep-sig",
+      sourceId: keep.sourceId,
+      signalType: "go",
+    });
+    const keepAction = manager.dispatchAction({
+      signalId: keepSignal.signalId,
+      actionType: "run",
+    });
+
+    expect(manager.releaseSource("retire")).toBe(2);
+    expect(manager.getAction(keepAction.actionId)).toBeDefined();
+    expect(manager.getTrace(keepAction.actionId).length).toBe(3);
+  });
 });

@@ -281,7 +281,10 @@ export class ResearchLoop {
       this.budget.charge("fetching", { text, papers: 1 });
       this.rawSources.push({ hit, text });
       this.emit("fetching", `Fetched "${hit.title}"`);
-      if (this.sources.length >= this.targetPapers) break;
+      // `this.sources` is populated by parsePhase (which runs after this), so it is
+      // always 0 here and this cap could never fire — count what has actually been
+      // fetched instead, or the whole paper budget is spent in one phase.
+      if (this.rawSources.length >= this.targetPapers) break;
     }
   }
 
@@ -476,9 +479,12 @@ export class ResearchLoop {
   private bindClaim(claim: Claim, source: SourceRecord, section: string): Claim {
     const id = `${source.hit.id}#claim_${this.claimCounter++}`;
     this.claimToSource.set(id, source.hit.id);
-    const questionId = this.sectionToQuestion.get(section) ?? this.questionForSection(section);
+    // Headings repeat across papers ("Introduction", "Results"), so a memo keyed on the
+    // heading alone hands every later paper the first paper's question mapping.
+    const sectionKey = `${source.hit.id}::${section}`;
+    const questionId = this.sectionToQuestion.get(sectionKey) ?? this.questionForSection(section);
     if (questionId) {
-      this.sectionToQuestion.set(section, questionId);
+      this.sectionToQuestion.set(sectionKey, questionId);
       this.claimToQuestion.set(id, questionId);
     }
     return {

@@ -167,4 +167,30 @@ I am the target.`,
     expect(report.brokenLinks[0]?.fromNodeId).toBe("source");
     expect(report.brokenLinks[0]?.target).toBe("target");
   });
+
+  it("exports a graph it can read back", () => {
+    const wiki = new WikiEngine();
+    wiki.addPage("a.md", "---\ntitle: Alpha\n---\nLink to [[b]].");
+    const roundTripped = new WikiEngine();
+    roundTripped.importGraphJson(wiki.exportGraphJson());
+    expect(roundTripped.listPages().map((n) => n.id)).toEqual(["a"]);
+  });
+
+  it("rejects a document that is not a graph instead of corrupting the index", () => {
+    const refusals = [
+      "null",
+      "[]",
+      "42",
+      JSON.stringify({ nodes: [null], edges: [] }),
+      JSON.stringify({ nodes: [42], edges: [] }),
+      JSON.stringify({ nodes: [{ title: "no id" }], edges: [] }),
+      JSON.stringify({ nodes: [], edges: [{ from: "a", to: "b" }] }),
+    ];
+    for (const raw of refusals) {
+      const wiki = new WikiEngine();
+      expect(() => wiki.importGraphJson(raw), raw).toThrow();
+      // A refusal leaves the index untouched — no undefined keys, no half-loaded graph.
+      expect(wiki.listPages()).toEqual([]);
+    }
+  });
 });

@@ -594,18 +594,15 @@ export class ShellLexer {
 }
 
 /**
- * Convenience entry point: tokenize a script and drop comment/whitespace tokens the
- * evaluator does not act on, leaving the meaningful stream. Used by the runtime's
- * classifier, which needs the token kinds but not the punctuation noise.
+ * Convenience entry point: tokenize a script and drop comment/EOF tokens the evaluator does not
+ * act on, leaving the meaningful stream. Newlines are kept: a newline ends a command as surely as
+ * a `;` does, so dropping them would join two lines into one and hide the second line's command
+ * name from the tier classifier. Used by the runtime's classifier, which needs the token kinds but
+ * not the punctuation noise.
  */
 export function tokenizeShell(source: string, options?: LexerOptions): Token[] {
   const lexer = new ShellLexer(source, options);
   return lexer
     .tokenize()
-    .filter(
-      (token) =>
-        token.type !== TokenType.COMMENT &&
-        token.type !== TokenType.NEWLINE &&
-        token.type !== TokenType.EOF,
-    );
+    .filter((token) => token.type !== TokenType.COMMENT && token.type !== TokenType.EOF);
 }

@@ -550,15 +550,23 @@ export class SymbolIndexer {
 
       // Skip block comments
       if (ch === "/" && content[i + 1] === "*") {
-        i += 2;
-        while (i < len - 1 && !(content[i] === "*" && content[i + 1] === "/")) {
-          if (content[i] === "\n") {
+        const start = i;
+        // Search from `start + 1` so the minimal complete comment `/*/` resolves: its
+        // closer is the `/` at `start + 2`, which a scan from `start + 2` would skip,
+        // swallowing the rest of the file as an unterminated comment.
+        const close = content.indexOf("*/", start + 1);
+        const end = close === -1 ? len : close + 2;
+        for (let j = start; j < end; j++) {
+          if (content[j] === "\n") {
             line++;
             col = 1;
+          } else {
+            // Every skipped character occupies a column; only counting newlines left
+            // every token after the comment understated by the comment's width.
+            col++;
           }
-          i++;
         }
-        i += 2;
+        i = end;
         continue;
       }
 

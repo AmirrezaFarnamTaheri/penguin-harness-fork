@@ -23,6 +23,7 @@
     "@penguinharness/data-analysis": "workspace:*",
     "@penguinharness/goal": "workspace:*",
     "@penguinharness/humanizer": "workspace:*",
+    "@penguinharness/language-porting": "workspace:*",
     "@penguinharness/model-development": "workspace:*",
     "@penguinharness/skill-porting": "workspace:*",
     "@penguinharness/software-development": "workspace:*",

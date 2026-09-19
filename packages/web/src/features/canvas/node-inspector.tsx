@@ -12,7 +12,7 @@ import {
   hexToRgb,
   isValidColorString,
   wcagLevels,
-} from "../../../../core/src/canvas/color-space.js";
+} from "@prismshadow/penguin-core/canvas";
 import type { CanvasNodeShape } from "./vector-canvas.js";
 
 export interface InspectorNode {

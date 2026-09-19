@@ -1,5 +1,6 @@
 {
   "description": "Rewrite or edit prose in any language so it reads like edited human writing in the register of books, newspapers and encyclopedias rather than default AI output. A small drafting core — vary every pattern, build density from anchored facts in whole grammar, cap the quotables, put a real writer with real material behind the text, let structure serve content, write each language from inside its idiom and typography, verify what you assert, and aim for the natural distribution of edited prose rather than a perfect scorecard — backed by a three-layer tell catalog, per-language cue files for six languages and a seven-round measured case study shipped as reference files for the diagnostic census.",
+  "description_zh": "以任意语言重写或编辑文本，让行文读起来像书籍、报纸、百科里经人工编辑的文字，而不是默认的 AI 产物。核心 drafting 准则——变化每一种模式、用扎实的语法从锚定的事实建立密度、给引语设上限、让真实的作者与真实素材站在文字背后、让结构服务于内容、从每种语言自身的习语与排版出发写作、核实每一个断言、追求经过编辑的文字的自然分布而非完美分数表；并辅以三层 AI 味特征目录、六种语言的语言线索文件，以及一份七轮实测案例研究作为诊断普查的参考样本。",
   "short_description": "Strip AI-writing tells from prose in any language.",
   "short_description_zh": "去除文本的 AI 味，把行文改成书籍、报纸、百科式的风格，任何语言通用。",
   "version": "2026.08.12.1",

@@ -196,9 +196,11 @@ describe("shell-lexer", () => {
   });
 
   describe("comments and whitespace", () => {
-    it("drops comments and newlines from the tokenized stream", () => {
+    it("drops comments and keeps newlines in the tokenized stream", () => {
+      // A newline ends a command as surely as a `;` does: dropping it would join the two lines
+      // and hide the second line's command name from the tier classifier.
       const tokens = tokenizeShell("a # this is a comment\nb");
-      expect(tokens.map((t) => t.value)).toEqual(["a", "b"]);
+      expect(tokens.map((t) => t.value)).toEqual(["a", "\n", "b"]);
     });
 
     it("treats # as a word character when not at a word start", () => {

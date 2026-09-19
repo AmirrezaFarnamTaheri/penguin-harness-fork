@@ -83,7 +83,7 @@ export function registerScheduleCommand(program: Command, t: Messages): void {
       const perAgent = await Promise.all(
         agentIds.map(async (agentId) => ({
           agentId,
-          res: await client.request<SchedulesResponse>(
+          res: await client.requestJson<SchedulesResponse>(
             "GET",
             `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/schedules`,
           ),
@@ -165,7 +165,7 @@ export function registerScheduleCommand(program: Command, t: Messages): void {
       const client = new ServerClient(await resolveConnection({ server: opts.server }, t), t);
       const projectId = resolveProjectId(opts.projectId);
       const agentId = resolveAgentId(opts.agentId);
-      const item = await client.request<ScheduleItem>(
+      const item = await client.requestJson<ScheduleItem>(
         "POST",
         `/api/projects/${enc(projectId)}/agents/${enc(agentId)}/schedules`,
         {
@@ -218,7 +218,7 @@ export function registerScheduleCommand(program: Command, t: Messages): void {
       const base = `/api/projects/${enc(projectId)}/agents/${enc(agentId)}/schedules`;
       // Read-modify-write: unspecified fields keep the stored values; a target flag of
       // one kind clears the other kind's stored fields (the file holds one target).
-      const stored = await client.request<ScheduleItem>("GET", `${base}/${enc(name)}`);
+      const stored = await client.requestJson<ScheduleItem>("GET", `${base}/${enc(name)}`);
       const switchToSession = opts.sessionId !== undefined;
       const switchToNew =
         opts.workspace !== undefined || opts.modelId !== undefined || opts.provider !== undefined;
@@ -250,7 +250,7 @@ export function registerScheduleCommand(program: Command, t: Messages): void {
           body.provider = stored.provider;
         }
       }
-      const item = await client.request<ScheduleItem>("PUT", `${base}/${enc(name)}`, body);
+      const item = await client.requestJson<ScheduleItem>("PUT", `${base}/${enc(name)}`, body);
       if (opts.json === true) process.stdout.write(`${JSON.stringify(item)}\n`);
       else process.stdout.write(`${writtenLine(t, item)}\n`);
     });

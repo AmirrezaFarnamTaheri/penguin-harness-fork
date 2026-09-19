@@ -505,15 +505,27 @@ export class WikiEngine {
   }
 
   public importGraphJson(jsonStr: string): void {
-    const parsed = JSON.parse(jsonStr) as WikiGraph;
-    if (Array.isArray(parsed.nodes)) {
-      for (const n of parsed.nodes) {
-        this.nodes.set(n.id, { ...n });
+    const parsed: unknown = JSON.parse(jsonStr);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid wiki graph: expected a JSON object");
+    }
+    const graph = parsed as Record<string, unknown>;
+    if (Array.isArray(graph.nodes)) {
+      for (const raw of graph.nodes) {
+        const node = raw as Record<string, unknown>;
+        if (node === null || typeof node !== "object" || typeof node.id !== "string") {
+          throw new Error("Invalid wiki graph: every node must be an object with a string id");
+        }
+        this.nodes.set(node.id, { ...node } as unknown as WikiNode);
       }
     }
-    if (Array.isArray(parsed.edges)) {
-      for (const e of parsed.edges) {
-        this.edges.set(e.id, { ...e });
+    if (Array.isArray(graph.edges)) {
+      for (const raw of graph.edges) {
+        const edge = raw as Record<string, unknown>;
+        if (edge === null || typeof edge !== "object" || typeof edge.id !== "string") {
+          throw new Error("Invalid wiki graph: every edge must be an object with a string id");
+        }
+        this.edges.set(edge.id, { ...edge } as unknown as WikiEdge);
       }
     }
   }

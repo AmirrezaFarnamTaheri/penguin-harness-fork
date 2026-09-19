@@ -58,4 +58,17 @@ export class AgentNameRegistry {
       .sort((a, b) => b[1] - a[1])
       .map(([domain]) => domain);
   }
+
+  /**
+   * Releases an owner's name reservation (and its affinity record): the owner is gone, so its
+   * decorative name frees for a later cycle and its completion stats stop accumulating. Returns
+   * whether a reservation existed. The pool is shuffled round-robin, so a freed name returns with
+   * the next cycle rather than immediately — and a revived owner gets a fresh name rather than
+   * inheriting another agent's, as the class docstring promises.
+   */
+  release(ownerId: string): boolean {
+    const hadName = this.names.delete(ownerId);
+    this.affinities.delete(ownerId);
+    return hadName;
+  }
 }

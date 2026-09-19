@@ -11,39 +11,35 @@
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { cubicClosestT, evalCubic, type Cubic } from "../../../../core/src/canvas/bezier-curves.js";
 import {
   CANVAS_THEMES,
-  hexToRgb,
-  readableForeground,
-} from "../../../../core/src/canvas/color-space.js";
-import {
-  edgeAnchors,
-  layoutGraph,
-  smoothEdgeControlPoints,
-  type LayoutEdge,
-  type LayoutNode,
-} from "../../../../core/src/canvas/node-graph-layout.js";
-import {
+  clampZoom,
   createPath,
+  createViewport,
+  cubicClosestT,
+  cullByViewport,
   curveTo,
+  edgeAnchors,
   ellipsePath,
+  evalCubic,
+  hexToRgb,
+  layoutGraph,
+  makeRect,
   moveTo,
+  panBy,
   pathToString,
+  readableForeground,
   rectPath,
   roundedRectPath,
-} from "../../../../core/src/canvas/shape-renderers.js";
-import { makeRect } from "../../../../core/src/canvas/vector-primitives.js";
-import {
-  clampZoom,
-  createViewport,
-  cullByViewport,
-  panBy,
   screenToWorld,
   setZoomCentered,
+  smoothEdgeControlPoints,
+  type Cubic,
+  type LayoutEdge,
+  type LayoutNode,
   type Viewport,
   worldToScreen,
-} from "../../../../core/src/canvas/viewport-culling.js";
+} from "@prismshadow/penguin-core/canvas";
 
 export type CanvasThemeKey = "dark-obsidian" | "clean-blueprint" | "technical-paper";
 export type CanvasNodeShape = "rect" | "rounded" | "ellipse";

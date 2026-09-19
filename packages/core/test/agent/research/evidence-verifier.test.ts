@@ -98,6 +98,17 @@ describe("detectPolarityConflict", () => {
     expect(detectPolarityConflict("", SOURCE)).toBe(false);
     expect(detectPolarityConflict("photonic", "")).toBe(false);
   });
+
+  it("does not fire on cue words embedded inside larger words", () => {
+    // `"no"` is a substring of "innovation", "knowledge" and "now"; `"not"` of "notably".
+    // A bare `includes` test turned "innovation" plus a real contradiction cue into a
+    // false refutation. Here the only negative polarity "cue" is the "no" inside
+    // "innovation" — the contradiction cue "Unlike" is genuinely present, so the old
+    // matcher reported a conflict the text does not contain.
+    const source =
+      "Unlike the photonic innovation in the mesh, the measured throughput stayed flat.";
+    expect(detectPolarityConflict("photonic throughput improves measurably", source)).toBe(false);
+  });
 });
 
 describe("EvidenceVerifier", () => {
@@ -126,6 +137,24 @@ describe("EvidenceVerifier", () => {
     );
     expect(result.verdict).toBe("contradicted");
     expect(result.numericMismatches[0]!.reason).toBe("value-out-of-tolerance");
+  });
+
+  it("does not support a quantity whose value appears under an incompatible unit", () => {
+    // "5 ms" is not "5 %". Locating the same numeral across units used to verify the
+    // claim against a value the source never stated, because the unit-mismatch branch
+    // returned the located value either way.
+    const verifier = new EvidenceVerifier();
+    const source = "The photonic tensor core improves throughput by 5 ms per token.";
+    const result = verifier.verify(
+      claim({
+        text: "The photonic tensor core improves throughput by 5%.",
+        quantities: [{ value: 5, unit: "%", direction: "increase", raw: "5%" }],
+      }),
+      source,
+    );
+    expect(result.numericMatches).toHaveLength(0);
+    expect(result.numericMismatches[0]!.reason).toBe("unit-missing");
+    expect(result.verdict).not.toBe("supported");
   });
 
   it("contradicts a claim whose direction is flipped", () => {

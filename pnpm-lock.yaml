@@ -160,6 +160,9 @@ importers:
       '@penguinharness/humanizer':
         specifier: workspace:*
         version: link:../../plugins/humanizer
+      '@penguinharness/language-porting':
+        specifier: workspace:*
+        version: link:../../plugins/language-porting
       '@penguinharness/model-development':
         specifier: workspace:*
         version: link:../../plugins/model-development
@@ -576,6 +579,8 @@ importers:
   plugins/goal: {}
 
   plugins/humanizer: {}
+
+  plugins/language-porting: {}
 
   plugins/model-development: {}
 
@@ -1516,6 +1521,9 @@ packages:
 
   '@penguinharness/humanizer@file:plugins/humanizer':
     resolution: {directory: plugins/humanizer, type: directory}
+
+  '@penguinharness/language-porting@file:plugins/language-porting':
+    resolution: {directory: plugins/language-porting, type: directory}
 
   '@penguinharness/model-development@file:plugins/model-development':
     resolution: {directory: plugins/model-development, type: directory}
@@ -5434,6 +5442,8 @@ snapshots:
 
   '@penguinharness/humanizer@file:plugins/humanizer': {}
 
+  '@penguinharness/language-porting@file:plugins/language-porting': {}
+
   '@penguinharness/model-development@file:plugins/model-development': {}
 
   '@penguinharness/skill-porting@file:plugins/skill-porting': {}
@@ -5573,6 +5583,7 @@ snapshots:
       '@penguinharness/data-analysis': file:plugins/data-analysis
       '@penguinharness/goal': file:plugins/goal
       '@penguinharness/humanizer': file:plugins/humanizer
+      '@penguinharness/language-porting': file:plugins/language-porting
       '@penguinharness/model-development': file:plugins/model-development
       '@penguinharness/skill-porting': file:plugins/skill-porting
       '@penguinharness/software-development': file:plugins/software-development
@@ -5603,6 +5614,7 @@ snapshots:
       '@penguinharness/data-analysis': file:plugins/data-analysis
       '@penguinharness/goal': file:plugins/goal
       '@penguinharness/humanizer': file:plugins/humanizer
+      '@penguinharness/language-porting': file:plugins/language-porting
       '@penguinharness/model-development': file:plugins/model-development
       '@penguinharness/skill-porting': file:plugins/skill-porting
       '@penguinharness/software-development': file:plugins/software-development
@@ -5633,6 +5645,7 @@ snapshots:
       '@penguinharness/data-analysis': file:plugins/data-analysis
       '@penguinharness/goal': file:plugins/goal
       '@penguinharness/humanizer': file:plugins/humanizer
+      '@penguinharness/language-porting': file:plugins/language-porting
       '@penguinharness/model-development': file:plugins/model-development
       '@penguinharness/skill-porting': file:plugins/skill-porting
       '@penguinharness/software-development': file:plugins/software-development

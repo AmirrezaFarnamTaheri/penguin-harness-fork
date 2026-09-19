@@ -1,5 +1,6 @@
 {
   "description": "Install skills from external ecosystems into this agent's agent_state/skills/ — resolve Claude Code plugin marketplaces, the Codex plugin repo, skills.sh registry names, GitHub repos, or local folders to their skill directories, review every file, and normalize SKILL.md frontmatter to the Penguin format.",
+  "description_zh": "把外部生态的 Skill 安装到本 Agent 的 agent_state/skills/——解析 Claude Code 插件市场、Codex 插件仓库、skills.sh 注册名、GitHub 仓库或本地目录到各自的 skill 目录，逐文件审阅，并把 SKILL.md 的 frontmatter 归一化为 Penguin 格式。",
   "short_description": "Port external skills into this agent.",
   "short_description_zh": "把外部生态的 Skill 移植进本 Agent。",
   "version": "2026.08.04.1",

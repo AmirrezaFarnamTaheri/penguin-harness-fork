@@ -333,7 +333,12 @@ export class HmrHost {
   private async restore(): Promise<void> {
     let manifest: Manifest;
     try {
-      manifest = JSON.parse(await fsp.readFile(this.manifestPath, "utf8")) as Manifest;
+      const parsed: unknown = JSON.parse(await fsp.readFile(this.manifestPath, "utf8"));
+      // JSON.parse hands back `null` for a literal null body and the cast types it a Manifest,
+      // so the first dereference below would throw outside this try — bricking the very boot
+      // the doc's "any failure is non-fatal" promise covers.
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return;
+      manifest = parsed as Manifest;
     } catch {
       return; // nothing committed yet
     }

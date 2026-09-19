@@ -23,11 +23,10 @@ export type OmniMessageType = "session_meta" | "model_msg" | "event_msg";
 export type Role = "user" | "assistant";
 
 /**
- * The reason a model response or message generation ended. Only six protocol values are
+ * The reason a model response or message generation ended. Only four protocol values are
  * allowed:
- *   - `completed`: finished normally, including completed text, thinking, tool requests, or
- *     tool output;
- *   - `completed`: the request (or the segment it closed) ended normally;
+ *   - `completed`: the request (or the segment it closed) ended normally — completed text,
+ *     thinking, tool requests, or tool output;
  *   - `aborted`: user-initiated interruption or cancellation;
  *   - `retryable`: a failure worth retrying — transport drops, timeouts, 408/429/5xx,
  *     malformed or truncated responses, and anything unclassifiable. The engine reconnects
@@ -68,7 +67,6 @@ export type StreamEventType = "start" | "delta" | "stop";
  */
 export type MessageOrigin = string;
 
-/** The approval decision for a tool call. */
 /**
  * Per-tool approval decision. `"allow"` and `"deny"` are the Human boundary's answers;
  * `"forbidden"` is the project command policy's veto, produced by the `Session.run`

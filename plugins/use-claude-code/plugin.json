@@ -1,5 +1,6 @@
 {
   "description": "Run Claude Code on a remote host over SSH — a persistent expect-driven login session, headless claude -p with the stdin fix, the interactive TUI inside a remote tmux driven by send-keys/capture-pane (one keystroke at a time, capture-verified; relayed user messages go through verbatim), and multi-turn continuity via --session-id/--resume or stream-json; hosts and credentials are placeholders resolved at runtime from the user or the vault, never hardcoded.",
+  "description_zh": "经 SSH 在远程主机上运行 Claude Code——一个由 expect 驱动的持久登录会话、带 stdin 修复的 headless claude -p、在远程 tmux 中由 send-keys/capture-pane 驱动的交互式 TUI（每次一个按键、逐次截图核验；转发的用户消息逐字原样传递），并经 --session-id/--resume 或 stream-json 实现多轮续接；主机与凭据均为占位符，在运行时由用户或保险库解析，绝不硬编码。",
   "short_description": "Run Claude Code on remote hosts over SSH.",
   "short_description_zh": "在远程主机上通过 SSH 运行 Claude Code（持久会话 / headless / tmux 交互 / 多轮续接）。",
   "version": "2026.08.18.1",

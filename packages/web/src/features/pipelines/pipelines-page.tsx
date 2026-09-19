@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PersonaMask, WorkflowRunState } from "@prismshadow/penguin-core/browser";
 import * as api from "../../api/endpoints";
-import { apiFetch } from "../../api/client";
+import { apiFetchJson } from "../../api/client";
 import { useProject } from "../../state/project";
 import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
@@ -90,7 +90,7 @@ export function PipelineWorkspace({ projectId }: { projectId: string }) {
     setError("");
     try {
       const context = jsonObject(runContext);
-      const response = await apiFetch<{ run: WorkflowRunState }>(
+      const response = await apiFetchJson<{ run: WorkflowRunState }>(
         `${base}/${encodeURIComponent(current.id)}/runs`,
         { method: "POST", body: { context } },
       );
@@ -109,7 +109,7 @@ export function PipelineWorkspace({ projectId }: { projectId: string }) {
     setBusy(true);
     setError("");
     try {
-      const response = await apiFetch<{ run: WorkflowRunState }>(
+      const response = await apiFetchJson<{ run: WorkflowRunState }>(
         `${base}/${encodeURIComponent(run.pipelineId)}/runs/${encodeURIComponent(run.runId)}/nodes/${encodeURIComponent(node.id)}/complete`,
         { method: "POST", body: { output: jsonObject(output) } },
       );
@@ -144,7 +144,10 @@ export function PipelineWorkspace({ projectId }: { projectId: string }) {
     };
     try {
       // The create route returns the definition directly, not { pipeline }.
-      const saved = await apiFetch<api.PipelineRecord>(base, { method: "POST", body: definition });
+      const saved = await apiFetchJson<api.PipelineRecord>(base, {
+        method: "POST",
+        body: definition,
+      });
       if (!saved?.id || !Array.isArray(saved.nodes))
         throw new Error("The server did not confirm the workflow. Refresh before trying again.");
       setPipelines((prev) => [...prev, saved]);

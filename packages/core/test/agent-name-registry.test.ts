@@ -25,4 +25,34 @@ describe("AgentNameRegistry", () => {
     );
     expect(new Set([name, ...remaining])).toEqual(new Set(GREAT_NAME_POOL));
   });
+
+  it("releases a reservation so the owner no longer holds the name", () => {
+    const registry = new AgentNameRegistry();
+    const name = registry.assign("short-lived");
+    registry.recordSuccess("short-lived", "code-review");
+    expect(registry.nameOf("short-lived")).toBe(name);
+    expect(registry.affinityDomains("short-lived")).toEqual(["code-review"]);
+
+    expect(registry.release("short-lived")).toBe(true);
+    expect(registry.nameOf("short-lived")).toBeNull();
+    // The affinity record is freed alongside the reservation.
+    expect(registry.affinityDomains("short-lived")).toEqual([]);
+    expect(registry.getAffinity("short-lived", "code-review")).toBe(0);
+
+    // Releasing an unknown owner is a no-op, and a revived owner gets a fresh name.
+    expect(registry.release("ghost")).toBe(false);
+    const revived = registry.assign("short-lived");
+    expect(revived).not.toBe(name);
+  });
+
+  it("does not hand a freed name to a second owner in the same cycle", () => {
+    const registry = new AgentNameRegistry();
+    const first = registry.assign("owner-a");
+    registry.release("owner-a");
+    // Assigning every remaining name must not reuse the freed one this cycle.
+    const taken = Array.from({ length: GREAT_NAME_POOL.length }, (_, index) =>
+      registry.assign(`owner-${index}`),
+    );
+    expect(taken).not.toContain(first);
+  });
 });

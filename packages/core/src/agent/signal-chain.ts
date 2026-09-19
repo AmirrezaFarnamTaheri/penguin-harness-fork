@@ -387,4 +387,32 @@ export class SignalChainManager {
     }
     return list;
   }
+
+  /**
+   * Releases a source and every signal/action descended from it: the owning conversation or task
+   * is gone, so the ids it anchored must not accumulate forever. Returns the number of pruned
+   * nodes (0 when the source is unknown). Callers: the conversation/task lifecycle owner — e.g.
+   * swarm-coordinator, which owns the task -> chain mapping — should call this when a task's
+   * history is retired. Unrelated chains are untouched.
+   */
+  public releaseSource(sourceId: string): number {
+    if (!this.sources.has(sourceId)) return 0;
+
+    const chainId = `chain_${sourceId}`;
+    let pruned = 0;
+    for (const [id, action] of this.actions) {
+      if (action.chain.chainId === chainId) {
+        this.actions.delete(id);
+        pruned += 1;
+      }
+    }
+    for (const [id, signal] of this.signals) {
+      if (signal.chain.chainId === chainId) {
+        this.signals.delete(id);
+        pruned += 1;
+      }
+    }
+    this.sources.delete(sourceId);
+    return pruned + 1;
+  }
 }

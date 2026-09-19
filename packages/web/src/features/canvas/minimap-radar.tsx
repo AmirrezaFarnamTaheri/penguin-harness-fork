@@ -8,15 +8,17 @@
  */
 import { useMemo, useRef } from "react";
 
-import { CANVAS_THEMES } from "../../../../core/src/canvas/color-space.js";
-import { joinRects, makeRect, rectIsEmpty } from "../../../../core/src/canvas/vector-primitives.js";
 import {
+  CANVAS_THEMES,
+  joinRects,
+  makeRect,
   minimapProjection,
   minimapViewportRect,
   minimapToWorld,
-  worldToMinimap,
+  rectIsEmpty,
   type Viewport,
-} from "../../../../core/src/canvas/viewport-culling.js";
+  worldToMinimap,
+} from "@prismshadow/penguin-core/canvas";
 import type { CanvasThemeKey } from "./vector-canvas.js";
 
 interface ThemeColors {

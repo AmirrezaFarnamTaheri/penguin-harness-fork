@@ -441,13 +441,21 @@ export function routePath(
   return { kind: "handle", backend: terminal.backend, normalized };
 }
 
-/** Resolve a relative path against a cwd, then route. */
+/**
+ * Resolve a path against a cwd, then route.
+ *
+ * An absolute path must replace the cwd rather than be joined under it: this is
+ * `openat(dirfd, path)` semantics, where an absolute path ignores `dirfd` entirely. The
+ * previous join meant `resolveAndRoute("/tmp", "/sys/x")` produced `/tmp/sys/x` and routed
+ * to the `tmp` backend, so a blocked prefix was unreachable by absolute path from any cwd
+ * other than the root — the policy was bypassed by construction, not by exploit.
+ */
 export function resolveAndRoute(
   cwd: string,
   path: string,
   rules?: readonly RoutingRule[],
 ): RouteResult {
-  const normalized = normalizeRoutePath(`${cwd}/${path}`);
+  const normalized = normalizeRoutePath(path.startsWith("/") ? path : `${cwd}/${path}`);
   const routed = routePath(normalized, rules);
   return routed.kind === "block" ? routed : { kind: "handle", backend: routed.backend, normalized };
 }
@@ -492,14 +500,17 @@ export interface FilterAuditEntry {
  */
 export class SyscallAuditLog {
   private readonly entries: FilterAuditEntry[] = [];
-  private readonly denyCount = new Map<SyscallDisposition, number>();
+  private readonly dispositionCount = new Map<SyscallDisposition, number>();
 
   constructor(private readonly capacity = 4096) {}
 
   record(entry: FilterAuditEntry): void {
     if (this.entries.length >= this.capacity) this.entries.shift();
     this.entries.push(entry);
-    this.denyCount.set(entry.disposition, (this.denyCount.get(entry.disposition) ?? 0) + 1);
+    this.dispositionCount.set(
+      entry.disposition,
+      (this.dispositionCount.get(entry.disposition) ?? 0) + 1,
+    );
   }
 
   /** Record a decision for a plain (non-path) syscall. */
@@ -531,11 +542,11 @@ export class SyscallAuditLog {
   }
 
   count(disposition: SyscallDisposition): number {
-    return this.denyCount.get(disposition) ?? 0;
+    return this.dispositionCount.get(disposition) ?? 0;
   }
 
   clear(): void {
     this.entries.length = 0;
-    this.denyCount.clear();
+    this.dispositionCount.clear();
   }
 }

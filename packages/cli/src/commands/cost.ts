@@ -82,7 +82,7 @@ export function registerCostCommand(program: Command, t: Messages): void {
       if (to !== undefined) params.set("to", to);
       if (opts.agentId !== undefined) params.set("agentId", String(opts.agentId));
       const qs = params.size > 0 ? `?${params.toString()}` : "";
-      const usage = await client.request<UsageResponse>(
+      const usage = await client.requestJson<UsageResponse>(
         "GET",
         `/api/projects/${encodeURIComponent(projectId)}/usage${qs}`,
       );

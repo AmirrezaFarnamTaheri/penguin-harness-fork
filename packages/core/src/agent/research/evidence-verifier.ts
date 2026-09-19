@@ -75,7 +75,11 @@ export interface EvidenceVerifierOptions {
   readonly backgroundCorpus?: string;
 }
 
-const POLARITY_CUES = [
+/** Cues are matched on word boundaries: `"no"` must not hit "innovation" or "know". */
+const compileCues = (cues: ReadonlyArray<string>): ReadonlyArray<RegExp> =>
+  cues.map((cue) => new RegExp(`(?<!\\w)${escapeRegExp(cue)}(?!\\w)`));
+
+const POLARITY_CUES = compileCues([
   "not",
   "no",
   "never",
@@ -89,9 +93,9 @@ const POLARITY_CUES = [
   "refuted",
   "disprove",
   "contradict",
-];
+]);
 
-const CONTRADICTION_CUES = [
+const CONTRADICTION_CUES = compileCues([
   "in contrast",
   "on the contrary",
   "contrary to",
@@ -101,7 +105,12 @@ const CONTRADICTION_CUES = [
   "disagree",
   "disputes",
   "challenges",
-];
+]);
+
+/** Escapes a literal string for use inside a RegExp. */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 /**
  * Verifies claims against primary sources. Stateless per claim; safe to call
@@ -142,6 +151,13 @@ export class EvidenceVerifier {
       const found = findNumeric(source, quantity);
       if (!found) {
         mismatches.push({ quantity, reason: "not-found" });
+        continue;
+      }
+      // A value found under an incompatible unit ("5 ms" for a "5 %" claim) is not a
+      // match: the distance would be computed across units and a coincidental value
+      // would verify a claim the source never stated.
+      if (quantity.unit && found.unit && !unitsCompatible(quantity.unit, found.unit)) {
+        mismatches.push({ quantity, sourceValue: found.value, reason: "unit-missing" });
         continue;
       }
       const distance = numericDistance(quantity, found.value);
@@ -251,7 +267,8 @@ export class EvidenceVerifier {
 
     if (polarityConflict && coverage >= this.decisiveCoverage) return "contradicted";
     if (coverage >= this.coverageThreshold && mismatches.length === 0) return "supported";
-    if (coverage > 0 && mismatches.length === 0) return "unsupported";
+    // Partial coverage with unresolved mismatches, or no overlap at all: the claim is not
+    // what the source says. (`unverifiable` is reserved for claims with no source text.)
     return "unsupported";
   }
 
@@ -321,10 +338,8 @@ export function findNumeric(source: string, quantity: Quantity): FoundQuantity |
       best = { value, unit, direction: directionNearby(source, match.index) };
     }
   }
-  if (best && quantity.unit && best.unit && !unitsCompatible(quantity.unit, best.unit)) {
-    // Unit mismatch: report the located value so the caller can see the disagreement.
-    return best;
-  }
+  // A unit mismatch is reported by the caller (as `unit-missing`), not here: returning
+  // `best` either way made this branch a no-op and let the incompatible unit through.
   return best;
 }
 
@@ -443,8 +458,8 @@ export function detectPolarityConflict(claimText: string, sourceText: string): b
     let index = sourceLower.indexOf(term);
     while (index !== -1) {
       const window = sourceLower.slice(Math.max(0, index - 70), index + 40);
-      const hasNegativePolarity = POLARITY_CUES.some((cue) => window.includes(cue));
-      const hasContradictionCue = CONTRADICTION_CUES.some((cue) => window.includes(cue));
+      const hasNegativePolarity = POLARITY_CUES.some((cue) => cue.test(window));
+      const hasContradictionCue = CONTRADICTION_CUES.some((cue) => cue.test(window));
       if (hasNegativePolarity && hasContradictionCue) return true;
       index = sourceLower.indexOf(term, index + 1);
     }

@@ -15,8 +15,9 @@ packages/desktop/skills/
 # rewriting vendored templates, fixtures, schemas, examples, and generated assets.
 .agents/skills/
 
-# docs-only area (mostly Chinese; not machine-formatted)
-specs/
+# All Markdown is excluded by design: the READMEs are hand-formatted prose (much of it
+# Chinese) and every skill's SKILL.md keeps the formatting of the upstream corpus it was
+# imported from. `pnpm format:check` therefore governs code, not prose.
 *.md
 
 # Playwright e2e artifacts

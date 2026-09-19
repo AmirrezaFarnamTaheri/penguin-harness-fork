@@ -78,8 +78,15 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   {
     name: "generic_assignment",
     pattern:
-      /((?:api[_-]?key|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*["']?)[^\s"';,]{8,}(["']?)/gi,
-    replace: (_match, prefix, quote) => `${prefix}${REDACTED_MARKER}${quote || ""}`,
+      /((?:api[_-]?key|api[_-]?secret|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*)("(?:[^"\\]|\\.){8,}"|'(?:[^'\\]|\\.){8,}'|[^\s"';,]{8,})/gi,
+    replace: (_match, prefix: string, value: string) => {
+      const head = value[0];
+      if (head !== '"' && head !== "'") return `${prefix}${REDACTED_MARKER}`;
+      // Keep the quoting: a passphrase or a generated token containing spaces must still read as
+      // a complete, redacted value rather than a half-quoted fragment.
+      const tail = value[value.length - 1] === head ? value[value.length - 1] : "";
+      return `${prefix}${head}${REDACTED_MARKER}${tail}`;
+    },
   },
 ];
 
@@ -138,6 +145,10 @@ const DEFAULT_SENSITIVE_FIELDS = new Set([
   "cookie",
   "setcookie",
   "awssecretaccesskey",
+  "key",
+  "apisecret",
+  "apitoken",
+  "authtoken",
 ]);
 
 function buildSensitiveFieldSet(options?: RedactObjectOptions): Set<string> {
@@ -149,17 +160,33 @@ function buildSensitiveFieldSet(options?: RedactObjectOptions): Set<string> {
   return set;
 }
 
+/**
+ * Split a field name into its words: at separators, digit boundaries, and camelCase / acronym
+ * transitions, so `refreshTokenValue` becomes `refresh Token Value` and `HTTPResponse` becomes
+ * `HTTP Response`. Used only to locate a sensitive token that is not at the end of the name.
+ */
+function splitFieldNameWords(key: string): string[] {
+  return key
+    .replace(/([a-zd])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .split(/[^A-Za-zd]+/)
+    .filter(Boolean);
+}
+
 function isSensitiveField(key: string, sensitive: Set<string>): boolean {
   const normalized = normalizeFieldName(key);
+  if (!normalized) return false;
   if (sensitive.has(normalized)) return true;
 
-  return (
-    /^(?:x|openai|anthropic|google|github|gitlab|slack|aws)?apikey$/.test(normalized) ||
-    /^(?:client|app|oauth|webhook|signing)secret$/.test(normalized) ||
-    /^(?:x)?(?:api|access|refresh|secret|session|auth|oauth|client)token$/.test(normalized) ||
-    /^(?:x)?(?:auth|secret|private|signing|encryption)key$/.test(normalized) ||
-    /^(?:set)?cookie$/.test(normalized)
-  );
+  // A sensitive token anywhere in the name, as a whole word: `dbPassword` -> `password`,
+  // `refreshTokenValue` -> `token`, `stripeSigningSecret` -> `secret`. A bare `key` is in the
+  // set on purpose — this is a redactor, so it fails closed. The word boundary is what keeps an
+  // ordinary word containing those letters (`monkey`, `keyword`) from being censored while
+  // `dbKey` still is: `monkey` is one word, `dbKey` is two.
+  for (const word of splitFieldNameWords(key)) {
+    if (sensitive.has(normalizeFieldName(word))) return true;
+  }
+  return false;
 }
 
 function redactSensitiveValue(value: unknown): unknown {

@@ -1,5 +1,6 @@
 {
   "description": "Create and edit Bento presentations — self-contained .bento.html decks whose document is JSON. Use whenever the user wants a slide deck or presentation: from scratch, from source material, or by improving an existing file.",
+  "description_zh": "创建与编辑 Bento 演示文稿——自包含的 .bento.html，其文档体即 JSON。凡用户需要幻灯片或演示时均可使用：从零开始、依据素材生成，或改进既有文件。",
   "short_description": "Author Bento slide decks.",
   "short_description_zh": "制作 Bento 幻灯片。",
   "version": "2026.07.22.1",

@@ -113,6 +113,9 @@ export const DEFAULT_ISOLATION_CEILINGS: IsolationCeilings = {
   sigkillTimeoutMs: 30_000,
 };
 
+/** What the backend receives when the policy grants no network at all: network-off. */
+const EMPTY_ALLOW_LIST: AllowedUrlEntry[] = [];
+
 /**
  * The isolated-tier backend contract. Core defines it because the escalation
  * decision is core's; an implementation lives in the server package and talks to a
@@ -385,22 +388,23 @@ export class IsolatedExecutionRuntime {
       );
     }
 
-    // Egress: an escalation that the script reaches the network through must still
-    // clear the allow-list. Decided here, once, so the backend's answer is the same
-    // one the harness would give for an explicit fetch.
+    // Egress: the capability gate and the destination gate are separate, and both have to agree.
+    // A denial of `network:outbound` means no network at all, so the backend receives an empty
+    // allow-list (network-off) — passing the configured list through anyway would let an
+    // escalation reach a host the policy never granted. Only a grant makes the allow-list the
+    // operative limit, and the backend enforces it at boot (see the isolated backend's
+    // applyEgressPolicy). Decided here, once, so the backend's answer is the same one the harness
+    // would give for an explicit fetch.
     const networkDecision = policyBox.decide("network:outbound");
-    if (networkDecision.outcome === "deny" && this.allowList.length === 0) {
-      // No allow-list and no network capability: the command still runs isolated,
-      // but with an empty allow-list, which the backend reads as network-off. A
-      // denial here would be redundant with what the backend already enforces.
-    }
+    const egressAllowList =
+      networkDecision.outcome === "permit" ? this.allowList : EMPTY_ALLOW_LIST;
 
     const startedAt = this.now();
     try {
       const isolated = await this.backend.run({
         script: source,
         ceilings: this.ceilings,
-        allowList: this.allowList,
+        allowList: egressAllowList,
         cwd: runOptions?.cwd,
         env: runOptions?.env,
         signal: runOptions?.signal,

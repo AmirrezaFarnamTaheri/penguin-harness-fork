@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AuditReceiptsResponse } from "@prismshadow/penguin-server/api";
-import { apiFetch } from "../../api/client";
+import { apiFetchJson } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { S } from "../../lib/strings";
 import { SignalChainGraph } from "../cockpit/signal-chain-graph";
@@ -21,7 +21,7 @@ function ProjectAuditReceipts({ projectId }: { projectId: string }) {
     setLoading(true);
     setResult(null);
     setError(null);
-    void apiFetch<AuditReceiptsResponse>(
+    void apiFetchJson<AuditReceiptsResponse>(
       `/api/projects/${encodeURIComponent(projectId)}/audit/receipts`,
     ).then(
       (response) => {

@@ -161,6 +161,16 @@ describe("port-probe parsers", () => {
     expect(parseWindowsProbe("not json", 10)).toBeNull();
   });
 
+  it("parseWindowsProbe answers null for anything that is not a payload object", () => {
+    // PowerShell stdout is the input, so a literal null, a bare number or a stray array is
+    // "don't know" — the null the contract documents — not a TypeError on the first dereference.
+    for (const junk of ["null", "5", '"powershell errored"', "[]", "true"]) {
+      expect(parseWindowsProbe(junk, 10), junk).toBeNull();
+    }
+    // A payload whose entries are not objects finds no listeners either (best-effort, not a crash).
+    expect(parseWindowsProbe(JSON.stringify({ c: "nope", p: 42 }), 10)).toEqual([]);
+  });
+
   it("probeGroupListenPorts answers null on an unsupported platform", async () => {
     expect(await probeGroupListenPorts(1, "freebsd" as NodeJS.Platform)).toBeNull();
   });

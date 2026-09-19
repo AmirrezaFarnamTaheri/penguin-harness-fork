@@ -1,0 +1,8 @@
+{
+  "description": "Port a product out of TypeScript into other languages: port-architecture decides which subsystem ports to which language and where the seams go, code-port carries one file or module across without changing behavior, port-verify proves the result matches the original before anyone calls it done.",
+  "description_zh": "把产品从 TypeScript 移植到其他语言：port-architecture 决定各子系统移植到哪种语言、接口边界划在哪里，code-port 逐文件、逐模块地完成移植且不改变行为，port-verify 在任何人宣称完成之前证明移植结果与原版一致。",
+  "short_description": "Decide the target languages, port the modules, prove the parity.",
+  "short_description_zh": "选定目标语言，移植模块，证明行为一致。",
+  "version": "2026.09.19.1",
+  "category": "software-development"
+}
