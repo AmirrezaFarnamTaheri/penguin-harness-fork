@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-plugin-sandbox-mxc",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "type": "module",
   "description": "Windows sandbox backend for PenguinHarness over Microsoft MXC (Microsoft eXecution Containers): filesystem confinement, network isolation and path masking via the processcontainer backend.",
