@@ -248,6 +248,9 @@ importers:
       '@penguinharness/humanizer':
         specifier: workspace:*
         version: link:../../plugins/humanizer
+      '@penguinharness/language-porting':
+        specifier: workspace:*
+        version: link:../../plugins/language-porting
       '@penguinharness/model-development':
         specifier: workspace:*
         version: link:../../plugins/model-development
