@@ -70,6 +70,36 @@ const DEFAULT_IGNORES: Array<string | RegExp> = [
   ".vscode",
 ];
 
+/**
+ * The form of a directory path that must be handed to `fs.watch`.
+ *
+ * libuv stores the watched directory verbatim (`handle->dirw`) and, when a Windows
+ * change arrives, recomputes the affected name in its long form via
+ * `GetLongPathNameW()`. If the watched path contains an 8.3 short-name component —
+ * `C:\Users\RUNNER~1\...` on GitHub's Windows runners, or `C:\PROGRA~1\...` and
+ * OneDrive aliases on user machines — the long form no longer shares that prefix,
+ * and libuv's prefix check fails with `assert(!_wcsnicmp(...))` in
+ * `src/win/fs-event.c`, which aborts the whole process; the error cannot be caught
+ * from JavaScript (libuv/libuv#5010, nodejs/node#63638). Watching the long form
+ * keeps the two consistent. `realpathSync.native()` is required: the POSIX-style
+ * implementation does not expand 8.3 names on Windows.
+ *
+ * Only the argument passed to `fs.watch` is translated. Everything else — the map
+ * keys, the relative-path arithmetic, the paths handed back to callers — keeps the
+ * caller's own spelling, so a caller that passes short-form paths still sees them
+ * unchanged in events.
+ */
+function resolveWatchDir(dir: string): string {
+  if (process.platform !== "win32") return dir;
+  // Best effort: a directory that does not exist yet falls back to the caller's
+  // path, and `startWatching` re-checks existence before installing any watcher.
+  try {
+    return fs.realpathSync.native(dir);
+  } catch {
+    return dir;
+  }
+}
+
 export class CodeGraphWatcher extends EventEmitter {
   private readonly rootDir: string;
   private readonly graph: CodeGraph;
@@ -316,7 +346,7 @@ export class CodeGraphWatcher extends EventEmitter {
 
     try {
       this.fsWatcher = fs.watch(
-        this.rootDir,
+        resolveWatchDir(this.rootDir),
         { recursive: true },
         (_eventType: string, filename: string | null) => {
           if (!filename || this.isClosed) return;
@@ -375,7 +405,7 @@ export class CodeGraphWatcher extends EventEmitter {
 
     let watcher: fs.FSWatcher;
     try {
-      watcher = fs.watch(dir, (_eventType: string, filename: string | null) => {
+      watcher = fs.watch(resolveWatchDir(dir), (_eventType: string, filename: string | null) => {
         if (!filename || this.isClosed) return;
 
         const fullPath = path.join(dir, filename);

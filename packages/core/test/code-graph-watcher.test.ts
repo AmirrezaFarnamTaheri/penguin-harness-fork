@@ -309,4 +309,63 @@ describe("code-graph-watcher non-recursive fallback", () => {
     // A removed directory surfaces an error event from its watcher; it must not crash the run.
     expect(errors.length).toBeLessThanOrEqual(1);
   });
+
+  // libuv stores the watched directory verbatim and resolves change names to their
+  // long form; when the watched path carries an 8.3 short-name component the two no
+  // longer agree and libuv aborts the process with an uncatchable C assertion
+  // (libuv/libuv#5010). GitHub's Windows runners use a short-name TEMP, which is how
+  // this first showed up as a red `test-windows (core)` shard with every test green.
+  it("does not abort the process when the watched root is an 8.3 short-name path", async () => {
+    if (process.platform !== "win32") return;
+
+    const longParent = fs.mkdtempSync(path.join(os.tmpdir(), "LongWatcherRootName-"));
+    const shortParent = shortPathOf(longParent);
+    if (shortParent === longParent) {
+      // The volume has 8.3 generation disabled; nothing to prove here.
+      fs.rmSync(longParent, { recursive: true, force: true });
+      return;
+    }
+
+    const srcDir = path.join(shortParent, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "seed.ts"), "export const seed = 0;\n");
+
+    // Constructed with the SHORT path, as os.tmpdir() hands it to us on the runner.
+    const watcher = new CodeGraphWatcher(shortParent, { debounceMs: 20 });
+    const changed: string[] = [];
+    watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
+    await watcher.init();
+
+    // A write under the short alias is what forces libuv to resolve the long form.
+    fs.writeFileSync(path.join(srcDir, "added.ts"), "export const added = 1;\n");
+    await waitFor(() => changed.some((f) => f === "src/added.ts")).catch(() => {
+      watcher.processFile(path.join(srcDir, "added.ts"));
+    });
+    await watcher.flush();
+
+    expect(watcher.getTrackedFiles()).toContain("src/added.ts");
+    watcher.close();
+    fs.rmSync(longParent, { recursive: true, force: true });
+  });
 });
+
+/**
+ * The 8.3 short form of a path, via the Win32 `GetShortPathNameW` that Node exposes
+ * through `realpathSync`'s inverse. Falls back to the input when short names are
+ * disabled on the volume, in which case the test above skips itself.
+ */
+function shortPathOf(longPath: string): string {
+  const { spawnSync } = require("node:child_process");
+  const out = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `Add-Type -Name W -Namespace P -MemberDefinition '[DllImport("kernel32", CharSet=CharSet.Unicode)] public static extern int GetShortPathName(string l, System.Text.StringBuilder s, int c);'; $b = New-Object Text.StringBuilder 260; [void][P.W]::GetShortPathName("${longPath}", $b, 260); Write-Output $b.ToString()`,
+    ],
+    { encoding: "utf8", windowsHide: true },
+  );
+  const shortPath = out.stdout.trim();
+  return shortPath || longPath;
+}
