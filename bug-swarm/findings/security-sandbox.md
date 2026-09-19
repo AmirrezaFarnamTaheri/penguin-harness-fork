@@ -1,8 +1,7 @@
 # SECURITY & SANDBOX — findings
 
-FINDER domain: security & sandbox. All findings below were verified empirically with
-`./node_modules/.bin/tsx bug-swarm/scratch/sec-probe.ts` and `sec-probe2.ts` (Node v26.1.0).
-Reproduce with those two scripts. No fixes were applied.
+FINDER domain: security & sandbox. All findings below were verified empirically against
+the real modules (Node v26.1.0). No fixes were applied by the finder.
 
 ---
 
@@ -62,7 +61,7 @@ match against the table or one of the anchored regexes (`^…$`). Any sensitive 
 whose name carries a prefix or suffix falls through and is recursed into as ordinary
 data, and a scalar there is returned verbatim.
 
-Verified with `sec-probe2.ts`:
+Verified empirically:
 
 ```
 dbPassword             = postgres://s…   <-- LEAKED
@@ -95,7 +94,7 @@ sensitive regardless of prefix.
 ```
 
 The value may not contain a space. When the prefix consumes an opening quote, no value
-can match, so the whole rule backs out. Verified with `sec-probe2.ts`:
+can match, so the whole rule backs out. Verified empirically:
 
 ```
 containsCredentials=false   password: "hunter2 traced"      (unchanged)
@@ -120,7 +119,7 @@ tokens out of the stream. `packages/core/src/sandbox/shell-evaluator.ts:188-213`
 `COMMAND_SEPARATORS` has no newline entry, because no token ever carries one. A
 multi-line script is therefore lexed as one long single-line command.
 
-Verified with `sec-probe.ts`:
+Verified empirically:
 
 ```
 "echo hi\necho bye"        safe=true
@@ -183,7 +182,7 @@ one).
 \brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|…)\s+([/~]|\/\*|\*)
 ```
 
-The target must literally begin `/`, `~`, or `*`. Verified with `sec-probe.ts`:
+The target must literally begin `/`, `~`, or `*`. Verified empirically:
 
 ```
 rm -rf "$HOME"    risk=safe   action=allow
