@@ -551,10 +551,13 @@ export class SymbolIndexer {
       // Skip block comments
       if (ch === "/" && content[i + 1] === "*") {
         const start = i;
-        // Search from `start + 1` so the minimal complete comment `/*/` resolves: its
-        // closer is the `/` at `start + 2`, which a scan from `start + 2` would skip,
-        // swallowing the rest of the file as an unterminated comment.
-        const close = content.indexOf("*/", start + 1);
+        // Scan for the closer from `start + 2` — past the `/*` opener itself. The opener's own
+        // `*` must not be reused as the closer's `*`: in the ECMAScript/C lexical grammar a
+        // block comment is `/*` followed later by `*/`, so `/*/` is an *unterminated* comment
+        // (a scanner from `start + 1` would pair the opener's `*` with the trailing `/` and
+        // treat `/*/` as a complete empty comment, hiding the real bug: the rest of the file
+        // is inside a comment that never closed). The minimal complete empty comment is `/**/`.
+        const close = content.indexOf("*/", start + 2);
         const end = close === -1 ? len : close + 2;
         for (let j = start; j < end; j++) {
           if (content[j] === "\n") {

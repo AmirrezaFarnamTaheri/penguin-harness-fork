@@ -19,9 +19,16 @@ describe("SymbolIndexer", () => {
     const ident = tokens.find((token) => token.kind === "TIDENT" && token.value === "value");
     expect(ident!.column).toBe(29);
 
-    // `/*/` is a complete empty comment — the `x` after it must still be scanned as an
-    // identifier, not absorbed into the comment.
-    const afterMinimal = indexer.tokenize("/*/ x = 1;\n");
+    // `/*/` is an UNTERMINATED comment in the ECMAScript/C lexical grammar: after the `/*`
+    // opener the only remaining character is `/`, so no `*/` closer exists and the rest of
+    // the file is inside the comment. The minimal *complete* empty comment is `/**/`. A
+    // scanner that reuses the opener's `*` as the closer's `*` would call `/*/` complete and
+    // then report every token after it — silently mis-tokenizing the whole file.
+    const unterminated = indexer.tokenize("/*/ x = 1;\n");
+    expect(unterminated.some((token) => token.value === "x")).toBe(false);
+
+    // `/**/` is complete, so the `x` after it is a real identifier again.
+    const afterMinimal = indexer.tokenize("/**/ x = 1;\n");
     expect(afterMinimal.some((token) => token.value === "x")).toBe(true);
   });
 
