@@ -61,7 +61,11 @@ interface ProjectStoreState {
   reloadAgents: () => Promise<void>;
 }
 
-function createProjectStore() {
+/**
+ * Builds one Provider's store. Exported as a test seam: the package's vitest runs in Node with
+ * no DOM, so the Agent-list race in `reloadAgents` is exercised against the store directly.
+ */
+export function createProjectStore() {
   return createStore<ProjectStoreState>((set, get) => ({
     projects: [],
     projectsLoading: true,
@@ -113,6 +117,11 @@ function createProjectStore() {
       set({ agentsLoading: true });
       try {
         const res = await api.listAgents(currentProjectId);
+        // A response for a Project the shell has since left is stale: landing it would put the
+        // old Project's agents under the new one, and the Session list mounted under it would
+        // fetch with the wrong Agent set (see setCurrentProjectId, which clears the list for
+        // exactly this reason).
+        if (get().currentProjectId !== currentProjectId) return;
         const wanted = get().currentAgentId ?? localStorage.getItem(agentKey(currentProjectId));
         const found = res.agents.find((a) => a.agentId === wanted);
         // Default to conversing with default_agent.
@@ -120,7 +129,7 @@ function createProjectStore() {
           res.agents.find((a) => a.agentId === "default_agent") ?? res.agents[0] ?? null;
         set({ agents: res.agents, currentAgentId: (found ?? fallback)?.agentId ?? null });
       } finally {
-        set({ agentsLoading: false });
+        if (get().currentProjectId === currentProjectId) set({ agentsLoading: false });
       }
     },
 
