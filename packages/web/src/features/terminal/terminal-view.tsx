@@ -15,7 +15,13 @@ import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 // Types only (erased at compile time): the xterm runtime stays behind loadXterm() below.
 import type { ITheme, Terminal as XTerminal } from "@xterm/xterm";
-import { TerminalOpcode, decodeFrame, encodeFrame, encodeResize } from "./terminal-frames";
+import {
+  TerminalOpcode,
+  decodeExitFrame,
+  decodeFrame,
+  encodeFrame,
+  encodeResize,
+} from "./terminal-frames";
 import { LinkClickTracker, openTerminalLink, positionFromPointer } from "./terminal-links";
 import { useTheme } from "../../state/theme";
 
@@ -475,9 +481,16 @@ export function TerminalView({
                 term.write(frame.text);
                 break;
               case TerminalOpcode.Exit: {
-                const { exitCode } = JSON.parse(frame.text) as { exitCode: number };
+                // A malformed body (version skew, a truncated frame) must not throw out of
+                // onmessage: that strands the view with no exit status and an unhandled
+                // error, and the terminal never reports "exited".
+                const exit = decodeExitFrame(frame.text);
+                if (!exit.ok) {
+                  report("error", `malformed exit frame: ${exit.reason}`);
+                  break;
+                }
                 exited = true;
-                report("exited", String(exitCode));
+                report("exited", String(exit.exitCode));
                 break;
               }
               default:

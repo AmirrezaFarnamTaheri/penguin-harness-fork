@@ -47,3 +47,24 @@ export function decodeFrame(buffer: ArrayBuffer): DecodedFrame | null {
 export function encodeResize(cols: number, rows: number, intent: "claim" | "update"): Uint8Array {
   return encodeFrame(TerminalOpcode.Resize, JSON.stringify({ cols, rows, intent }));
 }
+
+/** An Exit frame's body, or why it could not be read. */
+export type ExitFrameResult = { ok: true; exitCode: number } | { ok: false; reason: string };
+
+/**
+ * Reads an Exit frame's body (`{"exitCode": N}`). A malformed body — version skew between
+ * the client and server halves of the wire format, or a truncated frame — must never throw
+ * out of a WebSocket message handler: that strands the terminal view with no exit status
+ * and an unhandled error. Callers report the failure instead.
+ */
+export function decodeExitFrame(text: string): ExitFrameResult {
+  try {
+    const body = JSON.parse(text) as { exitCode?: unknown };
+    if (typeof body.exitCode !== "number" || !Number.isInteger(body.exitCode)) {
+      return { ok: false, reason: "exitCode is missing or not an integer" };
+    }
+    return { ok: true, exitCode: body.exitCode };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
