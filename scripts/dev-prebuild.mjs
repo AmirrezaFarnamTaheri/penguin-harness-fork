@@ -111,12 +111,16 @@ function readText(file) {
 }
 
 /**
- * Content fingerprint of the injected workspace deps' build output (plugins + core dist):
+ * Content fingerprint of the injected workspace deps' build output (core dist):
  * every file's bytes are hashed — chunk renames alone would not do, because tsup's entry
  * outputs keep stable filenames and hold entry-resident code, so an equal-length change
  * there would slip past a path+size check. mtimes are deliberately excluded (tsup runs
- * with clean:true, so every rebuild rewrites them even when nothing changed). The two
- * dist trees are a few MB, so this stays well under the cost of anything else here.
+ * with clean:true, so every rebuild rewrites them even when nothing changed). The dist tree
+ * is a few MB, so this stays well under the cost of anything else here.
+ *
+ * Only core is hashed. This prestep also builds the CLI, but that bundle exists for the dev
+ * server's `<root>/bin/penguin` shim and is not a dependency of the web app, so a CLI-only
+ * change must not force Vite to re-optimize the browser's dep cache.
  */
 function injectedDistFingerprint() {
   const parts = [];
@@ -139,7 +143,7 @@ function injectedDistFingerprint() {
 /**
  * Drop Vite's dependency-prebundle cache when the injected deps' output changed.
  *
- * The workspace runs with injectWorkspacePackages, so the web app consumes skills/core as
+ * The workspace runs with injectWorkspacePackages, so the web app consumes core as
  * snapshot copies inside node_modules/.pnpm (kept current by syncInjectedDepsAfterScripts
  * when the build above runs). Vite then prebundles those copies into
  * packages/web/node_modules/.vite/deps — and that cache is keyed by lockfile/config only,
@@ -152,7 +156,7 @@ function refreshViteCache() {
   if (readText(VITE_STAMP) === fingerprint) return;
   rmSync(WEB_VITE_CACHE, { recursive: true, force: true });
   writeFileSync(VITE_STAMP, fingerprint);
-  console.log("[dev-prebuild] skills/core output changed; cleared the web Vite dep cache.");
+  console.log("[dev-prebuild] core output changed; cleared the web Vite dep cache.");
 }
 
 /**
