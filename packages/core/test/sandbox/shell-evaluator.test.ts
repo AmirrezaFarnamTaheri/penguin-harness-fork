@@ -543,12 +543,18 @@ describe("shell-evaluator", () => {
       it("stops the script and keeps the status it was given", async () => {
         const result = await evaluate("exit 3; echo after");
         expect(result.stdout).toBe("");
-        expect(result.exitCode).toBe(1);
-        expect(await statusOf("exit 3")).toBe(1);
+        expect(result.exitCode).toBe(3);
+        expect(await statusOf("exit 3")).toBe(3);
         expect(await statusOf("exit 0")).toBe(0);
         // No argument adopts the last command's status.
         expect(await statusOf("false; exit")).toBe(1);
         expect(await statusOf("true; exit")).toBe(0);
+        // The status is not booleanized: `exit 1` and `exit 3` stay distinct, as in a real
+        // shell, so a caller branching on the code can tell a usage error from a failure.
+        expect(await statusOf("exit 127")).toBe(127);
+        // Out-of-range statuses truncate to the low 8 bits, the way POSIX reports them.
+        expect(await statusOf("exit 257")).toBe(1);
+        expect(await statusOf("exit -1")).toBe(255);
       });
     });
 

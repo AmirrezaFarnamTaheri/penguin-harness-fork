@@ -651,9 +651,16 @@ export class ShellEvaluator {
         // `exit` ends the script with the status it was given (the last status by default).
         // It must both record that status — `runPipelineList` stops here rather than letting a
         // later command overwrite `exitCode` — and return it so the builtin's caller sees it.
+        // The status is preserved as given: like the statuses other builtins already emit (`2`
+        // from `shift` misuse, `127` for a missing command), it is the caller's signal, and a
+        // real shell's `exit 3` is reported as 3. Booleanizing to 0/1 discarded the value the
+        // script asked to exit with, so `exit 3` and `exit 1` were indistinguishable.
         const code = Number(args[0] ?? this.lastStatus);
         this.exiting = true;
-        return Number.isSafeInteger(code) ? (code > 0 ? 1 : 0) : 1;
+        if (!Number.isSafeInteger(code)) return 1;
+        // POSIX truncates an out-of-range status to the low 8 bits, and a negative one is
+        // reported as 256 + n (as `exit -1` → 255 in sh/bash).
+        return ((Math.trunc(code) % 256) + 256) % 256;
       }
       case "return":
         return Number(args[0] ?? 0) === 0 ? 0 : 1;
