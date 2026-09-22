@@ -1,25 +1,37 @@
 /**
- * state/company.tsx listing race: an organization answer belongs to the Project set it was
- * read for.
+ * state/company.tsx listing races: an answer belongs to the Project set (and the organization
+ * list) it was read for.
  *
  * The Provider re-reads the organization list whenever the Project set changes and on every
- * event that moves a summary (a run, a ticket, a budget state). Two reads therefore overlap,
- * and if the Project set changed between them the older answer describes a set the shell is no
- * longer in: landing it regresses the sidebar to a Project the user can no longer reach, and
- * `forgetMissingOrganizations` then runs against the older list — which never knew about an
- * organization the newer list had shown — and drops the one the user just opened.
+ * event that moves a summary (a run, a ticket, a budget state), and re-reads the current
+ * Project's desk and ticket Sessions when the Project, the list or a run moves. Reads therefore
+ * overlap, and the one that answers last is not the one that started last:
+ * - an organization answer for a Project set the shell has left regresses the sidebar, and
+ *   `forgetMissingOrganizations` then runs against the older list — which never knew about an
+ *   organization the newer list had shown — and drops the one the user just opened;
+ * - a Sessions answer for the Project the shell left overwrites the map the newer read built,
+ *   so the sidebar's folders show desks and tickets that do not exist under the Project they
+ *   are now in.
  *
  * No React and no DOM: the store is the seam (same reason createCompanyStore is exported).
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { OrganizationSummary, OrganizationsResponse } from "@prismshadow/penguin-server/api";
+import type {
+  OrgSessionsResponse,
+  OrganizationSummary,
+  OrganizationsResponse,
+} from "@prismshadow/penguin-server/api";
 
-vi.mock("../src/api/endpoints", () => ({ listOrganizations: vi.fn() }));
+vi.mock("../src/api/endpoints", () => ({
+  listOrganizations: vi.fn(),
+  getOrgSessions: vi.fn(),
+}));
 
 import * as api from "../src/api/endpoints";
 import { createCompanyStore } from "../src/state/company";
 
 const listOrganizations = vi.mocked(api.listOrganizations);
+const getOrgSessions = vi.mocked(api.getOrgSessions);
 
 /** In-memory localStorage (vitest runs in Node): the remembered organization is mirrored there. */
 beforeAll(() => {
@@ -150,5 +162,83 @@ describe("reloadOrganizations lands the list for the Projects it was read for", 
     store.getState().forgetMissingOrganizations();
     expect(store.getState().currentOrgKey).toBe("p2/beta");
     expect(store.getState().lastOrgKey).toBe("p2/beta");
+  });
+});
+
+describe("reloadOrgSessions lands the map for the Project and list it was read for", () => {
+  /** Empty Sessions listings: only which organization got an entry matters below. */
+  const empty = (): OrgSessionsResponse => ({ desks: [], tickets: [] });
+
+  /** Holds every call's answer; the test releases them in the order it wants. */
+  const sessionResolvers: Array<() => void> = [];
+  function holdSessions(): void {
+    sessionResolvers.length = 0;
+    getOrgSessions.mockImplementation(
+      () =>
+        new Promise<OrgSessionsResponse>((resolve) => {
+          sessionResolvers.push(() => resolve(empty()));
+        }),
+    );
+  }
+  function settle(call: number): void {
+    sessionResolvers[call]?.();
+  }
+
+  it("lands one entry per organization of the Project it was asked for", async () => {
+    getOrgSessions.mockResolvedValue(empty());
+    const store = createCompanyStore();
+    store.setState({
+      organizations: [summary("p1", "acme"), summary("p1", "beta"), summary("p2", "gamma")],
+    });
+    await store.getState().reloadOrgSessions("p1");
+    expect([...store.getState().orgSessions.keys()].sort()).toEqual(["p1/acme", "p1/beta"]);
+  });
+
+  it("keeps a failed organization out of the map and the rest in", async () => {
+    getOrgSessions.mockImplementation((projectId, orgId) =>
+      orgId === "beta" ? Promise.reject(new Error("gone")) : Promise.resolve(empty()),
+    );
+    const store = createCompanyStore();
+    store.setState({ organizations: [summary("p1", "acme"), summary("p1", "beta")] });
+    await store.getState().reloadOrgSessions("p1");
+    expect([...store.getState().orgSessions.keys()]).toEqual(["p1/acme"]);
+  });
+
+  it("drops an answer that lands after the shell moved to another Project", async () => {
+    // The user switches from p1 to p2 while p1's read is out. p2 answers first; p1's answer
+    // arrives last and, without the guard, replaces the map with one holding only p1's entries.
+    holdSessions();
+    const store = createCompanyStore();
+    store.setState({ organizations: [summary("p1", "acme"), summary("p2", "beta")] });
+    const stale = store.getState().reloadOrgSessions("p1"); // call 0 (acme)
+    const fresh = store.getState().reloadOrgSessions("p2"); // call 1 (beta)
+    settle(1);
+    await fresh;
+    expect([...store.getState().orgSessions.keys()]).toEqual(["p2/beta"]);
+
+    settle(0);
+    await stale;
+    // The sidebar reads this map by the current Project's org keys: p1's answer must not evict
+    // p2's entry from it.
+    expect([...store.getState().orgSessions.keys()]).toEqual(["p2/beta"]);
+  });
+
+  it("drops an answer read against an organization list that has since grown", async () => {
+    // The list gains an organization mid-read: the older answer carries no entry for it, and
+    // landing it would take the new organization's folder away as soon as it appeared.
+    holdSessions();
+    const store = createCompanyStore();
+    store.setState({ organizations: [summary("p1", "acme")] });
+    const stale = store.getState().reloadOrgSessions("p1"); // call 0 (acme)
+    store.setState({ organizations: [summary("p1", "acme"), summary("p1", "beta")] });
+    const fresh = store.getState().reloadOrgSessions("p1"); // calls 1, 2 (acme, beta)
+    settle(1);
+    settle(2);
+    await fresh;
+    expect([...store.getState().orgSessions.keys()].sort()).toEqual(["p1/acme", "p1/beta"]);
+
+    settle(0);
+    await stale;
+    expect([...store.getState().orgSessions.keys()].sort()).toEqual(["p1/acme", "p1/beta"]);
   });
 });
