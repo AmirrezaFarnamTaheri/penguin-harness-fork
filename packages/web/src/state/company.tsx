@@ -115,6 +115,12 @@ interface CompanyStoreState {
   orgsLoading: boolean;
   orgsLoaded: boolean;
   /**
+   * The joined Project ids the listing currently in flight was read for. The Provider re-reads
+   * when the Project set changes and on every event that moves a summary, so two reads overlap
+   * and the later one must not be overwritten by the earlier one's answer.
+   */
+  orgsKey: string;
+  /**
    * At least one Project's listing failed in the last read, so `organizations` is missing
    * whatever that Project holds. An absent organization then means "not listed this time",
    * not "gone", which is what keeps a transient failure from forgetting the open one.
@@ -180,6 +186,7 @@ export function createCompanyStore() {
     organizations: [],
     orgsLoading: false,
     orgsLoaded: false,
+    orgsKey: "",
     orgsPartial: false,
     channels: null,
     channelsError: null,
@@ -274,7 +281,8 @@ export function createCompanyStore() {
     },
 
     reloadOrganizations: async (projectIds) => {
-      set({ orgsLoading: true });
+      const key = projectIds.join(",");
+      set({ orgsLoading: true, orgsKey: key });
       try {
         const lists = await Promise.all(
           projectIds.map((projectId) =>
@@ -287,13 +295,19 @@ export function createCompanyStore() {
               .catch(() => null),
           ),
         );
+        // The Provider re-reads on a change of Project set and on every event that moves a
+        // summary, so a newer read can already be in flight when this one answers. Landing the
+        // older answer regresses the sidebar, and through forgetMissingOrganizations can drop
+        // an organization that only the newer list knew about (the shell would then aim itself
+        // away from an organization the user just opened).
+        if (get().orgsKey !== key) return;
         set({
           organizations: lists.filter((list) => list !== null).flat(),
           orgsLoaded: true,
           orgsPartial: lists.some((list) => list === null),
         });
       } finally {
-        set({ orgsLoading: false });
+        if (get().orgsKey === key) set({ orgsLoading: false });
       }
     },
 
@@ -501,6 +515,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         organizations: [],
         orgsLoaded: false,
         orgsPartial: false,
+        orgsKey: "",
         orgSessions: new Map(),
       });
       return;
