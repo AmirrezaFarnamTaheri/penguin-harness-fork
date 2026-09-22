@@ -8,6 +8,7 @@
 
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { CodeGraph, type CodeGraphEdge, type CodeGraphNode } from "./code-graph.js";
 import { SymbolIndexer, type FileSummary } from "./symbol-indexer.js";
@@ -69,6 +70,47 @@ const DEFAULT_IGNORES: Array<string | RegExp> = [
   ".idea",
   ".vscode",
 ];
+
+/**
+ * The memoized result of the recursive-`fs.watch` capability probe. Module-level so every
+ * watcher in a process shares one probe rather than each paying for its own.
+ */
+let supportsRecursiveFsWatch: boolean | undefined;
+
+/**
+ * Ask the runtime whether `fs.watch({ recursive: true })` is honoured here, instead of
+ * maintaining a platform allow-list that goes stale as Node's support grows.
+ *
+ * `recursive` is silently *ignored* on platforms that do not support it — the call returns a
+ * watcher that sees only the root directory — so success is not detectable from the watcher
+ * alone. Node reports the real answer through the listener this probe supplies: on an
+ * unsupported platform the request is rejected with `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`,
+ * and on a supported one the watcher is created (and immediately closed).
+ *
+ * Any unexpected failure is treated as "unsupported", which is the safe direction: it selects
+ * the per-directory fallback that tracks every directory explicitly.
+ */
+function probeRecursiveFsWatch(): boolean {
+  let tempDir: string | undefined;
+  try {
+    tempDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "penguin-recwatch-"));
+    const watcher = fs.watch(tempDir, { recursive: true });
+    watcher.close();
+    return true;
+  } catch {
+    // `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`, or a filesystem/tmpdir that cannot be watched.
+    // Either way the fallback path is the correct one.
+    return false;
+  } finally {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Best effort; the OS reaps its own temp dirs.
+      }
+    }
+  }
+}
 
 /**
  * The form of a directory path that must be handed to `fs.watch`.
@@ -324,9 +366,19 @@ export class CodeGraphWatcher extends EventEmitter {
   /**
    * Whether `fs.watch({ recursive: true })` is honored on this platform. Overridable in tests so
    * the per-directory fallback can be exercised on platforms that do support recursion.
+   *
+   * Detected by capability, not by platform name: Linux gained recursive `fs.watch()` in Node
+   * 19.1.0, so a hardcoded darwin/win32 list sent every modern Linux install through the
+   * one-watcher-per-directory fallback — paying an inotify watch per directory and emitting a
+   * false degradation warning — for a platform that no longer needs it.
    */
   protected supportsRecursiveWatch(): boolean {
-    return process.platform === "darwin" || process.platform === "win32";
+    // Anything we cannot ask can still tell us: probe once and remember, since this is called
+    // at most twice per watcher (startWatching, and the recursive path's own check).
+    if (supportsRecursiveFsWatch === undefined) {
+      supportsRecursiveFsWatch = probeRecursiveFsWatch();
+    }
+    return supportsRecursiveFsWatch;
   }
 
   /**
