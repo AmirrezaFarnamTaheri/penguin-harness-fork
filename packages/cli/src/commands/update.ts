@@ -292,8 +292,18 @@ export function configuredInstallerCandidate(
   };
 }
 
+/**
+ * A release tag is `v` plus a dotted numeric version — the same grammar `is_release_tag` in
+ * install.sh, `Test-ReleaseTag` in install.ps1 and the stamp guard in release.yml all enforce.
+ * Kept in lockstep: the CLI resolves a tag the installers must then accept, so a tag one
+ * accepts and another rejects produces an update that downloads and then fails to install.
+ *
+ * The prior `^v[0-9A-Za-z]…` accepted `v1foo` and `v1_bad`; `normalizeVersion` only strips the
+ * leading `v`, so such a tag became the version "1foo" and `compareVersions` treated it as 0
+ * rather than invalid — the failure surfaced later as an opaque `installerFetchFailed`.
+ */
 function isReleaseTag(value: string): boolean {
-  return /^v[0-9A-Za-z][0-9A-Za-z._-]*$/.test(value);
+  return /^v([0-9]+\.)*[0-9]+$/.test(value);
 }
 
 /** Validates OSS latest.json exactly like the public forwarders, including its fixed bucket base. */

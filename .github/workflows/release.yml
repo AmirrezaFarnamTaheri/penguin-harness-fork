@@ -139,7 +139,7 @@ jobs:
         run: |
           TAG="${TAG:?release tag is required}"
           V="${TAG#v}"
-          printf '%s\n' "$TAG" | grep -Eq '^v[0-9A-Za-z][0-9A-Za-z._-]*$'
+          printf '%s\n' "$TAG" | grep -Eq '^v([0-9]+\.)*[0-9]+$'
           # Guard: release prep must bump the repo to the tag's version (root + every workspace
           # package.json — packages/* and plugins/* —
           # and core's VERSION constant move together in the release: X.Y.Z PR). v0.2.1 was tagged with

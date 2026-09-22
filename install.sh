@@ -85,14 +85,14 @@ validate_https_url() {
 }
 
 is_release_tag() {
-  case "$1" in
-    v[0-9]* ) ;;
-    *) return 1 ;;
-  esac
-  case "$1" in
-    *[!0-9A-Za-z._-]*) return 1 ;;
-  esac
-  return 0
+  # `v` then a dotted numeric version: v2, v0.2.16. The prior `v[0-9]*` shell glob meant
+  # "v, one digit, then anything", so v1foo and v1_bad passed validation and only died later
+  # as an opaque download 404. Letters and underscores are rejected outright: a tag that is
+  # not a real release version has no asset to fetch, and a clear error at the argument
+  # boundary beats a network failure the user cannot diagnose.
+  local body="${1#v}"
+  [ "$1" != "$body" ] || return 1
+  printf '%s' "$body" | grep -Eq '^([0-9]+\.)*[0-9]+$'
 }
 
 validate_release_tag() {

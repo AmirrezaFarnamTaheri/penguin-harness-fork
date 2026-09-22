@@ -44,8 +44,19 @@ function fail(message) {
   process.exit(1);
 }
 
+/**
+ * A release tag is `v` plus a dotted numeric version. Kept in lockstep with `is_release_tag`
+ * in install.sh, `Test-ReleaseTag` in install.ps1 and the stamp guard in release.yml: the
+ * four are the same check in four languages, and a tag one accepts and another rejects is a
+ * way to publish an asset the installer refuses to name (or vice versa).
+ *
+ * The prior `^v[0-9A-Za-z][0-9A-Za-z._-]*$` accepted `v1foo` and `v1_bad`, which have no
+ * release asset; the `..` guard below stayed the only thing keeping the path-safe.
+ */
+const RELEASE_TAG = /^v([0-9]+\.)*[0-9]+$/;
+
 function assertSafeTag(tag) {
-  if (!/^v[0-9A-Za-z][0-9A-Za-z._-]*$/.test(tag) || tag.includes("..")) {
+  if (!RELEASE_TAG.test(tag) || tag.includes("..")) {
     fail(`release tag is not safe: ${tag}`);
   }
 }
