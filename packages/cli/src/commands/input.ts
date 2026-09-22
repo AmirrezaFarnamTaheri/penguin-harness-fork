@@ -31,7 +31,7 @@ import type { Command } from "commander";
 import { isModelMessage, type OmniMessage } from "@prismshadow/penguin-core";
 import { StreamRenderer, dim } from "../render.js";
 import { parseDurationMs } from "../duration.js";
-import { promptApproval } from "../approval.js";
+import { denyActivePrompt, promptApproval } from "../approval.js";
 import {
   resolveAgentId,
   resolveConnection,
@@ -157,6 +157,12 @@ export function registerInputCommand(program: Command, t: Messages): void {
       const texts: string[] = [];
       let interrupted = false;
       const onSigint = () => {
+        // Ctrl-C during an approval prompt collapses to "deny this tool" first (see
+        // approval.ts): a denied prompt resolves, the pending chain unblocks, and the next
+        // Ctrl-C reaches the abort path below. Without this the first SIGINT set
+        // `interrupted` while the prompt stayed unresolved — every later Ctrl-C hit the
+        // early return, and the process could only exit by answering the question or EOF.
+        if (denyActivePrompt()) return;
         if (interrupted) return;
         interrupted = true;
         if (!json) out.write(`\n${t.taskInterrupted()}\n`);
