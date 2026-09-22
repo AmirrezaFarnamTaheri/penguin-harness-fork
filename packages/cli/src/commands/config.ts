@@ -406,7 +406,7 @@ export function registerConfigCommand(program: Command, t: Messages): void {
       const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
       if (interactive && (await confirmYes(m.langRestartConfirm()))) {
         process.stdout.write(`${m.langRestart()}\n`);
-        restartShell(lang);
+        restartShell(lang, m);
       } else {
         process.stdout.write(`${m.langRestartHint(rcPath)}\n`);
       }

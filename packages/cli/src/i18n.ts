@@ -776,6 +776,8 @@ export interface Messages {
   langRestartConfirm(): string;
   langRestart(): string;
   langRestartHint(rcPath: string): string;
+  /** Why the interactive shell `config lang` tried to open never came up (the resolved $SHELL is missing or not executable); the language choice itself is already saved. */
+  langRestartFailed(detail: string): string;
   /** Result output for model add/default/vision/remove: the argument is the already-formatted pair reference (formatModelRef). */
   modelAdded(model: string, defaultModel: string | undefined): string;
   modelUpdated(model: string, defaultModel: string | undefined): string;
@@ -1572,6 +1574,8 @@ const en: Messages = {
   langRestartConfirm: () => "Open a new shell now to apply? [y/N] ",
   langRestart: () => "Opening a new shell with the new language (type exit to return)…",
   langRestartHint: (rcPath) => `Open a new terminal, or run: source ${rcPath}`,
+  langRestartFailed: (detail) =>
+    `Failed to open a new shell: ${detail}.\nThe language is already saved — open a new terminal, or check $SHELL.`,
   modelAdded: (model, def) => `Added model ${model}. Default model: ${def ?? "(unset)"}`,
   modelUpdated: (model, def) => `Updated model ${model}. Default model: ${def ?? "(unset)"}`,
   defaultModelSet: (model) => `Default model set to ${model}.`,
@@ -2293,6 +2297,8 @@ const zh: Messages = {
   langRestartConfirm: () => "现在打开新 shell 使其生效？[y/N] ",
   langRestart: () => "正在打开使用新语言的新 shell（输入 exit 可返回）……",
   langRestartHint: (rcPath) => `请打开新终端，或执行：source ${rcPath}`,
+  langRestartFailed: (detail) =>
+    `无法打开新 shell：${detail}。\n语言设置已保存——请打开新的终端窗口，或检查 $SHELL。`,
   modelAdded: (model, def) => `已添加模型 ${model}。当前默认模型：${def ?? "(未设置)"}`,
   modelUpdated: (model, def) => `已更新模型 ${model}。当前默认模型：${def ?? "(未设置)"}`,
   defaultModelSet: (model) => `默认模型已设为 ${model}。`,
