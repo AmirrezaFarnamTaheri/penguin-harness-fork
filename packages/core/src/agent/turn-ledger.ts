@@ -59,6 +59,14 @@ export interface TurnLedgerMetrics {
   replayResets: number;
   compactions: number;
   acknowledgedTurns: number;
+  /**
+   * Appends that landed while `records` was already past `maxRecords`. Zero while the ledger
+   * honors its bound; each append past the bound adds one. It is a count of overflow *events*,
+   * not a high-water mark — `trimRecords` deliberately keeps the records a lagging projection
+   * still needs, so this is the size of that deliberate overshoot, and it drops back toward
+   * zero as `compact` drains them.
+   */
+  overflowEvents: number;
 }
 
 export interface TurnLedgerOptions {
@@ -106,6 +114,7 @@ export class TurnLedger {
     replayResets: 0,
     compactions: 0,
     acknowledgedTurns: 0,
+    overflowEvents: 0,
   };
 
   constructor(sessionId: string, options: TurnLedgerOptions = {}) {
@@ -330,11 +339,14 @@ export class TurnLedger {
    * rebuilds its view from `records` and the projection watermark advances only across a
    * contiguous acknowledged prefix. Splicing the oldest records blindly orphans such turns —
    * they can never be replayed and the watermark stalls at the gap, so the ledger keeps the
-   * overflow rather than lose replay data it has not yet delivered.
+   * overflow rather than lose replay data it has not yet delivered. The overshoot is counted
+   * in `metrics.overflowEvents` so a bound that has silently stopped being honored is visible
+   * from the outside instead of only inferable from replay length.
    */
   private trimRecords(): void {
     if (this.records.length <= this.maxRecords) return;
 
+    this.metrics.overflowEvents++;
     if (this.projectionCommittedThroughSeq > this.compactedThroughSeq) {
       this.compact(this.projectionCommittedThroughSeq);
     }
