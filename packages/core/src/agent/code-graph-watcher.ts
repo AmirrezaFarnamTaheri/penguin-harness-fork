@@ -338,6 +338,25 @@ export class CodeGraphWatcher extends EventEmitter {
   }
 
   /**
+   * Sweeps every tracked file under a removed directory out of the tracked set and the graph.
+   *
+   * A deleted directory is reported by the OS as a single event on the directory itself —
+   * FSEvents on macOS, and kqueue/inotify in the per-directory fallback — not as one event per
+   * file inside it. Without this sweep, those files would stay tracked forever and keep
+   * projecting their symbols into the graph long after the directory was gone. Each candidate
+   * is re-checked against the filesystem, so a sweep over a directory that still exists (a
+   * rename in progress, a spurious event) removes nothing.
+   */
+  public sweepRemovedDirectory(dirFullPath: string): void {
+    const prefix = path.relative(this.rootDir, dirFullPath).replace(/\\/g, "/");
+    for (const rel of Array.from(this.trackedFiles)) {
+      if (rel !== prefix && !rel.startsWith(`${prefix}/`)) continue;
+      const abs = path.join(this.rootDir, rel);
+      if (!fs.existsSync(abs)) this.removeFile(abs);
+    }
+  }
+
+  /**
    * Starts native filesystem watching.
    *
    * `fs.watch({ recursive: true })` is documented as macOS/Windows-only and is silently ignored
@@ -405,7 +424,15 @@ export class CodeGraphWatcher extends EventEmitter {
 
           const relPath = filename.replace(/\\/g, "/");
           if (this.isPathIgnored(relPath)) return;
-          if (!this.hasSupportedExtension(relPath)) return;
+          if (!this.hasSupportedExtension(relPath)) {
+            // A directory deletion arrives as one event on the directory itself, with no
+            // extension, and its files do not get their own on every platform. Left alone they
+            // would stay in the graph after the directory is gone.
+            if (!fs.existsSync(path.join(this.rootDir, filename))) {
+              this.sweepRemovedDirectory(path.join(this.rootDir, filename));
+            }
+            return;
+          }
 
           this.dirtyPaths.add(path.join(this.rootDir, filename));
           this.scheduleFlush();
@@ -464,16 +491,25 @@ export class CodeGraphWatcher extends EventEmitter {
         const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
 
         let isDirectory = false;
+        let exists = true;
         try {
           isDirectory = fs.statSync(fullPath).isDirectory();
         } catch {
           // The entry is already gone; a watched subdirectory may have been removed.
+          exists = false;
         }
         if (isDirectory) {
           if (!this.isPathIgnored(relPath)) this.discoverDirectory(fullPath);
           return;
         }
         if (this.dirWatchers.has(fullPath)) this.closeDirectoryWatcher(fullPath);
+        if (!exists && !this.hasSupportedExtension(relPath)) {
+          // A watched directory was deleted or moved away. Its files are reported individually
+          // on some platforms only; sweep the rest out so they cannot outlive the directory.
+          // Extension-bearing entries are handled by the dirty-path flush below instead, so a
+          // deleted file is not removed and announced twice.
+          this.sweepRemovedDirectory(fullPath);
+        }
         if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(relPath)) return;
 
         this.dirtyPaths.add(fullPath);
@@ -485,8 +521,10 @@ export class CodeGraphWatcher extends EventEmitter {
     }
 
     watcher.on("error", (err) => {
-      // A deleted/renamed directory stops being watchable: drop the handle rather than leak it.
+      // A deleted/renamed directory stops being watchable: drop the handle rather than leak it,
+      // and clear whatever it contained — this may be the only notice that the directory is gone.
       this.closeDirectoryWatcher(dir);
+      this.sweepRemovedDirectory(dir);
       this.emit("error", err);
     });
     this.dirWatchers.set(dir, watcher);

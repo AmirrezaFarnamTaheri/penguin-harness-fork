@@ -296,18 +296,71 @@ describe("code-graph-watcher non-recursive fallback", () => {
 
     // Removing the directory invalidates its watcher; the rest of the tree must keep working.
     fs.rmSync(goneDir, { recursive: true, force: true });
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"));
+    await watcher.flush();
+
+    // Its files leave the tracked set and the graph, not just the watcher.
+    expect(watcher.getTrackedFiles()).not.toContain("src/gone/x.ts");
+    expect(watcher.getGraph().getNode("src/gone/x.ts")).toBeUndefined();
 
     fs.writeFileSync(path.join(srcDir, "after.ts"), "export const after = 2;\n");
-    await waitFor(() => watcher.getTrackedFiles().includes("src/after.ts")).catch(() => {
-      // Fall back to a direct process call so the assertion below is still meaningful.
-      watcher.processFile(path.join(srcDir, "after.ts"));
-    });
+    await waitFor(() => watcher.getTrackedFiles().includes("src/after.ts"));
 
     expect(watcher.getTrackedFiles()).toContain("src/after.ts");
     watcher.close();
     // A removed directory surfaces an error event from its watcher; it must not crash the run.
     expect(errors.length).toBeLessThanOrEqual(1);
+  });
+
+  it("sweepRemovedDirectory drops a removed directory's files even with no per-file events", () => {
+    // A deleted directory is reported by the OS as one event on the directory itself, not one
+    // per file inside it. This drives that case directly, without depending on which events the
+    // host filesystem happens to deliver.
+    const srcDir = path.join(tmpDir, "src");
+    const goneDir = path.join(srcDir, "gone");
+    const nestedDir = path.join(goneDir, "nested");
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(path.join(goneDir, "x.ts"), "export const x = 1;\n");
+    fs.writeFileSync(path.join(nestedDir, "y.ts"), "export const y = 2;\n");
+    fs.writeFileSync(path.join(srcDir, "kept.ts"), "export const kept = 3;\n");
+
+    const watcher = makeFallbackWatcher();
+    const removed: string[] = [];
+    watcher.on("change", (event: { action: string; filePath: string }) => {
+      if (event.action === "remove") removed.push(event.filePath);
+    });
+    // scanWorkspace() alone populates the graph without installing any watchers.
+    void watcher.scanWorkspace();
+    expect(watcher.getTrackedFiles()).toEqual(
+      expect.arrayContaining(["src/gone/x.ts", "src/gone/nested/y.ts", "src/kept.ts"]),
+    );
+
+    fs.rmSync(goneDir, { recursive: true, force: true });
+    watcher.sweepRemovedDirectory(goneDir);
+
+    expect(watcher.getTrackedFiles()).toEqual(["src/kept.ts"]);
+    expect(watcher.getGraph().getNode("src/gone/x.ts")).toBeUndefined();
+    expect(watcher.getGraph().getNode("src/gone/nested/y.ts")).toBeUndefined();
+    expect(removed).toEqual(expect.arrayContaining(["src/gone/x.ts", "src/gone/nested/y.ts"]));
+    expect(removed).not.toContain("src/kept.ts");
+  });
+
+  it("sweepRemovedDirectory removes nothing when the directory still exists", () => {
+    const srcDir = path.join(tmpDir, "src");
+    const liveDir = path.join(srcDir, "live");
+    fs.mkdirSync(liveDir, { recursive: true });
+    fs.writeFileSync(path.join(liveDir, "x.ts"), "export const x = 1;\n");
+
+    const watcher = makeFallbackWatcher();
+    void watcher.scanWorkspace();
+    expect(watcher.getTrackedFiles()).toContain("src/live/x.ts");
+
+    // A rename mid-flight or a spurious event must not evict files that are still on disk.
+    watcher.sweepRemovedDirectory(liveDir);
+
+    expect(watcher.getTrackedFiles()).toContain("src/live/x.ts");
+    expect(watcher.getGraph().getNode("src/live/x.ts")).toBeDefined();
+    watcher.close();
   });
 
   // libuv stores the watched directory verbatim and resolves change names to their
