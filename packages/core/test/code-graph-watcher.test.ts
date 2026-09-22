@@ -419,6 +419,14 @@ function shortPathOf(longPath: string): string {
     ],
     { encoding: "utf8", windowsHide: true },
   );
+  // A result that is not an existing path is not a short form of anything. When the
+  // Add-Type compile fails — on a machine whose policy removes the transient .cs that
+  // Add-Type writes before csc reads it — the compiler's "WARNING: (0) : No source files
+  // specified" lands on stdout and the StringBuilder stays empty, so this used to hand
+  // the test a bogus "short path" and kill it at mkdirSync with an ENOENT that says
+  // nothing about libuv. Routing that to the fallback makes the test skip itself, the
+  // same outcome the volume-disabled case already had.
   const shortPath = out.stdout.trim();
-  return shortPath || longPath;
+  if (!shortPath || !fs.existsSync(shortPath)) return longPath;
+  return shortPath;
 }
