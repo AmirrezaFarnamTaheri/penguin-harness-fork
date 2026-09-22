@@ -3932,6 +3932,7 @@ Scenarios:
   },
   errors: {
     networkError: "Network error, please check your connection",
+    malformedBody: "The server sent an unexpected response — check your connection and try again",
     modelCredentialMissing: (modelId: string) =>
       `Model ${modelId} has no API key yet — configure it on the Models page first`,
     noDefaultModel: "This project has no default model yet — add one on the Models page first",

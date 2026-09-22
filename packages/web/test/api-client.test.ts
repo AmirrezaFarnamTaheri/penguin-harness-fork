@@ -64,4 +64,25 @@ describe("empty bodies", () => {
     expect(withMeta.data).toEqual({ agents: ["default_agent"] });
     expect(typeof withMeta.serverNowMs).toBe("number");
   });
+
+  it("a 200 with a non-JSON body rejects as ApiError, not a raw SyntaxError", async () => {
+    // A proxy or captive-portal interstitial is served with a 200 and an HTML body. The
+    // success path used to JSON.parse it unguarded — the error branch below guarded its own
+    // parse, the 2xx branch trusted the body's shape — so a SyntaxError escaped past every
+    // caller that branches on ApiError and surfaced as an unhandled rejection.
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response("<html><body>Sign in to your network</body></html>", {
+          status: 200,
+          headers: { "content-type": "text/html", date: "Thu, 18 Sep 2026 10:00:00 GMT" },
+        }),
+    );
+    await expect(apiFetchJson<unknown>("/api/agents")).rejects.toMatchObject({
+      name: "ApiError",
+      code: "malformed_body",
+      status: 200,
+    });
+    await expect(apiFetch<unknown>("/api/agents")).rejects.toBeInstanceOf(ApiError);
+  });
 });

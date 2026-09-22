@@ -122,7 +122,15 @@ export async function apiFetchWithMeta<T>(
   if (response.status === 204) return { data: undefined, serverNowMs };
   const text = await response.text();
   if (!text) return { data: undefined, serverNowMs };
-  return { data: JSON.parse(text) as T, serverNowMs };
+  try {
+    return { data: JSON.parse(text) as T, serverNowMs };
+  } catch {
+    // A 2xx body that is not the JSON the contract promises. The error branch above guards its
+    // own parse; this one did not, so a proxy or captive-portal interstitial served with a 200
+    // threw a raw SyntaxError past every caller that branches on ApiError — the UI surfaced an
+    // unhandled rejection instead of its own error state. Report it in the same vocabulary.
+    throw new ApiError(response.status, "malformed_body", s().errors.malformedBody);
+  }
 }
 
 /**

@@ -3870,6 +3870,7 @@ Benchmark：
   },
   errors: {
     networkError: "网络错误，请检查连接",
+    malformedBody: "服务器返回了无法解析的响应，请检查连接后重试",
     modelCredentialMissing: (modelId: string) =>
       `模型 ${modelId} 还没有可用的 API key，请先在「模型」页为它配置`,
     noDefaultModel: "该 Project 还没有默认模型，请先在「模型」页添加模型并设为默认",
