@@ -2,6 +2,17 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { HandoffTimeline } from "../src/features/consensus/handoff-timeline.js";
+import { ConsensusPage } from "../src/features/consensus/consensus-page.js";
+
+const taskStarted = {
+  messageId: "task_started:task-1:1700000000000",
+  source: "task_started" as const,
+  taskId: "task-1",
+  from: "orchestrator",
+  to: "coder",
+  content: "Implement <safe> changes",
+  timestamp: 1700000000000,
+};
 
 describe("coordinator task starts in the live handoff timeline", () => {
   it("shows the task and planned target without claiming mailbox delivery", () => {
@@ -54,5 +65,20 @@ describe("coordinator task starts in the live handoff timeline", () => {
     expect(html).toContain("No task starts or directives observed in this connection.");
     expect(html).not.toContain("step-1");
     expect(html).not.toContain("Simulate Next Stage");
+  });
+
+  it("renders the live feed only when the cockpit actually passes handoffs", () => {
+    // HandoffTimeline keys its live/demo mode on `handoffs !== undefined`, so an unwired
+    // caller shows demo data and claims to be a local demo even when a live feed exists.
+    const withLive = renderToStaticMarkup(
+      createElement(ConsensusPage, { embedded: true, handoffs: [taskStarted] }),
+    );
+    expect(withLive).toContain("Handoffs (live)");
+    expect(withLive).toContain("Handoffs reflect the current project");
+
+    // Without any live feed the component still falls back to its sample timeline.
+    const demo = renderToStaticMarkup(createElement(ConsensusPage, { embedded: true }));
+    expect(demo).toContain("Handoffs (local demo)");
+    expect(demo).toContain("local sample data");
   });
 });

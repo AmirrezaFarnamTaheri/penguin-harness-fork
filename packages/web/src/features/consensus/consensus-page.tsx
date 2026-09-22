@@ -3,18 +3,26 @@ import { QuorumConsensusEngine } from "@prismshadow/penguin-core/browser";
 import { QuorumBoard } from "./quorum-board";
 import { MailboxBureau } from "./mailbox-bureau";
 import { HandoffTimeline } from "./handoff-timeline";
-import type { LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
+import type { LiveHandoffEvent, LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
   /** Live mailbox queues from the cockpit WS feed; absent keeps the local demo. */
   mailboxEntries?: LiveMailboxEntry[];
+  /** Live task starts and directive dispatches from the cockpit WS feed; same rule. */
+  handoffs?: LiveHandoffEvent[];
 }
 
-export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPageProps) {
+export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: ConsensusPageProps) {
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
   const [engine] = useState(() => new QuorumConsensusEngine());
   const [version, setVersion] = useState(0);
+  // Each view labels itself live or demo; this names exactly which parts are real so the
+  // header cannot claim a live feed the wiring does not actually supply.
+  const liveParts = [
+    mailboxEntries !== undefined && "messages",
+    handoffs !== undefined && "handoffs",
+  ].filter(Boolean) as string[];
   return (
     <div
       className={`min-w-0 overflow-y-auto text-sm text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
@@ -22,9 +30,9 @@ export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPag
       <header className="mb-6 space-y-2">
         <h1 className="text-xl font-semibold">Agent coordination</h1>
         <p className="text-gray-600 dark:text-gray-400">
-          {mailboxEntries === undefined
+          {liveParts.length === 0
             ? "Try proposals, messages and handoffs with local sample data. Changes are not sent to agents or saved after leaving this page."
-            : "Mailbox queues reflect the current project. Decisions and handoffs remain local demos."}
+            : `${liveParts.map(capitalize).join(" and ")} reflect the current project. Decisions remain a local demo.`}
         </p>
       </header>
       <nav
@@ -56,8 +64,12 @@ export function ConsensusPage({ embedded = false, mailboxEntries }: ConsensusPag
         <MailboxBureau entries={mailboxEntries} />
       </div>
       <div hidden={tab !== "handoff"}>
-        <HandoffTimeline />
+        <HandoffTimeline handoffs={handoffs} />
       </div>
     </div>
   );
+}
+
+function capitalize(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
 }
