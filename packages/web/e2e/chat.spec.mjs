@@ -6,6 +6,16 @@ const MOCK = process.env.MOCK_URL;
 const U = "e2euser";
 const P = "password123";
 
+async function openSessionRowMenu(row) {
+  await row.hover();
+  const trigger = row.getByRole("button", { name: "更多" });
+  // The action is revealed by a 150ms opacity transition. Playwright considers an
+  // opacity-0 element visible, so wait for the reveal before clicking its hit target.
+  await expect(trigger).toHaveCSS("opacity", "1");
+  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+}
+
 test("chat + tool approval + stats/cost/copy + traces + files", async ({ page }) => {
   // --- seed via API (cookies land in the browser context) ---
   await provisionAndLogin(page.request, U, P);
@@ -371,10 +381,7 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
     .filter({ hasText: "Configure Tailwind theme" });
   await expect(renameRowButton).toHaveCount(1);
   const renameTarget = renameRowButton.locator("xpath=..");
-  await renameTarget.hover();
-  const renameMenuButton = renameTarget.getByRole("button", { name: "更多" });
-  await renameMenuButton.click();
-  await expect(renameMenuButton).toHaveAttribute("aria-expanded", "true");
+  await openSessionRowMenu(renameTarget);
   const rowMenu = page.locator("body > .anim-pop");
   await expect(rowMenu.getByRole("button", { name: "重命名对话" })).toBeVisible();
   await rowMenu.getByRole("button", { name: "重命名对话" }).click();
@@ -397,10 +404,7 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   const throwaway = throwawayRowButton.locator("xpath=..");
   await expect(throwaway).toBeVisible();
   // Archive via the row menu: moves it under the collapsed "已归档" group.
-  await throwaway.hover();
-  const throwawayMenuButton = throwaway.getByRole("button", { name: "更多" });
-  await throwawayMenuButton.click();
-  await expect(throwawayMenuButton).toHaveAttribute("aria-expanded", "true");
+  await openSessionRowMenu(throwaway);
   // Archive also appears as an inline hover action on every row. The dropdown panel is
   // body-portaled, so scope the click to the currently open portal instead of relying on
   // a page-wide exact-name match.
@@ -413,10 +417,7 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   const archived = throwawayRowButton.locator("xpath=..");
   await expect(archived).toBeVisible();
   // Delete from the archived group (delete + archive share the same row menu).
-  await archived.hover();
-  const archivedMenuButton = archived.getByRole("button", { name: "更多" });
-  await archivedMenuButton.click();
-  await expect(archivedMenuButton).toHaveAttribute("aria-expanded", "true");
+  await openSessionRowMenu(archived);
   await page.getByRole("button", { name: "删除对话" }).click();
   await page.getByRole("button", { name: "删除", exact: true }).click();
   await expect(throwawayRowButton).toHaveCount(0);
