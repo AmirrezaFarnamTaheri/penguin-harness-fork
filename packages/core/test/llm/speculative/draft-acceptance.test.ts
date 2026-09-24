@@ -31,6 +31,31 @@ describe("draft-acceptance: acceptance math", () => {
     expect(acceptanceProbability(0.5, 0, "stochastic", 3, 3)).toBe(1);
     expect(acceptanceProbability(0, 0.5, "stochastic", 3, 3)).toBe(0);
   });
+
+  it("reports 0 when both models assign ~0 probability, matching the sampling rule", () => {
+    // The degenerate 0/0 case: `verifyWindow` accepts only when `u·p < q`, which at
+    // p = q = 0 is `0 < 0` — always false, so the position is necessarily rejected. The
+    // reported probability has to agree with that decision, not with a formal min(1, q/p)
+    // that is undefined at 0/0. Reached in practice because `padRow` zero-fills an absent
+    // draft id, so a draft token outside both rows' support hits exactly this case.
+    expect(acceptanceProbability(0, 0, "stochastic", 3, 3)).toBe(0);
+    expect(logAcceptanceRatio(0, 0, "stochastic", 3, 3)).toBe(Number.NEGATIVE_INFINITY);
+    // expectedAcceptCount consumes those probabilities, so it must not add 1 for a
+    // position that can never be accepted.
+    const draft: DraftWindow = {
+      tokenIds: [4],
+      probs: [[0, 0, 0]],
+      pointMass: false,
+    };
+    const target: TargetWindow = {
+      tokenIds: [4, 0],
+      probs: [
+        [0, 0, 0],
+        [0.5, 0.3, 0.2],
+      ],
+    };
+    expect(expectedAcceptCount(draft, target)).toBe(0);
+  });
 });
 
 describe("draft-acceptance: residual sampling", () => {
@@ -250,6 +275,31 @@ describe("draft-acceptance: draft quality gate", () => {
     const report = draftQualityGate(target, target, 0.2, 0.4);
     expect(report.klDivergence).toBeCloseTo(0, 6);
     expect(report.propose).toBe(false);
+  });
+
+  it("measures divergence over the target's full width, not just the draft's support", () => {
+    // The draft vocabulary can be a subset of the target's — `verifyWindow` pads draft
+    // rows into target width before comparing them. Summing the KL over
+    // min(len(target), len(draft)) dropped every target token outside the draft's
+    // support, which is where divergence lives, so a draft silent on part of the target's
+    // vocabulary measured an artificially low KL and could be gated out as "nothing
+    // speculative to gain". The gate now reads the draft row as 0 beyond its own length.
+    const target = [0.34, 0.33, 0.33];
+    const narrowDraft = [0.5, 0.5];
+    const report = draftQualityGate(target, narrowDraft, 0.2, 0.4);
+    // The plausible set covers the target's whole support, including token 2, where the
+    // draft is silent — a proposal has to be able to land there.
+    expect(report.plausibleTokenIds).toEqual([0, 1, 2]);
+    expect(report.contrastiveWeights.length).toBe(3);
+    expect(report.klDivergence).toBeGreaterThan(0.05);
+    expect(report.propose).toBe(true);
+    // Extending the width changes nothing when the draft is not silent anywhere: the same
+    // row with an explicit 0 measures the same KL.
+    const wideDraft = [0.5, 0.5, 0];
+    expect(draftQualityGate(target, wideDraft, 0.2, 0.4).klDivergence).toBeCloseTo(
+      report.klDivergence,
+      9,
+    );
   });
 });
 

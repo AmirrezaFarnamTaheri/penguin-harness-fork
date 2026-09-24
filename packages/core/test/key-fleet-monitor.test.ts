@@ -13,8 +13,48 @@ describe("key-fleet-monitor", () => {
 
   it("masks API keys safely preserving prefix and suffix", () => {
     expect(maskApiKey("sk-ant-api03-1234567890abcdef")).toBe("sk-ant-...cdef");
+    // No digest of a short, low-entropy secret is exposed in the display mask.
     expect(maskApiKey("short")).toBe("key-***");
+    expect(maskApiKey("shorter")).toBe("key-***");
     expect(maskApiKey("")).toBe("empty-key");
+  });
+
+  it("gives two short keys distinct masks, so mask-based lookups do not collide", () => {
+    // Two 8-character keys share the fixed part; only the digest separates them. Both are
+    // registered under one model, and each has to be reachable by its own mask.
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "custom-ai",
+        modelId: "local-1",
+        keys: ["aaaaaaaa", "bbbbbbbb"],
+      },
+    ]);
+    const report = monitor.getFleetReport()[0]!;
+    const [first, second] = report.keys;
+    expect(first!.maskedKey).not.toBe(second!.maskedKey);
+    expect(monitor.hasKey("custom-ai", first!.maskedKey)).toBe(true);
+    expect(monitor.hasKey("custom-ai", second!.maskedKey)).toBe(true);
+    // A mask points at exactly one key, not at the last one registered.
+    expect(monitor.cooldownKey("custom-ai", first!.maskedKey, 60_000)).toBe(true);
+    const stats = monitor.getFleetStats();
+    expect(stats.cooldownCount).toBe(1);
+  });
+
+  it("disambiguates long keys with the same visible prefix and suffix", () => {
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "custom-ai",
+        modelId: "local-1",
+        keys: ["sk-test-first-secret-1234", "sk-test-second-secret-1234"],
+      },
+    ]);
+    const [first, second] = monitor.getFleetReport()[0]!.keys;
+    expect(first!.maskedKey).not.toBe(second!.maskedKey);
+    expect(monitor.cooldownKey("custom-ai", first!.maskedKey, 60_000)).toBe(true);
+    expect(monitor.getFleetReport()[0]!.keys.map((key) => key.status)).toEqual([
+      "cooldown",
+      "healthy",
+    ]);
   });
 
   it("initializes without default providers (safe unconfigured state)", () => {
@@ -187,6 +227,96 @@ describe("key-fleet-monitor", () => {
     const cooldownSuccess = monitor.cooldownKey("anthropic", "anthropic-key-1", 30_000);
     expect(cooldownSuccess).toBe(true);
     expect(rotator!.getKeys()[0]?.cooldownUntil).toBeGreaterThan(0);
+  });
+
+  it("probes the fleet concurrently, so one hung key does not stall the sweep", async () => {
+    // The probes are independent per key. A sequential sweep awaited each before starting
+    // the next, so a single unresponsive endpoint blocked every key behind it — and the
+    // listeners, which fire only after the loop. A hung probe still has to be bounded, or
+    // the sweep never settles at all.
+    const started: string[] = [];
+    let resolveHung: (() => void) | undefined;
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "custom-ai",
+        modelId: "hungry",
+        keys: ["hung-key-aaaa", "fast-key-bbbb", "fast-key-cccc"],
+        probeFn: async (provider, key) => {
+          started.push(key);
+          if (key.startsWith("hung")) {
+            await new Promise<void>((resolve) => {
+              resolveHung = resolve;
+            });
+            return { ok: true, latencyMs: 1 };
+          }
+          return { ok: true, latencyMs: 5 };
+        },
+      },
+    ]);
+
+    const settled = monitor.probeFleet(100);
+    // The fast keys complete without waiting for the hung one.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(started).toHaveLength(3);
+    resolveHung!();
+    const results = await settled;
+    expect(results.map((r) => r.status)).toEqual(["ok", "ok", "ok"]);
+  });
+
+  it("reports a probe that outlives its deadline instead of awaiting it forever", async () => {
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "custom-ai",
+        modelId: "hungry",
+        keys: ["never-resolves-key"],
+        probeFn: async () => new Promise(() => {}),
+      },
+    ]);
+
+    let done = false;
+    const settled = monitor.probeFleet(50).then((r) => {
+      done = true;
+      return r;
+    });
+    await vi.advanceTimersByTimeAsync(49);
+    // Still pending at 49ms: the deadline is 50, so the sweep has not settled.
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(done).toBe(true);
+    const results = await settled;
+    expect(results).toHaveLength(1);
+    expect(results[0]!.status).toBe("error");
+    expect(results[0]!.keyId).toBe("custom-ai-key-1");
+    expect(results[0]!.latencyMs).toBe(50);
+    expect(results[0]!.details).toContain("deadline");
+  });
+
+  it("does not apply a late probe result after its fleet deadline", async () => {
+    let resolveProbe!: (result: { ok: boolean; latencyMs: number }) => void;
+    let probeSignal: AbortSignal | undefined;
+    const monitor = new KeyFleetMonitor([
+      {
+        provider: "custom-ai",
+        modelId: "slow",
+        keys: ["slow-key-aaaa"],
+        probeFn: async (_provider, _key, signal) => {
+          probeSignal = signal;
+          return new Promise((resolve) => {
+            resolveProbe = resolve;
+          });
+        },
+      },
+    ]);
+
+    const sweep = monitor.probeFleet(50);
+    await vi.advanceTimersByTimeAsync(51);
+    expect((await sweep)[0]!.status).toBe("error");
+    expect(probeSignal?.aborted).toBe(true);
+
+    resolveProbe({ ok: false, latencyMs: 300 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.getFleetStats().healthyCount).toBe(1);
+    expect(monitor.getFleetReport()[0]!.keys[0]!.failureCount).toBe(0);
   });
 
   it("starts and stops periodic auto-probing ticker", () => {

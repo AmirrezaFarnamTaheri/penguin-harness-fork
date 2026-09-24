@@ -479,6 +479,15 @@ export class MicrovmSandboxClient {
       templateId?: MicrovmTemplateId;
       timeoutMs?: number;
       env?: Record<string, string>;
+      /**
+       * Resource ceilings for the sandbox. Sent only when present, and a plane that does not
+       * recognise a cap ignores it — so a plane without resource enforcement still provisions.
+       */
+      ceilings?: {
+        maxProcesses?: number;
+        maxMemoryBytes?: number;
+        sigkillTimeoutMs?: number;
+      };
     } = {},
     options?: MicrovmRequestOptions,
   ): Promise<MicrovmInfo> {
@@ -489,6 +498,7 @@ export class MicrovmSandboxClient {
         templateId: params.templateId ?? this.defaultTemplate,
         timeoutMs: params.timeoutMs ?? DEFAULT_SANDBOX_TIMEOUT_MS,
         env: params.env ?? {},
+        ...(params.ceilings ? { ceilings: params.ceilings } : {}),
       },
       options,
     );

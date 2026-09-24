@@ -14,7 +14,7 @@
  * deliberate.
  */
 import { describe, expect, it } from "vitest";
-import { PricingCatalog } from "../src/llm/index.js";
+import { PricingCatalog, usageCountsFromTokenCounts } from "../src/llm/index.js";
 import type { DetailedUsageCounts } from "../src/llm/index.js";
 
 describe("PricingCatalog.resolve", () => {
@@ -69,52 +69,82 @@ describe("PricingCatalog.resolve", () => {
   });
 });
 
-describe("PricingCatalog resolution fuzz (documented over-match)", () => {
-  // The fuzzy pass is a symmetric substring test with no length or boundary guard, and `find`
-  // returns the first catalog entry that matches. Each case below is what the code does today;
-  // the hazard is that a short id silently lands on a different — usually cheaper — tier.
+describe("PricingCatalog resolution fallback (versioned variants only)", () => {
+  // The fallback used to be a symmetric substring test with no length or boundary guard, so a
+  // short or fragmentary id silently landed on an unrelated — usually cheaper — tier, and
+  // `resolve("google", "2.0")` even landed on the zero-priced experimental entry while
+  // `calculateCost` still reported `priced: true`. The fallback now accepts a candidate only
+  // when it is a catalog id *plus a version tail* (`gpt-4o` -> `gpt-4o-2024-08-06`), and the
+  // strict direction means a short id can never be read as a variant of a longer one. Each
+  // case below is what the code does today; a fragment now resolves to undefined — unpriced —
+  // which is the honest answer when the catalog cannot identify the model.
   const catalog = new PricingCatalog();
 
   it("resolves a versioned snapshot id down to its base model", () => {
-    // The intended use of the fallback: modelId CONTAINS the catalog id.
+    // The intended use of the fallback: the requested id is the catalog id plus a tail.
     expect(catalog.resolve("openai", "gpt-4o-2024-08-06")?.modelId).toBe("gpt-4o");
+    // A `v` separator and a bare digit tail both qualify, as does a colon or slash.
+    expect(catalog.resolve("openai", "gpt-4o:v3")?.modelId).toBe("gpt-4o");
   });
 
-  it("resolves a short fragment to the first catalog model containing it", () => {
-    // "flash" is contained in "gemini-2.5-flash" — the first google entry that matches.
-    expect(catalog.resolve("google", "flash")?.modelId).toBe("gemini-2.5-flash");
-    expect(catalog.resolve("openai", "mini")?.modelId).toBe("gpt-4o-mini");
+  it("refuses a fragment that is only contained in a catalog id", () => {
+    // "flash" is contained in "gemini-2.5-flash", but it is not that id plus a version tail,
+    // so it no longer resolves to it — a real model named "flash" would be unpriced rather
+    // than billed at gemini-2.5-flash's rate.
+    expect(catalog.resolve("google", "flash")).toBeUndefined();
+    expect(catalog.resolve("openai", "mini")).toBeUndefined();
   });
 
-  it("matches a single-letter fragment, landing on an unrelated cheaper tier", () => {
-    // "o" is contained in "gpt-4o", which precedes "o1" in the catalog — so this resolves to
-    // gpt-4o at $2.50/$10 per million, not o1 at $15/$60. A wrong tier, chosen silently.
-    const resolved = catalog.resolve("openai", "o");
-    expect(resolved?.modelId).toBe("gpt-4o");
-    expect(resolved?.promptPerMillion).toBe(2.5);
-    expect(resolved?.completionPerMillion).toBe(10.0);
+  it("refuses a single-letter fragment instead of landing on an unrelated tier", () => {
+    // "o" used to match "gpt-4o" (which precedes "o1" in the catalog) at $2.50/$10 rather
+    // than o1 at $15/$60 — a wrong tier, chosen silently. It is now unpriced.
+    expect(catalog.resolve("openai", "o")).toBeUndefined();
   });
 
-  it("can resolve to a zero-priced catalog entry, hiding the cost entirely", () => {
-    // "2.0" first matches the free experimental model, so a real billable request prices at $0.
-    const resolved = catalog.resolve("google", "2.0");
-    expect(resolved?.modelId).toBe("gemini-2.0-flash-thinking-exp");
-    expect(resolved?.promptPerMillion).toBe(0.0);
+  it("no longer resolves a fragment to a zero-priced entry, hiding the cost", () => {
+    // "2.0" used to first match the free experimental model, so a real billable request
+    // priced at $0 while `calculateCost` reported it as a real priced figure. It is now
+    // unpriced, so a caller cannot be told a billable request costs nothing.
+    expect(catalog.resolve("google", "2.0")).toBeUndefined();
   });
 
-  it("takes the first of several substring matches, not the closest", () => {
-    // Both qwen coder models contain "coder"; the 32b precedes the 72b in the catalog.
-    expect(catalog.resolve("qwen", "coder")?.modelId).toBe("qwen-2.5-coder-32b-instruct");
+  it("refuses a shared word rather than taking the first catalog model containing it", () => {
+    // Both qwen coder models contain "coder"; neither is "coder" plus a version tail, so
+    // the first-wins ambiguity never arises.
+    expect(catalog.resolve("qwen", "coder")).toBeUndefined();
   });
 
   it("never crosses providers, even when the model id is a substring", () => {
-    // The provider clause is load-bearing: dropping it would route anthropic/gpt-4o to openai's
-    // entry through the fuzzy pass.
+    // The provider clause is load-bearing: dropping it would route anthropic/gpt-4o to
+    // openai's entry through the fallback.
     expect(catalog.resolve("anthropic", "gpt-4o")).toBeUndefined();
   });
 });
 
 describe("PricingCatalog.calculateCost", () => {
+  it("maps provider cache buckets to disjoint pricing inputs without billing the cached prefix twice", () => {
+    const usage = usageCountsFromTokenCounts({
+      cache_read: 1_000_000,
+      cache_write: 300_000,
+      output: 600_000,
+      // `total` is intentionally ignored; the three measured buckets own the accounting.
+      total: 1_900_000,
+    });
+    expect(usage).toEqual({
+      promptTokens: 300_000,
+      completionTokens: 600_000,
+      cacheReadTokens: 1_000_000,
+      reasoningTokens: 0,
+      cacheWriteTokens: 0,
+    });
+
+    const cost = new PricingCatalog().calculateCost("openai", "gpt-4o", usage);
+    expect(cost.promptCost).toBe(0.75);
+    expect(cost.cacheReadCost).toBe(1.25);
+    expect(cost.completionCost).toBe(6);
+    expect(cost.totalCost).toBe(8);
+  });
+
   it("costs every field at the catalog rate when the entry has them all", () => {
     // claude-3-7-sonnet: prompt 3.0, completion 15.0, cacheRead 0.3, cacheWrite 3.75, reasoning 15.0
     //   prompt      = 2_000_000 / 1e6 * 3.0  = 6.0

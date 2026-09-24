@@ -132,9 +132,28 @@ function generate(programs) {
       ts.createProgram({ rootNames: parsed.fileNames, options: parsed.options });
     const checker = program.getTypeChecker();
 
+    // The published interface is a package's sources. A tsconfig's `include` covers test
+    // files too — `packages/*/tsconfig.json` lists `test` alongside `src` so tsc typechecks
+    // the suite — but a test module is not part of the published surface: the @Module /
+    // @Component classes it declares are fixtures, sometimes re-declared deliberately, and
+    // collecting them both breaks this generator on the duplicate names and publishes
+    // test-only contracts. Test files are therefore skipped for every collection below.
+    const projectDir = path.dirname(configPath);
+    const isTestFile = (fileName) => {
+      const rel = path.relative(projectDir, path.resolve(fileName));
+      return (
+        rel.split(path.sep).some((seg) => seg === "test" || seg === "tests") ||
+        /\.(?:test|spec)\.[cm]?[tj]sx?$/.test(path.basename(rel))
+      );
+    };
     const sourceFiles = program
       .getSourceFiles()
-      .filter((sf) => !sf.isDeclarationFile && !sf.fileName.includes("/node_modules/"));
+      .filter(
+        (sf) =>
+          !sf.isDeclarationFile &&
+          !sf.fileName.includes("/node_modules/") &&
+          !isTestFile(sf.fileName),
+      );
     /** An `@Interface()` decorator, like every other decorator here a factory call. */
     const hasInterfaceDecorator = (d) =>
       (ts.getDecorators?.(d) ?? []).some(
@@ -284,6 +303,10 @@ function generate(programs) {
     };
     for (const sf of program.getSourceFiles()) {
       if (sf.isDeclarationFile || sf.fileName.includes("/node_modules/")) continue;
+      // A test fixture's @Module/@Component classes are not the published interface (see
+      // isTestFile above): collecting them is what made core's duplicate fixture classes a
+      // hard error instead of simply out of scope.
+      if (isTestFile(sf.fileName)) continue;
       const file = path.relative(process.cwd(), sf.fileName);
       const visit = (node) => {
         if (ts.isClassDeclaration(node) && node.name) {
@@ -985,13 +1008,31 @@ function generate(programs) {
         .sort()
         .map((k) => [k, o[k]]),
     );
+  // An empty table is usually a correct result, not a failure: a package that declares no
+  // @Interface() / @Module / @Component classes publishes nothing, and saying so out loud
+  // is what separates "correctly empty" from "silently broken". The note travels with the
+  // file so a reader (or the interface page's consumer) finds the reason beside the data;
+  // it sits outside the hashed body, so wording it never changes the table's identity.
+  const empty =
+    Object.keys(table).length === 0 &&
+    Object.keys(types).length === 0 &&
+    Object.keys(manifests).length === 0;
+  const sources = projects.map((p) => path.relative(process.cwd(), path.resolve(p))).join(", ");
+  const note = empty
+    ? `No @Interface(), @Module or @Component declarations under the source roots of ${sources}: this package publishes no kernel modules, so the catalog is empty by construction and the interface page has nothing to list. That is a correct empty result — not a generator failure. Populate it by running gen-ifaces over a package that declares kernel modules.`
+    : null;
+  const body = { ifaces: sortKeys(table), types: sortKeys(types), modules: sortKeys(manifests) };
   // The table's identity: a sha256 over its canonical content, so two builds can tell at
   // a glance whether they agree on every interface and manifest (the page CI publishes
-  // carries it, and a pre-push check compares it). The hash is not part of what it hashes.
-  const body = { ifaces: sortKeys(table), types: sortKeys(types), modules: sortKeys(manifests) };
+  // carries it, and a pre-push check compares it). The hash is not part of what it hashes,
+  // and neither is the empty-catalog note below.
   const hash = createHash("sha256").update(JSON.stringify(body)).digest("hex");
-  const text = `${JSON.stringify({ hash, ...body }, null, 1)}\n`;
+  const text = `${JSON.stringify(empty ? { hash, ...body, empty: true, note } : { hash, ...body }, null, 1)}\n`;
   const existing = fs.existsSync(outPath) ? fs.readFileSync(outPath, "utf8") : null;
+  if (empty)
+    console.error(
+      `gen-ifaces: ${outPath}: empty catalog — no @Interface(), @Module or @Component declarations under ${sources}; this package publishes no kernel modules, so the result is empty by construction (not an error).`,
+    );
   if (checkOnly) {
     if (existing !== text) {
       console.error(`gen-ifaces: ${outPath} is stale — run \`pnpm gen:ifaces\``);
@@ -1004,11 +1045,11 @@ function generate(programs) {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     fs.writeFileSync(outPath, text);
     console.log(
-      `gen-ifaces: wrote ${outPath} (${Object.keys(table).length} interfaces, ${Object.keys(types).length} types)`,
+      `gen-ifaces: wrote ${outPath} (${Object.keys(table).length} interfaces, ${Object.keys(types).length} types${empty ? ", empty catalog — no kernel modules declared" : ""})`,
     );
   } else {
     console.log(
-      `gen-ifaces: ${outPath} unchanged (${Object.keys(table).length} interfaces, ${Object.keys(types).length} types)`,
+      `gen-ifaces: ${outPath} unchanged (${Object.keys(table).length} interfaces, ${Object.keys(types).length} types${empty ? ", empty catalog — no kernel modules declared" : ""})`,
     );
   }
 

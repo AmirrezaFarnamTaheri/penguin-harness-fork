@@ -2046,6 +2046,12 @@ Benchmark：
     outlineAnswering: "回答生成中…",
     inputPlaceholder: "输入消息，Enter 发送，Shift+Enter 换行，可粘贴图片",
     inputPlaceholderShort: "输入消息…",
+    authFailureTitle: "模型 API 认证失败",
+    authFailureAction: "请在模型配置页更新该模型的 API key，然后继续。",
+    authFailurePlaceholder: "模型认证失败，请更新凭据或重试",
+    openModelSettings: "打开模型配置",
+    newSession: "新建会话",
+    retry: "重试",
     /** Placeholder while a Task is running (mid-run steering): the message is delivered between turns with the next request. */
     steerPlaceholder: "给运行中的 Agent 留言，随下一轮对话送达",
     steerPlaceholderShort: "给运行中的 Agent 留言…",

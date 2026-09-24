@@ -28,7 +28,7 @@ export class ToolCallIdAllocator {
   private readonly nextSuffix = new Map<string, number>();
   private generation = 0;
 
-  /** Ids currently held (history-seeded + allocated since the last rotation). */
+  /** Ids currently held: history-seeded + allocated, minus the generations `rotate` has retired. */
   get size(): number {
     return this.used.size;
   }
@@ -80,17 +80,21 @@ export class ToolCallIdAllocator {
 
   /**
    * Compaction rotation: history the context compactor just retired is gone, so the ids referencing
-   * it are released (without this, `used` grows for the whole session). Ids seeded or allocated
-   * since the last rotation survive; the compactor re-seeds the survivors of the compacted context
-   * via `markUsed`/`setHistory` immediately afterwards, as it already does on resume.
+   * it are released (without this, `used` grows for the whole session). Cohort semantics: only ids
+   * from generations strictly older than the one just retired are dropped — the ids seeded or
+   * allocated during the generation that just ended still belong to the history that survived the
+   * compaction, so they stay and `allocate` cannot hand them out again as a duplicate. The
+   * compactor re-seeds the survivors of the compacted context via `markUsed`/`setHistory`
+   * immediately afterwards, as it already does on resume.
    */
   rotate(): void {
+    const retired = this.generation;
     this.generation += 1;
     for (const [id, gen] of this.used) {
-      if (gen < this.generation) this.used.delete(id);
+      if (gen < retired) this.used.delete(id);
     }
     for (const [id, gen] of this.suffixedToBase) {
-      if (gen < this.generation) this.suffixedToBase.delete(id);
+      if (gen < retired) this.suffixedToBase.delete(id);
     }
     for (const base of this.nextSuffix.keys()) {
       if (!this.suffixedToBaseHas(base)) this.nextSuffix.delete(base);

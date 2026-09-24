@@ -60,7 +60,9 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   // in the tooltip of both, which is not text).
   await expect(page.getByText("执行命令").first()).toBeVisible();
   // Thinking + tool calls are wrapped in a work group; header shows running/done status.
-  await expect(page.getByText("运行中").first()).toBeVisible();
+  // Scoped to the group header: the chat toolbar's status glyph and the sidebar row glyph both
+  // carry the same word inside an SVG <title> (hidden), which would otherwise win .first().
+  await expect(page.locator("[data-group-header]").getByText("运行中").first()).toBeVisible();
 
   // Live header statistics: the elapsed chip ticks once per second while the task runs (the
   // pending approval below keeps it running), so its text must advance with no further server
@@ -110,15 +112,17 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await toolCard.click();
   await expect(toolCard).toHaveAttribute("aria-expanded", "true");
 
-  // Desktop keeps the one-line pending preview (truncate); only phones wrap the command in
-  // full while pending (asserted at 390 in layout.spec).
+  // Desktop keeps the pending arguments readable inside the card: the old one-line `$ <cmd>`
+  // preview was replaced by the raw-argument breakpoint panel (ee4d91231 — the user approves the
+  // raw payload itself, not a preview of it), which wraps in full instead of truncating off the
+  // card. Only phones drop to the always-visible panel rather than the expanded block.
+  // The raw arguments are rendered verbatim — the pending payload is re-serialized, so the
+  // streamed `{"cmd": "ls -la"}` lands as compact JSON.
+  const pendingArgs = page.getByText('{"cmd":"ls -la"}').first();
   expect(
-    await page
-      .getByText("$ ls -la")
-      .first()
-      .evaluate((el) => getComputedStyle(el).whiteSpace),
-    "pending preview stays one line at desktop",
-  ).toBe("nowrap");
+    await pendingArgs.evaluate((el) => getComputedStyle(el).whiteSpace),
+    "pending arguments wrap rather than truncate at desktop",
+  ).toBe("pre-wrap");
 
   await page.getByRole("button", { name: "允许" }).click();
 
@@ -243,7 +247,10 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await expect(main.getByText("缩放", { exact: true })).toBeVisible();
   await expect(main.getByRole("scrollbar").first()).toBeVisible();
   await expect(main.getByText("1.00×")).toBeVisible();
-  const timeline = main.locator(".no-scrollbar.overflow-x-auto").first();
+  // Timeline scroll container disables the vertical scrollbar (only horizontal on zoom). The
+  // class triple is the timeline's own: the dock's tab strip is also .no-scrollbar.overflow-x-auto
+  // and would otherwise win .first().
+  const timeline = main.locator(".no-scrollbar.overflow-x-auto.overflow-y-hidden").first();
   // Wheel-to-zoom is deliberately NOT supported (#58): scrolling the page over the timeline must
   // not change the zoom by accident — the ratio stays at 1.00×. Settle first, otherwise the
   // assertion could pass on its first poll before a (regressed) wheel handler re-rendered.
@@ -341,7 +348,11 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   // --- settings: adjustable accent color + font size (default gray/white) ---
   // The username button shares its name with the Project switcher (the initial Project's
   // display name defaults to the username), so take the last match — the bottom user menu.
+  // The accent swatches and the font-size control moved out of that menu into the System
+  // settings dialog's Appearance page (it opens on the viewer's first page, which is this one).
   await page.getByRole("button", { name: "e2euser" }).last().click();
+  await page.getByRole("button", { name: "系统设置" }).click();
+  await page.getByRole("button", { name: "外观" }).click();
   await page.getByRole("button", { name: "蓝", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.accent))
@@ -353,11 +364,11 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await page.keyboard.press("Escape");
 
   // --- session rename (manual title wins over the auto-generated one) ---
-  // Row actions live in the per-row ellipsis menu ("对话选项"); its panel is body-portaled,
+  // Row actions live in the per-row ellipsis menu ("更多"); its panel is body-portaled,
   // so the items are page-level, not inside the row locator.
   const renameTarget = sidebar.locator("li", { hasText: "Configure Tailwind theme" }).first();
   await renameTarget.hover();
-  await renameTarget.getByRole("button", { name: "对话选项" }).click();
+  await renameTarget.getByRole("button", { name: "更多" }).click();
   await page.getByRole("button", { name: "重命名对话" }).click();
   await page.getByLabel("标题").fill("My renamed title");
   await page.getByRole("button", { name: "保存" }).click();
@@ -374,8 +385,11 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await expect(throwaway).toBeVisible();
   // Archive via the row menu: moves it under the collapsed "已归档" group.
   await throwaway.hover();
-  await throwaway.getByRole("button", { name: "对话选项" }).click();
-  await page.getByRole("button", { name: "归档", exact: true }).click();
+  await throwaway.getByRole("button", { name: "更多" }).click();
+  // Archive also appears as an inline hover action on every row. The dropdown panel is
+  // body-portaled, so scope the click to the currently open portal instead of relying on
+  // a page-wide exact-name match.
+  await page.locator("body > .anim-pop").getByRole("button", { name: "归档", exact: true }).click();
   await expect(sidebar.getByText(/已归档（\d+）/).first()).toBeVisible();
   await sidebar
     .getByText(/已归档（\d+）/)
@@ -385,7 +399,7 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await expect(archived).toBeVisible();
   // Delete from the archived group (delete + archive share the same row menu).
   await archived.hover();
-  await archived.getByRole("button", { name: "对话选项" }).click();
+  await archived.getByRole("button", { name: "更多" }).click();
   await page.getByRole("button", { name: "删除对话" }).click();
   await page.getByRole("button", { name: "删除", exact: true }).click();
   await expect(sidebar.getByText("新对话")).toHaveCount(0);
@@ -393,8 +407,10 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   // --- session expiry: any 401 sends the user back to /login (no stuck error page) ---
   // Clearing the cookie is what a rebuilt web.db looks like to the browser.
   await page.context().clearCookies();
-  // Stay in the SPA: navigating to 成本中心 ("Cost Center") fires GET /usage -> 401 -> global redirect.
-  await page.getByRole("link", { name: "成本中心" }).click();
+  // Request the protected route directly. The account may be in Company mode, where the
+  // Cost Center navigation entry is intentionally absent; this check is about the global
+  // expired-session redirect, not the current sidebar mode.
+  await page.goto(`${BASE}/usage`);
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.locator("form").getByRole("button", { name: "登录" })).toBeVisible();
 });

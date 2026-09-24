@@ -262,7 +262,16 @@ export class SymbolIndex {
     return symbols.find((symbol) => symbol.name === source)?.id;
   }
 
-  /** Fall back to matching `imp.module` against the tail of indexed file paths. */
+  /**
+   * Fall back to matching `imp.module` against the tail of indexed module paths.
+   *
+   * Only the indexed-path-is-deeper direction is allowed: `import "mod"` may match a module indexed
+   * as `pkg/mod` because the import cannot know the repo root, and an out-of-root file is indexed
+   * under its full path while the import spells only its tail. The reverse — an import *deeper*
+   * than the indexed module (`import "a/b"` against a module indexed as `b`) — names a path the
+   * indexed module does not lie on, so it must stay unresolved rather than bind to an unrelated
+   * symbol and emit a spurious edge.
+   */
   private matchByPathSuffix(
     module: string,
     symbolName: string,
@@ -271,7 +280,7 @@ export class SymbolIndex {
     const needle = stripCodeExtension(module);
     for (const modulePath of this.exportMap.keys()) {
       const asPath = modulePath.replaceAll(".", "/");
-      if (asPath === needle || asPath.endsWith(`/${needle}`) || needle.endsWith(`/${asPath}`)) {
+      if (asPath === needle || asPath.endsWith(`/${needle}`)) {
         const resolved = this.matchInModule(modulePath, symbolName, imp);
         if (resolved) return resolved;
       }

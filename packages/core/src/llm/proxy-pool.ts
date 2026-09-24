@@ -44,6 +44,15 @@ export interface ProxyPoolOptions {
   errorCooldownMs?: number;
   maxConsecutiveFailures?: number;
   deadCooldownMs?: number;
+  /**
+   * Multiplier applied to {@link deadCooldownMs} when a failure carries
+   * `isAuthFailure`. An auth failure is not a health signal the pool can wait out — the
+   * credential is wrong — so the proxy is parked for proportionally longer than an
+   * ordinary death. Named rather than left inline so an operator who lengthens
+   * `deadCooldownMs` can shorten the auth parking independently; the status is `"dead"`
+   * either way, so nothing downstream distinguishes the two.
+   */
+  authFailureCooldownMultiplier?: number;
   emaAlpha?: number;
 }
 
@@ -182,6 +191,7 @@ export class InferenceProxyPool {
   private readonly errorCooldownMs: number;
   private readonly maxConsecutiveFailures: number;
   private readonly deadCooldownMs: number;
+  private readonly authFailureCooldownMultiplier: number;
   private readonly emaAlpha: number;
 
   constructor(options: ProxyPoolOptions = {}) {
@@ -190,6 +200,7 @@ export class InferenceProxyPool {
     this.errorCooldownMs = options.errorCooldownMs ?? 30_000;
     this.maxConsecutiveFailures = options.maxConsecutiveFailures ?? 5;
     this.deadCooldownMs = options.deadCooldownMs ?? 600_000;
+    this.authFailureCooldownMultiplier = options.authFailureCooldownMultiplier ?? 6;
     this.emaAlpha = Math.max(0.01, Math.min(1.0, options.emaAlpha ?? 0.3));
   }
 
@@ -321,9 +332,11 @@ export class InferenceProxyPool {
   public recordSuccess(idOrUrl: string, latencyMs: number): void {
     const entry = this.findProxyEntry(idOrUrl);
     if (!entry) return;
-    if (!Number.isFinite(latencyMs) || latencyMs < 0) {
-      throw new Error("Proxy latency must be a non-negative finite number");
-    }
+    // Every other mutator here tolerates bad input — an unknown id is ignored, a malformed
+    // URL is skipped — so a telemetry callback must not turn into a failure path in the
+    // caller. An unusable latency is dropped rather than thrown over: the success itself is
+    // still recorded, only the moving average is left alone.
+    const observation = Number.isFinite(latencyMs) && latencyMs >= 0 ? latencyMs : undefined;
 
     entry.successCount += 1;
     entry.consecutiveFailures = 0;
@@ -334,11 +347,11 @@ export class InferenceProxyPool {
       entry.cooldownUntil = 0;
     }
 
-    if (latencyMs > 0) {
+    if (observation !== undefined && observation > 0) {
       entry.latencyMs =
         entry.latencyMs === 0
-          ? latencyMs
-          : Math.round(this.emaAlpha * latencyMs + (1 - this.emaAlpha) * entry.latencyMs);
+          ? observation
+          : Math.round(this.emaAlpha * observation + (1 - this.emaAlpha) * entry.latencyMs);
     }
   }
 
@@ -357,8 +370,15 @@ export class InferenceProxyPool {
     if (this.isDisabled(entry)) return;
 
     if (options.isAuthFailure) {
+      // An auth failure is not a health signal the pool can wait out — the credential is
+      // wrong, so the proxy stays dead for a multiple of the dead cooldown. The factor is
+      // deliberately harsh and defaults to 6; it is an option rather than an inline literal
+      // because an operator who sets a long `deadCooldownMs` gets an auth failure parked
+      // for proportionally longer, and only this knob shortens that without touching the
+      // ordinary death cooldown. The status is "dead" in both cases, so nothing downstream
+      // distinguishes them either.
       entry.status = "dead";
-      entry.cooldownUntil = Date.now() + this.deadCooldownMs * 6;
+      entry.cooldownUntil = Date.now() + this.deadCooldownMs * this.authFailureCooldownMultiplier;
       return;
     }
     if (options.isRateLimit) {
@@ -465,13 +485,27 @@ export class InferenceProxyPool {
   public importEntries(entries: ProxyEntry[]): void {
     for (const source of entries) {
       if (!source?.url) continue;
+      // `addProxy` keys the pool by the canonical url, so an imported entry has to be keyed
+      // the same way — otherwise a stored url that is merely a different spelling of the same
+      // destination (a mixed-case scheme, a missing explicit standard port, an un-bracketed
+      // IPv6 host) shadows the later `addProxy` as a second entry with its own health,
+      // latency and lease counters. The entry's own url is rewritten to the canonical form so
+      // lookups by url and map key agree; an unparseable url keeps its spelling verbatim
+      // rather than dropping the entry.
+      let canonicalUrl: string;
+      try {
+        canonicalUrl = parseProxyUrl(source.url).canonicalUrl;
+      } catch {
+        canonicalUrl = source.url;
+      }
       const entry: ProxyEntry = {
         ...source,
+        url: canonicalUrl,
         weight: normalizeWeight(source.weight),
         auth: source.auth ? { ...source.auth } : undefined,
         tags: Array.isArray(source.tags) ? [...source.tags] : [],
       };
-      this.proxies.set(entry.url, entry);
+      this.proxies.set(canonicalUrl, entry);
       if (entry.status === "disabled") this.administrativelyDisabled.add(entry.id);
       else this.administrativelyDisabled.delete(entry.id);
     }

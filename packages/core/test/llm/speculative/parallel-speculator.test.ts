@@ -130,6 +130,59 @@ describe("ParallelSpeculator", () => {
     expect(stream.pendingLength).toBe(0);
   });
 
+  it("reports a failed target in a target-only round instead of throwing", async () => {
+    // The demoted combination: the draft already failed, so the round is target-only,
+    // and then the target fails too. Nothing is staged, so there is no suffix to release,
+    // but the contract is the same — the round returns a verify-failed outcome rather
+    // than letting the failure escape into runBatchRound's Promise.all.
+    const failingDraft: DraftModel = {
+      propose() {
+        throw new Error("draft forward failed");
+      },
+    };
+    const failingTarget: TargetModel = {
+      verify(): TargetWindow {
+        throw new Error("target forward failed");
+      },
+    };
+    const speculator = new ParallelSpeculator(failingDraft, failingTarget, { windowSize: 4 });
+    const stream = speculator.openStream("s1", 0, [1]);
+    const outcome = await speculator.runRound("s1");
+    expect(outcome.demoted).toBe(true);
+    expect(outcome.proposed).toBe(0);
+    expect(outcome.committed).toEqual([]);
+    expect(outcome.termination).toContain("verify-failed");
+    // The seed context survives untouched: no token was committed and none is staged.
+    expect(stream.committed()).toEqual([1]);
+    expect(stream.pendingLength).toBe(0);
+  });
+
+  it("survives a degraded stream in a batch round without aborting the healthy ones", async () => {
+    // Before the guard, the demoted combination rejected runRound, and runBatchRound's
+    // Promise.all spread that rejection across the whole batch — one degraded stream
+    // took down the round for every other stream, even the healthy ones. runBatchRound
+    // must settle: every stream gets an outcome, the failed ones carry verify-failed, and
+    // the round resolves instead of rejecting.
+    const failingDraft: DraftModel = {
+      propose() {
+        throw new Error("draft forward failed");
+      },
+    };
+    const failingTarget: TargetModel = {
+      verify(): TargetWindow {
+        throw new Error("target forward failed");
+      },
+    };
+    const speculator = new ParallelSpeculator(failingDraft, failingTarget, { windowSize: 4 });
+    speculator.openStream("degraded", 1, [1]);
+    speculator.openStream("also-degraded", 0, [2]);
+    const outcomes = await speculator.runBatchRound();
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes.every((o) => o.termination.includes("verify-failed"))).toBe(true);
+    // The seed context of each stream survives untouched.
+    for (const o of outcomes) expect(o.committed).toEqual([]);
+  });
+
   it("runs multiple streams concurrently in one batch round", async () => {
     const speculator = new ParallelSpeculator(scriptedDraft(0.7), scriptedTarget(0.9), {
       windowSize: 3,

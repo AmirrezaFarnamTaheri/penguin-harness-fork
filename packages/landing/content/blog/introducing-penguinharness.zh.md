@@ -3,7 +3,7 @@ title: PenguinHarness 正式发布：让 Agent 为你构建 Agent
 date: 2026-07-17
 category: news
 pinned: true
-excerpt: 我们在 GDPevo Benchmark 中验证了 Agent 自我进化的能力，现在把它带给所有人——首个支持递归自我进化的开源 Harness 正式发布，从一句话构建 Agent 到持续自我进化，一套基础设施全部覆盖。
+excerpt: PenguinHarness 是一款用于构建与进化 Agent 的开源 Harness，提供 CLI、Web UI，并支持多种模型。
 ---
 
 今天，我们正式发布 **PenguinHarness**——一个为构建与进化 Agent 而生的开源 Harness：零代码的 Harness CLI 与 Web UI，连接 1000+ 模型。它要讲的故事只有一句话：
@@ -20,29 +20,9 @@ excerpt: 我们在 GDPevo Benchmark 中验证了 Agent 自我进化的能力，�
 
 三个递进的理由——从任务效果，到构建方式，再到进化能力。
 
-### 1. 复杂任务表现更好，成本更低
+### 1. 面向复杂任务构建
 
-刻意精简的工具集配合干净的底层接口：更少的工具调用、更少的 Token，对 DeepSeek 等开放模型深度适配。每个产品搭配它常用的模型——比的是大家实际会怎么用——在两套题库上正面对比：
-
-![Benchmark：PenguinHarness 在数据分析题库准确率最高、编程题库与 OpenAI Codex 持平，成本仅为两者的零头](/blog-assets/benchmark-light.svg)
-
-复杂数据分析（15 题，单次运行；PenguinHarness 与 Codex 为 thinking xhigh，Claude Code 为 max）：
-
-| 实验框架       | 模型名称        | 准确率（%） | Token 用量（M） | 成本（$） |
-| -------------- | --------------- | ----------: | --------------: | --------: |
-| PenguinHarness | DeepSeek V4 Pro |       66.67 |           18.04 |      0.55 |
-| Claude Code    | Claude Opus 4.8 |       53.33 |           22.20 |     38.48 |
-| OpenAI Codex   | GPT-5.5         |       53.33 |           13.72 |     19.41 |
-
-代码任务（40 题 × 2 次运行，准确率取全部 80 次结果）：
-
-| 实验框架       | 模型名称        | 准确率（%） | Token 用量（M） | 成本（$） |
-| -------------- | --------------- | ----------: | --------------: | --------: |
-| PenguinHarness | DeepSeek V4 Pro |       71.25 |          200.00 |      3.81 |
-| Claude Code    | Claude Opus 4.8 |       86.25 |          151.61 |    146.97 |
-| OpenAI Codex   | GPT-5.5         |       71.25 |          251.20 |    220.08 |
-
-Token 与成本均为全套题目合计，不是单次均值。数据分析套件我们准确率最高——66.67% 对另两者的 53.33%——花的钱是 Codex 的 1/35、Claude Code 的 1/70；代码套件与 Codex 同为 71.25%、低于 Claude Code 的 86.25%，但整套题目只花了 $3.81，对方分别是 $220.08 与 $146.97：活干得差不多，账单差出一到两个数量级。
+精简的工具集和清晰的底层接口，旨在支持跨模型的 Agent 工作流。我们正在准备公开 Benchmark；此前的对比数字缺少足够证据，无法复现或核验，因此已撤下。正式发布时会同时提供题目、评分规则、原始结果、运行产物和成本计算所用的带日期价格。
 
 ### 2. 一句话，让 Agent 构建 Agent 应用
 

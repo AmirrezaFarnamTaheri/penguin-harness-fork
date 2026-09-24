@@ -60,8 +60,11 @@ test("a steered message survives reload as a queued hint with its content — no
   await page.getByRole("button", { name: "允许" }).click();
 
   // Steer while the ~8s tool run keeps the Task busy (default mid-run mode is steer).
+  // Plain Enter queues a follow-up instead — the composer's mid-run routing makes Enter the
+  // queue channel and Ctrl+Enter the steer channel (52f8d99df); steering is what this case
+  // exercises, so the explicit steer shortcut is the one to press.
   await ta.fill(STEER_TEXT);
-  await ta.press("Enter");
+  await ta.press("Control+Enter");
   // The queued hint shows the content (the server mirror, not just the local flag), and
   // the composer is cleared.
   await expect(page.getByText(`插话已排队，将随下一轮送达：${STEER_TEXT}`)).toBeVisible();

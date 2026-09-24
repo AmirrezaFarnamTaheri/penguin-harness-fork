@@ -25,7 +25,7 @@ verified by a test that *fails without it*, and the whole tree re-gated.
 The two baseline failures (docs + landing) were the unfinished
 `language-porting` feature; both are green now. Net **+297 tests**.
 
-## Findings: 68 total, 41 fixed, 27 deliberately left
+## Findings: 112 total, 48 fixed, 64 deferred
 
 | Domain | Found | Fixed | Deferred |
 |---|---|---|---|
@@ -35,14 +35,37 @@ The two baseline failures (docs + landing) were the unfinished
 | types & public API | 12 | 9 | 3 |
 | infra / docs / packaging | 17 | 8 | 9 |
 | tests (coverage) | 15 | 5 | 10 |
+| core-llm (review pass) | 24 | 2 | 22 |
+| review findings R1–R10 | 10 | 4 | 6 |
 
-**Not covered: `core-llm`** (key rotation, quota parser, pricing, context limits,
-tool-call ids). Two finder attempts stalled without producing a findings file, so
-the domain was excluded rather than reported from partial memory. The paths the
-attempts did verify before stalling — `usageToTokenCounts` and the pricing catalog's
-token accounting — were clean. A dedicated pass over `packages/core/src/llm/` is the
-single biggest remaining gap; `tests/quota-parser` and `tests/pricing-catalog` above
-are the two untested modules in it.
+The `core-llm` and R1–R10 rows are the review pass over this branch; the six rows
+above are the original swarm. Most of the original swarm's deferred items that the
+review verified as shipped — the release.yml publish loop, the CI shard loop, the
+plugin `description_zh` set, `gen:ifaces`, `verify:benchmark-data`, the ShellGuardian
+and egress hardening — are marked resolved in "Deliberately left, and why" below
+rather than re-counted here, so the Fixed column understates what the branch
+actually delivers.
+
+**Covered in the review pass: `core-llm`** (key rotation, quota parser, pricing,
+context limits, tool-call ids, speculative decoding) —
+`bug-swarm/findings/core-llm.md`, 24 findings (8 MEDIUM, 16 LOW; 19 CONFIRMED, 5
+PLAUSIBLE) plus an 11-entry "Checked and clean" section. Every behavioural claim
+was verified by probe harness or direct reading. Its two untested modules now have
+suites: `test/llm/quota-parser.test.ts` and `test/llm/pricing-catalog.test.ts`
+(50 tests between them), pinning the pattern tables, reset-window precedence,
+cooldown arithmetic and cost buckets — including the behaviours that are hazards
+rather than features (the `\b429\b` prose over-match, unvalidated token counts,
+the fuzzy resolution fallback), each labelled in-comment as pinned-current-behaviour.
+
+Two `core-llm` findings were fixed rather than pinned: `ToolCallIdAllocator.rotate()`
+claimed cohort semantics while clearing every held id (it now retires only the
+generation that just ended, so `allocate` cannot hand out an id the surviving
+history still references), and the speculator's fail-soft path was not fail-soft —
+a draft failure followed by a target failure threw out of `runRound`, and through
+`runBatchRound`'s `Promise.all` one degraded stream killed the whole batch's round.
+The target-only branch is now guarded the way the speculative branch always was,
+and `runBatchRound`'s docstring no longer claims verification is batched when it is
+concurrent.
 
 ## Fixed — by severity
 
@@ -146,48 +169,78 @@ failing closed only by accident of `$ErrorActionPreference` (now explicit
 
 ## Deliberately left, and why
 
-- **`isPrivateIp` trailing-dot/IPv4-compatible spellings** (LOW). Not reachable
-  through `decideEgress` — the WHATWG parser strips the dot for IPv4 literals,
-  and `safe-http.ts` re-resolves via DNS and binds the transport to the
-  validated address. Fixing the exported helper means reconciling two
-  implementations; documented rather than speculated.
-- **ShellGuardian critical rules evadable with a variable or a dot** (LOW). The
-  guardian is advisory triage over a capability box that denies by default;
-  hardening the regexes without an evasion corpus would trade false negatives
-  for false positives.
-- **Isolation ceilings not forwarded** to the microVM — a client-contract
-  change, not a wiring change.
+- **`isPrivateIp` trailing-dot/IPv4-compatible spellings** — resolved. The exported
+  helper now normalizes a trailing DNS root dot (`127.0.0.1.` ≡ `127.0.0.1`) and strips
+  a scope ID before parsing, and IPv4-compatible IPv6 (`::127.0.0.1`, RFC 4291) is
+  re-checked against the IPv4 table exactly like the mapped form — both are the same
+  "spell the loopback differently" evasion. The IPv6 parser also refuses a stray trailing
+  colon and restores the `::` compression marker its own slicing consumed, so
+  `::127.0.0.1` parses as the compatible form rather than as an uncompressed address.
+- **ShellGuardian critical rules evadable with a variable or a dot** — resolved. The
+  destructive-delete rules now share flag/target sub-patterns: `-rf`, `-r -f`,
+  `--recursive --force` and every ordering all reach one conclusion, options may
+  precede or follow the pair, quoted targets are seen through, and `.`/`..` join `/`,
+  `~` and `*` as root targets while `./dist` does not. The PowerShell rule uses two
+  lookaheads for orderless `-Recurse`/`-Force` with a preceding edge that keeps a bash
+  `--force` from satisfying it. `dd` covers virtio/Xen/NVMe/macOS-raw/eMMC devices and
+  quoted `of=`; the fork-bomb pattern is the *shape* (a function piping two copies of
+  itself into the background) pinned by backreference, so a named variant matches and a
+  benign `foo(){ ls|ls& };foo` does not; netcat's `-c`/`--sh-exec` join `-e`. Pinned by
+  a new evasion corpus, `packages/core/test/agent/shell-guardian-evasion.test.ts`.
+- **Isolation ceilings not forwarded** to the microVM — resolved. `bootSandbox` now sends
+  `command.ceilings` (max processes, memory, sigkill timeout) in the boot payload; the
+  client sends the field only when present and a plane that does not recognise a cap
+  ignores it, so a plane without resource enforcement still provisions.
 - **release.yml npm-publish loop dies on plugins not named
-  `@penguinharness/<dir>`** (CRITICAL by severity, deferred): the loop
-  constructs package names from directory names, so the four `sandbox-*`
-  plugins (all `@prismshadow/…`, all `private: true`) return E404, which the
-  loop treats as a hard `exit 2` before core/server/cli are ever reached. This
-  is why v0.2.14–v0.2.16 never reached npm. Not fixed because the correct fix is
-  to read each dir's real `package.json` name and skip `private: true`, and that
-  needs a CI run to validate against the live registry — a change I will not
-  ship unverified.
+  `@penguinharness/<dir>`** — resolved in the earlier swarm round and re-verified: the
+  loop reads each directory's real `package.json` name and skips `private: true`, and
+  `package_version_exists` splits an E404 (absent → publish) from a registry that cannot
+  be reached (→ `exit 2`). The four `sandbox-*` plugins are all `@prismshadow/…` and all
+  `private: true`, so they no longer hard-stop the loop before core/server/cli are
+  reached. Pinned by the five assertions in `scripts/test-release-publishing.test.mjs`.
+  Listed here earlier as "a change I will not ship unverified"; it shipped, so this line
+  now says what the diff does.
 - **`@penguinharness/language-porting` first-publish** — OIDC Trusted Publishing
   can only be configured for a package that already exists. Documented manual
   bootstrap step, not a code bug.
 - **SHA-pinning third-party actions** — policy decision needing the SHAs of
-  each release; the repo already pins one (Aliyun) as the pattern.
-- **CI test shards mask later failures** (`pnpm -r` stops at the first failing
-  package) — structural CI change, deferred to avoid re-sharding mid-release.
-- **`gen:ifaces` projects an empty catalog** — the server declares no kernel
-  modules and core's generator fails on duplicate test module classes; the fix
-  is to scope the generator to `src`, which changes what the published interface
-  page shows.
-- **`verify:benchmark-data` gate is red and unrun** — the two affected
-  benchmarks lack provenance; wiring the gate in is right, but deciding whether
-  they are provisional is a call for the benchmark owner.
+  each release; the repo already pins one (Aliyun) as the pattern. Left to the
+  maintainer: the SHAs are tag-resolved at a point in time and must be re-resolved
+  on every bump, which is a supply-chain policy, not a defect.
+- **CI test shards mask later failures** — resolved in the earlier swarm round: the
+  per-package loop accumulates `failed` and exits with it, so a later package's
+  failure is not swallowed by an earlier one's success (`ci.yml`).
+- **Six plugins missing `description_zh`** — resolved: every one of the 15 plugins
+  carrying a `plugin.json` now has a real Chinese `description_zh` /
+  `short_description_zh`, and `check:i18n` is the gate that keeps it that way.
+- **`gen:ifaces` projects an empty catalog** — resolved. The empty result is correct,
+  not a bug: production kernels use the functional `defineModule(...)` form, so
+  `packages/*/src` declares no `@Interface()`/`@Module`/`@Component` classes at all
+  (0 hits across every `src` root). What was broken was the generator: a tsconfig's
+  `include` covers `test` as well as `src`, so it collected test fixture module
+  classes — `SchedulerModule` is declared twice in `packages/core/test` — and core's
+  run exited 1. `scripts/gen-ifaces.mjs` now skips test files in both collection
+  passes and reports an empty catalog with its reason (outside the hashed body, so
+  the wording never changes the table's identity). Verified: server's
+  `ifaces.json` regenerates byte-identically, core's tsconfig no longer crashes.
+- **`verify:benchmark-data` gate is red and unrun** — resolved. The gate is now
+  wired in `ci.yml` and green, on the only honest basis available: every row of both
+  suites carries `provisional: true`, which the gate reads per suite as a warning
+  (never a pass — the summary line says the numbers are consistent, not certified),
+  and the landing table and both blog locales mark those rows for readers. The
+  fail-closed arm is unchanged and now reachable from CI: an unflagged row, or an
+  unrecognised provenance-shaped field, blocks, and the schema is closed so nothing
+  invents a pass. `continue-on-error` was dropped — a gate whose blocking arm is
+  swallowed is not wired in.
 - **Six plugins missing `description_zh`** — needs real translations, not
   machine-filled placeholders.
 - **Research findings 8–11** (code-graph suffix import matching; kanban `review`
   claim guard): the looseness is visible but existing fixtures may pin it;
   left for a fixture-checked change.
-- **`probe.test.ts` deleted? No** — the log-only probe was left in place while
-  the real `shell-evaluator.test.ts` was written alongside it; removing the
-  probe is a cleanup the suite owner should confirm.
+- **`probe.test.ts` deleted? Yes** — the log-only probe was removed alongside the real
+  `shell-evaluator.test.ts` that replaced it (85 lines, `557ad0c2f`). Removing it was
+  the right call: a probe that only logs asserts nothing, and leaving it would have run
+  a permanently-green file in CI forever.
 
 ## Cleanup of this report set
 

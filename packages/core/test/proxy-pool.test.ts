@@ -119,15 +119,18 @@ describe("InferenceProxyPool", () => {
     expect(next?.url).toBe("http://fast.proxy:8080");
   });
 
-  it("rejects invalid latency observations", () => {
+  it("records a success while dropping an unusable latency instead of throwing", () => {
+    // Every other mutator here tolerates bad input — an unknown id is ignored, a malformed
+    // URL is skipped — so a telemetry callback must not turn into a failure path in the
+    // caller. A non-finite or negative latency is dropped: the success itself is still
+    // counted, only the moving average is left alone.
     pool.addProxy("http://latency.proxy:8080");
-    expect(() => pool.recordSuccess("http://latency.proxy:8080", Number.POSITIVE_INFINITY)).toThrow(
-      "non-negative finite number",
-    );
-    expect(() => pool.recordSuccess("http://latency.proxy:8080", -1)).toThrow(
-      "non-negative finite number",
-    );
-    expect(pool.getProxyEntry("http://latency.proxy:8080")?.successCount).toBe(0);
+    pool.recordSuccess("http://latency.proxy:8080", Number.POSITIVE_INFINITY);
+    pool.recordSuccess("http://latency.proxy:8080", -1);
+    const entry = pool.getProxyEntry("http://latency.proxy:8080");
+    expect(entry?.successCount).toBe(2);
+    expect(entry?.latencyMs).toBe(0);
+    expect(entry?.consecutiveFailures).toBe(0);
   });
 
   it("calculates exponential moving average (EMA) latency", () => {
@@ -202,5 +205,59 @@ describe("InferenceProxyPool", () => {
       "positive finite number",
     );
     expect(newPool.getStats().total).toBe(0);
+  });
+
+  it("re-keys an imported entry by its canonical url", () => {
+    // `addProxy` keys the pool by the canonical url, so an imported entry has to be keyed
+    // the same way. A stored url that is merely a different spelling of the same
+    // destination would otherwise shadow a later `addProxy` as a second entry with its own
+    // health, latency and lease counters — `getStats` would count one destination twice.
+    const entry = pool.addProxy("http://import.proxy:8080");
+    const stored = { ...entry, url: "HTTP://IMPORT.PROXY:8080" };
+    const newPool = new InferenceProxyPool();
+    newPool.importEntries([stored]);
+
+    expect(newPool.getStats().total).toBe(1);
+    // The imported entry is keyed by its canonical spelling, so an addProxy of the same
+    // destination merges with it instead of adding a parallel entry.
+    newPool.addProxy("http://import.proxy:8080");
+    expect(newPool.getStats().total).toBe(1);
+  });
+
+  it("parks an auth failure for a multiple of the dead cooldown", () => {
+    // An auth failure is not a health signal the pool can wait out: the credential is
+    // wrong. The default multiplier is 6, so a 5000ms dead cooldown parks the proxy for
+    // 30000ms — and the status is "dead", the same as an ordinary death, so nothing
+    // downstream distinguishes them.
+    pool.addProxy("http://auth.proxy:8080");
+    pool.recordFailure("http://auth.proxy:8080", { isAuthFailure: true });
+    const entry = pool.getProxyEntry("http://auth.proxy:8080");
+    expect(entry?.status).toBe("dead");
+    expect(entry!.cooldownUntil! - Date.now()).toBeGreaterThanOrEqual(29_000);
+  });
+
+  it("honours an auth-failure multiplier of its own", () => {
+    // The multiplier is an option rather than an inline literal: an operator who lengthens
+    // `deadCooldownMs` can shorten the auth parking independently, without touching how
+    // long an ordinary death cools.
+    const soft = new InferenceProxyPool({
+      deadCooldownMs: 10_000,
+      authFailureCooldownMultiplier: 2,
+      maxConsecutiveFailures: 1,
+    });
+    soft.addProxy("http://auth.proxy:8080");
+    soft.recordFailure("http://auth.proxy:8080", { isAuthFailure: true });
+    const entry = soft.getProxyEntry("http://auth.proxy:8080");
+    expect(entry?.status).toBe("dead");
+    expect(entry!.cooldownUntil! - Date.now()).toBeLessThan(25_000);
+    expect(entry!.cooldownUntil! - Date.now()).toBeGreaterThanOrEqual(19_000);
+    // An ordinary death — here by exhausting maxConsecutiveFailures — still cools for the
+    // plain dead cooldown, untouched by the auth multiplier.
+    soft.addProxy("http://plain.proxy:8080");
+    soft.recordFailure("http://plain.proxy:8080", { isAuthFailure: false });
+    const plain = soft.getProxyEntry("http://plain.proxy:8080");
+    expect(plain?.status).toBe("dead");
+    expect(plain!.cooldownUntil! - Date.now()).toBeLessThan(12_000);
+    expect(plain!.cooldownUntil! - Date.now()).toBeGreaterThanOrEqual(9_000);
   });
 });

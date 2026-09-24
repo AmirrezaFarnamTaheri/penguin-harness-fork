@@ -55,6 +55,10 @@ export function RequiredMark({ label }: { label?: string }) {
  * The field's title. Renders as a real `<label htmlFor>` when the caller supplies the control's
  * id, and as a plain span otherwise — the span form is for the `<label>`-wrapped layout below,
  * where a second label element would compete for the same control.
+ *
+ * The required mark is a decorative SVG with no text content. CSS-generated text on a label
+ * can enter its accessible name, so the visual mark must not use `::after` content. Controls
+ * announce the requirement through `aria-required`.
  */
 export function FieldLabel({
   children,
@@ -72,7 +76,21 @@ export function FieldLabel({
   const content = (
     <>
       {children}
-      {required && <RequiredMark />}
+      {required && (
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 16 16"
+          className="ml-0.5 inline-block h-2.5 w-2.5 text-red-500 dark:text-red-400"
+          fill="none"
+        >
+          <path
+            d="M8 1v14M1 8h14M3.05 3.05l9.9 9.9M12.95 3.05l-9.9 9.9"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+        </svg>
+      )}
     </>
   );
   return htmlFor !== undefined ? (

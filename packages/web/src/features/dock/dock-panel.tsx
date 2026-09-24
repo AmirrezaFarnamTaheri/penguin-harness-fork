@@ -264,7 +264,13 @@ function DockPicker({
   return (
     <div
       data-testid="dock-picker"
-      className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4"
+      // safe centering: the panel list can be taller than a short dock (a right dock whose
+      // height the bottom dock has eaten) or wider than a narrow one. Plain `items-center`
+      // would then push the overflowing edge out of the scrollport — the top rows would sit
+      // above the scroll origin, clipped by the dock's overflow-hidden, unreachable even by
+      // scrolling. `safe` falls back to start in exactly that case, so every row stays
+      // reachable and the list scrolls.
+      className="flex min-h-0 flex-1 items-[safe_center] justify-[safe_center] overflow-y-auto p-4"
     >
       <div
         className={

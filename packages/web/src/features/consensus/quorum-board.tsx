@@ -5,18 +5,23 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { RequiredMark } from "../../components/ui/field";
+import type { Locale } from "../../state/locale";
+import { consensusCopy } from "./consensus-copy";
 
 export interface QuorumBoardProps {
   engine?: QuorumConsensusEngine;
   version?: number;
   onMutate?: () => void;
+  locale?: Locale;
 }
 
 export function QuorumBoard({
   engine: externalEngine,
   version: externalVersion,
   onMutate,
+  locale = "en",
 }: QuorumBoardProps = {}) {
+  const c = consensusCopy(locale);
   const [internalEngine] = useState(() => new QuorumConsensusEngine());
   const engine = externalEngine ?? internalEngine;
 
@@ -103,7 +108,7 @@ export function QuorumBoard({
         </div>
 
         <Button size="sm" variant="primary" onClick={() => setProposeOpen(true)}>
-          Propose decision
+          {c.propose}
         </Button>
       </div>
 
@@ -266,12 +271,12 @@ export function QuorumBoard({
       {/* Propose Topic Modal */}
       <Modal
         open={proposeOpen}
-        title="Propose a decision"
+        title={c.proposeTitle}
         onClose={() => setProposeOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setProposeOpen(false)}>
-              Cancel
+              {c.cancel}
             </Button>
             <Button
               size="sm"
@@ -285,7 +290,7 @@ export function QuorumBoard({
                 newThreshold > 5
               }
             >
-              Create Proposal
+              {c.createProposal}
             </Button>
           </div>
         }
@@ -296,7 +301,7 @@ export function QuorumBoard({
               Decision Topic Summary <RequiredMark />
             </label>
             <Input
-              aria-label="New topic"
+              aria-label={c.newTopic}
               value={newTopic}
               onChange={(e) => setNewTopic(e.target.value)}
               placeholder="e.g. Refactor AST indexing to background worker thread"

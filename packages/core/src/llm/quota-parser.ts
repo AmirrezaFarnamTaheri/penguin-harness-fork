@@ -18,17 +18,44 @@ export const DEFAULT_COOLDOWN_SEC = 15 * 60;
 export const QUOTA_RE = /RESOURCE_EXHAUSTED \(code 429\)/;
 export const RESET_RE = /Resets in ((?:\d+h)?(?:\d+m)?(?:\d+s)?)\b/;
 
+/**
+ * Parse a `Resets in <h><m><s>` window to milliseconds.
+ *
+ * Returns milliseconds, like its sibling `parseDurationToMs` — the two differ in strictness,
+ * not in unit: this one is anchored at both ends and treats an all-zero window as a real 0
+ * rather than as an absent one, while `parseDurationToMs` also accepts a bare positive number
+ * of seconds. Callers that need a countdown use `parseDurationToMs` or this function and get
+ * the same unit from both.
+ */
 export function parseResetDuration(text: string): number | undefined {
   const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(text.trim());
   if (!m || (!m[1] && !m[2] && !m[3])) return undefined;
-  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+  return (Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)) * 1000;
 }
 
-const QUOTA_PATTERNS = [
+/**
+ * Every rate-limit / quota-exhaustion wording this repo recognises.
+ *
+ * Two classifiers used to keep disjoint tables: `isRateLimitError` (generative-model.ts —
+ * decides retryability and whether a key is cooled) and `QUOTA_PATTERNS` below (the combo
+ * cascade's quota verdict). A provider sending "usage limit reached" was a generic network
+ * error to the runtime, so the key was never cooled and rotation kept handing it back, while
+ * the cascade saw no quota failure at all; and "rate limit exceeded" (spaced) was retryable
+ * per the runtime but `isQuota: false` per the cascade. Both now read this one list, so an
+ * error is classified the same way wherever it is classified. `\b429\b` deliberately
+ * over-matches prose (pinned in the tests); it is kept because dropping it would stop
+ * matching providers that report only the status.
+ */
+export const RATE_LIMIT_MESSAGE_PATTERNS: readonly RegExp[] = [
   /RESOURCE_EXHAUSTED/i,
-  /rate_limit_exceeded/i,
+  /resource has been exhausted/i,
+  // Matches "rate_limit_exceeded", "rate limit exceeded" and "rate-limited" alike.
+  /rate[-_ ]limit/i,
   /quota_exceeded/i,
   /insufficient_quota/i,
+  /insufficient_user_quota/i,
+  /requests_exceeded/i,
+  /tokens_exceeded/i,
   /too many requests/i,
   /\b429\b/,
   /exceeded your current quota/i,
@@ -97,23 +124,50 @@ export function formatDurationMs(ms: number): string {
   return parts.join(" ");
 }
 
-function extractCode(input: unknown): number | string | undefined {
-  if (!input || typeof input !== "object") return undefined;
-  const record = input as Record<string, unknown>;
+function readCode(record: Record<string, unknown>): number | string | undefined {
   const code = record.code ?? record.status ?? record.statusCode;
   return typeof code === "number" || typeof code === "string" ? code : undefined;
 }
 
+function extractCode(input: unknown): number | string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const record = input as Record<string, unknown>;
+  const top = readCode(record);
+  if (top !== undefined) return top;
+
+  // Providers commonly nest the status inside an `error` envelope
+  // (`{ error: { code: "rate_limit_exceeded", message: "too many requests" } }`). The
+  // pattern scan classifies such a body from its serialised text, so the code has to be
+  // reachable from the same shape: a consumer switching on `result.code` would otherwise
+  // read "unknown" for the most common provider error form.
+  const nested = record.error;
+  if (nested && typeof nested === "object") {
+    const nestedCode = readCode(nested as Record<string, unknown>);
+    if (nestedCode !== undefined) return nestedCode;
+  }
+  return undefined;
+}
+
 export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
-  const text =
-    typeof input === "string"
-      ? input
-      : input instanceof Error
-        ? `${input.name}: ${input.message}`
-        : JSON.stringify(input ?? "");
+  let text: string;
+  if (typeof input === "string") {
+    text = input;
+  } else if (input instanceof Error) {
+    text = `${input.name}: ${input.message}`;
+  } else {
+    // A non-string, non-Error object is scanned as JSON. A circular structure (Fetch/SDK
+    // errors that keep a reference to their request or response can carry one) makes
+    // JSON.stringify throw, and every other input shape returns a verdict — so the failure is
+    // swallowed here rather than propagated into the caller's error path.
+    try {
+      text = JSON.stringify(input ?? "");
+    } catch {
+      text = String(input);
+    }
+  }
   const code = extractCode(input);
   const isAuth = AUTH_PATTERNS.some((pattern) => pattern.test(text));
-  const isQuota = QUOTA_PATTERNS.some((pattern) => pattern.test(text));
+  const isQuota = RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(text));
   const isOverloaded = OVERLOAD_PATTERNS.some((pattern) => pattern.test(text));
   const isContextLengthExceeded = CONTEXT_LENGTH_PATTERNS.some((pattern) => pattern.test(text));
 
@@ -149,10 +203,15 @@ export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
   const resetMatch = RESET_DURATION_RE.exec(text);
   if (resetMatch?.[1]) {
     resetText = resetMatch[1];
+    // A window the provider spelled out is honoured as-is, including one that parses to 0:
+    // "Resets in 0h0m0s" means the limit is already expired, and 0 is a real verdict here,
+    // not an absent one (`parseResetDuration` distinguishes them). The header fields below
+    // stay strict-positive — a bare numeric 0 is not a window the provider spelled out, and
+    // the caller still needs something to sleep.
     resetMs = parseDurationToMs(resetText);
   }
 
-  if (!resetMs) {
+  if (resetMs === undefined) {
     const retryAfterMatch = RETRY_AFTER_RE.exec(text);
     if (retryAfterMatch?.[1]) {
       const sec = Number(retryAfterMatch[1]);
@@ -163,7 +222,7 @@ export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
     }
   }
 
-  if (!resetMs) {
+  if (resetMs === undefined) {
     const secMatch = SECONDS_RESET_RE.exec(text);
     if (secMatch?.[1]) {
       const sec = Number(secMatch[1]);
@@ -174,7 +233,7 @@ export function detectQuotaExhaustion(input: unknown): QuotaDetectionResult {
     }
   }
 
-  if (!resetMs) {
+  if (resetMs === undefined) {
     resetMs = 60_000;
     resetText = "60s";
   }

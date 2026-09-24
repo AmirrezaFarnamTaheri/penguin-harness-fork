@@ -1,10 +1,13 @@
 /**
  * sanitizeUntrustedContent: the data-boundary fence must be unbreakable from inside the payload.
  *
- * Context: at the time these tests were added, `sanitizeUntrustedContent` was exported but had
- * ZERO callers and ZERO tests anywhere in the repo (verified by grep across src/ and test/).
- * It is deliberately NOT wired into the tool pipeline here — that is a separate design decision
- * for the lead; this file only pins the fence contract itself.
+ * This file pins the fence contract itself — an unguessable per-call fence name, exactly one
+ * closing delimiter at the very end, and any embedded/case-variant/padded closing delimiter
+ * neutralized as data. The contract is enforced at the one place adversary-writable text reaches
+ * the model from outside the harness: `renderResults` in `environment/tools/web-search.ts` wraps
+ * every web-search result block in this sanitizer, so web titles and snippets can never break out
+ * of the boundary and read as instructions. The sanitizer is called there directly on the joined
+ * result text, so these unit tests exercise the same function the tool pipeline runs.
  */
 import { describe, expect, it } from "vitest";
 import { sanitizeUntrustedContent } from "../src/agent/untrusted-content.js";

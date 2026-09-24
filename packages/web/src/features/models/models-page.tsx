@@ -648,7 +648,9 @@ const isModelGroupDrag = (e: ReactDragEvent): boolean =>
   e.dataTransfer.types.includes(MODEL_GROUP_DRAG_MIME);
 
 /** Dragging a group needs a pointer that can drag — HTML5 drag-and-drop never fires from touch (the sidebar's query). */
-const DRAG_POINTER_QUERY = "(hover: hover) and (pointer: fine)";
+// Reordering is a desktop gesture. On a narrow viewport, keeping native draggable headers
+// enabled can make their large hit targets intercept clicks on cards during responsive reflow.
+const DRAG_POINTER_QUERY = "(hover: hover) and (pointer: fine) and (min-width: 640px)";
 
 export function ModelsPage() {
   useDocumentTitle(S.models.title);

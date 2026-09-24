@@ -98,6 +98,11 @@ export class TokenThroughputTracker {
   private rounds = 0;
   private emaAcceptance = 0;
   private overBudgetRounds = 0;
+  /**
+   * γ of the most recently recorded round. `report()` models speedup at the observed
+   * acceptance rate against the window the rounds actually ran, not a hardcoded 4.
+   */
+  private lastGamma = 4;
 
   private readonly latencySamples: number[] = [];
   private readonly acceptedByPriority = new Map<number, number>();
@@ -116,6 +121,7 @@ export class TokenThroughputTracker {
   record(metrics: RoundMetrics): void {
     this.rounds += 1;
     this.proposed += metrics.proposed;
+    if (metrics.proposed > 0) this.lastGamma = metrics.proposed;
     this.accepted += metrics.accepted;
     this.bonus += metrics.bonus;
     this.committed += metrics.committed;
@@ -162,7 +168,7 @@ export class TokenThroughputTracker {
       tokensPerSecond: this.verifyTimeNs > 0 ? (this.committed / this.verifyTimeNs) * 1e9 : 0,
       meanVerifyLatencyNs: meanLatency,
       p95VerifyLatencyNs: p95Latency,
-      speedup: this.speedup(acceptanceRate),
+      speedup: this.speedup(acceptanceRate, this.lastGamma),
       acceptedByPriority: new Map(this.acceptedByPriority),
       rounds: this.rounds,
       withinLatencyBudget: this.overBudgetRounds === 0,
@@ -206,6 +212,7 @@ export class TokenThroughputTracker {
     this.rounds = 0;
     this.emaAcceptance = 0;
     this.overBudgetRounds = 0;
+    this.lastGamma = 4;
     this.latencySamples.length = 0;
     this.acceptedByPriority.clear();
   }

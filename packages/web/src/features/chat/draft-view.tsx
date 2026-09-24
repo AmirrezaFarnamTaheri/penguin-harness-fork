@@ -963,7 +963,8 @@ function AgentSelect({
     <Dropdown
       open={open}
       setOpen={setOpen}
-      menuClass="left-0 top-full mt-1 w-72 max-w-[calc(100vw-2rem)] origin-top-left"
+      portal={{ direction: "down", align: "left" }}
+      menuClass="w-72 max-w-[calc(100vw-2rem)] origin-top-left"
       button={
         <button
           type="button"

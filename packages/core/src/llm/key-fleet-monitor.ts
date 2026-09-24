@@ -77,6 +77,7 @@ export interface CockpitKeyFleetSnapshot {
 export type ProbeFunction = (
   provider: string,
   key: string,
+  signal?: AbortSignal,
 ) => Promise<{ ok: boolean; latencyMs: number; error?: string }>;
 
 export interface ProviderRegistration {
@@ -90,6 +91,14 @@ export interface ProviderRegistration {
   projectId?: string;
 }
 
+/**
+ * Masks an API key for display, keeping enough of prefix and suffix to be recognisable
+ * without recovering the secret.
+ *
+ * The mask is also a fleet lookup key. Registration disambiguates collisions with a suffix,
+ * including short keys and long keys with the same visible prefix and suffix. Short secrets
+ * never expose a deterministic digest that could be guessed offline.
+ */
 export function maskApiKey(key: string): string {
   if (!key) return "empty-key";
   if (key.length <= 8) return "key-***";
@@ -174,7 +183,11 @@ export class KeyFleetMonitor {
       const keyId = this.hasKeyIdInOtherModels(baseKeyId, modelRef)
         ? `${provider}-${modelId.replace(/[^a-zA-Z0-9_-]/g, "-")}-key-${index + 1}`
         : baseKeyId;
-      const masked = maskApiKey(k);
+      const baseMask = maskApiKey(k);
+      let masked = baseMask;
+      for (let suffix = 2; keyByMask.has(masked); suffix++) {
+        masked = `${baseMask}#${suffix}`;
+      }
       const entry = { keyId, maskedKey: masked, rawKey: k };
       keyById.set(keyId, entry);
       keyByMask.set(masked, entry);
@@ -259,6 +272,15 @@ export class KeyFleetMonitor {
     keyIdOrMask: string,
     overrideProbeFn?: ProbeFunction,
   ): Promise<KeyProbeResult> {
+    return this.probeKeyWithSignal(providerOrRef, keyIdOrMask, overrideProbeFn);
+  }
+
+  private async probeKeyWithSignal(
+    providerOrRef: string,
+    keyIdOrMask: string,
+    overrideProbeFn?: ProbeFunction,
+    signal?: AbortSignal,
+  ): Promise<KeyProbeResult> {
     const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
     const now = Date.now();
     const entry = found?.meta.keyById.get(keyIdOrMask) ?? found?.meta.keyByMask.get(keyIdOrMask);
@@ -276,16 +298,18 @@ export class KeyFleetMonitor {
     if (probeFn && rawKey) {
       const startedAt = performance.now();
       try {
-        const res = await probeFn(provider, rawKey);
+        const res = await probeFn(provider, rawKey, signal);
         latencyMs = res.latencyMs;
         status = res.ok ? "ok" : "error";
         details = res.error;
+        if (signal?.aborted) return this.abortedProbeResult(keyId, maskedKey, provider, now, found);
         if (res.ok) {
           found?.rotator.recordSuccess(rawKey);
         } else {
           found?.rotator.recordFailure(rawKey, "other");
         }
       } catch (err) {
+        if (signal?.aborted) return this.abortedProbeResult(keyId, maskedKey, provider, now, found);
         status = "error";
         latencyMs = Math.max(1, Math.round(performance.now() - startedAt));
         details = err instanceof Error ? err.message : String(err);
@@ -318,19 +342,89 @@ export class KeyFleetMonitor {
     };
   }
 
+  private abortedProbeResult(
+    keyId: string,
+    maskedKey: string,
+    provider: string,
+    timestamp: number,
+    found: ReturnType<KeyFleetMonitor["findMetaAndRotator"]>,
+  ): KeyProbeResult {
+    return {
+      keyId,
+      maskedKey,
+      provider,
+      latencyMs: 0,
+      status: "error",
+      timestamp,
+      sparkline: found ? [...found.meta.latencies] : [],
+      details: "Probe was aborted",
+    };
+  }
+
   /**
    * Probes all providers across the fleet.
+   *
+   * The probes are independent per key, so they run concurrently: a sequential sweep made
+   * one unresponsive endpoint stall every key behind it, and — because the listeners are
+   * notified only after the loop — blocked fleet health updates too. Each probe still gets
+   * a deadline, since a hung probe would otherwise keep the sweep from ever settling; a
+   * probe that outlives it is reported as an error for the key it was issued against
+   * rather than awaited indefinitely.
    */
-  public async probeFleet(): Promise<KeyProbeResult[]> {
-    const results: KeyProbeResult[] = [];
+  public async probeFleet(perProbeTimeoutMs = 30_000): Promise<KeyProbeResult[]> {
+    const pending: Promise<KeyProbeResult>[] = [];
     for (const [ref, meta] of this.modelMeta) {
       for (const keyId of meta.keyById.keys()) {
-        const res = await this.probeKey(ref, keyId);
-        results.push(res);
+        pending.push(this.probeKeyWithDeadline(ref, keyId, perProbeTimeoutMs));
       }
     }
+    // `Promise.all` preserves the iteration order, so the results line up with the sweep
+    // order a sequential caller used to see.
+    const results = await Promise.all(pending);
     this.notifyListeners();
     return results;
+  }
+
+  private async probeKeyWithDeadline(
+    providerOrRef: string,
+    keyIdOrMask: string,
+    timeoutMs: number,
+  ): Promise<KeyProbeResult> {
+    const found = this.findMetaAndRotator(providerOrRef, keyIdOrMask);
+    const entry = found?.meta.keyById.get(keyIdOrMask) ?? found?.meta.keyByMask.get(keyIdOrMask);
+    // Resolved up front so a probe that misses its deadline can still say which key it was
+    // for — the probe's own result would carry those fields, but it never arrives.
+    const keyId = entry?.keyId ?? keyIdOrMask;
+    const maskedKey = entry?.maskedKey ?? maskApiKey(keyIdOrMask);
+    const provider = found?.meta.provider ?? providerOrRef.toLowerCase();
+
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<KeyProbeResult>((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve({
+          keyId,
+          maskedKey,
+          provider,
+          latencyMs: timeoutMs,
+          status: "error",
+          timestamp: Date.now(),
+          sparkline: found ? [...found.meta.latencies] : [],
+          details: `Probe exceeded the ${timeoutMs}ms deadline`,
+        });
+      }, timeoutMs);
+      // A fleet sweep must not keep the event loop alive on its own.
+      (timer as { unref?: () => void })?.unref?.();
+    });
+    try {
+      return await Promise.race([
+        this.probeKeyWithSignal(providerOrRef, keyIdOrMask, undefined, controller.signal),
+        deadline,
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /**
@@ -413,8 +507,8 @@ export class KeyFleetMonitor {
       if (rotator) {
         const statuses = rotator.getKeys();
         for (const s of statuses) {
-          const masked = maskApiKey(s.key);
-          const keyId = meta.rawToId.get(s.key) ?? masked;
+          const keyId = meta.rawToId.get(s.key);
+          const masked = (keyId && meta.keyById.get(keyId)?.maskedKey) ?? maskApiKey(s.key);
           let st: KeyHealthStatus = "healthy";
           let cooldownRemainingMs = 0;
 
@@ -434,7 +528,7 @@ export class KeyFleetMonitor {
           activeLeases += leases;
 
           keys.push({
-            keyId,
+            keyId: keyId ?? masked,
             maskedKey: masked,
             status: st,
             isFailed: s.isFailed,

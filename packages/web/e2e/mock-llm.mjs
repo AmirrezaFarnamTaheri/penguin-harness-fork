@@ -101,7 +101,10 @@ const server = http.createServer((req, res) => {
     } catch {}
     const messages = json.messages || [];
     const flat = JSON.stringify(messages);
-    const isTitle = flat.includes("concise title");
+    const lastMessage = JSON.stringify(messages[messages.length - 1] ?? {});
+    // af4bd0b30 (#489) rewrote the title prompt: it no longer says "concise title" — it opens
+    // with "You are a title generator." (core's session-title.ts), so this is the marker now.
+    const isTitle = flat.includes("You are a title generator.");
     // After compaction the new context has only the summary left, so the message count drops
     // sharply -> reported usage drops along with it, letting compaction converge.
     const msgCount = messages.length;
@@ -146,16 +149,17 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // Background-subagent FAILURE case (background-subagent.spec): the child session's own
-    // requests (its context is just the fail prompt) are rejected 401 invalid_api_key —
-    // classified `auth`, which the engine never retries, so the child's run fails at once
-    // and the FAILED completion report must still arrive promptly (a retryable failure
-    // would climb the full ~60s reconnect ladder first — same terminal state, just slow).
+    // Background-subagent FAILURE case (background-subagent.spec): only the child is given
+    // this deliberately bad key, so its 401 fails promptly without marking the parent's
+    // otherwise-valid shared model key unhealthy. This lets the parent process the failure
+    // completion notice as a separate turn.
     // Gated on !isTitle so the failed child's title request falls back quietly.
     if (
-      flat.includes(SUBAGENT_FAIL_PROMPT) &&
+      lastMessage.includes(SUBAGENT_FAIL_PROMPT) &&
       !flat.includes("background subagent fail test") &&
-      !isTitle
+      !flat.includes("background_task_done") &&
+      !isTitle &&
+      req.headers["x-api-key"] === "sk-auth-bad"
     ) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(
@@ -177,15 +181,15 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    // "Quota retry" test case: the first 5 requests of the conversation are rejected 403
+    // "Quota retry" test case: the first 2 requests of the conversation are rejected 403
     // with the provider's quota-exhaustion code (as OpenAI-compatible gateways do).
-    // GenerativeModel classifies them retryable (timeout) and the engine reconnects with
-    // exponential backoff (250/500/1000/2000/4000ms) — the 4s wait before retry #5 is the
-    // window the spec uses to observe the live countdown and click "retry now"; the 6th
+    // GenerativeModel classifies them retryable and the engine reconnects with
+    // exponential backoff (2s/4s) — the 4s wait before retry #2 is the
+    // window the spec uses to observe the live countdown and click "retry now"; the 3rd
     // attempt streams a normal final answer.
     if (flat.includes("quota retry test") && !isTitle) {
       quotaTurns += 1;
-      if (quotaTurns <= 5) {
+      if (quotaTurns <= 2) {
         res.writeHead(403, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
@@ -304,7 +308,7 @@ const server = http.createServer((req, res) => {
     // the command is still running; ~2s later the command exits and the harness injects a
     // [background_task_done] user message that auto-starts a task — whose turn is keyed on
     // the LAST message (the whole-history flags can't shadow it) and acknowledges.
-    const lastText = JSON.stringify(messages[messages.length - 1] ?? {});
+    const lastText = lastMessage;
     if (lastText.includes("background_task_done")) {
       block(res, 0, { type: "text", text: "" }, [
         { type: "text_delta", text: "Acknowledged: the background command finished (bg-ack)." },
@@ -318,7 +322,7 @@ const server = http.createServer((req, res) => {
           { type: "input_json_delta", partial_json: '{"prompt": ' },
           {
             type: "input_json_delta",
-            partial_json: `${JSON.stringify(SUBAGENT_FAIL_PROMPT)}, "run_in_background": true}`,
+            partial_json: `${JSON.stringify(SUBAGENT_FAIL_PROMPT)}, "run_in_background": true, "api_key": "sk-auth-bad"}`,
           },
         ]);
         messageStop(res, "tool_use", 15);

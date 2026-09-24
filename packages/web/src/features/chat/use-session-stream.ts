@@ -105,6 +105,8 @@ export function useSessionStream(
   onSessionTitle?: (sessionId: string, title: string) => void,
   /** New session has been registered (sub-sessions are pushed over the parent session's channel); held in a ref, doesn't trigger a reconnect. */
   onSessionCreated?: () => void,
+  /** Project model credentials changed; held in a ref, doesn't trigger a reconnect. */
+  onCredentialsUpdated?: () => void,
 ): SessionStreamState {
   const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -146,6 +148,8 @@ export function useSessionStream(
   onTitleRef.current = onSessionTitle;
   const onCreatedRef = useRef(onSessionCreated);
   onCreatedRef.current = onSessionCreated;
+  const onCredentialsUpdatedRef = useRef(onCredentialsUpdated);
+  onCredentialsUpdatedRef.current = onCredentialsUpdated;
 
   const controllerRef = useRef<StreamController | null>(null);
   // Empty model placeholder before the controller is established (first frame).
@@ -250,6 +254,7 @@ export function useSessionStream(
       onPendingChange: () => setPendingTick((t) => t + 1),
       onSessionTitle: (sid, title) => onTitleRef.current?.(sid, title),
       onSessionCreated: () => onCreatedRef.current?.(),
+      onCredentialsUpdated: () => onCredentialsUpdatedRef.current?.(),
       onGoalEvent,
     });
     controllerRef.current = controller;

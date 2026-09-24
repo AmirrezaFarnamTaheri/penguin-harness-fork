@@ -49,18 +49,9 @@
 
 PenguinHarness runs on your computer or server and automates the agent app lifecycle from creation and evaluation to optimization and deployment. Three reasons define the platform:
 
-### 1. 🏆 Outstanding results at tens of times less cost
+### 1. 🏆 Reproducible evaluation is in progress
 
-A deliberately minimal toolset over clean low-level interfaces: fewer tool calls, fewer tokens — deeply tuned for open models like DeepSeek. Each harness on the model it is normally paired with, same tasks, head-to-head:
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/benchmark-dark.svg" />
-    <img src="assets/readme/benchmark-light.svg" alt="Benchmark: PenguinHarness leads the data-analysis suite and ties OpenAI Codex on coding, at a small fraction of both rivals' cost" width="920" />
-  </picture>
-</p>
-
-**Best accuracy on data analysis — at 1/70 of Claude Code's cost.**
+A deliberately minimal toolset over clean low-level interfaces supports work across models. We are preparing a public benchmark with published tasks, scoring rules, raw outcomes, run artifacts, and dated pricing. Earlier comparative figures were removed because they could not be independently verified.
 
 ### 2. ⚡ One sentence generates a runnable agent app
 

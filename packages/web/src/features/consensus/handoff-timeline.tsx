@@ -2,8 +2,17 @@ import { useState } from "react";
 import type { HandoffStepItem } from "./consensus-types";
 import type { LiveHandoffEvent } from "../agent/use-cockpit-telemetry.js";
 import { Button } from "../../components/ui/button";
+import type { Locale } from "../../state/locale";
+import { consensusCopy } from "./consensus-copy";
 
-export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] }) {
+export function HandoffTimeline({
+  handoffs,
+  locale = "en",
+}: {
+  handoffs?: LiveHandoffEvent[];
+  locale?: Locale;
+}) {
+  const c = consensusCopy(locale);
   const [steps, setSteps] = useState<HandoffStepItem[]>([
     {
       id: "step-1",
@@ -81,7 +90,7 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-            {isLive ? "Handoffs (live)" : "Handoffs (local demo)"}
+            {isLive ? c.handoffsLive : c.handoffsDemo}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
             {isLive
@@ -92,7 +101,7 @@ export function HandoffTimeline({ handoffs }: { handoffs?: LiveHandoffEvent[] })
 
         {!isLive && (
           <Button size="sm" variant="secondary" onClick={handleRunSimulation} disabled={simulating}>
-            {simulating ? "Advancing..." : "Simulate Next Stage"}
+            {simulating ? c.advancing : c.simulate}
           </Button>
         )}
       </div>

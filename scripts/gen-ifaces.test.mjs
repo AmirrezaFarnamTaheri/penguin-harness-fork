@@ -73,6 +73,45 @@ async function until(run, predicate, label) {
 }
 const read = (f) => JSON.parse(fs.readFileSync(f.out, "utf8"));
 const value = (f) => read(f).ifaces["fixture#Example"]?.fields.value.data;
+
+/** A project whose src and test both declare the same @Module class: the exact shape of
+ * core's kernel-modules.test.ts, which used to make the generator die on "defined twice". */
+function moduleFixture() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gen-ifaces-modules-"));
+  fs.writeFileSync(path.join(dir, "package.json"), '{"name":"fixture"}');
+  fs.writeFileSync(
+    path.join(dir, "tsconfig.json"),
+    // include covers test alongside src the way packages/*/tsconfig.json does, so the
+    // fixture exercises the generator's own test-file filter rather than the tsconfig's.
+    JSON.stringify({
+      compilerOptions: { strict: true, experimentalDecorators: true, noEmit: true },
+      include: ["src", "test"],
+    }),
+  );
+  const moduleClass = (name) => `declare function Module(): ClassDecorator;
+@Module()
+export abstract class ${name} {}
+`;
+  fs.mkdirSync(path.join(dir, "src"));
+  fs.writeFileSync(path.join(dir, "src", "real.ts"), moduleClass("RealModule"));
+  fs.mkdirSync(path.join(dir, "test"));
+  fs.writeFileSync(path.join(dir, "test", "real.test.ts"), moduleClass("RealModule"));
+  return { dir, out: path.join(dir, "ifaces.json") };
+}
+
+/** A package that declares nothing publishable: sources exist and typecheck, but no
+ * @Interface() / @Module / @Component class is among them. */
+function emptyFixture() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "gen-ifaces-empty-"));
+  fs.writeFileSync(path.join(dir, "package.json"), '{"name":"fixture"}');
+  fs.writeFileSync(
+    path.join(dir, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { strict: true, noEmit: true }, include: ["src"] }),
+  );
+  fs.mkdirSync(path.join(dir, "src"));
+  fs.writeFileSync(path.join(dir, "src", "util.ts"), "export const answer = 42;\n");
+  return { dir, out: path.join(dir, "ifaces.json") };
+}
 async function stop(run, signal) {
   if (process.platform === "win32") run.child.send(signal);
   else run.child.kill(signal);
@@ -156,4 +195,42 @@ test("watch handles SIGINT and rejects --check combination", async (t) => {
   });
   await until(run, () => fs.existsSync(f.out), "initial generation");
   await stop(run, "SIGINT");
+});
+
+test("test files are not part of the published interface", async (t) => {
+  // src and test declare the SAME module class. Before the scoping fix this was a hard
+  // error ("module 'RealModule' is defined twice"); now the fixture copy is out of scope
+  // and the published table carries the source declaration alone.
+  const f = moduleFixture();
+  const run = start(f);
+  t.after(() => {
+    if (run.child.exitCode === null) run.child.kill();
+  });
+  assert.equal((await run.closed).code, 0, run.log());
+  assert.doesNotMatch(run.log(), /is defined twice/);
+  assert.deepEqual(read(f).modules, {
+    RealModule: { name: "RealModule", requires: {}, provides: {}, contributes: {}, children: [] },
+  });
+});
+
+test("a package that declares no kernel modules reports an empty catalog with its reason", async (t) => {
+  const f = emptyFixture();
+  const run = start(f);
+  t.after(() => {
+    if (run.child.exitCode === null) run.child.kill();
+  });
+  // Empty is a correct result, not a failure: the generator must stay green and say so.
+  const result = await run.closed;
+  assert.equal(result.code, 0, run.log());
+  const table = read(f);
+  assert.deepEqual(table.ifaces, {});
+  assert.deepEqual(table.types, {});
+  assert.deepEqual(table.modules, {});
+  assert.equal(table.empty, true);
+  assert.match(
+    table.note ?? "",
+    /No @Interface\(\), @Module or @Component declarations/,
+    "the file records why it is empty",
+  );
+  assert.match(run.log(), /empty catalog/, "the reason is reported on stderr too");
 });

@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -12,8 +14,15 @@ import {
 /** Locate a real shell once; `null` when the runner has none. */
 const bash: string | null = (() => {
   try {
-    const probe = spawnSync("bash", ["--version"], { encoding: "utf-8" });
-    return probe.error === undefined && probe.status === 0 ? "bash" : null;
+    // Windows' `bash` on PATH can be the WSL launcher, whose argv translation changes
+    // quoting before Bash sees it. Use Git Bash for this POSIX parser test when present.
+    const candidate =
+      process.platform === "win32"
+        ? path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin", "bash.exe")
+        : "bash";
+    if (process.platform === "win32" && !existsSync(candidate)) return null;
+    const probe = spawnSync(candidate, ["--version"], { encoding: "utf-8" });
+    return probe.error === undefined && probe.status === 0 ? candidate : null;
   } catch {
     return null;
   }
@@ -342,7 +351,11 @@ describe.skipIf(bash === null)("shell-quote against a real POSIX shell", () => {
 
   /** Have a real shell split `line` into words the way it would before executing it. */
   const splitWithRealShell = (line: string): string[] => {
-    const result = spawnSync(shell, ["-c", `printf '%s\\0' ${line}`], {
+    // Send the script over stdin: on Windows, spawning bash through a launcher can
+    // reinterpret quote characters in a `-c` argv before bash sees them. Stdin gives
+    // bash the exact bytes this test intends to have it parse.
+    const result = spawnSync(shell, ["-s"], {
+      input: `printf '%s\\0' ${line}`,
       encoding: "utf-8",
     });
     expect(result.error).toBeUndefined();

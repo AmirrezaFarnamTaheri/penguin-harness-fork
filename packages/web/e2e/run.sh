@@ -13,8 +13,22 @@ export BASE_URL="http://localhost:$SRV_PORT"
 export MOCK_URL="http://127.0.0.1:$MOCK_PORT"
 
 cleanup() {
-  [ -n "${MOCK_PID:-}" ] && kill "$MOCK_PID" 2>/dev/null
-  [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null
+  stop_process() {
+    pid="$1"
+    [ -n "$pid" ] || return 0
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        # Git Bash starts native node.exe processes outside its POSIX process tree;
+        # killing the shell PID alone leaves the server alive and its data DB locked.
+        taskkill.exe //PID "$pid" //T //F >/dev/null 2>&1 || kill "$pid" 2>/dev/null || true
+        ;;
+      *) kill "$pid" 2>/dev/null || true ;;
+    esac
+  }
+  stop_process "${MOCK_PID:-}"
+  stop_process "${SRV_PID:-}"
+  [ -n "${MOCK_PID:-}" ] && wait "$MOCK_PID" 2>/dev/null || true
+  [ -n "${SRV_PID:-}" ] && wait "$SRV_PID" 2>/dev/null || true
   rm -rf "$DATA"
 }
 trap cleanup EXIT

@@ -15,6 +15,7 @@ import {
   assistantText,
   emptyTokenCounts,
   imageUrlMessage,
+  inlineData,
   isCompleteModelMessage,
   partialText,
   partialToolCallOutput,
@@ -2414,6 +2415,35 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     expect(text).toContain("[text]half-text[/text]");
     expect(text).toContain("go");
     expect(text).toContain("next");
+  });
+
+  it("keeps image and inline data attachments after a failed turn", async () => {
+    const inputs: OmniMessage[][] = [];
+    const llm: LLMInterface = {
+      async *streamGenerate(params) {
+        inputs.push(params.newMessages);
+        if (inputs.length === 1) return { status: "fatal", errorMessage: "offline" };
+        yield assistantText("recovered");
+        return { status: "completed" };
+      },
+    };
+    const engine = new ContextEngine({
+      llm,
+      environment: new Environment({
+        workspaceDir: workspace,
+        toolConfig: execCommandToolConfig(),
+      }),
+    });
+    const image = imageUrlMessage("data:image/png;base64,AAAA");
+    const attachment = inlineData("user", "QUJD", "text/plain");
+
+    await collectRun(engine, [userText("inspect these"), image, attachment], allowAll);
+    await collectRun(engine, [userText("try again")], allowAll);
+
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1]).toContain(image);
+    expect(inputs[1]).toContain(attachment);
+    expect(turnAbortedCount(inputs[1]!)).toBe(1);
   });
 
   it("carry-over after exhausted retries: raw original input + [turn_retried] with all attempts' products", async () => {

@@ -29,7 +29,7 @@ describe("gateway input validation", () => {
     const negative = await client.post(`/api/projects/${projectId}/gateway/cost`, {
       provider: "openai",
       modelId: "gpt-4o",
-      promptTokens: -1,
+      uncachedPromptTokens: -1,
     });
     expect(negative.status).toBe(400);
 
@@ -45,7 +45,7 @@ describe("gateway input validation", () => {
     const response = await client.post(`/api/projects/${projectId}/gateway/cost`, {
       provider: "unknown-provider",
       modelId: "unknown-model",
-      promptTokens: 1000,
+      uncachedPromptTokens: 1000,
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -58,6 +58,17 @@ describe("gateway input validation", () => {
     expect(body.formattedSavings).toBe("Unknown");
   });
 
+  it("rejects ambiguous total-input promptTokens so cached input cannot be double billed", async () => {
+    const response = await client.post(`/api/projects/${projectId}/gateway/cost`, {
+      provider: "openai",
+      modelId: "gpt-4o",
+      promptTokens: 1_000_000,
+      cacheReadTokens: 400_000,
+    });
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("uncachedPromptTokens");
+  });
+
   it("computes a real dollar cost for a priced model", async () => {
     // openai/gpt-4o from the default catalog: prompt $2.50/M, completion $10.00/M,
     // cache read $1.25/M. With 1M prompt and 1M completion tokens the arithmetic is
@@ -66,7 +77,7 @@ describe("gateway input validation", () => {
     const response = await client.post(`/api/projects/${projectId}/gateway/cost`, {
       provider: "openai",
       modelId: "gpt-4o",
-      promptTokens: 1_000_000,
+      uncachedPromptTokens: 1_000_000,
       completionTokens: 1_000_000,
     });
     expect(response.status).toBe(200);
@@ -93,11 +104,11 @@ describe("gateway input validation", () => {
     // With cache reads, the same model reports the cache-write fallback (1.25x prompt, since
     // gpt-4o lists no cacheWrite rate) and a non-zero saving:
     //   prompt 2.5 + completion 5.0 + cacheRead 0.25 + cacheWrite 0.3125 = $8.063
-    //   savings = (1.2M uncached prompt) - (prompt + cacheRead) = 3.0 - 2.75 = $0.250
+    //   savings = (1.2M total input) - (uncached prompt + cacheRead) = 3.0 - 2.75 = $0.250
     const cached = await client.post(`/api/projects/${projectId}/gateway/cost`, {
       provider: "openai",
       modelId: "gpt-4o",
-      promptTokens: 1_000_000,
+      uncachedPromptTokens: 1_000_000,
       completionTokens: 500_000,
       cacheReadTokens: 200_000,
       cacheWriteTokens: 100_000,

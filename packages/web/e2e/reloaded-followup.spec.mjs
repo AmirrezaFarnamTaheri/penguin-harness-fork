@@ -40,13 +40,13 @@ async function createSession(page) {
     },
   );
   expect(session.ok(), `create session: ${await session.text()}`).toBeTruthy();
-  return (await session.json()).session.sessionId;
+  return { projectId, sessionId: (await session.json()).session.sessionId };
 }
 
 test("a stale steer response after reload queues the follow-up instead of stranding it", async ({
   page,
 }) => {
-  const sessionId = await createSession(page);
+  const { projectId, sessionId } = await createSession(page);
   await page.goto(`${BASE}/chat/${sessionId}`);
   const composer = page.locator("textarea").first();
   await composer.waitFor();
@@ -106,6 +106,13 @@ test("a stale steer response after reload queues the follow-up instead of strand
   await page.getByRole("button", { name: "高 (high)", exact: true }).click();
   await page.getByRole("button", { name: "仍要切换", exact: true }).click();
   await expect(thinkingBtn).toContainText("高");
+  // The level is pinned ON THE SESSION now — the picker PATCHes it and every later context
+  // opens at it, so the queue's task POST no longer carries it (9d219c7d4 removed
+  // thinkingLevel from TaskCreateRequest). Assert the pin where it actually lives.
+  const list = await (
+    await page.request.get(`${BASE}/api/projects/${projectId}/agents/default_agent/sessions`)
+  ).json();
+  expect(list.sessions.find((s) => s.sessionId === sessionId)?.thinkingLevel).toBe("high");
 
   await composer.fill("hello after reload");
   const followUpPost = page.waitForResponse((response) =>
@@ -116,7 +123,6 @@ test("a stale steer response after reload queues the follow-up instead of strand
   expect(response.status()).toBe(202);
   expect(response.request().postDataJSON()).toMatchObject({
     queueIfBusy: true,
-    thinkingLevel: "high",
   });
   expect(await response.json()).toMatchObject({ queued: true });
   // The queued hint is now one line per entry carrying that entry's own content (the bare

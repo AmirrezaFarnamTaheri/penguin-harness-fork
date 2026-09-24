@@ -121,8 +121,6 @@ const WEB_SRC = fileURLToPath(new URL("../src", import.meta.url));
  */
 const UNCLASSIFIED_ON_PURPOSE: Record<string, string> = {
   "penguin.installId": "the marker itself — it is what the comparison reads, never swept",
-  "penguin.chatRouteApplied.":
-    "sessionStorage: scoped to one tab's history, so it cannot outlive a data root",
 };
 
 /**
@@ -350,10 +348,19 @@ describe("syncInstallScope", () => {
     );
     const storage = populated();
     storage.map.set(INSTALL_ID_KEY, "root-a");
+    const tabStorage = memStorage({
+      "penguin.authAck.session-1": "42",
+      "penguin.chatRouteApplied.session-1": "1",
+      "penguin.theme": "dark",
+    });
+    vi.stubGlobal("sessionStorage", tabStorage);
 
     expect(await syncInstallScope(storage)).toBe("swept");
     expect(storage.map.has("penguin.chatDraft.admin.default_project")).toBe(false);
     expect(storage.map.get("penguin.theme")).toBe("dark");
+    expect(tabStorage.map.has("penguin.authAck.session-1")).toBe(false);
+    expect(tabStorage.map.has("penguin.chatRouteApplied.session-1")).toBe(false);
+    expect(tabStorage.map.get("penguin.theme")).toBe("dark");
   });
 
   it("a server that cannot be reached sweeps nothing and never rejects", async () => {

@@ -10,11 +10,16 @@
  *   handoff), ?cwd= picks the starting directory of a new one.
  */
 import { test, expect } from "@playwright/test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { provisionAndLogin } from "./auth.mjs";
 
 const BASE = process.env.BASE_URL;
 const U = "terminaluser";
 const P = "password123";
+const WINDOWS = process.platform === "win32";
+const TICK_FILE = WINDOWS ? join(tmpdir(), "penguin-e2e-ticks.txt") : "/tmp/penguin-e2e-ticks";
+const TEST_CWD = WINDOWS ? tmpdir() : "/tmp";
 
 /** Live shells accumulate across spec reruns on one server; MAX 12/user would 429. */
 async function killAllTerminals(request) {
@@ -70,7 +75,9 @@ test("keeps the shell and its screen across a reload", async ({ page }) => {
   // same shell process (not a fresh one) survived the reload.
   await run(
     page,
-    "rm -f /tmp/penguin-e2e-ticks; (for i in $(seq 1 30); do echo t >> /tmp/penguin-e2e-ticks; sleep 0.4; done &)",
+    WINDOWS
+      ? `Remove-Item -LiteralPath '${TICK_FILE}' -Force -ErrorAction SilentlyContinue; Start-Job -ArgumentList '${TICK_FILE}' -ScriptBlock { param($path) 1..30 | ForEach-Object { Add-Content -LiteralPath $path -Value 't'; Start-Sleep -Milliseconds 400 } } | Out-Null`
+      : `rm -f ${TICK_FILE}; (for i in $(seq 1 30); do echo t >> ${TICK_FILE}; sleep 0.4; done &)`,
   );
   await run(page, "echo BEFORE_RELOAD_MARKER");
   await expect.poll(() => screenText(page), { timeout: 15000 }).toContain("BEFORE_RELOAD_MARKER");
@@ -91,9 +98,19 @@ test("keeps the shell and its screen across a reload", async ({ page }) => {
 
   // ...and the background loop kept running while no browser was attached, which it could
   // only do if the shell itself was never restarted.
-  await run(page, "echo ticks=$(wc -l < /tmp/penguin-e2e-ticks)");
+  await run(
+    page,
+    WINDOWS
+      ? `Write-Output ('ticks=' + (Get-Content -LiteralPath '${TICK_FILE}').Count)`
+      : `echo ticks=$(wc -l < ${TICK_FILE})`,
+  );
   await expect.poll(() => screenText(page), { timeout: 15000 }).toMatch(/^ticks=[2-9]\d*$/m);
-  await run(page, "pkill -f 'penguin-e2e-ticks' >/dev/null 2>&1; rm -f /tmp/penguin-e2e-ticks");
+  await run(
+    page,
+    WINDOWS
+      ? `Get-Job | Where-Object State -eq 'Running' | Stop-Job; Remove-Item -LiteralPath '${TICK_FILE}' -Force -ErrorAction SilentlyContinue`
+      : `pkill -f 'penguin-e2e-ticks' >/dev/null 2>&1; rm -f ${TICK_FILE}`,
+  );
 });
 
 test("New shell starts a fresh session", async ({ page }) => {
@@ -117,11 +134,14 @@ test("New shell starts a fresh session", async ({ page }) => {
 test("?cwd= starts the shell in the requested directory", async ({ page }) => {
   await provisionAndLogin(page.request, U, P);
   await killAllTerminals(page.request);
-  await page.goto(`${BASE}/terminal?cwd=/tmp`);
+  await page.goto(`${BASE}/terminal?cwd=${encodeURIComponent(TEST_CWD)}`);
   await waitForShell(page, "SHELL_UP_CWD");
 
-  await run(page, "pwd");
-  await expect.poll(() => screenText(page), { timeout: 15000 }).toMatch(/^\/tmp$/m);
+  await run(page, WINDOWS ? "Get-Location | Select-Object -ExpandProperty Path" : "pwd");
+  const expectedPath = TEST_CWD.replaceAll("\\", "\\\\");
+  await expect
+    .poll(() => screenText(page), { timeout: 15000 })
+    .toMatch(new RegExp(`^${expectedPath}$`, "m"));
 });
 
 test("?id= attaches an existing terminal with its screen (deep link)", async ({ page }) => {
@@ -130,7 +150,7 @@ test("?id= attaches an existing terminal with its screen (deep link)", async ({ 
 
   // Drive a terminal entirely through the HTTP control plane first…
   const created = await page.request.post(`${BASE}/api/terminals`, {
-    data: { cwd: "/tmp", cols: 100, rows: 30 },
+    data: { cwd: TEST_CWD, cols: 100, rows: 30 },
   });
   expect(created.status()).toBe(201);
   const { id } = await created.json();

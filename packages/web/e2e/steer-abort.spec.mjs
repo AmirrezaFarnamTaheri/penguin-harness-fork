@@ -59,8 +59,11 @@ test("interrupting mid-tool-call returns the queued steering message to the comp
   await page.getByRole("button", { name: "允许" }).click();
 
   // Steer while the ~8s tool run keeps the Task busy: queued, not yet delivered.
+  // Plain Enter queues a follow-up instead — the composer's mid-run routing makes Enter the
+  // queue channel and Ctrl+Enter the steer channel (52f8d99df); steering is what this case
+  // exercises, so the explicit steer shortcut is the one to press.
   await ta.fill(STEER_TEXT);
-  await ta.press("Enter");
+  await ta.press("Control+Enter");
   await expect(page.getByText(`插话已排队，将随下一轮送达：${STEER_TEXT}`)).toBeVisible();
   await expect(ta).toHaveValue("");
 

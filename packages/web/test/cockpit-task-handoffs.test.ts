@@ -1,8 +1,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandoffTimeline } from "../src/features/consensus/handoff-timeline.js";
 import { ConsensusPage } from "../src/features/consensus/consensus-page.js";
+import { LocaleProvider } from "../src/state/locale.js";
 
 const taskStarted = {
   messageId: "task_started:task-1:1700000000000",
@@ -13,6 +14,8 @@ const taskStarted = {
   content: "Implement <safe> changes",
   timestamp: 1700000000000,
 };
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("coordinator task starts in the live handoff timeline", () => {
   it("shows the task and planned target without claiming mailbox delivery", () => {
@@ -68,16 +71,24 @@ describe("coordinator task starts in the live handoff timeline", () => {
   });
 
   it("renders the live feed only when the cockpit actually passes handoffs", () => {
+    vi.stubGlobal("localStorage", { getItem: () => "en" });
+    vi.stubGlobal("navigator", { language: "en" });
     // HandoffTimeline keys its live/demo mode on `handoffs !== undefined`, so an unwired
     // caller shows demo data and claims to be a local demo even when a live feed exists.
     const withLive = renderToStaticMarkup(
-      createElement(ConsensusPage, { embedded: true, handoffs: [taskStarted] }),
+      createElement(
+        LocaleProvider,
+        null,
+        createElement(ConsensusPage, { embedded: true, handoffs: [taskStarted] }),
+      ),
     );
     expect(withLive).toContain("Handoffs (live)");
     expect(withLive).toContain("Handoffs reflect the current project");
 
     // Without any live feed the component still falls back to its sample timeline.
-    const demo = renderToStaticMarkup(createElement(ConsensusPage, { embedded: true }));
+    const demo = renderToStaticMarkup(
+      createElement(LocaleProvider, null, createElement(ConsensusPage, { embedded: true })),
+    );
     expect(demo).toContain("Handoffs (local demo)");
     expect(demo).toContain("local sample data");
   });

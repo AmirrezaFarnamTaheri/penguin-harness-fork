@@ -180,7 +180,10 @@ export function normalizeProvider(alias: string): string {
 }
 
 export function baseModelId(modelId: string): string {
-  const withoutVendor = modelId.includes("/") ? modelId.split("/").pop()! : modelId;
+  // Trailing separators are dropped first: `"openai/".split("/").pop()` is "" and the empty
+  // string would become a model id in its own right, colliding every such entry on one key.
+  const trimmed = modelId.replace(/\/+$/, "");
+  const withoutVendor = trimmed.includes("/") ? trimmed.split("/").pop()! : trimmed;
   return withoutVendor.toLowerCase().split(":")[0]!;
 }
 
@@ -216,7 +219,33 @@ export function slimModelCatalog(
       a.localeCompare(b),
     )) {
       const id = baseModelId(modelId);
-      if (models[id] !== undefined) continue;
+      // An id that normalises to nothing (`/`, `::`) is malformed, not a model: keying the
+      // empty string would collide every such entry onto one slot.
+      if (!id) continue;
+      if (models[id] !== undefined) {
+        // Prefer the listing with more limit fields, preserving sorted order on a tie.
+        // Fill a missing limit from its duplicate: one listing may provide context while
+        // another provides output, and keeping either whole would silently drop a limit.
+        const kept = models[id];
+        const challenger: SlimModelEntry = {
+          inputModalities: (model?.modalities?.input ?? []).filter(
+            (value: string) => value !== "text",
+          ),
+          contextLimit: model?.limit?.context,
+          outputLimit: model?.limit?.output,
+          supportsReasoning: Boolean(model?.reasoning),
+        };
+        const countLimits = (entry: SlimModelEntry): number =>
+          Number(entry.contextLimit !== undefined) + Number(entry.outputLimit !== undefined);
+        const [primary, secondary] =
+          countLimits(challenger) > countLimits(kept) ? [challenger, kept] : [kept, challenger];
+        models[id] = {
+          ...primary,
+          contextLimit: primary.contextLimit ?? secondary.contextLimit,
+          outputLimit: primary.outputLimit ?? secondary.outputLimit,
+        };
+        continue;
+      }
 
       const modalities: string[] = (model?.modalities?.input ?? []).filter(
         (value: string) => value !== "text",

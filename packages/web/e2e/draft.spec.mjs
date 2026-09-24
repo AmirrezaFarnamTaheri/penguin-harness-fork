@@ -144,7 +144,10 @@ test("draft: pick model/approval -> reload restores them -> send creates the ses
   await expect(page.getByRole("button", { name: "选择模型" })).toContainText("claude-4-8-mini");
   await expect(page.getByRole("button", { name: "审批模式" })).toContainText("放行只读");
   // The thinking level is NOT draft state: it restores from the Agent config (written through above), not the cache.
-  await expect(page.getByRole("button", { name: "思考等级" })).toContainText("高 (high)");
+  // The trigger shows the plain tier name only — the wire-value annotation is a menu-row
+  // affordance (strings-zh thinkingLevelMenuName) and must not leak back onto a trigger.
+  await expect(page.getByRole("button", { name: "思考等级" })).toContainText("高");
+  await expect(page.getByRole("button", { name: "思考等级" })).not.toContainText("high");
   // Send: the Session is only created now, and the selections land faithfully in its meta.
   await page.getByRole("button", { name: "发送" }).click();
   await page.waitForURL(/\/chat\/session-/);
@@ -165,7 +168,7 @@ test("draft: pick model/approval -> reload restores them -> send creates the ses
   ).json();
   const meta = replay.messages.find((m) => m.type === "session_meta");
   expect(meta?.payload?.thinking_level).toBeUndefined();
-  await expect(page.getByTitle("思考等级：高 (high)")).toBeVisible();
+  await expect(page.getByTitle("思考等级：高")).toBeVisible();
 
   // On a successful send the cache clears — except the model selection, which carries over as
   // the next conversation's default (switch-becomes-default, like the thinking level above).
@@ -234,8 +237,12 @@ test("draft: pick model/approval -> reload restores them -> send creates the ses
   await upRow.click({ force: true });
   releaseDirs();
   const parentLabel = basename(dirname(namedWs));
+  // Case-insensitive: win32 is a case-insensitive filesystem, and the server realpaths the
+  // browsed directory to its canonical on-disk casing ("Temp"), which can differ from the
+  // casing the process's TMP env gave mkdtemp ("TEMP") — same directory, same trailing
+  // segment, so only the case distinguishes them.
   await expect(page.getByRole("textbox", { name: "Workspace" })).toHaveValue(
-    new RegExp(`${parentLabel}$`),
+    new RegExp(`${parentLabel}$`, "i"),
   );
   await expect(page.getByRole("textbox", { name: "Workspace" })).not.toHaveValue(
     new RegExp(`${wsLabel}$`),
@@ -243,9 +250,9 @@ test("draft: pick model/approval -> reload restores them -> send creates the ses
   expect(dirsRequests, "double-click while loading fires a single /dirs request").toBe(1);
   await page.unroute(dirsRoute, gateDirs);
   await page.getByRole("button", { name: "使用此目录" }).click();
-  await expect(page.getByLabel("Workspace")).toContainText(parentLabel);
+  await expect(page.getByLabel("Workspace")).toContainText(new RegExp(parentLabel, "i"));
   await page.reload();
-  await expect(page.getByLabel("Workspace")).toContainText(parentLabel);
+  await expect(page.getByLabel("Workspace")).toContainText(new RegExp(parentLabel, "i"));
   await expect(page.getByLabel("Workspace")).not.toContainText(wsLabel);
 
   // —— Pinning: the header's hover pin toggle lifts a group above the others in its mode and
@@ -293,7 +300,7 @@ test("draft: pick model/approval -> reload restores them -> send creates the ses
   // —— Switch the sidebar to agent mode via the header's list-settings menu (persists in
   // localStorage; the grouping radios moved from the inline toggle into this menu) ——
   await page.getByRole("button", { name: "列表选项" }).click();
-  await page.getByRole("button", { name: "按 Agent 分组" }).click();
+  await page.getByRole("button", { name: "按智能体分组" }).click();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("penguin.sidebarGroupMode")))
     .toBe("agent");

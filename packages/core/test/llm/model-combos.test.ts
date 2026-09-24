@@ -270,4 +270,65 @@ describe("slimModelCatalog", () => {
       expect(provider).toEqual({});
     }
   });
+
+  it("keeps the entry that carries the limits when two listings share a base id", () => {
+    // The dedup is deliberate (`openai/gpt-4o` vs `gpt-4o`), but which listing survives used
+    // to be the accident of sort order. A gateway listing that actually reports the context
+    // and output limits now wins over a stub that omits them, so the survivor is the more
+    // informative listing rather than the lexicographically first one.
+    const catalog = slimModelCatalog({
+      provider: {
+        models: {
+          // Sorted order puts the limit-less listing first; sort order alone would keep it.
+          "provider/model": rawModel(["text", "image"]),
+          "provider/model:v2": rawModel(["text"], 1000, 4000, false),
+        },
+      },
+    });
+    expect(catalog.provider!.model).toEqual({
+      inputModalities: [],
+      contextLimit: 1000,
+      outputLimit: 4000,
+      supportsReasoning: false,
+    });
+    // When both listings carry limits, the sorted order still decides, which is the
+    // behaviour the dedup had before.
+    const both = slimModelCatalog({
+      provider: {
+        models: {
+          "provider/model:v1": rawModel(["text"], 1000, 4000, false),
+          "provider/model:v2": rawModel(["text"], 2000, 8000, true),
+        },
+      },
+    });
+    expect(both.provider!.model!.contextLimit).toBe(1000);
+    expect(both.provider!.model!.outputLimit).toBe(4000);
+  });
+
+  it("keeps complementary limits from duplicate listings", () => {
+    const catalog = slimModelCatalog({
+      provider: {
+        models: {
+          "provider/model:v1": rawModel(["text"], 1000),
+          "provider/model:v2": rawModel(["text"], undefined, 4000),
+        },
+      },
+    });
+    expect(catalog.provider!.model).toMatchObject({ contextLimit: 1000, outputLimit: 4000 });
+  });
+
+  it("skips a model id that normalises to the empty string", () => {
+    // `baseModelId("/")` and `baseModelId("::")` are "". Keying them would collide every
+    // malformed id onto one slot and hand a caller an entry it cannot name.
+    const catalog = slimModelCatalog({
+      provider: {
+        models: {
+          "/": rawModel(["text"], 1000),
+          "::": rawModel(["text"], 2000),
+          "provider/real": rawModel(["text"], 3000),
+        },
+      },
+    });
+    expect(Object.keys(catalog.provider!)).toEqual(["real"]);
+  });
 });

@@ -115,7 +115,14 @@ export function logAcceptanceRatio(
 ): number {
   if (mode === "greedy") return targetTokenId === draftTokenId ? 0 : -Infinity;
 
-  if (draftProb <= LOG_EPSILON) return targetProb > LOG_EPSILON ? Number.POSITIVE_INFINITY : 0;
+  if (draftProb <= LOG_EPSILON) {
+    // p ≈ 0: the sampling rule `u·p < q` cannot accept unless q > 0. When q is also ≈ 0 —
+    // the degenerate 0/0 case, reached in practice because `padRow` zero-fills an absent
+    // draft id — the comparison is `0 < 0`, which is false, so the position is necessarily
+    // rejected. The ratio min(1, q/p) is undefined there, and the sampling decision, not
+    // the formal ratio, is what `acceptanceProbabilities` and `expectedAcceptCount` report.
+    return targetProb > LOG_EPSILON ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+  }
   if (targetProb <= LOG_EPSILON) return -Infinity;
   return Math.log(targetProb) - Math.log(draftProb);
 }
@@ -403,7 +410,15 @@ export function draftQualityGate(
   alpha = 0.2,
   beta = 0.4,
 ): DraftQualityReport {
-  const width = Math.min(targetProbs.length, draftProbs.length);
+  // The draft vocabulary can be a subset of the target's — `verifyWindow` pads draft rows
+  // into target width before comparing them for exactly that reason. Summing the KL over
+  // `min(len(target), len(draft))` instead drops every target token outside the draft's
+  // support, which is where divergence lives: a draft silent on half the target's
+  // vocabulary measured KL ≈ 0 over the overlap and could be gated out as "nothing
+  // speculative to gain". The gate therefore runs over the target's full width and reads
+  // the draft row as 0 beyond its own length, the convention `padRow` applies when no
+  // draft-to-target map is given (this gate takes none, so ids are positional).
+  const width = targetProbs.length;
   const epsilon = 1e-12;
 
   let maxTarget = 0;
@@ -416,7 +431,7 @@ export function draftQualityGate(
 
   for (let i = 0; i < width; i++) {
     const pE = (targetProbs[i] ?? 0) + epsilon;
-    const pA = (draftProbs[i] ?? 0) + epsilon;
+    const pA = (i < draftProbs.length ? (draftProbs[i] ?? 0) : 0) + epsilon;
     kl += pA * Math.log(pA / pE);
     if ((targetProbs[i] ?? 0) >= plausibilityThreshold) {
       plausibleTokenIds.push(i);

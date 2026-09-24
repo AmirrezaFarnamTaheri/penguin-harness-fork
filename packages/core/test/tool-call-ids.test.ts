@@ -102,20 +102,51 @@ describe("ToolCallIdAllocator long-run behavior", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("releases ids once the history that owns them is compacted away", () => {
+  it("keeps the ids of the generation just retired, so surviving history stays referenced", () => {
     const a = new ToolCallIdAllocator();
     a.allocate("tool");
     a.allocate("tool");
     a.markUsed("call_resumed_1");
     expect(a.size).toBe(3);
 
+    // Compaction retires the oldest history, but the ids of the generation just ended still
+    // belong to the turns that survived it — a full clear here would let `allocate` hand out an
+    // id the surviving tool cards already cite.
     a.rotate();
-    expect(a.size).toBe(0);
+    expect(a.size).toBe(3);
+    expect(a.originalIdOf("tool")).toBe("tool");
+    expect(a.originalIdOf("call_resumed_1")).toBe("call_resumed_1");
 
-    // A re-seeded survivor of the compacted context is respected again.
+    // A re-seeded survivor of the compacted context is respected as well.
     a.markUsed("tool");
-    expect(a.allocate("tool")).toBe("tool#2");
-    expect(a.size).toBe(2);
+    expect(a.allocate("tool")).toBe("tool#3");
+  });
+
+  it("does not hand out a duplicate of an id still referenced by surviving history", () => {
+    const a = new ToolCallIdAllocator();
+    expect(a.allocate("web_search")).toBe("web_search");
+    a.rotate();
+    // The surviving turns still cite `web_search`, so the next call must take the next suffix.
+    expect(a.allocate("web_search")).toBe("web_search#2");
+  });
+
+  it("releases ids once the history that owns them has aged past a rotation", () => {
+    const a = new ToolCallIdAllocator();
+    a.allocate("tool");
+    a.allocate("tool");
+    a.markUsed("call_resumed_1");
+    expect(a.size).toBe(3);
+
+    a.rotate(); // generation 0 retires but is still held
+    expect(a.size).toBe(3);
+    a.markUsed("call_resumed_2"); // an id of the new generation
+    a.rotate(); // generation 0 is now strictly older than the retired generation and is freed
+
+    expect(a.size).toBe(1);
+    expect(a.originalIdOf("call_resumed_1")).toBe(null);
+    expect(a.originalIdOf("call_resumed_2")).toBe("call_resumed_2");
+    // A freed id is free to be allocated again.
+    expect(a.allocate("call_resumed_1")).toBe("call_resumed_1");
   });
 
   it("forgets the suffix mapping of retired ids so it is not retained either", () => {
@@ -124,7 +155,24 @@ describe("ToolCallIdAllocator long-run behavior", () => {
     const dup = a.allocate("gemini_fn");
     expect(a.originalIdOf(dup)).toBe("gemini_fn");
 
+    // The mapping survives while its id does, then is dropped together with it.
+    a.rotate();
+    expect(a.originalIdOf(dup)).toBe("gemini_fn");
     a.rotate();
     expect(a.originalIdOf(dup)).toBe(null);
+  });
+
+  it("retires a base's suffix cursor once no surviving id belongs to that base", () => {
+    const a = new ToolCallIdAllocator();
+    a.markUsed("web_search");
+    expect(a.allocate("web_search")).toBe("web_search#2");
+    expect(a.allocate("web_search")).toBe("web_search#3");
+
+    a.rotate();
+    a.rotate(); // every id of this base has aged out, so the stale cursor can go
+
+    expect(a.originalIdOf("web_search")).toBe(null);
+    // Re-seeding the bare name starts a fresh cohort rather than continuing the retired one.
+    expect(a.allocate("web_search")).toBe("web_search");
   });
 });

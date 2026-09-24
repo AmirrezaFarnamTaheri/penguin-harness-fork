@@ -2,6 +2,9 @@
  * Model Token Pricing and Cost Calculator.
  */
 
+import type { TokenCounts } from "../omnimessage/types.js";
+import { PROVIDER_ALIASES, normalizeProvider } from "./model-combos.js";
+
 export interface ModelPricingEntry {
   provider: string;
   modelId: string;
@@ -13,10 +16,21 @@ export interface ModelPricingEntry {
 }
 
 export interface DetailedUsageCounts {
+  /**
+   * Input tokens that were NOT served from a cached prefix. The runtime's three-bucket
+   * convention calls this `cache_write` (see `usageCountsFromTokenCounts`).
+   */
   promptTokens: number;
+  /**
+   * Output tokens: thoughts + response. A provider's separately-reported reasoning tokens
+   * are already inside this figure and must not also be priced as `reasoningTokens`.
+   */
   completionTokens: number;
+  /** Reasoning tokens, only when the provider reports them OUTSIDE `completionTokens`. */
   reasoningTokens?: number;
+  /** Input tokens served from a cached prefix, priced at the cache-read rate. */
   cacheReadTokens?: number;
+  /** Input tokens written into the cache, priced at the cache-write rate. */
   cacheWriteTokens?: number;
 }
 
@@ -164,6 +178,92 @@ export const DEFAULT_PRICING_CATALOG: readonly ModelPricingEntry[] = [
   { provider: "local", modelId: "local-model", promptPerMillion: 0.0, completionPerMillion: 0.0 },
 ];
 
+/**
+ * A version tail: an optional separator then a digit, optionally preceded by `v`
+ * (`-2024-08-06`, `:v3`, `.1`, `/002`). Sibling models that differ by a word —
+ * `gpt-4o` vs `gpt-4o-mini` — do not qualify, so they stay unpriced rather than being
+ * priced at a relative's rate.
+ */
+const VERSION_TAIL_RE = /^[-:.\/]?v?\d/;
+
+/**
+ * True only when `candidate` is `base` plus a version tail. The strict direction matters:
+ * a short id can never be a variant of a longer catalog id, which is what used to land
+ * `google/2.0` on the zero-priced experimental entry.
+ */
+function isVersionedVariantOf(candidate: string, base: string): boolean {
+  return (
+    candidate.length > base.length &&
+    candidate.startsWith(base) &&
+    VERSION_TAIL_RE.test(candidate.slice(base.length))
+  );
+}
+
+/**
+ * The runtime's token convention and this catalog's are not interchangeable.
+ *
+ * `usageToTokenCounts` (generative-model.ts, mirrored by state/model-catalog.ts) produces
+ * three buckets — `cache_read`, `cache_write`, `output` — while this catalog prices five.
+ * Every plausible hand-translation double-bills something:
+ *   - passing total input as `promptTokens` bills the cached prefix once at the prompt rate
+ *     and again at the cache-read rate;
+ *   - passing reasoning tokens that are already inside `completionTokens` (OpenAI's
+ *     `completion_tokens_details` convention) bills the thoughts twice.
+ *
+ * This is the only mapping that preserves the one-to-one property — each of the three
+ * buckets lands in exactly one of the five:
+ *
+ *   promptTokens     = cache_write   input tokens on a cache miss
+ *   cacheReadTokens  = cache_read    input tokens served from a cached prefix
+ *   completionTokens = output        thoughts + response, reasoning already inside
+ *   reasoningTokens  = 0             already counted in `output`
+ *   cacheWriteTokens = 0             `cache_write` is the miss count, not a second input batch
+ *
+ * `calculateCost` and `POST /cost` expect disjoint buckets. A caller whose provider reports
+ * `promptTokens` as total input must subtract `cacheReadTokens` (and any separately reported
+ * `cacheWriteTokens`) before passing the counts. Forwarding the provider's total input together
+ * with cached counts would bill those tokens twice.
+ */
+export function usageCountsFromTokenCounts(counts: TokenCounts): DetailedUsageCounts {
+  return {
+    promptTokens: counts.cache_write,
+    completionTokens: counts.output,
+    cacheReadTokens: counts.cache_read,
+    reasoningTokens: 0,
+    cacheWriteTokens: 0,
+  };
+}
+
+/**
+ * The provider spellings worth trying against the default catalog: the name as given and
+ * its alias-normalised form, plus any alias whose canonical name is that form.
+ *
+ * The catalog keys some providers by their alias (`kimi`, `qwen`) and others by their
+ * canonical name, so a lookup has to work from either direction: `resolve("moonshotai", …)`
+ * has to reach the `kimi` entry, and `resolve("kimi", …)` must not lose the alias spelling
+ * it already matched. A provider that is itself canonical collapses to one spelling.
+ */
+function providerSpellings(provider: string): string[] {
+  const lowered = provider.toLowerCase();
+  const canonical = normalizeProvider(lowered);
+  const spellings = new Set<string>([lowered, canonical]);
+  for (const [alias, canonicalName] of Object.entries(PROVIDER_ALIASES)) {
+    if (canonicalName === lowered || canonicalName === canonical) spellings.add(alias);
+  }
+  return [...spellings];
+}
+
+/**
+ * Coerces one token count to a non-negative finite number, or returns undefined to signal
+ * that the input cannot be priced. `undefined` (an omitted optional field) is 0; NaN,
+ * Infinity and negatives cannot produce a billable figure.
+ */
+function sanitiseTokenCount(count: number | undefined): number | undefined {
+  if (count === undefined) return 0;
+  if (!Number.isFinite(count) || count < 0) return undefined;
+  return count;
+}
+
 export class PricingCatalog {
   private customPricing = new Map<string, ModelPricingEntry>();
 
@@ -184,19 +284,37 @@ export class PricingCatalog {
     const custom = this.customPricing.get(key);
     if (custom) return custom;
 
-    const exact = DEFAULT_PRICING_CATALOG.find(
-      (entry) =>
-        entry.provider.toLowerCase() === provider.toLowerCase() &&
-        entry.modelId.toLowerCase() === modelId.toLowerCase(),
-    );
-    if (exact) return exact;
+    // The catalog keys some providers by their alias (`kimi`, `qwen`) while
+    // `PROVIDER_ALIASES` in model-combos.ts maps those to canonical names (`moonshotai`,
+    // `alibaba`). A caller that normalises through the alias table first used to miss an
+    // entry the catalog does list, and was reported unpriced; both spellings are therefore
+    // tried. An override is keyed by the exact pair the caller supplied, which is why the
+    // alias pass runs on the default catalog only.
+    const requested = modelId.toLowerCase();
+    for (const spelling of providerSpellings(provider)) {
+      const exact = DEFAULT_PRICING_CATALOG.find(
+        (entry) =>
+          entry.provider.toLowerCase() === spelling && entry.modelId.toLowerCase() === requested,
+      );
+      if (exact) return exact;
+    }
 
-    return DEFAULT_PRICING_CATALOG.find(
-      (entry) =>
-        entry.provider.toLowerCase() === provider.toLowerCase() &&
-        (modelId.toLowerCase().includes(entry.modelId.toLowerCase()) ||
-          entry.modelId.toLowerCase().includes(modelId.toLowerCase())),
-    );
+    // Fallback: the requested id is a *versioned variant* of a catalog id — the same base
+    // model carrying a version or snapshot tail (`gpt-4o` → `gpt-4o-2024-08-06`). A bare
+    // substring is deliberately not accepted: a short or fragmentary id would otherwise
+    // resolve to an unrelated tier, and possibly to a zero-priced experimental entry, and
+    // `calculateCost` would report that as a real priced $0.00. An id that is not an exact
+    // match and not a versioned variant resolves to undefined, i.e. unpriced — the honest
+    // answer when the catalog cannot identify the model.
+    for (const spelling of providerSpellings(provider)) {
+      const variant = DEFAULT_PRICING_CATALOG.find(
+        (entry) =>
+          entry.provider.toLowerCase() === spelling &&
+          isVersionedVariantOf(requested, entry.modelId.toLowerCase()),
+      );
+      if (variant) return variant;
+    }
+    return undefined;
   }
 
   calculateCost(provider: string, modelId: string, usage: DetailedUsageCounts): CostBreakdown {
@@ -215,11 +333,36 @@ export class PricingCatalog {
       };
     }
 
-    const promptTokens = usage.promptTokens;
-    const completionTokens = usage.completionTokens;
-    const reasoningTokens = usage.reasoningTokens ?? 0;
-    const cacheReadTokens = usage.cacheReadTokens ?? 0;
-    const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+    const promptTokens = sanitiseTokenCount(usage.promptTokens);
+    const completionTokens = sanitiseTokenCount(usage.completionTokens);
+    const reasoningTokens = sanitiseTokenCount(usage.reasoningTokens);
+    const cacheReadTokens = sanitiseTokenCount(usage.cacheReadTokens);
+    const cacheWriteTokens = sanitiseTokenCount(usage.cacheWriteTokens);
+
+    // A non-finite or negative count makes the breakdown meaningless. This fails closed for a
+    // billable figure: the caller gets the unpriced shape (`priced: false`, all zeros) instead
+    // of a NaN that JSON-serialises as `null` into a field declared `number`, or a negative
+    // component that makes `totalCost` mean something other than spend. Clamping to 0 would
+    // under-report, so the request is refused rather than approximated.
+    if (
+      promptTokens === undefined ||
+      completionTokens === undefined ||
+      reasoningTokens === undefined ||
+      cacheReadTokens === undefined ||
+      cacheWriteTokens === undefined
+    ) {
+      return {
+        priced: false,
+        promptCost: 0,
+        completionCost: 0,
+        reasoningCost: 0,
+        cacheReadCost: 0,
+        cacheWriteCost: 0,
+        totalCost: 0,
+        currency: "USD",
+        savingsFromCache: 0,
+      };
+    }
 
     const promptCost = (promptTokens / 1_000_000) * pricing.promptPerMillion;
     const completionCost = (completionTokens / 1_000_000) * pricing.completionPerMillion;

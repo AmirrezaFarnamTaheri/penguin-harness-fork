@@ -57,6 +57,5 @@ cache
 .live-artifacts
 bug-swarm
 hport-*
-porting_progress.json
 AGORA_*.md
 *_Master_*.md

@@ -25,7 +25,7 @@
  *   visible only with a second Agent below a long list) or something that cannot shrink no
  *   longer fits — checked at 420/320/240px tall in both sidebar states, since the sidebar's
  *   chrome used to stop fitting below ~412px;
- * - the sidebar's "New chat" button has no background fill (same gray-scale style as nav items);
+ * - the sidebar's pinned "New chat" button retains a visible primary-action fill;
  * - the collapsed rail shows, in product-specified order, last conversation / new chat /
  *   Agents / Plugin library / Models / Cost Center / Evaluation Center, each labeled by a
  *   localized (en + zh) styled tooltip on hover and by no native `title` (two tooltips would
@@ -54,34 +54,84 @@ const docWidths = (page) =>
 /** Count of pairwise rectangle intersections among visible leaf text elements (2px tolerance; ancestor-descendant pairs excluded). */
 const textOverlapCount = (page) =>
   page.evaluate(() => {
-    const isVisible = (el) => {
-      const s = getComputedStyle(el);
-      return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0.05;
+    const visibleRect = (el) => {
+      let left = el.getBoundingClientRect().left;
+      let right = el.getBoundingClientRect().right;
+      let top = el.getBoundingClientRect().top;
+      let bottom = el.getBoundingClientRect().bottom;
+      for (let parent = el; parent && parent !== document.body; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          Number(style.opacity) <= 0.05 ||
+          parent.hasAttribute("inert")
+        )
+          return null;
+        const clipsX = ["hidden", "clip", "auto", "scroll"].includes(style.overflowX);
+        const clipsY = ["hidden", "clip", "auto", "scroll"].includes(style.overflowY);
+        if (clipsX || clipsY) {
+          const r = parent.getBoundingClientRect();
+          if (clipsX) {
+            left = Math.max(left, r.left);
+            right = Math.min(right, r.right);
+          }
+          if (clipsY) {
+            top = Math.max(top, r.top);
+            bottom = Math.min(bottom, r.bottom);
+          }
+        }
+      }
+      return right - left >= 2 && bottom - top >= 2 ? { left, right, top, bottom } : null;
     };
     const leaves = [];
     for (const el of document.querySelectorAll("body *")) {
-      if (!isVisible(el)) continue;
       const hasText = [...el.childNodes].some(
         (n) => n.nodeType === 3 && n.textContent && n.textContent.trim(),
       );
       if (!hasText) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2) continue;
+      const r = visibleRect(el);
+      if (!r) continue;
       leaves.push({ el, r });
     }
     const TOL = 2;
     let count = 0;
+    const pairs = [];
     for (let i = 0; i < leaves.length; i += 1) {
       for (let j = i + 1; j < leaves.length; j += 1) {
         const a = leaves[i];
         const b = leaves[j];
         if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+        // Opaque sticky transcript headers deliberately cover content while the
+        // message list scrolls. Those clipped words are not both painted on screen.
+        const opaqueSticky = (el) => {
+          const sticky = el.closest(".sticky");
+          if (!sticky) return null;
+          const style = getComputedStyle(sticky);
+          return style.position === "sticky" && style.backgroundColor !== "rgba(0, 0, 0, 0)"
+            ? sticky
+            : null;
+        };
+        const aSticky = opaqueSticky(a.el);
+        const bSticky = opaqueSticky(b.el);
+        if ((aSticky && !aSticky.contains(b.el)) || (bSticky && !bSticky.contains(a.el))) continue;
         const w = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left);
         const h = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
-        if (w > TOL && h > TOL) count += 1;
+        if (w > TOL && h > TOL) {
+          count += 1;
+          if (pairs.length < 20) {
+            pairs.push({
+              first: (a.el.textContent ?? "").trim().slice(0, 70),
+              firstClass: a.el.className?.baseVal ?? a.el.className,
+              second: (b.el.textContent ?? "").trim().slice(0, 70),
+              secondClass: b.el.className?.baseVal ?? b.el.className,
+              overlap: { width: Math.round(w), height: Math.round(h) },
+            });
+          }
+        }
       }
     }
-    return count;
+    return { count, pairs };
   });
 
 test("layout: en draft + context gauge + mobile models", async ({ page }) => {
@@ -221,16 +271,24 @@ test("layout: en draft + context gauge + mobile models", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${BASE}/models`);
   await page.getByText("claude-4-8").first().waitFor();
+  // Model groups animate briefly; measure the settled layout.
+  await page.waitForTimeout(250);
   d = await docWidths(page);
   expect(d.scrollWidth, "models @390 no horizontal overflow").toBeLessThanOrEqual(d.clientWidth);
-  expect(await textOverlapCount(page), "models @390 no overlapping text").toBe(0);
+  const modelsOverlap = await textOverlapCount(page);
+  expect(
+    modelsOverlap.count,
+    `models @390 no overlapping text: ${JSON.stringify(modelsOverlap.pairs)}`,
+  ).toBe(0);
 
   // --- Model dialog: no field may invite the browser's saved login. The dialog's fields are
   // unowned (no <form>), so the browser groups them with the rest of the page and picks a
   // "username" box on its own — it used to fill the account credentials into the API key and
   // the field above it. A password box additionally has to say "new-password": Chrome and
   // Safari ignore autocomplete="off" there. ---
-  await page.getByText("claude-4-8").first().click();
+  const customGroup = page.getByRole("button", { name: "Custom", exact: true }).first();
+  if ((await customGroup.getAttribute("aria-expanded")) !== "true") await customGroup.click();
+  await page.getByRole("button", { name: /^Select claude-4-8/ }).click();
   const dialogFields = await page.evaluate(() =>
     [...document.querySelectorAll("input")]
       .filter((i) => i.type !== "checkbox" && i.type !== "file")
@@ -255,35 +313,51 @@ test("layout: en draft + context gauge + mobile models", async ({ page }) => {
   ).toEqual([]);
   await page.keyboard.press("Escape");
 
-  // --- Sidebar "New chat" button: no background fill (its resting state outside the draft page should have a transparent background) ---
+  // --- Sidebar "New chat" button: the pinned create action remains prominent on other pages. ---
   await page.setViewportSize({ width: 1280, height: 720 });
-  const newChat = page.locator("nav").getByRole("button", { name: "New chat" });
+  const newChat = page.getByRole("button", { name: "New chat", exact: true });
   await expect(newChat).toBeVisible();
   expect(
     await newChat.evaluate((el) => getComputedStyle(el).backgroundColor),
-    "new-chat button has no background fill",
-  ).toBe("rgba(0, 0, 0, 0)");
+    "new-chat button has a primary-action background fill",
+  ).not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("models: group header actions collapse to icons instead of disappearing", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("penguin.lang", "zh"));
   await provisionAndLogin(page.request, "modelwidthuser", P);
+  const projects = await (await page.request.get(`${BASE}/api/projects`)).json();
+  const projectId = projects.projects[0].projectId;
+  const models = await page.request.put(`${BASE}/api/projects/${projectId}/models`, {
+    data: {
+      defaultModel: { provider: "openrouter", modelId: "openai/gpt-4.1-mini" },
+      models: [
+        {
+          provider: "openrouter",
+          modelId: "openai/gpt-4.1-mini",
+          apiKey: "sk-openrouter-layout",
+          baseUrl: "https://openrouter.ai/api/v1",
+        },
+      ],
+    },
+  });
+  expect(models.ok(), "seed a model for the OpenRouter group").toBeTruthy();
   await page.setViewportSize({ width: 900, height: 900 });
   await page.goto(`${BASE}/models`);
 
   // The 900px viewport still renders the desktop sidebar, leaving only ~560px for a group
   // header. That is the issue #294 case: viewport breakpoints alone report plenty of room.
-  const openRouter = page.getByRole("button", { name: /OpenRouter \d+ 个模型/ });
+  const openRouter = page.getByRole("button", { name: "OpenRouter", exact: true }).first();
   await openRouter.waitFor();
 
   // Every group-level action, addressed by its accessible name (aria-label = "action vendor",
   // stable across widths). Narrow rows must never hide an action: it keeps its icon (with a
   // title tooltip) and sheds only the visible text label.
   const actions = [
-    { role: "button", name: "新增模型 OpenRouter", label: "新增模型" },
-    { role: "button", name: "统一配置 API key OpenRouter", label: "统一配置 API key" },
+    { role: "button", name: "添加模型 OpenRouter", label: "添加模型" },
+    { role: "button", name: "手动设置密钥 OpenRouter", label: "手动设置密钥" },
     { role: "button", name: "测速 OpenRouter", label: "测速" },
-    { role: "link", name: "获取 API key OpenRouter", label: "获取 API key" },
+    { role: "link", name: "前往密钥管理 OpenRouter", label: "前往密钥管理" },
   ];
 
   // The expected label regime is derived from the row's measured width against the
@@ -403,13 +477,13 @@ test("layout: collapsed rail — order, bilingual tooltips, last conversation", 
   });
   expect(put.ok(), "put models").toBeTruthy();
 
-  // --- No sessions yet: the rail renders all 7 entries, "last conversation" disabled ---
+  // --- No sessions yet: the admin rail exposes each released page, "last conversation" disabled ---
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${BASE}/chat`);
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   const rail = page.locator("aside nav");
   const entries = rail.locator("a, button");
-  await expect(entries).toHaveCount(7);
+  await expect(entries).toHaveCount(21);
   await expect(rail.getByRole("button", { name: "Last conversation" })).toBeDisabled();
 
   // --- Order and tooltips (en): aria-label defines the order, and the styled tooltip shows the
@@ -418,21 +492,38 @@ test("layout: collapsed rail — order, bilingual tooltips, last conversation", 
   const EN = [
     "Last conversation",
     "New chat",
+    "Workspace overview",
+    "Code structure",
+    "Shell safety",
+    "Agent consensus",
+    "Context usage",
+    "Memory",
+    "API keys",
+    "Trace performance",
+    "Session snapshots",
     "Agents",
+    "Tasks",
+    "Pipelines",
+    "Code Graph & Wiki",
+    "Skills Hub",
     "Plugin library",
     "Models",
+    "Gateway & Quotas",
     "Cost Center",
     "Evaluation Center",
   ];
   const attrs = (name) =>
     entries.evaluateAll((els, n) => els.map((el) => el.getAttribute(n)), name);
-  expect(await attrs("aria-label"), "rail order (en)").toEqual(EN);
+  const enLabels = (await attrs("aria-label")).map((label) =>
+    label?.startsWith("Models · ") ? "Models" : label,
+  );
+  expect(enLabels, "rail starts with conversation controls").toEqual(EN);
   // No native title anywhere on the rail: it would open a second, slower tooltip under the
   // styled one, which is the whole reason the styled one exists.
   expect(await attrs("title"), "rail carries no native tooltips (en)").toEqual(EN.map(() => null));
   const tooltip = page.getByTestId("tooltip");
-  await rail.getByRole("link", { name: "Models" }).hover();
-  await expect(tooltip, "rail tooltip (en)").toHaveText("Models");
+  await rail.getByRole("link", { name: /^Models/ }).hover();
+  await expect(tooltip, "rail tooltip (en)").toHaveText(/Models · \d+ preset models to sync/);
   await rail.getByRole("button", { name: "Last conversation" }).hover();
   await expect(tooltip, "rail tooltip follows the pointer (en)").toHaveText("Last conversation");
 
@@ -489,12 +580,39 @@ test("layout: collapsed rail — order, bilingual tooltips, last conversation", 
   // --- zh: tooltips follow the product-specified wording ---
   await page.addInitScript(() => localStorage.setItem("penguin.lang", "zh"));
   await page.reload();
-  await expect(entries).toHaveCount(7);
-  const ZH = ["最近一次对话", "新建对话", "智能体", "插件库", "模型库", "成本中心", "评估中心"];
-  expect(await attrs("aria-label"), "rail order (zh)").toEqual(ZH);
+  await expect(entries).toHaveCount(21);
+  const ZH = [
+    "最近一次对话",
+    "新建对话",
+    "工作区概览",
+    "代码结构",
+    "命令安全",
+    "智能体共识",
+    "上下文用量",
+    "记忆",
+    "API 密钥",
+    "轨迹性能",
+    "会话快照",
+    "智能体",
+    "任务",
+    "工作流编排",
+    "代码图谱与知识库",
+    "技能中心",
+    "插件库",
+    "模型库",
+    "网关与配额",
+    "成本中心",
+    "评估中心",
+  ];
+  const zhLabels = (await attrs("aria-label")).map((label) =>
+    label?.startsWith("模型库 · ") ? "模型库" : label,
+  );
+  expect(zhLabels, "rail order (zh)").toEqual(ZH);
   expect(await attrs("title"), "rail carries no native tooltips (zh)").toEqual(ZH.map(() => null));
-  await rail.getByRole("link", { name: "模型库" }).hover();
-  await expect(page.getByTestId("tooltip"), "rail tooltip (zh)").toHaveText("模型库");
+  await rail.getByRole("link", { name: /^模型库/ }).hover();
+  await expect(page.getByTestId("tooltip"), "rail tooltip (zh)").toHaveText(
+    /模型库 · \d+ 个预置模型可同步/,
+  );
 
   // --- Expand: the rail's top button (localized) restores the pinned sidebar ---
   await page.getByRole("button", { name: "展开侧栏" }).click();
@@ -532,7 +650,7 @@ test("layout: mobile chat dropdowns stay inside the viewport", async ({ page }) 
   });
   expect(put.ok(), "put models").toBeTruthy();
 
-  const panel = page.locator("div.anim-pop.z-40");
+  const panel = page.locator("body > .anim-pop");
   /** Assert the one open menu panel and the page itself stay inside the viewport. */
   const checkPanel = async (name) => {
     await expect(panel, `${name}: menu open`).toHaveCount(1);
@@ -677,12 +795,21 @@ test("layout: mobile chat dropdowns stay inside the viewport", async ({ page }) 
   await expect(page.getByRole("button", { name: /^Deny$/ })).toHaveText("Deny", {
     useInnerText: true,
   });
-  expect(await textOverlapCount(page), "running @390 no overlapping text").toBe(0);
+  const runningOverlap = await textOverlapCount(page);
+  expect(
+    runningOverlap.count,
+    `running @390 no overlapping text: ${JSON.stringify(runningOverlap.pairs)}`,
+  ).toBe(0);
 
   // While PENDING the one-line rule yields on purpose: the user must read the whole command
   // before deciding, so below sm the preview wraps in full (pre-wrap, no truncation, the block
   // may grow) instead of clipping.
-  const pendingPreview = page.getByText("$ ls -la").first();
+  const pendingPreview = page.locator("pre").filter({ hasText: '{"cmd":"ls -la"}' }).last();
+  const expandTool = page.getByRole("button", { name: "Expand" }).first();
+  // Exercise the disclosure through its keyboard action. The narrow chat has a
+  // sticky group header and a draggable launcher near the chevron's pointer target.
+  await expandTool.focus();
+  await expandTool.press("Enter");
   await expect(pendingPreview, "full command shown while pending @390").toBeVisible();
   const pv = await pendingPreview.evaluate((el) => ({
     whiteSpace: getComputedStyle(el).whiteSpace,
@@ -755,7 +882,11 @@ test("layout: mobile chat dropdowns stay inside the viewport", async ({ page }) 
     await toolHeader.evaluate((el) => el.clientHeight),
     "tool-card header stays single-line @390",
   ).toBeLessThanOrEqual(40);
-  expect(await textOverlapCount(page), "finished @390 no overlapping text").toBe(0);
+  const finishedOverlap = await textOverlapCount(page);
+  expect(
+    finishedOverlap.count,
+    `finished @390 no overlapping text: ${JSON.stringify(finishedOverlap.pairs)}`,
+  ).toBe(0);
 
   // A DENIED call must state its outcome once, not twice: the deny path itself reports
   // stop_reason "aborted", so the left status icon alone carries "Denied · manual"

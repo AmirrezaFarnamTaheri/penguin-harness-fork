@@ -161,15 +161,18 @@ function buildSensitiveFieldSet(options?: RedactObjectOptions): Set<string> {
 }
 
 /**
- * Split a field name into its words: at separators, digit boundaries, and camelCase / acronym
- * transitions, so `refreshTokenValue` becomes `refresh Token Value` and `HTTPResponse` becomes
- * `HTTP Response`. Used only to locate a sensitive token that is not at the end of the name.
+ * Split a field name into its words: at non-alphanumeric separators, at a lowercase-or-digit
+ * followed by a capital (`refreshTokenValue` -> `refresh Token Value`, `api2Key` -> `api2 Key`),
+ * and at an acronym run followed by a capitalized word (`HTTPResponse` -> `HTTP Response`). A digit
+ * run is part of the word it borders rather than a separator, so `jwtSecretV2` yields the word
+ * `V2` and `password1` stays one word. Used only to locate a sensitive token that is not at the
+ * end of the name.
  */
-function splitFieldNameWords(key: string): string[] {
+export function splitFieldNameWords(key: string): string[] {
   return key
-    .replace(/([a-zd])([A-Z])/g, "$1 $2")
+    .replace(/([a-z\d])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .split(/[^A-Za-zd]+/)
+    .split(/[^A-Za-z\d]+/)
     .filter(Boolean);
 }
 
@@ -182,7 +185,10 @@ function isSensitiveField(key: string, sensitive: Set<string>): boolean {
   // `refreshTokenValue` -> `token`, `stripeSigningSecret` -> `secret`. A bare `key` is in the
   // set on purpose — this is a redactor, so it fails closed. The word boundary is what keeps an
   // ordinary word containing those letters (`monkey`, `keyword`) from being censored while
-  // `dbKey` still is: `monkey` is one word, `dbKey` is two.
+  // `dbKey` still is: `monkey` is one word, `dbKey` is two. The one boundary this does not cross
+  // is a compound credential with neither separator nor case change (`openaiapikey`); closing it
+  // means substring matching, which is precisely what censors `monkey`. Spelled any of the other
+  // ways — `openaiApiKey`, `OPENAI_API_KEY` — the name splits and is censored.
   for (const word of splitFieldNameWords(key)) {
     if (sensitive.has(normalizeFieldName(word))) return true;
   }

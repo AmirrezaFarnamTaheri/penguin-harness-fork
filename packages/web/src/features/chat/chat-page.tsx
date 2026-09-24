@@ -437,6 +437,58 @@ export function ChatPage() {
     ? { provider: selected.provider, modelId: selected.modelId }
     : null;
 
+  const [authAcknowledged, setAuthAcknowledged] = useState<{
+    sessionId: string;
+    errorId: number;
+  } | null>(() => {
+    if (!selected || typeof window === "undefined") return null;
+    try {
+      const errorId = Number(
+        window.sessionStorage.getItem(`penguin.authAck.${selected.sessionId}`),
+      );
+      return Number.isInteger(errorId) && errorId > 0
+        ? { sessionId: selected.sessionId, errorId }
+        : null;
+    } catch {
+      return null;
+    }
+  });
+  // `selected` is resolved after the session list/direct lookup loads, so the initializer above
+  // normally runs before there is a session id on a page reload. Hydrate the per-tab ACK once
+  // the route resolves, and repeat when switching Sessions so an ACK never leaks across them.
+  useEffect(() => {
+    if (!selected) {
+      setAuthAcknowledged(null);
+      return;
+    }
+    try {
+      const errorId = Number(
+        window.sessionStorage.getItem(`penguin.authAck.${selected.sessionId}`),
+      );
+      setAuthAcknowledged(
+        Number.isInteger(errorId) && errorId > 0
+          ? { sessionId: selected.sessionId, errorId }
+          : null,
+      );
+    } catch {
+      setAuthAcknowledged(null);
+    }
+  }, [selected?.sessionId]);
+  const latestAuthFailureRef = useRef<{ sessionId: string; errorId: number } | null>(null);
+  const acknowledgeAuthFailure = useCallback(() => {
+    const failure = latestAuthFailureRef.current;
+    if (!failure) return;
+    setAuthAcknowledged(failure);
+    try {
+      window.sessionStorage.setItem(
+        `penguin.authAck.${failure.sessionId}`,
+        String(failure.errorId),
+      );
+    } catch {
+      // The in-memory acknowledgement still works when browser storage is unavailable.
+    }
+  }, []);
+
   // Tab title follows the current Session (refreshes in sync once the auto-generated title arrives).
   useDocumentTitle(selected ? (selected.title ?? S.chat.defaultSessionTitle) : S.nav.chat);
 
@@ -446,7 +498,22 @@ export function ChatPage() {
     setTitle,
     // Sub-session registration notice (session_created is pushed over the parent session's channel): reload the list so it appears immediately.
     () => void reloadSessions(),
+    acknowledgeAuthFailure,
   );
+  const latestAuthFailure = selected
+    ? [...stream.model.items]
+        .reverse()
+        .find((item) => item.kind === "llm_error" && item.errorCode === "auth")
+    : undefined;
+  latestAuthFailureRef.current =
+    selected && latestAuthFailure
+      ? { sessionId: selected.sessionId, errorId: latestAuthFailure.id }
+      : null;
+  const authDead =
+    selected !== null &&
+    latestAuthFailure !== undefined &&
+    (authAcknowledged?.sessionId !== selected.sessionId ||
+      authAcknowledged.errorId !== latestAuthFailure.id);
 
   // Chat input area draft: caches text, both staged switch chips (`/agent` target, `/model`
   // target) and the selected skills keyed by sessionId; restored after navigating away and back
@@ -1837,6 +1904,7 @@ export function ChatPage() {
     <ChatInput
       controlRef={composerRef}
       status={stream.taskState}
+      authDead={authDead}
       onSend={onSend}
       onSteer={onSteer}
       // Count of steering messages already visible in the stream: the input area keeps its
@@ -2345,6 +2413,34 @@ export function ChatPage() {
                             during this page's lifetime. The stop button is the composer's
                             regular stop (one abort ends the whole goal loop). */}
                         {stream.goal && <GoalStatusBanner goal={stream.goal} />}
+                        {authDead && (
+                          <section
+                            role="alert"
+                            className="mb-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+                          >
+                            <p className="font-semibold text-red-800 dark:text-red-200">
+                              {S.chat.authFailureTitle}
+                            </p>
+                            <p className="mt-1 text-red-700 dark:text-red-300">
+                              {S.chat.authFailureAction}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button size="sm" onClick={() => navigate("/models")}>
+                                {S.chat.openModelSettings}
+                              </Button>
+                              <Button size="sm" variant="secondary" onClick={newChat}>
+                                {S.chat.newSession}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={acknowledgeAuthFailure}
+                              >
+                                {S.chat.retry}
+                              </Button>
+                            </div>
+                          </section>
+                        )}
                         {input}
                       </div>
                     </div>

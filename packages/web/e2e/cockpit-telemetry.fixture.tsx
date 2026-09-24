@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useCockpitTelemetry } from "../src/features/agent/use-cockpit-telemetry";
+import { LoopEventFeed } from "../src/features/agent/loop-event-feed";
 import { MailboxBureau } from "../src/features/consensus/mailbox-bureau";
 import { HandoffTimeline } from "../src/features/consensus/handoff-timeline";
 import { en } from "../src/lib/strings-en";
@@ -74,6 +75,7 @@ function Controls({
       <section aria-label="Live handoffs">
         <HandoffTimeline handoffs={telemetry.handoffs} />
       </section>
+      <LoopEventFeed events={telemetry.loopEvents} transport={telemetry.transport} locale="en" />
       <button onClick={() => void telemetry.refresh()}>Refresh telemetry</button>
       <button onClick={() => void telemetry.triggerTask(prompt).then(onTask)}>Dispatch task</button>
       <button

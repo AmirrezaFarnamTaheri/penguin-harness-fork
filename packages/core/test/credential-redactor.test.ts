@@ -3,6 +3,7 @@ import {
   redactCredentials,
   containsCredentials,
   redactObject,
+  splitFieldNameWords,
   REDACTED_MARKER,
 } from "../src/internal/credential-redactor.js";
 
@@ -204,5 +205,33 @@ describe("redactObject", () => {
     expect(kept.maxTokens).toBe(4096);
     // `token` is a whole word here, so it fails closed.
     expect(kept.replayTokenBucket).toBe(REDACTED_MARKER);
+  });
+
+  it("treats a digit run as part of its word rather than as a separator", () => {
+    // A digit is not a word separator: the run attaches to the word it borders, so the acronym
+    // tail of `jwtSecretV2` is the word `V2` and not a stray `V`, and a digit-then-capital
+    // transition still splits (`api2Key` -> `api2`, `Key`).
+    expect(splitFieldNameWords("jwtSecretV2")).toEqual(["jwt", "Secret", "V2"]);
+    expect(splitFieldNameWords("api2Key")).toEqual(["api2", "Key"]);
+    expect(splitFieldNameWords("password1")).toEqual(["password1"]);
+    // The pre-`\d` character classes shredded the digits instead, reading `V` as a word of its own.
+    expect(splitFieldNameWords("jwtSecretV2")).not.toContain("V");
+  });
+
+  it("pins the one boundary the whole-word matcher does not cross", () => {
+    // A compound credential spelled with no separator and no case change is a single word, so
+    // `openaiapikey` is NOT censored while `openaiApiKey` and `OPENAI_API_KEY` are. Closing that
+    // gap means substring matching, and a substring match is exactly what censors `monkey`,
+    // `keyword` and `hotkey` — those end in `key` too. The gap is deliberate and pinned here so a
+    // future "fix" has to delete this assertion and say which side it chose.
+    const mixed = redactObject({
+      openaiApiKey: "sk-live-1",
+      OPENAI_API_KEY: "sk-live-2",
+      openaiapikey: "sk-live-3",
+    }) as Record<string, unknown>;
+    expect(mixed.openaiApiKey).toBe(REDACTED_MARKER);
+    expect(mixed.OPENAI_API_KEY).toBe(REDACTED_MARKER);
+    expect(typeof mixed.openaiapikey).toBe("string");
+    expect(mixed.openaiapikey).not.toBe(REDACTED_MARKER);
   });
 });

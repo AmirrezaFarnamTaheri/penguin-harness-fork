@@ -21,6 +21,12 @@ export interface BenchResult {
   costUsd: number;
   /** The series the story is about (emphasis form: accent hue vs de-emphasis gray). */
   emphasized?: boolean;
+  /**
+   * Archived internally without claim-linked run artifacts (raw outcomes, scoring, model
+   * attribution, token usage, dated pricing). These values must not be published or used to
+   * generate public chart assets while this flag remains true.
+   */
+  provisional?: boolean;
 }
 
 const DEEPSEEK = "DeepSeek V4 Pro";
@@ -36,6 +42,7 @@ export const DATA_BENCH: BenchResult[] = [
     tokensM: 18.037757,
     costUsd: 0.552406,
     emphasized: true,
+    provisional: true,
   },
   {
     kind: "claude",
@@ -44,6 +51,7 @@ export const DATA_BENCH: BenchResult[] = [
     accuracyPct: 53.33,
     tokensM: 22.197759,
     costUsd: 38.479975,
+    provisional: true,
   },
   {
     kind: "codex",
@@ -52,6 +60,7 @@ export const DATA_BENCH: BenchResult[] = [
     accuracyPct: 53.33,
     tokensM: 13.72473,
     costUsd: 19.413715,
+    provisional: true,
   },
 ];
 
@@ -64,6 +73,7 @@ export const CODE_BENCH: BenchResult[] = [
     tokensM: 200.0,
     costUsd: 3.812,
     emphasized: true,
+    provisional: true,
   },
   {
     kind: "claude",
@@ -72,6 +82,7 @@ export const CODE_BENCH: BenchResult[] = [
     accuracyPct: 86.25,
     tokensM: 151.61,
     costUsd: 146.97,
+    provisional: true,
   },
   {
     kind: "codex",
@@ -80,6 +91,7 @@ export const CODE_BENCH: BenchResult[] = [
     accuracyPct: 71.25,
     tokensM: 251.2,
     costUsd: 220.08,
+    provisional: true,
   },
 ];
 
@@ -101,13 +113,4 @@ export function formatTokensM(tokens: number, dp = 2): string {
 /** Chart cost caps: $0.55 vs $220.08 — one format across a three-order-of-magnitude spread. */
 export function formatUsd(cost: number, dp = 2): string {
   return `$${cost.toFixed(dp)}`;
-}
-
-/**
- * How many times more a rival spent for the same suite ($38.48 vs $0.55 -> 70). The
- * headline claim is built from the data rather than typed into the copy, so it cannot
- * drift when the numbers are refreshed.
- */
-export function costMultiple(rival: BenchResult, ours: BenchResult): number {
-  return Math.round(rival.costUsd / ours.costUsd);
 }

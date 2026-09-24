@@ -367,29 +367,11 @@ penguin run --message "分析 data.csv，输出季度销售额"`,
 
   benchmark: {
     eyebrow: "Benchmark",
-    title: "以几十分之一的成本，跑出优异的效果",
+    title: "可复现的 Benchmark 结果正在准备中",
     subtitle:
-      "每个产品搭配它常用的模型，与 Claude Code、OpenAI Codex 在两套题库上正面对比：准确率同级，花的钱差出几十倍。",
-    higherBetter: "越高越好",
-    lowerBetter: "越低越好",
-    dimScore: "准确率",
-    dimTokens: "Token 用量",
-    dimCost: "成本",
-    dataTitle: "复杂数据分析",
-    dataDesc:
-      "三者中准确率最高（66.67%，另两者均为 53.33%），成本只有 OpenAI Codex 的 1/35、Claude Code 的 1/70。",
-    dataFootnote:
-      "15 道复杂数据分析任务 · 单次运行 · Token 与成本为全套题目合计 · 按官方计价估算。",
-    codeTitle: "代码任务",
-    codeDesc:
-      "准确率与 OpenAI Codex 持平（71.25%）、低于 Claude Code（86.25%），但成本只有前者的 1/58、后者的 1/39。",
-    codeFootnote:
-      "40 道代码任务 × 2 次运行（准确率取全部 80 次结果）· Token 与成本为全套题目合计 · 按官方计价估算。",
-    colFramework: "实验框架",
-    colModel: "模型名称",
-    colAccuracy: "准确率（%）",
-    colTokens: "Token 用量（M）",
-    colCost: "成本（$）",
+      "我们正在准备公开 Benchmark，届时会一并发布题目、评分规则、运行产物与带日期的计价依据。",
+    provisionalNote:
+      "目前尚未发布可比较的分数。此前的数字缺少可核验的运行产物与带日期的计价依据。公开结果时，我们会同时提供 Benchmark 题库、评分规则、原始结果与计价证据。",
   },
 
   features: {

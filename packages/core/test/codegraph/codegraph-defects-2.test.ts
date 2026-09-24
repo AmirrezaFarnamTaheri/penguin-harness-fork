@@ -305,3 +305,61 @@ describe("defect 13 — import resolution picks the module-correct symbol", () =
     expect(index.resolveImported("bee", imports, "src/a.ts")).toBe("src/b.ts::b");
   });
 });
+
+describe("defect 14 — the import path-suffix fallback must not bind a deeper import to a shallower module", () => {
+  // A hand-built index, so the two modules differ only in depth.
+  const register = (index: SymbolIndex, file: string, name: string, repoRoot = "") => {
+    index.registerFile(
+      file,
+      [
+        {
+          id: `${file}::${name}`,
+          name,
+          kind: "function",
+          filePath: file,
+          startLine: 1,
+          endLine: 1,
+          startColumn: 1,
+          qualifiedName: name,
+          isExported: true,
+        },
+      ],
+      repoRoot,
+    );
+  };
+
+  it("leaves an import unresolved when it names a path the indexed module does not lie on", () => {
+    const index = new SymbolIndex();
+    register(index, "b.ts", "thing");
+    register(index, "pkg/mod.ts", "thing");
+    const imports: ImportRecord[] = [{ module: "a/b", names: ["thing"], level: 0, line: 1 }];
+
+    // `a/b` does not name the root module `b`; resolving it would emit an edge to a symbol the
+    // import never mentioned. The old fallback matched any module whose path was a *tail* of the
+    // import, in either direction.
+    expect(index.resolveImported("thing", imports, "root.ts")).toBeUndefined();
+  });
+
+  it("still resolves by path tail when the import cannot know the module's full path", () => {
+    const index = new SymbolIndex();
+    // A file indexed under its full path because it sits outside the repo root.
+    register(index, "/abs/other/pkg/mod.ts", "thing", "/abs/repo");
+
+    // The import spells only the tail, so the deeper indexed path has to accept it — in both
+    // spellings, a bare segment and a two-segment tail.
+    expect(
+      index.resolveImported(
+        "thing",
+        [{ module: "mod", names: ["thing"], level: 0, line: 1 }],
+        "/abs/repo/root.ts",
+      ),
+    ).toBe("/abs/other/pkg/mod.ts::thing");
+    expect(
+      index.resolveImported(
+        "thing",
+        [{ module: "pkg/mod", names: ["thing"], level: 0, line: 1 }],
+        "/abs/repo/root.ts",
+      ),
+    ).toBe("/abs/other/pkg/mod.ts::thing");
+  });
+});

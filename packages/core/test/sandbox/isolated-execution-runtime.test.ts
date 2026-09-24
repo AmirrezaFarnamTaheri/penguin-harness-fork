@@ -54,6 +54,7 @@ function classifyReason(source: string) {
 class RecordingBackend implements IsolatedBackend {
   readonly name = "recording";
   readonly commands: IsolatedCommand[] = [];
+  readonly releasedSessions: string[] = [];
   result: IsolatedResult = {
     exitCode: 0,
     stdout: "isolated output\n",
@@ -67,6 +68,10 @@ class RecordingBackend implements IsolatedBackend {
   async run(command: IsolatedCommand): Promise<IsolatedResult> {
     this.commands.push(command);
     return { ...this.result };
+  }
+
+  async releaseSession(sessionKey: string): Promise<void> {
+    this.releasedSessions.push(sessionKey);
   }
 }
 
@@ -188,6 +193,12 @@ describe("isolated-execution-runtime", () => {
       expect(Number.isInteger(timed.classificationMs)).toBe(true);
       expect(timed.classificationMs).toBeLessThan(4);
     });
+  });
+
+  it("rejects an empty caller-provided sandbox namespace", () => {
+    expect(() => new IsolatedExecutionRuntime({ sessionKey: "   " })).toThrow(
+      "isolated execution sessionKey must not be empty",
+    );
   });
 
   describe("in-memory execution", () => {
@@ -402,6 +413,28 @@ describe("isolated-execution-runtime", () => {
 
       expect(backend.commands[0]?.cwd).toBe("/work");
       expect(backend.commands[0]?.env).toEqual({ PATH: "/usr/bin" });
+    });
+
+    it("uses a unique backend session and releases it when disposed", async () => {
+      const backend = new RecordingBackend();
+      const first = new IsolatedExecutionRuntime({
+        backend,
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+      const second = new IsolatedExecutionRuntime({
+        backend,
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+
+      await first.execute("ls");
+      await second.execute("ls");
+      const [firstKey, secondKey] = backend.commands.map((command) => command.sessionKey);
+      expect(firstKey).toBeTruthy();
+      expect(secondKey).toBeTruthy();
+      expect(firstKey).not.toBe(secondKey);
+
+      await first.dispose();
+      expect(backend.releasedSessions).toEqual([firstKey]);
     });
 
     it("fails closed when no isolated backend is mounted", async () => {

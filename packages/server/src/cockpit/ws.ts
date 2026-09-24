@@ -157,7 +157,7 @@ export function resetCockpitRuntimesForTesting(): void {
 export async function probeProviderKey(
   provider: string,
   key: string,
-  options: { baseUrl?: string; clientType?: string } = {},
+  options: { baseUrl?: string; clientType?: string; signal?: AbortSignal } = {},
 ): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
   const normProv = provider.toLowerCase().trim();
   const start = performance.now();
@@ -220,13 +220,16 @@ export async function probeProviderKey(
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const signal = options.signal
+      ? AbortSignal.any([controller.signal, options.signal])
+      : controller.signal;
 
     try {
       const res = await fetch(url, {
         method: "GET",
         redirect: "error",
         headers,
-        signal: controller.signal,
+        signal,
       });
       clearTimeout(timeoutId);
       const latencyMs = Math.max(1, Math.round(performance.now() - start));
@@ -244,7 +247,11 @@ export async function probeProviderKey(
       return {
         ok: false,
         latencyMs,
-        error: controller.signal.aborted ? "Probe timed out (5s)" : "Probe request failed",
+        error: options.signal?.aborted
+          ? "Probe cancelled"
+          : controller.signal.aborted
+            ? "Probe timed out (5s)"
+            : "Probe request failed",
       };
     }
   } catch {
@@ -309,8 +316,8 @@ export async function syncProjectKeyFleet(
           modelRef,
           keys,
           strategy: "round-robin",
-          probeFn: (probeProvider, key) =>
-            probeProviderKey(probeProvider, key, { baseUrl, clientType }),
+          probeFn: (probeProvider: string, key: string, signal?: AbortSignal) =>
+            probeProviderKey(probeProvider, key, { baseUrl, clientType, signal }),
         });
       }
     }

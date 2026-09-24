@@ -4,6 +4,8 @@ import { QuorumBoard } from "./quorum-board";
 import { MailboxBureau } from "./mailbox-bureau";
 import { HandoffTimeline } from "./handoff-timeline";
 import type { LiveHandoffEvent, LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
+import { useLocale } from "../../state/locale";
+import { consensusCopy } from "./consensus-copy";
 
 export interface ConsensusPageProps {
   embedded?: boolean;
@@ -14,6 +16,8 @@ export interface ConsensusPageProps {
 }
 
 export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: ConsensusPageProps) {
+  const { locale } = useLocale();
+  const c = consensusCopy(locale);
   const [tab, setTab] = useState<"quorum" | "mailbox" | "handoff">("quorum");
   const [engine] = useState(() => new QuorumConsensusEngine());
   const [version, setVersion] = useState(0);
@@ -28,11 +32,11 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
       className={`min-w-0 overflow-y-auto text-sm text-gray-900 dark:text-gray-100 ${embedded ? "p-3" : "p-4 sm:p-6"}`}
     >
       <header className="mb-6 space-y-2">
-        <h1 className="text-xl font-semibold">Agent coordination</h1>
+        <h1 className="text-xl font-semibold">{c.title}</h1>
         <p className="text-gray-600 dark:text-gray-400">
           {liveParts.length === 0
-            ? "Try proposals, messages and handoffs with local sample data. Changes are not sent to agents or saved after leaving this page."
-            : `${liveParts.map(capitalize).join(" and ")} reflect the current project. Decisions remain a local demo.`}
+            ? c.introDemo
+            : c.introLive(liveParts.map(capitalize).join(" and "))}
         </p>
       </header>
       <nav
@@ -41,9 +45,9 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
       >
         {(
           [
-            { value: "quorum", label: "Decisions" },
-            { value: "mailbox", label: "Messages" },
-            { value: "handoff", label: "Handoffs" },
+            { value: "quorum", label: c.decisions },
+            { value: "mailbox", label: c.messages },
+            { value: "handoff", label: c.handoffs },
           ] as const
         ).map((item) => (
           <button
@@ -58,13 +62,18 @@ export function ConsensusPage({ embedded = false, mailboxEntries, handoffs }: Co
         ))}
       </nav>
       <div hidden={tab !== "quorum"}>
-        <QuorumBoard engine={engine} version={version} onMutate={() => setVersion((v) => v + 1)} />
+        <QuorumBoard
+          engine={engine}
+          version={version}
+          onMutate={() => setVersion((v) => v + 1)}
+          locale={locale}
+        />
       </div>
       <div hidden={tab !== "mailbox"}>
-        <MailboxBureau entries={mailboxEntries} />
+        <MailboxBureau entries={mailboxEntries} locale={locale} />
       </div>
       <div hidden={tab !== "handoff"}>
-        <HandoffTimeline handoffs={handoffs} />
+        <HandoffTimeline handoffs={handoffs} locale={locale} />
       </div>
     </div>
   );

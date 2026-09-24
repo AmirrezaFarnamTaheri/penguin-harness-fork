@@ -77,7 +77,7 @@ test("a run_in_background subagent runs to completion and reports back unprompte
   ).toBeVisible({ timeout: 30_000 });
 });
 
-test("a failing background subagent still reports back with the failed state", async ({ page }) => {
+test("a failing background subagent delivers its failed completion notice", async ({ page }) => {
   await provisionAndLogin(page.request, "bgsubfail", P);
 
   const projects = await (await page.request.get(`${BASE}/api/projects`)).json();
@@ -111,10 +111,14 @@ test("a failing background subagent still reports back with the failed state", a
     timeout: 30_000,
   });
 
-  // The child's request is rejected as an auth failure (never retried): its run fails at
-  // once — and the failed completion report must still reach the open page unprompted.
-  await expect(page.getByText("后台任务失败")).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page.getByText("Acknowledged: the background command finished (bg-ack)."),
-  ).toBeVisible({ timeout: 30_000 });
+  // The child's request is rejected as an auth failure (never retried). Its completion
+  // report must still reach the open parent chat with the failure detail. The parent shares
+  // the provider's credential health state, so its model cannot be expected to acknowledge
+  // the report after the intentionally invalid-key response.
+  const notice = page.getByRole("button", { name: /failed 后台任务失败/ });
+  await expect(notice).toBeVisible({ timeout: 30_000 });
+  await notice.click();
+  const detail = notice.locator("xpath=..").locator("pre");
+  await expect(detail).toContainText("Background subagent failed:");
+  await expect(detail).toContainText("mock child failure");
 });

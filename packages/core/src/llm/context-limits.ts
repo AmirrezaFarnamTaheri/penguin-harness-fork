@@ -148,19 +148,32 @@ export function approximateTokens(text: string): number {
  * outputs and tool calls uniformly; the JSON syntax counted along the way is a small
  * overestimate — the safe direction, and it also stands in for chat-template structure).
  *
- * Images appear in two shapes and both must bypass the character count: as a payload of
- * their own (`image_url` / `inline_data`), and as the `images` array of data URLs riding
- * on a tool output (complete or partial — `read_file` on an image and screenshot-returning tools).
- * Serializing those data URLs would count every base64 character: a 1 MB image would
- * estimate ≈ 262k "tokens" (~163x over) and floor the next request's output cap even on a
- * 128k window (PR #235 review).
+ * Images appear in two shapes and both must keep their image data out of the character
+ * count: as a payload of their own (`image_url` / `inline_data`), and as the `images`
+ * array of data URLs riding on a tool output (complete or partial — `read_file` on an
+ * image and screenshot-returning tools). Serializing those data URLs would count every
+ * base64 character: a 1 MB image would estimate ≈ 262k "tokens" (~163x over) and floor the
+ * next request's output cap even on a 128k window (PR #235 review). In both shapes the
+ * non-image fields of the payload are still counted — an image payload can carry a long
+ * prompt alongside the bytes, and the flat allowance alone would under-estimate it in the
+ * direction this module exists to avoid.
  */
 export function approximateMessagesTokens(messages: OmniMessage[]): number {
   let total = 0;
   for (const msg of messages) {
     const p = msg.payload as { type?: string; images?: unknown };
     if (p.type === "image_url" || p.type === "inline_data") {
-      total += IMAGE_TOKEN_ESTIMATE;
+      // The image data itself (`image_url` / `data`) is excluded from the character count
+      // — a 1 MB base64 string would estimate ~262k "tokens" (~163x over) and floor the
+      // next request's cap. Everything else on the payload is text-shaped and is counted,
+      // the same convention as the `images` branch below: a multimodal payload can carry a
+      // long prompt alongside the image, and counting only the flat allowance would err
+      // low for exactly the inputs the margin exists to protect.
+      const { image_url, data, ...rest } = p as {
+        image_url?: unknown;
+        data?: unknown;
+      };
+      total += IMAGE_TOKEN_ESTIMATE + approximateTokens(JSON.stringify({ ...rest, type: p.type }));
     } else if (Array.isArray(p.images)) {
       const { images, ...rest } = p as { images: unknown[] };
       total += images.length * IMAGE_TOKEN_ESTIMATE + approximateTokens(JSON.stringify(rest));

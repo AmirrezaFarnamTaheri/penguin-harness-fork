@@ -7,8 +7,8 @@
  * Each table below is exercised case by case — including the cases the tables do NOT cover,
  * which are pinned so the gap is visible instead of latent.
  *
- * `parseResetDuration` returns seconds and `parseDurationToMs` returns milliseconds; both are
- * asserted at their own units.
+ * `parseResetDuration` and `parseDurationToMs` both return milliseconds; they differ in
+ * strictness, not in unit (asserted at the top of this file).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -21,13 +21,17 @@ import {
 } from "../../src/llm/quota-parser.js";
 
 describe("parseResetDuration", () => {
-  it("converts h/m/s components to seconds", () => {
-    expect(parseResetDuration("1h30m")).toBe(5400);
-    expect(parseResetDuration("2h")).toBe(7200);
-    expect(parseResetDuration("30m")).toBe(1800);
-    expect(parseResetDuration("45s")).toBe(45);
-    expect(parseResetDuration("1h0m0s")).toBe(3600);
-    expect(parseResetDuration("  1h  ")).toBe(3600);
+  it("converts h/m/s components to milliseconds", () => {
+    // The sibling parseDurationToMs returns milliseconds for the same grammar; this one used
+    // to return seconds, and a name that differs only in the unit it returns is a trap for
+    // the first caller that wires it into a millisecond countdown. Both now answer in
+    // milliseconds, differing only in strictness (this one is anchored at both ends).
+    expect(parseResetDuration("1h30m")).toBe(5_400_000);
+    expect(parseResetDuration("2h")).toBe(7_200_000);
+    expect(parseResetDuration("30m")).toBe(1_800_000);
+    expect(parseResetDuration("45s")).toBe(45_000);
+    expect(parseResetDuration("1h0m0s")).toBe(3_600_000);
+    expect(parseResetDuration("  1h  ")).toBe(3_600_000);
   });
 
   it("returns undefined when no component is present", () => {
@@ -71,6 +75,7 @@ describe("detectQuotaExhaustion: quota patterns", () => {
     "rate_limit_exceeded",
     "quota_exceeded",
     "insufficient_quota",
+    "insufficient_user_quota",
     "too many requests",
     "HTTP 429",
     "exceeded your current quota",
@@ -256,15 +261,16 @@ describe("detectQuotaExhaustion: reset window parsing", () => {
     );
   });
 
-  it("parses no window from a message that carries one but is not a quota failure", () => {
-    // "Rate limit exceeded" is written in spaces, and the table only lists the underscored
-    // `rate_limit_exceeded`, so this message matches no pattern at all — and the reset regexes
-    // below are only reached from inside the quota branch. A provider that sends this wording
-    // gets neither a quota verdict nor its own backoff window.
+  it("reads a spaced 'Rate limit exceeded' as a quota failure and honours its window", () => {
+    // The runtime's classifier (`isRateLimitError`) matches "rate limit" written in spaces, but
+    // this table used to list only the underscored `rate_limit_exceeded`. The two classifiers
+    // now share one wording table (see the shared-table suite below), so a provider that sends
+    // the spaced wording gets the quota verdict — and with it the backoff window it carried.
     const result = detectQuotaExhaustion("Rate limit exceeded. Resets in 1h30m");
-    expect(result.isQuota).toBe(false);
-    expect(result.resetMs).toBeUndefined();
-    expect(result.reason).toBeUndefined();
+    expect(result.isQuota).toBe(true);
+    expect(result.resetMs).toBe(5_400_000);
+    expect(result.resetText).toBe("1h30m");
+    expect(result.reason).toBe("Rate limit or quota exhausted");
   });
 });
 
@@ -364,5 +370,83 @@ describe("CooldownRegistry", () => {
     expect(models.cooling("b")).toBe(true);
     models.clear();
     expect(models.cooling("b")).toBe(false);
+  });
+});
+
+describe("detectQuotaExhaustion: an explicit zero window means already expired", () => {
+  it("honours a window that parses to zero instead of substituting the 60s default", () => {
+    // "0h0m0s" is a real window, not an absent one (`parseResetDuration` returns 0 for it, pinned
+    // above), and the provider spelled it out — so it is reported as-is. The detection path used
+    // to test `resetMs` for falsiness, which read 0 as "not found" and made a provider's own
+    // expired limit a full minute of backoff longer than it asked for.
+    expect(detectQuotaExhaustion("quota_exceeded. Resets in 0h0m0s")).toEqual(
+      expect.objectContaining({ isQuota: true, resetMs: 0, resetText: "0h0m0s" }),
+    );
+    expect(detectQuotaExhaustion("quota_exceeded. Resets in 0s")).toEqual(
+      expect.objectContaining({ resetMs: 0, resetText: "0s" }),
+    );
+  });
+
+  it("treats a zero retry-after and reset_after as absent", () => {
+    // The header fields stay strict-positive on purpose: unlike a window the provider spelled
+    // out, a bare numeric 0 is not a stated expiry, and a caller with a quota verdict still
+    // needs something to sleep. So the default still applies here.
+    expect(detectQuotaExhaustion("quota_exceeded, retry-after: 0")).toEqual(
+      expect.objectContaining({ resetMs: 60_000 }),
+    );
+    expect(detectQuotaExhaustion("quota_exceeded reset_after: 0")).toEqual(
+      expect.objectContaining({ resetMs: 60_000 }),
+    );
+  });
+});
+
+describe("detectQuotaExhaustion: input shapes the code path misses", () => {
+  it("reads the code out of a nested error envelope", () => {
+    // Many providers nest the status inside an `error` object
+    // ({ error: { code: "rate_limit_exceeded", message: "…" } }). The body is
+    // JSON-stringified for the pattern scan, so the classification was right either way;
+    // extractCode used to read code/status/statusCode at the top level only, and a
+    // consumer switching on `result.code` saw "unknown" for the most common provider
+    // shape. The nested envelope is now read too.
+    const result = detectQuotaExhaustion({
+      error: { code: "rate_limit_exceeded", message: "too many requests" },
+    });
+    expect(result.isQuota).toBe(true);
+    expect(result.reason).toBe("Rate limit or quota exhausted");
+    expect(result.code).toBe("rate_limit_exceeded");
+    // A top-level code still wins over a nested one.
+    const withBoth = detectQuotaExhaustion({
+      code: 429,
+      error: { code: "internal_error", message: "too many requests" },
+    });
+    expect(withBoth.isQuota).toBe(true);
+    expect(withBoth.code).toBe(429);
+    // An envelope whose code is not a code at all falls back to absent.
+    const nonCode = detectQuotaExhaustion({ error: { code: null, message: "overloaded" } });
+    expect(nonCode.isQuota).toBe(false);
+    expect(nonCode.code).toBeUndefined();
+  });
+
+  it("handles null, a number and a boolean without classifying or throwing", () => {
+    // null becomes "" via the `?? ""` branch; a number or boolean stringifies to its value and
+    // matches no pattern. No input shape should escape with a verdict it cannot have.
+    expect(detectQuotaExhaustion(null).isQuota).toBe(false);
+    expect(detectQuotaExhaustion(42).isQuota).toBe(false);
+    expect(detectQuotaExhaustion(true).isQuota).toBe(false);
+    expect(detectQuotaExhaustion({}).isQuota).toBe(false);
+  });
+
+  it("returns a verdict on a circular object instead of throwing", () => {
+    // A non-string, non-Error object is scanned with JSON.stringify, which raises on a
+    // circular structure. The classifier's contract is a verdict per input, so the failure is
+    // swallowed and the object is scanned as its String() form instead — every other input
+    // shape returns a result, and a caller expecting that contract no longer gets an
+    // exception propagated into its error path. Fetch errors that retain a reference to their
+    // request/response can carry such a cycle.
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const result = detectQuotaExhaustion(circular);
+    expect(result.isQuota).toBe(false);
+    expect(result.isAuthenticationFailure).toBe(false);
   });
 });
