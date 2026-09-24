@@ -10,6 +10,10 @@ import { TraceFlamegraphPage } from "../src/features/traces/trace-flamegraph-pag
 import { ModelsKeyFleetPage } from "../src/features/models/models-key-fleet-page";
 const view = new URLSearchParams(location.search).get("view");
 
+// The fixture's labels are asserted in English. LocaleProvider otherwise follows the
+// browser's zh-CN locale and can race LocaleGate's English dictionary load.
+localStorage.setItem("penguin.lang", "en");
+
 function LocaleGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(isStringsLoaded());
   useEffect(() => {

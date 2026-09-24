@@ -52,18 +52,31 @@ test("a malformed tool_call settles unpaired; the retry line shows and the retry
   // Retry hint line: set to "retry attempt 1 started" once request_begin arrives.
   await expect(page.getByText(/已发起第 1 次重试/)).toBeVisible();
 
-  // The partial tool_call never entered the committed history, so it must not be persisted or
-  // paired with an output. The failed request is represented by request_end(malformed).
+  // request_end is Trace-only; the committed chat history contains neither that boundary nor
+  // the partial tool_call that never entered AgentHub's history.
   const msgs = await (await page.request.get(`${BASE}/api/sessions/${sessionId}/messages`)).json();
   const malformedCalls = msgs.messages.filter(
     (m) => m.payload.type === "tool_call" && m.payload.stop_reason === "malformed",
   );
   expect(malformedCalls, "uncommitted partial tool_call is absent from history").toHaveLength(0);
-  const retryEnd = msgs.messages.find(
-    (m) => m.payload.type === "request_end" && m.payload.status === "malformed",
+  const { files } = await (
+    await page.request.get(`${BASE}/api/sessions/${sessionId}/traces`)
+  ).json();
+  expect(files, "the session trace is available").not.toHaveLength(0);
+  const trace = await (
+    await page.request.get(`${BASE}/api/sessions/${sessionId}/traces/${files[0].index}?limit=1000`)
+  ).json();
+  const malformedEnd = trace.events.find(
+    (m) =>
+      m.payload.type === "request_end" &&
+      m.payload.status === "retryable" &&
+      m.payload.error_code === "malformed",
   );
-  expect(retryEnd, "request_end(malformed) recorded").toBeTruthy();
+  expect(
+    malformedEnd,
+    "retryable request_end with malformed cause is recorded in the Trace",
+  ).toBeTruthy();
 
-  // The incomplete call is not committed, so no phantom tool card or spinner may remain.
-  await expect(page.locator('[role="status"]')).toHaveCount(0);
+  // The incomplete call is not committed, so no phantom tool row or running spinner may remain.
+  await expect(page.locator('button[aria-expanded] [role="status"].animate-spin')).toHaveCount(0);
 });

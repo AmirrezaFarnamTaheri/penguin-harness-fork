@@ -30,11 +30,12 @@ export const DISCLOSURE_LABEL_CLASS = "shrink-0 text-xs text-gray-500 dark:text-
 
 /**
  * The header-family row — the work group's "Running / Done" summary bar (its exact chrome:
- * gray ground, taller padding, stronger hover). A standalone disclosure that should read
- * like a settled work group (the background completion notice) uses this variant.
+ * gray ground, taller padding, stronger hover). The two-rem minimum matches the sibling row's
+ * sticky offset at every font scale. A standalone disclosure that should read like a settled
+ * work group (the background completion notice) uses this variant.
  */
 export const DISCLOSURE_HEADER_ROW_CLASS =
-  "flex w-full items-center gap-2 bg-gray-50 px-3 py-2 text-left transition-colors duration-150 hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800";
+  "flex min-h-8 w-full items-center gap-2 bg-gray-50 px-3 py-2 text-left transition-colors duration-150 hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800";
 
 /** Header-level sticky positioning (the work-group header's own: pins against the message list's scrollport, one z level above the nested rows). */
 export const DISCLOSURE_HEADER_STICKY_CLASS = "sticky -top-4 z-[5]";
