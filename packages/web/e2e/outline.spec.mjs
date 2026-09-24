@@ -225,8 +225,9 @@ test("minimap ticks + hover preview + jump, five-turn gate, sticky group header,
     container.scrollTop = card.offsetTop + 400;
     const ct = container.getBoundingClientRect().top;
     const row = [...document.querySelectorAll("button[aria-expanded]")].find((b) =>
-      b.textContent.includes("exec_command"),
+      b.textContent.includes("执行命令"),
     );
+    if (!row) throw new Error("expanded exec_command tool row was not found");
     return {
       delta: Math.abs(head.getBoundingClientRect().top - ct),
       rowDelta: row.getBoundingClientRect().top - ct,

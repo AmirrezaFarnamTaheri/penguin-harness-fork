@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { loadStrings, setActiveStrings, isStringsLoaded } from "../src/lib/strings";
 import { useEffect, useState } from "react";
 import { ProjectProvider } from "../src/state/project";
+import { LocaleProvider } from "../src/state/locale";
 import { GuardianPage } from "../src/features/guardian/guardian-page";
 import { ConsensusPage } from "../src/features/consensus/consensus-page";
 import { SnapshotsPage } from "../src/features/snapshots/snapshots-page";
@@ -28,19 +29,21 @@ function LocaleGate({ children }: { children: React.ReactNode }) {
   return children;
 }
 createRoot(document.getElementById("root")!).render(
-  <LocaleGate>
-    <ProjectProvider>
-      {view === "guardian" ? (
-        <GuardianPage embedded />
-      ) : view === "consensus" ? (
-        <ConsensusPage embedded />
-      ) : view === "snapshots" ? (
-        <SnapshotsPage embedded />
-      ) : view === "traces" ? (
-        <TraceFlamegraphPage embedded />
-      ) : (
-        <ModelsKeyFleetPage embedded />
-      )}
-    </ProjectProvider>
-  </LocaleGate>,
+  <LocaleProvider>
+    <LocaleGate>
+      <ProjectProvider>
+        {view === "guardian" ? (
+          <GuardianPage embedded />
+        ) : view === "consensus" ? (
+          <ConsensusPage embedded />
+        ) : view === "snapshots" ? (
+          <SnapshotsPage embedded />
+        ) : view === "traces" ? (
+          <TraceFlamegraphPage embedded />
+        ) : (
+          <ModelsKeyFleetPage embedded />
+        )}
+      </ProjectProvider>
+    </LocaleGate>
+  </LocaleProvider>,
 );

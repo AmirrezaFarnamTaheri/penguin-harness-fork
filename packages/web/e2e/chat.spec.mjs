@@ -369,7 +369,9 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   const renameTarget = sidebar.locator("li", { hasText: "Configure Tailwind theme" }).first();
   await renameTarget.hover();
   await renameTarget.getByRole("button", { name: "更多" }).click();
-  await page.getByRole("button", { name: "重命名对话" }).click();
+  const rowMenu = page.locator("body > .anim-pop");
+  await expect(rowMenu.getByRole("button", { name: "重命名对话" })).toBeVisible();
+  await rowMenu.getByRole("button", { name: "重命名对话" }).click();
   await page.getByLabel("标题").fill("My renamed title");
   await page.getByRole("button", { name: "保存" }).click();
   await expect(sidebar.getByText("My renamed title")).toBeVisible();
