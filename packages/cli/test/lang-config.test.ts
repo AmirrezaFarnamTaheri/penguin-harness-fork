@@ -1,8 +1,14 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { applyLanguageToRc, resolveShellRc, upsertBlock } from "../src/lang-config.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getMessages } from "../src/i18n.js";
+import {
+  applyLanguageToRc,
+  resolveShellRc,
+  restartShell,
+  upsertBlock,
+} from "../src/lang-config.js";
 
 describe("resolveShellRc", () => {
   // rcPath is built with path.join, so the expectations join too (backslashes on Windows —
@@ -89,5 +95,43 @@ describe("applyLanguageToRc", () => {
     expect(rcPath).toBe(join(home, ".config", "fish", "config.fish"));
     const content = await readFile(rcPath, "utf8");
     expect(content).toContain("set -gx PENGUIN_LANG en");
+  });
+});
+
+describe("restartShell", () => {
+  // Pointing $SHELL at a missing binary makes spawn fail; the error path writes to stderr
+  // and sets a failing exit code, so both are captured and restored per test.
+  let prevShell: string | undefined;
+  let prevExitCode: number | string | null | undefined;
+  beforeEach(() => {
+    prevShell = process.env.SHELL;
+    prevExitCode = process.exitCode;
+  });
+  afterEach(() => {
+    if (prevShell === undefined) delete process.env.SHELL;
+    else process.env.SHELL = prevShell;
+    process.exitCode = prevExitCode;
+  });
+
+  it("reports the spawn failure instead of exiting silently", async () => {
+    process.env.SHELL = "/nonexistent-penguin-shell-binary";
+    const writes: string[] = [];
+    const errSpy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    try {
+      restartShell("en", getMessages("en"));
+      // The child's 'error' event is delivered asynchronously.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 100);
+      });
+      const out = writes.join("");
+      expect(out).toContain("Failed to open a new shell");
+      expect(out).toContain("ENOENT"); // the raw spawn error rides along
+      expect(process.exitCode).toBe(1);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

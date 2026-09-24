@@ -61,6 +61,29 @@ describe("parseMemoryScopeDocument", () => {
     // An index alone is still worth importing: it is the only part the model reads.
     expect(parseMemoryScopeDocument(JSON.stringify(doc([], "# Memories\n"))).files).toEqual([]);
   });
+
+  it("refuses a document whose declared fields are the wrong type, even with files present", () => {
+    // The parse returns the document typed as a full export and sends it back to the server
+    // as one, so a field it never inspected would have round-tripped as valid while lying
+    // about it — `index` above all, which planMemoryImport reads whenever files exist.
+    const refusals = [
+      JSON.stringify({ ...doc(["a.md"]), index: 42 }),
+      JSON.stringify({ ...doc(["a.md"]), scopeKey: 5 }),
+      JSON.stringify({ ...doc(["a.md"]), kind: "team" }),
+      JSON.stringify({ ...doc(["a.md"]), exportedAt: null }),
+      JSON.stringify({ ...doc(["a.md"]), format: "penguin-memory-scope", version: 1, index: {} }),
+    ];
+    for (const text of refusals) {
+      expect(() => parseMemoryScopeDocument(text), text).toThrow(MemoryDocumentError);
+    }
+  });
+
+  it("reads a document whose index is null alongside its files", () => {
+    // A scope with no MEMORY.md exports `index: null`; that is a full document, not an empty one.
+    const parsed = parseMemoryScopeDocument(JSON.stringify(doc(["a.md"], null)));
+    expect(parsed.index).toBeNull();
+    expect(parsed.files.map((f) => f.name)).toEqual(["a.md"]);
+  });
 });
 
 describe("planMemoryImport", () => {

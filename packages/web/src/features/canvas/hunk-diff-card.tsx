@@ -20,7 +20,7 @@ import {
   positionKey,
   selectionPositions,
   type SelectionMode,
-} from "../../../../core/src/terminal/hunk-staging.js";
+} from "@prismshadow/penguin-core/terminal";
 
 export interface HunkDiffCardProps {
   /** Unified-diff text for one file (`diff --git` header optional). */

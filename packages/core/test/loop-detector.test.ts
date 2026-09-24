@@ -114,6 +114,43 @@ describe("LoopDetector", () => {
     expect(summary.recentTools).toEqual(["read_file"]);
     expect(summary.isAborted).toBe(false);
   });
+
+  it("does not flag an alternating tool pattern with distinct arguments as a cycle", () => {
+    const detector = new LoopDetector({ maxCycleLength: 2, maxRepeats: 10 });
+    const sequence: Array<[string, unknown]> = [
+      ["read_file", { path: "a.ts" }],
+      ["grep", { query: "imports" }],
+      ["read_file", { path: "b.ts" }],
+      ["grep", { query: "exports" }],
+    ];
+
+    let result = detector.checkToolCall("read_file", { path: "a.ts" });
+    for (let i = 0; i < 5; i++) {
+      const [toolName, toolInput] = sequence[i % 4]!;
+      result = detector.checkToolCall(toolName, toolInput);
+    }
+
+    // Names alternate, arguments differ on every visit — real forward work, not a loop. The
+    // old check compared names alone and aborted this run.
+    expect(result.status).toBe("ok");
+    expect(result.shouldStop).toBe(false);
+  });
+
+  it("sizes the history window from the configuration so a configured long cycle can fire", () => {
+    const detector = new LoopDetector({ maxCycleLength: 8, maxRepeats: 3 });
+    const period = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+    let result = detector.checkToolCall(period[0]!);
+    for (let i = 0; i < 24; i++) {
+      // Three full repetitions of the period, arguments included; the window must hold all 24
+      // entries for the detector to see the repetition. A hardcoded window of 20 never could.
+      result = detector.checkToolCall(period[i % 8]!, { n: i % 8 });
+    }
+
+    expect(result.status).toBe("loop_detected");
+    expect(result.patternType).toBe("alternating_cycle");
+    expect(result.message).toContain("a -> b -> c -> d -> e -> f -> g -> h");
+  });
 });
 
 describe("ProgressTracker", () => {

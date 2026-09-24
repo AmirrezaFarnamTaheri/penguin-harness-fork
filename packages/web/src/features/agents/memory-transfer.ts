@@ -14,6 +14,7 @@
 import type {
   MemoryImportMode,
   MemoryScopeExport,
+  MemoryScopeInfo,
   MemoryTransferFile,
 } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
@@ -21,6 +22,8 @@ import { S } from "../../lib/strings";
 /** Format marker of a scope document, typed against the DTO so this literal cannot drift from the server's. */
 const SCOPE_FORMAT: MemoryScopeExport["format"] = "penguin-memory-scope";
 const SCOPE_FORMAT_VERSION: MemoryScopeExport["version"] = 1;
+/** The `kind` values the DTO allows (an export only ever writes one of these). */
+const SCOPE_KINDS: ReadonlySet<MemoryScopeInfo["kind"]> = new Set(["user", "workspace"]);
 
 /** A picked file that is not a scope document. Its message is already localized, so callers toast it as is. */
 export class MemoryDocumentError extends Error {
@@ -37,8 +40,11 @@ function isTransferFile(value: unknown): value is MemoryTransferFile {
 }
 
 /**
- * Reads a picked file's text as a scope document. Only the shape is checked here — names, sizes
- * and counts are the server's to enforce, and a second copy of those bounds would only drift.
+ * Reads a picked file's text as a scope document. The shape is checked in full here — the
+ * returned document is typed `MemoryScopeExport` and sent back to the server as one, so a
+ * field the DTO declares but this parse never inspected would have round-tripped as a
+ * valid export while lying about it. Names, sizes and counts remain the server's to
+ * enforce (a second copy of those bounds would only drift).
  */
 export function parseMemoryScopeDocument(text: string): MemoryScopeExport {
   let parsed: unknown;
@@ -57,7 +63,15 @@ export function parseMemoryScopeDocument(text: string): MemoryScopeExport {
   if (!Array.isArray(doc.files) || !doc.files.every(isTransferFile)) {
     throw new MemoryDocumentError(S.memory.importInvalidFile);
   }
-  if (doc.files.length === 0 && typeof doc.index !== "string") {
+  if (
+    typeof doc.scopeKey !== "string" ||
+    typeof doc.exportedAt !== "string" ||
+    !SCOPE_KINDS.has(doc.kind as MemoryScopeInfo["kind"]) ||
+    (doc.index !== null && typeof doc.index !== "string")
+  ) {
+    throw new MemoryDocumentError(S.memory.importInvalidFile);
+  }
+  if (doc.files.length === 0 && doc.index === null) {
     throw new MemoryDocumentError(S.memory.importEmptyFile);
   }
   return doc as unknown as MemoryScopeExport;

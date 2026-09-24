@@ -16,7 +16,7 @@ test.beforeAll(async () => {
   bundle = outputFiles[0].text;
 });
 
-for (const surface of ["standalone", "embedded", "cockpit"]) {
+for (const surface of ["embedded", "cockpit"]) {
   test(`${surface} consensus receives project handoffs and mailbox snapshots`, async ({ page }) => {
     const errors = [];
     const sockets = [];
@@ -46,9 +46,7 @@ for (const surface of ["standalone", "embedded", "cockpit"]) {
     await page.addScriptTag({ content: bundle });
     await expect.poll(() => sockets.length).toBe(1);
     expect(new URL(sockets[0].url()).search).toBe("?project=alpha");
-    if (surface === "cockpit") {
-      await page.getByRole("button", { name: "Reviews & handoffs", exact: true }).click();
-    }
+    await page.getByRole("button", { name: "Reviews & handoffs", exact: true }).click();
     await page.getByRole("button", { name: "Handoffs", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Handoffs (live)", exact: true })).toBeVisible();
     await expect(
@@ -100,9 +98,7 @@ for (const surface of ["standalone", "embedded", "cockpit"]) {
     await page.getByRole("button", { name: "Select beta", exact: true }).click();
     await expect.poll(() => sockets.length).toBe(2);
     expect(new URL(sockets[1].url()).search).toBe("?project=beta");
-    if (surface === "cockpit") {
-      await page.getByRole("button", { name: "Reviews & handoffs", exact: true }).click();
-    }
+    await page.getByRole("button", { name: "Reviews & handoffs", exact: true }).click();
     await page.getByRole("button", { name: "Handoffs", exact: true }).click();
     await expect(page.getByText("Live consensus task", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Live consensus directive", { exact: true })).toHaveCount(0);
@@ -118,22 +114,6 @@ for (const surface of ["standalone", "embedded", "cockpit"]) {
       }),
     );
     await expect(page.getByText("Beta task", { exact: true })).toBeVisible();
-    if (surface !== "cockpit") {
-      await page.getByRole("button", { name: "Clear project", exact: true }).click();
-      await expect(
-        page.getByRole("heading", { name: "Handoffs (local demo)", exact: true }),
-      ).toBeVisible();
-      await expect(page.getByRole("button", { name: "Simulate Next Stage" })).toBeVisible();
-      await expect(page.getByText("Beta task", { exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "Select alpha", exact: true }).click();
-      await expect.poll(() => sockets.length).toBe(3);
-      await expect(
-        page.getByRole("heading", { name: "Handoffs (live)", exact: true }),
-      ).toBeVisible();
-      await expect(
-        page.getByText("No task starts or directives observed in this connection."),
-      ).toBeVisible();
-    }
     expect(errors).toEqual([]);
   });
 }
@@ -152,7 +132,7 @@ for (const lang of ["en", "zh"]) {
         body: JSON.stringify(pathname === "/api/projects" ? { projects: [] } : {}),
       });
     });
-    await page.goto(`http://cockpit.test/?lang=${lang}`);
+    await page.goto(`http://cockpit.test/?lang=${lang}&surface=standalone`);
     await page.addScriptTag({ content: bundle });
     await expect(
       page.getByRole("heading", { name: zh ? "智能体协作" : "Agent coordination", exact: true }),

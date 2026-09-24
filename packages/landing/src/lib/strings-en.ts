@@ -386,29 +386,11 @@ penguin run --message "Analyze data.csv and summarize quarterly sales"`,
 
   benchmark: {
     eyebrow: "Benchmark",
-    title: "Outstanding results at tens of times less cost",
+    title: "Reproducible benchmark results are in progress",
     subtitle:
-      "Every product runs the model it is normally paired with, head-to-head against Claude Code and OpenAI Codex on two suites: comparable accuracy, tens of times the difference in spend.",
-    higherBetter: "higher is better",
-    lowerBetter: "lower is better",
-    dimScore: "Accuracy",
-    dimTokens: "Tokens",
-    dimCost: "Cost",
-    dataTitle: "Complex data analysis",
-    dataDesc:
-      "Best accuracy of the three (66.67%, against 53.33% for both rivals), at 1/35 of OpenAI Codex's cost and 1/70 of Claude Code's.",
-    dataFootnote:
-      "15 complex data-analysis tasks · single run · Tokens and cost are suite totals · estimated at official pricing.",
-    codeTitle: "Coding tasks",
-    codeDesc:
-      "Ties OpenAI Codex on accuracy (71.25%) and trails Claude Code (86.25%) — at 1/58 and 1/39 of their cost.",
-    codeFootnote:
-      "40 coding tasks × 2 runs (accuracy over all 80 outcomes) · Tokens and cost are suite totals · estimated at official pricing.",
-    colFramework: "Framework",
-    colModel: "Model",
-    colAccuracy: "Accuracy (%)",
-    colTokens: "Tokens (M)",
-    colCost: "Cost ($)",
+      "We are preparing a public benchmark with published tasks, scoring rules, run artifacts, and dated pricing.",
+    provisionalNote:
+      "No comparative scores are published yet. Earlier figures did not have the run artifacts or dated pricing needed to verify them. We will publish results with the benchmark suite, scoring rules, raw outcomes, and pricing evidence.",
   },
 
   features: {
@@ -467,7 +449,15 @@ penguin run --message "Analyze data.csv and summarize quarterly sales"`,
       },
       {
         title: "Software Development",
-        skills: ["web-design", "software-engineering", "remote-claude-code", "atlas"],
+        skills: [
+          "web-design",
+          "software-engineering",
+          "remote-claude-code",
+          "atlas",
+          "port-architecture",
+          "code-port",
+          "port-verify",
+        ],
       },
       {
         title: "AI App Development",

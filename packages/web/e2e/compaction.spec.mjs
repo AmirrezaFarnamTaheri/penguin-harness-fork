@@ -99,11 +99,14 @@ test("compaction mid-turn: the reply's stats line is still reachable by hovering
   await expect(statsLine).toHaveCSS("opacity", "1");
   await expect(statsLine.locator("text=/\\d{1,2}:\\d{2}/")).toBeVisible();
 
-  // Compaction succeeded and no ordinary request has reported usage since, so the context ring must
-  // read UNKNOWN (`—`), not 0. Zero would claim the context is empty — but the summary itself costs
-  // tokens; we simply have not measured the new size yet.
-  await expect(page.getByText(`—/${CONTEXT_WINDOW}`)).toBeVisible();
-  await expect(page.getByText(`0/${CONTEXT_WINDOW}`)).toHaveCount(0);
+  // Compaction succeeded and no ordinary request has reported usage since, so the context ring
+  // must read UNKNOWN, not 0: zero would claim the context is empty, but the summary itself
+  // costs tokens — the new size is simply unmeasured. The ring is icon-only now (it draws no
+  // figures), so the state is carried by the trigger's accessible name: the unknown label, and
+  // never a "0/240" ratio.
+  const contextRing = page.getByRole("button", { name: /上下文占用.*待下次请求回报/ });
+  await expect(contextRing).toBeVisible();
+  await expect(contextRing).not.toHaveAttribute("aria-label", new RegExp(`/${CONTEXT_WINDOW}`));
 
   // —— The summary is collapsed by default, exactly like a thinking block ——
   // The generated summary must not be on screen until the reader asks for it: the row starts
@@ -118,8 +121,13 @@ test("compaction mid-turn: the reply's stats line is still reachable by hovering
 
   await banner.click();
   await expect(banner).toHaveAttribute("aria-expanded", "true");
+  const summarySection = card.getByRole("button").filter({ hasText: "压缩结果" }).first();
+  await expect(summarySection).toHaveAttribute("aria-expanded", "false");
+  await summarySection.click();
   await expect(card.getByText(summaryLine).first()).toBeVisible();
   await expect(page.getByText(summaryLine)).toHaveCount(2);
+  await summarySection.click();
+  await expect(page.getByText(summaryLine)).toHaveCount(1);
 
   // Collapsing puts it away again (the body leaves the DOM, not just the viewport).
   await banner.click();

@@ -25,6 +25,13 @@ import { SandboxedCommandRunner, type SandboxExecutionResult } from "./sandbox-r
 import { TaskWatchdog, type WatchdogConfig, type WatchdogStatus } from "./task-watchdog.js";
 import { AgentNameRegistry } from "./agent-name-registry.js";
 
+/**
+ * How long a step deadline waits for a handler that is still in flight once its deadline has
+ * fired. A step that resolves microseconds late must be reported as its real outcome, not as a
+ * timeout; a handler that then rejects must surface that error rather than have it swallowed.
+ */
+const STEP_GRACE_MS = 100;
+
 export type SwarmRole = "orchestrator" | "coder" | "reviewer" | "researcher" | "tester";
 
 export interface SwarmTaskDefinition {
@@ -407,22 +414,52 @@ export class SwarmCoordinator {
 
     const watchdogConfig = this.watchdog.getConfig();
     const stepTimeoutMs = watchdogConfig.stepTimeoutMs || 60_000;
-    const taskAbortController = new AbortController();
+
+    // Rounds are tracked outside the try so a failure deep in the deliberation loop can still
+    // report how far it got, instead of reporting zero.
+    let currentRound = 0;
+
+    // One controller per step: a shared controller makes one slow step abort in-flight work
+    // belonging to every other step. Steps are collected so a task that bails out still
+    // interrupts whatever handler it left running.
+    const stepAbortControllers: AbortController[] = [];
 
     const runWithDeadline = async <T>(
-      promise: Promise<T>,
+      factory: (signal: AbortSignal) => Promise<T>,
       actionName: string,
       timeoutMs: number,
     ): Promise<T> => {
+      const stepController = new AbortController();
+      stepAbortControllers.push(stepController);
+      const promise = factory(stepController.signal);
+
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
+      const deadline = new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
-          taskAbortController.abort();
+          stepController.abort();
           reject(new Error(`Swarm task step '${actionName}' timed out after ${timeoutMs}ms`));
         }, timeoutMs);
       });
+
       try {
-        return await Promise.race([promise, timeoutPromise]);
+        return await Promise.race([promise, deadline]);
+      } catch (deadlineError) {
+        // The deadline won, but the handler may still be about to settle. Give it one short
+        // grace window and prefer its real outcome over reporting a timeout that did not
+        // happen — and surface a rejection that arrives there instead of swallowing it.
+        const outcome = await Promise.race([
+          promise.then(
+            (value) => ({ kind: "resolved" as const, value }),
+            (error) => ({ kind: "rejected" as const, error }),
+          ),
+          new Promise<null>((resolve) => {
+            const grace = setTimeout(() => resolve(null), STEP_GRACE_MS);
+            grace.unref?.();
+          }),
+        ]);
+        if (outcome?.kind === "resolved") return outcome.value;
+        if (outcome?.kind === "rejected") throw outcome.error;
+        throw deadlineError;
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
       }
@@ -459,13 +496,10 @@ export class SwarmCoordinator {
       let steps = ["implement_solution", "run_verification"];
       if (handlers?.onPlan) {
         const planRes = await runWithDeadline(
-          handlers.onPlan(task, { signal: taskAbortController.signal }),
+          (signal) => handlers.onPlan!(task, { signal }),
           "orchestrator_plan",
           stepTimeoutMs,
         );
-        if (taskAbortController.signal.aborted) {
-          throw new Error("Swarm task step 'orchestrator_plan' was aborted");
-        }
         if (planRes.steps.length > 0) steps = planRes.steps;
       }
 
@@ -483,7 +517,6 @@ export class SwarmCoordinator {
 
       // Loop through deliberation rounds (Coder -> Reviewer)
       const maxRounds = task.maxRounds ?? 4;
-      let currentRound = 0;
       let settled = false;
       let refuted = false;
 
@@ -561,15 +594,11 @@ export class SwarmCoordinator {
 
         if (handlers?.onExecute) {
           const execRes = await runWithDeadline(
-            handlers.onExecute(task, steps[0] ?? "implement", currentRound, {
-              signal: taskAbortController.signal,
-            }),
+            (signal) =>
+              handlers.onExecute!(task, steps[0] ?? "implement", currentRound, { signal }),
             `coder_round_${currentRound}`,
             stepTimeoutMs,
           );
-          if (taskAbortController.signal.aborted) {
-            throw new Error(`Swarm task step 'coder_round_${currentRound}' was aborted`);
-          }
           artifacts = execRes.artifacts;
           summary = execRes.summary;
         } else if (task.simulate === true) {
@@ -602,12 +631,6 @@ export class SwarmCoordinator {
             safetyFindings,
             log: this.logMessages,
           };
-        }
-
-        if (taskAbortController.signal.aborted) {
-          throw new Error(
-            `Swarm task was aborted before artifact settlement in round ${currentRound}`,
-          );
         }
 
         for (const art of artifacts) {
@@ -662,15 +685,10 @@ export class SwarmCoordinator {
 
         if (handlers?.onReview) {
           const revRes = await runWithDeadline(
-            handlers.onReview(task, artifacts, currentRound, {
-              signal: taskAbortController.signal,
-            }),
+            (signal) => handlers.onReview!(task, artifacts, currentRound, { signal }),
             `reviewer_round_${currentRound}`,
             stepTimeoutMs,
           );
-          if (taskAbortController.signal.aborted) {
-            throw new Error(`Swarm task step 'reviewer_round_${currentRound}' was aborted`);
-          }
           reviewPassed = revRes.approved;
           reviewGrounds = revRes.grounds;
         } else if (task.simulate === true) {
@@ -682,7 +700,9 @@ export class SwarmCoordinator {
           reviewGrounds = "No review handler provided and simulation mode is disabled";
         }
 
-        if (reviewPassed && !taskAbortController.signal.aborted) {
+        // A review step that hit its deadline throws from runWithDeadline before reaching
+        // here, so the outcome alone decides whether the topic is endorsed.
+        if (reviewPassed) {
           log(`Reviewer endorsed topic: ${reviewGrounds}`);
           const updatedStanding = this.consensus.endorseTopic(taskId, "reviewer", reviewGrounds);
           this.emit("consensus_endorsed", taskId, "reviewer", { grounds: reviewGrounds });
@@ -755,10 +775,7 @@ export class SwarmCoordinator {
       };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      const isTimeout =
-        errMsg.includes("timed out") ||
-        errMsg.includes("aborted") ||
-        taskAbortController.signal.aborted;
+      const isTimeout = errMsg.includes("timed out") || errMsg.includes("aborted");
       log(`Swarm task failure: ${errMsg}`);
       this.watchdog.abort(errMsg);
       this.ledger.append("turn_done", errMsg, isTimeout ? "interrupted" : "failed");
@@ -771,7 +788,7 @@ export class SwarmCoordinator {
       return {
         taskId,
         status: finalStatus,
-        rounds: 0,
+        rounds: currentRound,
         standing: this.consensus.getStanding(taskId),
         terminalSummary: this.ledger.getSummaries().find((s) => s.turnId === activeTurnId),
         artifacts: collectedArtifacts,
@@ -779,6 +796,8 @@ export class SwarmCoordinator {
         log: this.logMessages,
       };
     } finally {
+      // Interrupt any handler still running after the task decided its outcome.
+      for (const controller of stepAbortControllers) controller.abort();
       if (!turnClosed && this.ledger.getActiveTurnId() !== null) {
         this.ledger.append("turn_done", "Task interrupted or aborted", "interrupted");
       }

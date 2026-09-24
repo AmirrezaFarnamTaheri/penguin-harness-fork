@@ -139,10 +139,10 @@ describe("required mark", () => {
     const required = renderToStaticMarkup(
       createElement(Input, { label: "Name", required: true, value: "", readOnly: true }),
     );
-    expect(required).toContain("*");
     expect(required).toContain("text-red-500");
-    // Decorative to assistive tech — aria-required on the control is what gets announced.
-    expect(required).toMatch(/<span[^>]*aria-hidden[^>]*>\*<\/span>/);
+    // The visual SVG has no text to append to the label's accessible name.
+    expect(required).toMatch(/<svg[^>]*aria-hidden="true"[^>]*>/);
+    expect(required).not.toContain("after:content-");
     expect(required).toContain('aria-required="true"');
   });
 
@@ -162,6 +162,7 @@ describe("required mark", () => {
     // Scoped to the mark's own shape: a bare `toContain("*")` over the markup would also trip
     // on a Tailwind `*:` variant landing in any class the control renders.
     expect(optional).not.toMatch(/<span[^>]*>\*<\/span>/);
+    expect(optional).not.toContain("<svg");
     expect(optional).not.toContain("text-red-");
     expect(optional).not.toContain("aria-required");
   });

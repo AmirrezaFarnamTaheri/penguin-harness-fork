@@ -49,18 +49,9 @@
 
 PenguinHarness 运行在你的电脑或服务器上，自动串联 Agent 应用的创建、评测、优化与部署。三个递进的理由定义了这个平台：
 
-### 1. 🏆 以几十分之一的成本，跑出优异的效果
+### 1. 🏆 可复现的评测正在准备中
 
-刻意精简的工具集配合干净的底层接口：更少的工具调用、更少的 Token，对 DeepSeek 等开放模型深度适配。各自搭配常用模型、同一批任务，正面对比：
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/benchmark-dark.svg" />
-    <img src="assets/readme/benchmark-light.svg" alt="Benchmark：PenguinHarness 在数据分析题库准确率最高、编程题库与 OpenAI Codex 持平，成本仅为两者的零头" width="920" />
-  </picture>
-</p>
-
-**数据分析准确率最高——成本只有 Claude Code 的 1/70。**
+精简的工具集和清晰的底层接口，旨在支持跨模型的 Agent 工作流。我们正在准备公开 Benchmark，届时会一并提供题目、评分规则、原始结果、运行产物与带日期的计价依据。此前的对比数字因缺少可独立核验的证据，已从文档中撤下。
 
 ### 2. ⚡ 一句话生成可运行的 Agent 应用
 
@@ -89,7 +80,7 @@ https://github.com/user-attachments/assets/aec49ae9-b743-467b-b247-37bedfeaa36e
 | 分类        | 插件                                                                            |
 | ----------- | ------------------------------------------------------------------------------- |
 | 办公效率    | `data-analysis`、`use-firecrawl`、`use-bento-slides`、`humanizer`、`goal`、`continual-learning` |
-| 软件开发    | `software-development`、`use-claude-code`、`use-spexcode`          |
+| 软件开发    | `software-development`、`language-porting`、`use-claude-code`、`use-spexcode` |
 | AI 应用开发 | `agent-development`、`model-development`、`skill-porting`、`agent-tuning`       |
 | Agent 公司  | `agent-company`                                                                 |
 

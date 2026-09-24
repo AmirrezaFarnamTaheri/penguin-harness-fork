@@ -261,6 +261,20 @@ describe("egress-allowlist", () => {
       expect(isPrivateIp("127.0.0.1\n")).toBe(true);
     });
 
+    it("accepts the trailing-dot FQDN spelling of a private address", () => {
+      // A trailing dot is the DNS root label, not a different host: resolvers and
+      // libc treat `127.0.0.1.` and `127.0.0.1` as the same address, so the
+      // dotted spelling must not slip past the check.
+      expect(isPrivateIp("127.0.0.1.")).toBe(true);
+      expect(isPrivateIp("10.0.0.1.")).toBe(true);
+      expect(isPrivateIp("192.168.1.1.")).toBe(true);
+      expect(isPrivateIp("[127.0.0.1.]")).toBe(true);
+      // The boundary the module cares about: a public address stays public in the
+      // same spelling.
+      expect(isPrivateIp("8.8.8.8.")).toBe(false);
+      expect(isPrivateIp("1.1.1.1.")).toBe(false);
+    });
+
     it("ignores case", () => {
       // Not meaningful for decimal IPv4, but the normalizer is shared with IPv6.
       expect(isPrivateIp("0X7F.0.0.1")).toBe(true);
@@ -311,6 +325,31 @@ describe("egress-allowlist", () => {
       // The embedded address is re-checked against the IPv4 table rather than
       // trusted to be public — so a genuinely public mapping is not private.
       expect(isPrivateIp("::ffff:8.8.8.8")).toBe(false);
+    });
+
+    it("rejects IPv4-compatible IPv6, which maps onto the IPv4 table", () => {
+      // `::127.0.0.1` is the RFC 4291 IPv4-compatible form (deprecated, but every
+      // major stack still resolves it to 127.0.0.1). It is a different spelling
+      // from `::ffff:127.0.0.1` — no ffff hextet — and the URL serializer rewrites
+      // the dotted-quad tail to hextets as `::7f00:1`, so both spellings must land
+      // on the compatible branch.
+      expect(isPrivateIp("::127.0.0.1")).toBe(true);
+      expect(isPrivateIp("::7f00:1")).toBe(true);
+      expect(isPrivateIp("0:0:0:0:0:0:7f00:1")).toBe(true);
+      expect(isPrivateIp("[::127.0.0.1]")).toBe(true);
+      // The boundary: a compatible address embedding a public one is not private.
+      expect(isPrivateIp("::8.8.8.8")).toBe(false);
+    });
+
+    it("rejects mapped and compatible forms carrying a zone index", () => {
+      // A scope ID names an interface, not a different address — and the URL
+      // parser rejects the `%` outright, so the bare helper is the only place
+      // this spelling can ever be seen.
+      expect(isPrivateIp("::ffff:127.0.0.1%eth0")).toBe(true);
+      expect(isPrivateIp("::127.0.0.1%25")).toBe(true);
+      expect(isPrivateIp("fe80::1%eth0")).toBe(true);
+      // The boundary: a zoned public embedded address stays public.
+      expect(isPrivateIp("::ffff:8.8.8.8%eth0")).toBe(false);
     });
 
     it("rejects NAT64-wrapped and 6to4-wrapped private IPv4 addresses", () => {
@@ -480,6 +519,15 @@ describe("egress-allowlist", () => {
       const decision = decideEgress("http://[::ffff:127.0.0.1]/", ["http://[::ffff:127.0.0.1]"]);
       expect(decision.privateAddress).toBe(true);
       expect(decision.allowed).toBe(false);
+    });
+
+    it("catches IPv4-compatible IPv6 loopback", () => {
+      // The URL serializer rewrites the dotted-quad tail to hextets, so this is the
+      // shape the check actually sees on the wire.
+      expect(decideEgress("http://[::127.0.0.1]/", ["http://[::127.0.0.1]"]).privateAddress).toBe(
+        true,
+      );
+      expect(decideEgress("http://[::7f00:1]/", ["http://[::7f00:1]"]).privateAddress).toBe(true);
     });
 
     it("catches localhost and link-local metadata endpoints", () => {

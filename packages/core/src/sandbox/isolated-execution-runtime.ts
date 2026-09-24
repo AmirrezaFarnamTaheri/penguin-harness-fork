@@ -45,6 +45,7 @@ import type { CowFsBackend, CowFsOptions } from "./cow-fs-backend.js";
 import { CowFsBackend as CowFs } from "./cow-fs-backend.js";
 import { SandboxPolicyBox, SecurityViolationError } from "./sandbox-policy-box.js";
 import type { FsBackend } from "./syscall-filter.js";
+import { randomUUID } from "node:crypto";
 
 /**
  * Why a run went to the isolated tier. Every value is something the in-memory tier
@@ -113,6 +114,9 @@ export const DEFAULT_ISOLATION_CEILINGS: IsolationCeilings = {
   sigkillTimeoutMs: 30_000,
 };
 
+/** What the backend receives when the policy grants no network at all: network-off. */
+const EMPTY_ALLOW_LIST: AllowedUrlEntry[] = [];
+
 /**
  * The isolated-tier backend contract. Core defines it because the escalation
  * decision is core's; an implementation lives in the server package and talks to a
@@ -124,9 +128,13 @@ export interface IsolatedBackend {
   readonly name: string;
   /** Boot a sandbox and run one command inside it, under the given ceilings. */
   run(command: IsolatedCommand): Promise<IsolatedResult>;
+  /** Release resources owned by one runtime/session, when the backend reuses sandboxes. */
+  releaseSession?(sessionKey: string): Promise<void>;
 }
 
 export interface IsolatedCommand {
+  /** Unique sandbox namespace for one execution runtime/session. */
+  readonly sessionKey: string;
   readonly script: string;
   readonly ceilings: IsolationCeilings;
   readonly allowList: AllowedUrlEntry[];
@@ -149,6 +157,8 @@ export interface IsolatedResult {
 }
 
 export interface IsolatedRuntimeOptions {
+  /** Stable, unique caller namespace; omitted values are unique per runtime instance. */
+  sessionKey?: string;
   /** Isolated-tier backend; omitted means the tier is unavailable. */
   backend?: IsolatedBackend;
   /** Resource ceilings; defaults to the plan's constants. */
@@ -241,6 +251,7 @@ export class IsolatedExecutionRuntime {
   private readonly backend?: IsolatedBackend;
   private readonly now: () => number;
   private readonly permitInMemoryWithoutBackend: boolean;
+  private readonly sessionKey: string;
   private readonly telemetry: ExecutionTelemetry[] = [];
 
   constructor(private readonly options: IsolatedRuntimeOptions = {}) {
@@ -251,6 +262,10 @@ export class IsolatedExecutionRuntime {
     this.backend = options.backend;
     this.now = options.now ?? (() => Date.now());
     this.permitInMemoryWithoutBackend = options.permitInMemoryWithoutBackend ?? true;
+    if (options.sessionKey !== undefined && options.sessionKey.trim().length === 0) {
+      throw new TypeError("isolated execution sessionKey must not be empty");
+    }
+    this.sessionKey = options.sessionKey ?? randomUUID();
   }
 
   /** The last N telemetry records, newest first. */
@@ -385,22 +400,25 @@ export class IsolatedExecutionRuntime {
       );
     }
 
-    // Egress: an escalation that the script reaches the network through must still
-    // clear the allow-list. Decided here, once, so the backend's answer is the same
-    // one the harness would give for an explicit fetch.
+    // Egress: the capability gate and the destination gate are separate, and both have to agree.
+    // A denial of `network:outbound` means no network at all, so the backend receives an empty
+    // allow-list (network-off) — passing the configured list through anyway would let an
+    // escalation reach a host the policy never granted. Only a grant makes the allow-list the
+    // operative limit, and the backend pushes it to the plane at boot and again whenever a later
+    // command of the same session carries a different policy (see the isolated backend's
+    // applyEgressPolicy). Decided here, once, so the backend's answer is the same one the harness
+    // would give for an explicit fetch.
     const networkDecision = policyBox.decide("network:outbound");
-    if (networkDecision.outcome === "deny" && this.allowList.length === 0) {
-      // No allow-list and no network capability: the command still runs isolated,
-      // but with an empty allow-list, which the backend reads as network-off. A
-      // denial here would be redundant with what the backend already enforces.
-    }
+    const egressAllowList =
+      networkDecision.outcome === "permit" ? this.allowList : EMPTY_ALLOW_LIST;
 
     const startedAt = this.now();
     try {
       const isolated = await this.backend.run({
+        sessionKey: this.sessionKey,
         script: source,
         ceilings: this.ceilings,
-        allowList: this.allowList,
+        allowList: egressAllowList,
         cwd: runOptions?.cwd,
         env: runOptions?.env,
         signal: runOptions?.signal,
@@ -443,6 +461,11 @@ export class IsolatedExecutionRuntime {
       this.telemetry.unshift(telemetry);
       return { ...telemetry, exitCode: 1, stdout: "", stderr: message };
     }
+  }
+
+  /** Release this runtime's isolated resources. Safe to call more than once. */
+  async dispose(): Promise<void> {
+    await this.backend?.releaseSession?.(this.sessionKey);
   }
 }
 

@@ -52,40 +52,31 @@ test("a malformed tool_call settles unpaired; the retry line shows and the retry
   // Retry hint line: set to "retry attempt 1 started" once request_begin arrives.
   await expect(page.getByText(/已发起第 1 次重试/)).toBeVisible();
 
-  // Trace: the broken tool_call is persisted (stop_reason=malformed) but **no paired output is
-  // added** — it never entered AgentHub's history, so there's nothing to pair; the retry is
-  // represented by a request_end(malformed) event.
+  // request_end is Trace-only; the committed chat history contains neither that boundary nor
+  // the partial tool_call that never entered AgentHub's history.
   const msgs = await (await page.request.get(`${BASE}/api/sessions/${sessionId}/messages`)).json();
-  const broken = msgs.messages.find(
+  const malformedCalls = msgs.messages.filter(
     (m) => m.payload.type === "tool_call" && m.payload.stop_reason === "malformed",
   );
-  expect(broken, "malformed tool_call recorded").toBeTruthy();
-  const paired = msgs.messages.find(
+  expect(malformedCalls, "uncommitted partial tool_call is absent from history").toHaveLength(0);
+  const { files } = await (
+    await page.request.get(`${BASE}/api/sessions/${sessionId}/traces`)
+  ).json();
+  expect(files, "the session trace is available").not.toHaveLength(0);
+  const trace = await (
+    await page.request.get(`${BASE}/api/sessions/${sessionId}/traces/${files[0].index}?limit=1000`)
+  ).json();
+  const malformedEnd = trace.events.find(
     (m) =>
-      m.payload.type === "tool_call_output" &&
-      m.payload.tool_call_id === broken.payload.tool_call_id,
+      m.payload.type === "request_end" &&
+      m.payload.status === "retryable" &&
+      m.payload.error_code === "malformed",
   );
-  expect(paired, "no paired output for a never-dispatched call").toBeFalsy();
-  const retryEnd = msgs.messages.find(
-    (m) => m.payload.type === "request_end" && m.payload.status === "malformed",
-  );
-  expect(retryEnd, "request_end(malformed) recorded").toBeTruthy();
+  expect(
+    malformedEnd,
+    "retryable request_end with malformed cause is recorded in the Trace",
+  ).toBeTruthy();
 
-  // UI: after expanding the group, the broken tool card shows malformed and is **settled**
-  // (no more running timer).
-  await page
-    .getByRole("button", { name: /运行完毕/ })
-    .first()
-    .click();
-  const group = page.locator(".anim-msg.my-2").first();
-  // Visibility is asserted explicitly: `toContainText` walks every descendant except
-  // SCRIPT/NOSCRIPT/STYLE, so the StatusIcon's own SVG <title>malformed</title> satisfies it
-  // even when nothing is drawn. This call never ran, so it has no output block to expand
-  // into — the row's `[malformed]` marker is the only explanation a touch user can reach.
-  await expect(
-    group.getByText("[malformed]").filter({ visible: true }),
-    "the broken tool card shows a visible malformed marker",
-  ).toHaveCount(1);
-  // A running spinner has role=status; none should remain after the turn ends.
-  await expect(page.locator('[role="status"]')).toHaveCount(0);
+  // The incomplete call is not committed, so no phantom tool row or running spinner may remain.
+  await expect(page.locator('button[aria-expanded] [role="status"].animate-spin')).toHaveCount(0);
 });

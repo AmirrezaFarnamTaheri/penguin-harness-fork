@@ -7,7 +7,7 @@
  * Presentational only — every action is a callback, no state of its own beyond
  * the hover affordances buttons already give.
  */
-import { MAX_ZOOM, MIN_ZOOM, clampZoom } from "../../../../core/src/canvas/viewport-culling.js";
+import { MAX_ZOOM, MIN_ZOOM, clampZoom } from "@prismshadow/penguin-core/canvas";
 import { CANVAS_THEME_KEYS, type CanvasThemeKey } from "./vector-canvas.js";
 
 export type CanvasTool = "select" | "pan";

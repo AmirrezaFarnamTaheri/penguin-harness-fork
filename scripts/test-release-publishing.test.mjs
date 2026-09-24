@@ -73,8 +73,8 @@ test("canonical release desktop builds cannot silently downgrade required signin
 
   assert.match(
     desktopWorkflow,
-    /if \(\[string\]::IsNullOrWhiteSpace\(\$env:EVSIGN_KEY\)\) \{[\s\S]*?if \(\$env:REQUIRE_WINDOWS_SIGNING -eq "true"\) \{[\s\S]*?Write-Error "Missing EVSIGN_KEY secret required for Windows release signing\."/,
-    "Windows must fail closed when EVSIGN_KEY is absent and signing is required",
+    /if \(\[string\]::IsNullOrWhiteSpace\(\$env:EVSIGN_KEY\)\) \{[\s\S]*?if \(\$env:REQUIRE_WINDOWS_SIGNING -eq "true"\) \{[\s\S]*?exit 1[\s\S]*?\}/,
+    "Windows must fail closed when EVSIGN_KEY is absent and signing is required: exit 1 directly, mirroring the macOS arm, not a Write-Error that only terminates while $ErrorActionPreference is Stop",
   );
   assert.match(
     desktopWorkflow,

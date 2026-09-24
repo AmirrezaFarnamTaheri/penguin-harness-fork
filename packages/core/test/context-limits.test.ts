@@ -91,6 +91,42 @@ describe("approximateMessagesTokens", () => {
     expect(est).toBeGreaterThan(1000);
   });
 
+  it("counts the text that rides alongside an image payload, not just the flat allowance", () => {
+    // The image bytes are excluded from the character count, but a multimodal payload can
+    // carry a long prompt next to the image. Counting only the flat allowance would err
+    // low for exactly the inputs the safety margin exists to protect — the estimate would
+    // inflate the derived output cap and risk the provider 400 the margin avoids.
+    const longPrompt = "Please describe this chart in detail. ".repeat(400);
+    const image = {
+      type: "model_msg",
+      payload: {
+        type: "inline_data",
+        role: "user",
+        data: "iVBORw0KGgoAAAANSUhEUg==",
+        mime_type: "image/png",
+        text: longPrompt,
+      },
+    } as unknown as OmniMessage;
+    const est = approximateMessagesTokens([image]);
+    // The ~10k-character prompt is worth roughly 2.5k tokens, so it dominates the flat
+    // 1600 allowance — the two together have to land well above the allowance alone.
+    const flatOnly = approximateMessagesTokens([
+      {
+        type: "model_msg",
+        payload: {
+          type: "inline_data",
+          role: "user",
+          data: "x".repeat(100),
+          mime_type: "image/png",
+        },
+      } as unknown as OmniMessage,
+    ]);
+    expect(est).toBeGreaterThan(flatOnly + 2000);
+    // And the image data itself is still not counted as text: the payload's base64 is
+    // tiny here, so the estimate stays far under what serializing it would have given.
+    expect(est).toBeLessThan(6000);
+  });
+
   it("counts a tool output's `images` data URLs at the flat allowance, not as base64 text", () => {
     // read_file's image outputs carry the image as tool_call_output.images (data URLs). A
     // 1 MB base64 string serialized as text would estimate ~262k "tokens" (~163x over)

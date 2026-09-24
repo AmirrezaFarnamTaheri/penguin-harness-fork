@@ -16,7 +16,7 @@
  *      classifies, and `context_engine` owns the retry policy: `retryable` rides the
  *      engine's reconnect ladder, `fatal` stops the run. The split is an allowlist of
  *      certainty: only failures a retry provably cannot fix are `fatal` — a provider 4xx
- *      rejection (408/429 excluded, see `isFatalProviderRejection`), a credentials failure
+ *      rejection (408/429 and quota-coded 403 excluded, see `isFatalProviderRejection`), a credentials failure
  *      (`isAuthenticationError`), AgentHub's fast-mode UnsupportedParameterError
  *      (`isFastModeUnsupportedError`), and input that fails to assemble into a request at
  *      all. Everything else — network/transport drops, timeouts, 429/5xx, AgentHub parse
@@ -78,6 +78,7 @@ import {
   effectiveMaxOutputTokens,
   resolveContextWindow,
 } from "./context-limits.js";
+import { RATE_LIMIT_MESSAGE_PATTERNS } from "./quota-parser.js";
 
 // ---------------------------------------------------------------------------
 // Pure conversion function: OmniMessage[] → a single UniMessage (unit-testable, no network)
@@ -847,15 +848,24 @@ function anyInCauseChain(error: unknown, probe: (level: object) => boolean): boo
  * signals ride on `type` in some bodies, so both fields are collected.
  */
 function providerSignals(level: object): string[] {
-  const err = level as {
-    code?: unknown;
-    type?: unknown;
-    error?: { code?: unknown; type?: unknown; error?: { code?: unknown; type?: unknown } };
+  // SDKs disagree on where the parsed response body lives. OpenAI exposes `.error`,
+  // Anthropic exposes `.error.error`, and wrappers may add `.response.data` or `.body`.
+  // Walk only these known envelope fields, with depth and cycle guards; do not stringify
+  // arbitrary SDK objects (which can be large, sensitive, or circular).
+  const seen = new Set<object>();
+  const signals: string[] = [];
+  const visit = (value: unknown, depth: number): void => {
+    if (value === null || typeof value !== "object" || seen.has(value) || depth > 5) return;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    for (const key of ["code", "type", "message"]) {
+      const field = record[key];
+      if (typeof field === "string") signals.push(field);
+    }
+    for (const key of ["error", "body", "data", "response"]) visit(record[key], depth + 1);
   };
-  const body = typeof err.error === "object" && err.error !== null ? err.error : undefined;
-  const inner = typeof body?.error === "object" && body.error !== null ? body.error : undefined;
-  const signals = [err.code, body?.code, inner?.code, err.type, body?.type, inner?.type];
-  return signals.filter((v): v is string => typeof v === "string");
+  visit(level, 0);
+  return signals;
 }
 
 /**
@@ -886,28 +896,56 @@ const RATE_LIMIT_CODES: ReadonlySet<string> = new Set([
   "resource_exhausted",
   "rate_limit",
   "insufficient_quota",
+  "insufficient_user_quota",
   "requests_exceeded",
   "tokens_exceeded",
 ]);
 
 /**
  * Determines whether an error is a rate limit (HTTP 429) or quota exhaustion error.
- * Signals: HTTP 429 status code, known rate-limit codes/types, or common error messages.
+ * Signals: HTTP 429 status code, known rate-limit codes/types, or the shared rate-limit
+ * wording table (`RATE_LIMIT_MESSAGE_PATTERNS`, which the combo cascade's quota verdict also
+ * reads). One table for both classifiers: a provider's "usage limit reached" used to be a
+ * generic network error here — so the key was never cooled and rotation kept handing it
+ * back — while the cascade saw no quota failure at all.
  */
 export function isRateLimitError(error: unknown): boolean {
+  // SDK/adapters may throw a bare provider error string rather than an Error instance. The
+  // terminal error renderer stringifies both shapes, so classify the string with the same
+  // shared wording table or an explicit quota body (e.g. HTTP 403 insufficient_user_quota)
+  // becomes fatal before the retry ladder can recover.
+  if (
+    typeof error === "string" &&
+    RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(error))
+  ) {
+    return true;
+  }
+  // `describeError` preserves a non-Error `cause` tail as text. Some SDK adapters wrap their
+  // parsed response in exactly such a string, so inspecting only object fields and `.message`
+  // loses explicit provider codes that the user-facing error still reports.
+  if (RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(describeError(error)))) {
+    return true;
+  }
   return anyInCauseChain(error, (level) => {
-    const err = level as { status?: unknown; statusCode?: unknown; message?: unknown };
-    const status = typeof err.status === "number" ? err.status : err.statusCode;
-    if (status === 429) return true;
-    if (providerSignals(level).some((c) => RATE_LIMIT_CODES.has(c))) return true;
-    const msg = typeof err.message === "string" ? err.message.toLowerCase() : "";
-    return (
-      msg.includes("rate limit") ||
-      msg.includes("too many requests") ||
-      msg.includes("resource has been exhausted") ||
-      msg.includes("quota exceeded")
-    );
+    return hasRateLimitSignal(level);
   });
+}
+
+/** Shared by the retry and fatal verdicts so a provider's quota-coded 403 cannot conflict. */
+function hasRateLimitSignal(level: object): boolean {
+  const err = level as { status?: unknown; statusCode?: unknown; message?: unknown };
+  const status = typeof err.status === "number" ? err.status : err.statusCode;
+  if (status === 429) return true;
+  if (RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(describeError(level)))) {
+    return true;
+  }
+  const evidence = providerSignals(level);
+  if (typeof err.message === "string") evidence.push(err.message);
+  return evidence.some(
+    (signal) =>
+      RATE_LIMIT_CODES.has(signal) ||
+      RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(signal)),
+  );
 }
 
 /**
@@ -940,16 +978,19 @@ export const FAST_MODE_UNSUPPORTED_GUIDANCE =
 /**
  * Determines whether an error is a definitive provider rejection of the request itself —
  * the `fatal` detector for errored requests. Only an explicit HTTP client-error status
- * counts: 4xx minus 408 (request timeout) and 429 (rate limit), which are transient by
+ * counts: 4xx minus 408 (request timeout), 429 (rate limit), and quota-coded 403, which are transient by
  * definition. Deliberately an allowlist of certainty, probed down the `cause` chain
  * (SDKs wrap the real response error): everything this misses stays `retryable`, because
  * retrying a genuinely fatal error costs one ladder and ends with the same message, while
  * refusing to retry a transient one destroys the turn. Authentication is checked
- * separately (`isAuthenticationError`) and first — a 401 is fatal through that path with
+ * separately (`isAuthenticationError`) after explicit rate-limit evidence — a 401 is fatal through that path with
  * its more specific message handling.
  */
 export function isFatalProviderRejection(error: unknown): boolean {
   return anyInCauseChain(error, (level) => {
+    // Quota providers commonly return 403 with a machine-readable quota code. That is
+    // recoverable through key rotation/retry and must never also be called definitive.
+    if (hasRateLimitSignal(level)) return false;
     const err = level as { status?: unknown; statusCode?: unknown };
     const status = typeof err.status === "number" ? err.status : err.statusCode;
     if (typeof status !== "number") return false;
@@ -1358,6 +1399,16 @@ export class GenerativeModel implements LLMInterface {
           errorCode: "malformed",
           errorMessage: describeError(error),
         };
+      } else if (isRateLimitError(error)) {
+        // An SDK may label every 403 as an authentication/permission exception even when
+        // the parsed provider body says the account exhausted quota. Explicit quota evidence
+        // takes precedence; otherwise the auth path below remains terminal for a dead key.
+        this.keyRotator?.recordFailure(activeKey, "rate_limit");
+        outcome = {
+          status: "retryable",
+          errorCode: "network",
+          errorMessage: describeError(error),
+        };
       } else if (isAuthenticationError(error)) {
         if (this.keyRotator && activeKey) {
           this.keyRotator.recordFailure(activeKey, "auth");
@@ -1377,13 +1428,6 @@ export class GenerativeModel implements LLMInterface {
         } else {
           outcome = { status: "fatal", errorCode: "auth", errorMessage: describeError(error) };
         }
-      } else if (isRateLimitError(error)) {
-        this.keyRotator?.recordFailure(activeKey, "rate_limit");
-        outcome = {
-          status: "retryable",
-          errorCode: "network",
-          errorMessage: describeError(error),
-        };
       } else if (this.uniConfig.fast_mode === true && isFastModeUnsupportedError(error)) {
         // Fast mode rejected by a model without a fast tier: AgentHub throws its
         // UnsupportedParameterError before any network I/O, so with this object's frozen

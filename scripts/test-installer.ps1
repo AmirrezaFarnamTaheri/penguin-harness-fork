@@ -102,8 +102,8 @@ function global:Invoke-WebRequest {
       } else {
         @{
           schemaVersion = 1
-          tag = "v0.0.0-test"
-          releaseBaseUrl = "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test"
+          tag = "v0.0.0"
+          releaseBaseUrl = "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0"
         } | ConvertTo-Json | Set-Content -LiteralPath $OutFile -Encoding ascii
       }
     }
@@ -111,7 +111,7 @@ function global:Invoke-WebRequest {
       if ($f.Mode -like "speed-probe-*") {
         $AssetSize = 104857600
         @(
-          "penguin-release-download-manifest`t1`tv0.0.0-test"
+          "penguin-release-download-manifest`t1`tv0.0.0"
           "probe`tsmall`tprobe-64k.bin`t65536`t$($f.Probe64Hash)"
           "probe`tlarge`tprobe-1m.bin`t1048576`t$($f.Probe1MHash)"
           "asset`tpenguin-win32-x64.zip`t$AssetSize`t$((Get-FileHash -Algorithm SHA256 -LiteralPath $f.GoodBundle).Hash.ToLowerInvariant())"
@@ -275,11 +275,11 @@ try {
   $Fixture.Probe1MHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Fixture.Probe1M).Hash.ToLowerInvariant()
 
   # Model the release workflow's installer stamping without changing the source installer.
-  $StampedInstaller = Join-Path $WorkDir "install-v0.0.0-test.ps1"
+  $StampedInstaller = Join-Path $WorkDir "install-v0.0.0.ps1"
   $InstallerText = [IO.File]::ReadAllText($Installer, [Text.UTF8Encoding]::new($false))
   Assert-True ($InstallerText.Contains('__PENGUIN_RELEASE_VERSION__')) `
     "Windows installer release-version token is missing"
-  $InstallerText = $InstallerText.Replace('__PENGUIN_RELEASE_VERSION__', 'v0.0.0-test')
+  $InstallerText = $InstallerText.Replace('__PENGUIN_RELEASE_VERSION__', 'v0.0.0')
   [IO.File]::WriteAllText($StampedInstaller, $InstallerText, [Text.UTF8Encoding]::new($false))
 
   # --- Local bundle via -ArchivePath: opened flat, sealed payload checksum verified. ---
@@ -303,21 +303,21 @@ try {
   $canonical = Invoke-OnlineCase "canonical" "canonical" "" $true 3
   Assert-True ($canonical.Requests[0] -like "*/latest.json") `
     "unstamped installer did not resolve the OSS latest metadata"
-  Assert-True ($canonical.Requests[1] -like "*/releases/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($canonical.Requests[1] -like "*/releases/v0.0.0/penguin-win32-x64.zip") `
     "unstamped installer did not lock the resolved OSS release"
   $Version = & (Join-Path $canonical.InstallDir "bin\penguin.cmd") --version
   Assert-True ($Version -eq "fixture-old") "canonical bundle was not installed"
 
   $stamped = Invoke-OnlineCase "stamped" "canonical" "" $true 2 $StampedInstaller
-  Assert-True ($stamped.Requests[0] -eq "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($stamped.Requests[0] -eq "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/penguin-win32-x64.zip") `
     "stamped installer did not select its own immutable OSS release"
   Assert-True (-not (($stamped.Requests | Out-String) -match 'latest\.json')) `
     "stamped installer unexpectedly resolved latest metadata"
 
   $stampedFallback = Invoke-OnlineCase "stamped-fallback" "primary-network" "" $true 3 $StampedInstaller
-  Assert-True ($stampedFallback.Requests[0] -like "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/*") `
+  Assert-True ($stampedFallback.Requests[0] -like "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/*") `
     "stamped installer did not try its own OSS release first"
-  Assert-True ($stampedFallback.Requests[1] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($stampedFallback.Requests[1] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "stamped installer did not fall back to the same GitHub version"
 
   $speedProbeGitHubFast = Invoke-OnlineCase "speed-probe-github-fast" "speed-probe-github-fast" "" $true 6 $StampedInstaller "1"
@@ -325,13 +325,13 @@ try {
     "speed probe did not request the release download manifest"
   Assert-True (($speedProbeGitHubFast.Requests | Out-String) -match 'probe-64k\.bin') `
     "speed probe did not request the small probe"
-  Assert-True ($speedProbeGitHubFast.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($speedProbeGitHubFast.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "speed probe did not select GitHub when it met the minimum speed"
   Assert-True (-not (($speedProbeGitHubFast.Requests | Out-String) -match 'aliyuncs\.com/[^\r\n]*probe-1m\.bin')) `
     "speed probe spent the paid mirror's bandwidth even though GitHub already met the minimum"
 
   $speedProbeDefaultOn = Invoke-OnlineCase "speed-probe-default-on" "speed-probe-github-fast" "" $true 6 $StampedInstaller "__unset"
-  Assert-True ($speedProbeDefaultOn.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($speedProbeDefaultOn.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "speed probe was not enabled by default"
 
   # Below the minimum the mirror is measured too, which is the seventh request of these two cases.
@@ -342,7 +342,7 @@ try {
     "speed probe did not switch to OSS when it was clearly faster than a slow GitHub"
 
   $speedProbeOssMarginal = Invoke-OnlineCase "speed-probe-oss-not-worth-switching" "speed-probe-oss-not-worth-switching" "" $true 7 $StampedInstaller "1"
-  Assert-True ($speedProbeOssMarginal.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($speedProbeOssMarginal.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "speed probe left GitHub even though OSS was not faster by the switch ratio"
 
   $speedProbeMissing = Invoke-OnlineCase "speed-probe-missing-manifest" "speed-probe-missing-manifest" "" $true 4 $StampedInstaller "1"
@@ -351,20 +351,20 @@ try {
 
   $env:PENGUIN_DOWNLOAD_SOURCE = "github"
   $stampedGitHub = Invoke-OnlineCase "stamped-github" "canonical" "" $true 2 $StampedInstaller
-  Assert-True ($stampedGitHub.Requests[0] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($stampedGitHub.Requests[0] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "stamped installer did not honor forced GitHub mode"
   Remove-Item Env:\PENGUIN_DOWNLOAD_SOURCE
 
-  $env:PENGUIN_DOWNLOAD_BASE_URL = "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test"
+  $env:PENGUIN_DOWNLOAD_BASE_URL = "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0"
   $override = Invoke-OnlineCase "download-base-override" "canonical" "" $true 2
-  Assert-True ($override.Requests[0] -eq "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($override.Requests[0] -eq "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/penguin-win32-x64.zip") `
     "download base override did not request the configured asset directory"
   Assert-True (($override.Output | Out-String) -match 'OSS mirror') `
     "download base override did not identify the OSS mirror"
   Assert-True (-not (($override.Output | Out-String) -match 'aliyuncs\.com')) `
     "download base override exposed the OSS URL in normal output"
 
-  $env:PENGUIN_DOWNLOAD_FALLBACK_BASE_URL = "https://github.com/Prism-Shadow/penguin-harness/releases/download/v0.0.0-test"
+  $env:PENGUIN_DOWNLOAD_FALLBACK_BASE_URL = "https://github.com/Prism-Shadow/penguin-harness/releases/download/v0.0.0"
   $fallback = Invoke-OnlineCase "download-fallback" "primary-network" "" $true 3
   Assert-True ($fallback.Requests[0] -like "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/*") `
     "download fallback did not try the primary source first"
@@ -375,18 +375,18 @@ try {
   Remove-Item Env:\PENGUIN_DOWNLOAD_FALLBACK_BASE_URL
   Remove-Item Env:\PENGUIN_DOWNLOAD_BASE_URL
 
-  $env:PENGUIN_DOWNLOAD_FALLBACK_BASE_URL = "https://example.invalid/releases/v0.0.0-test"
+  $env:PENGUIN_DOWNLOAD_FALLBACK_BASE_URL = "https://example.invalid/releases/v0.0.0"
   $fallbackWithoutBase = Invoke-OnlineCase "fallback-without-base" "primary-network" "" $true 3 $StampedInstaller
   Assert-True (-not (($fallbackWithoutBase.Requests | Out-String) -match 'example\.invalid')) `
     "fallback without base should not override auto/source fallback"
-  Assert-True (($fallbackWithoutBase.Requests | Out-String) -match 'github\.com/.*/releases/download/v0\.0\.0-test/penguin-win32-x64\.zip') `
+  Assert-True (($fallbackWithoutBase.Requests | Out-String) -match 'github\.com/.*/releases/download/v0\.0\.0/penguin-win32-x64\.zip') `
     "fallback without base did not keep the internal same-version GitHub fallback"
   Remove-Item Env:\PENGUIN_DOWNLOAD_FALLBACK_BASE_URL
 
   $forwarderOss = Invoke-ForwarderCase "forwarder-oss" "forwarder-oss" "auto" 2
   Assert-True ($forwarderOss.Requests[0] -like "*/latest.json") `
     "OSS forwarder did not request release metadata first"
-  Assert-True ($forwarderOss.Requests[1] -like "*/releases/v0.0.0-test/install.ps1") `
+  Assert-True ($forwarderOss.Requests[1] -like "*/releases/v0.0.0/install.ps1") `
     "OSS forwarder did not request the versioned installer"
 
   $forwarderGitHub = Invoke-ForwarderCase "forwarder-auto-github" "forwarder-auto-github" "auto" 2
@@ -402,24 +402,24 @@ try {
     "forced GitHub mode did not request the GitHub installer"
 
   $forcedOss = Invoke-ForwarderCase "forwarder-forced-oss-no-fallback" `
-    "forced-oss-payload" "oss" 2 "v0.0.0-test" $false
+    "forced-oss-payload" "oss" 2 "v0.0.0" $false
   Assert-True (-not (($forcedOss.Requests | Out-String) -match 'github\.com')) `
     "forced OSS mode unexpectedly fell back to GitHub"
 
-  $pinnedForwarder = Invoke-ForwarderCase "forwarder-pinned" "canonical" "auto" 3 "v0.0.0-test"
-  Assert-True ($pinnedForwarder.Requests[0] -like "*/releases/v0.0.0-test/install.ps1") `
+  $pinnedForwarder = Invoke-ForwarderCase "forwarder-pinned" "canonical" "auto" 3 "v0.0.0"
+  Assert-True ($pinnedForwarder.Requests[0] -like "*/releases/v0.0.0/install.ps1") `
     "pinned forwarder did not request the versioned installer"
-  Assert-True ($pinnedForwarder.Requests[1] -like "*/releases/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($pinnedForwarder.Requests[1] -like "*/releases/v0.0.0/penguin-win32-x64.zip") `
     "pinned installer did not keep the selected release version"
 
-  $speedProbeForwarder = Invoke-ForwarderCase "forwarder-speed-probe-handoff" "speed-probe-github-fast" "auto" 7 "v0.0.0-test" $true "1"
-  Assert-True ($speedProbeForwarder.Requests[0] -like "*/releases/v0.0.0-test/install.ps1") `
+  $speedProbeForwarder = Invoke-ForwarderCase "forwarder-speed-probe-handoff" "speed-probe-github-fast" "auto" 7 "v0.0.0" $true "1"
+  Assert-True ($speedProbeForwarder.Requests[0] -like "*/releases/v0.0.0/install.ps1") `
     "speed probe handoff forwarder did not fetch the versioned installer"
-  Assert-True ($speedProbeForwarder.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  Assert-True ($speedProbeForwarder.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "forwarder locked the payload source instead of letting the installer run speed probes"
 
-  $speedProbeDefaultForwarder = Invoke-ForwarderCase "forwarder-speed-probe-default-handoff" "speed-probe-github-fast" "auto" 7 "v0.0.0-test" $true "__unset"
-  Assert-True ($speedProbeDefaultForwarder.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0-test/penguin-win32-x64.zip") `
+  $speedProbeDefaultForwarder = Invoke-ForwarderCase "forwarder-speed-probe-default-handoff" "speed-probe-github-fast" "auto" 7 "v0.0.0" $true "__unset"
+  Assert-True ($speedProbeDefaultForwarder.Requests[-2] -like "https://github.com/*/releases/download/v0.0.0/penguin-win32-x64.zip") `
     "forwarder handoff did not leave speed probing enabled by default"
 
   Remove-Item Env:\PENGUIN_ARCHIVE, Env:\PENGUIN_INSTALL_DIR, Env:\PENGUIN_DOWNLOAD_SOURCE, Env:\PENGUIN_DOWNLOAD_SPEED_PROBE, Env:\PENGUIN_VERSION -ErrorAction SilentlyContinue

@@ -154,6 +154,52 @@ describe("HmrHost.ensure(): single-flight first boot", () => {
     freshRoot = undefined;
   });
 
+  it.each(["null", "[]", "5", '"x"'])(
+    "treats a harness.json that is not an object as nothing committed, not as a boot error: %s",
+    async (junk) => {
+      // JSON.parse returns these bodies as-is (null for a literal null), and the cast to
+      // Manifest used to let the first dereference throw OUTSIDE restore()'s try — so a
+      // store file reduced to junk bricked the boot the doc promises is non-fatal. A
+      // damaged manifest now reads as "nothing committed yet": restore() returns, the
+      // host moves on to the packaged default (which this bare host cannot boot — the
+      // rejection below is the fixture's, and comes from THAT boot, not from reading the
+      // manifest), and the persistence layer stays reusable.
+      t = await createTestApp();
+      const cookie = (await loginAdmin(t.app)).cookie;
+      expect(
+        (await pushPlatform(t.app, cookie, platformServing(["/api/demo/x"], "junked"))).status,
+      ).toBe(200);
+      const root = t.root;
+      freshRoot = root;
+      t.deps.hmr.dispose();
+      t.deps.channels.dispose();
+      t.deps.db.close();
+      t = undefined;
+
+      await fs.writeFile(path.join(root, "hmr", "harness.json"), junk);
+
+      const warnings: string[] = [];
+      const spy = vi.spyOn(process.stderr, "write").mockImplementation(((
+        chunk: string | Uint8Array,
+      ) => {
+        warnings.push(String(chunk));
+        return true;
+      }) as typeof process.stderr.write);
+      const fresh = new HmrHost(root);
+      try {
+        const rejection = await fresh.ensure().catch((err: unknown) => err);
+        // Not the TypeError restore() used to throw past its own try/catch — the manifest
+        // read is no longer a dereference of a cast.
+        expect(rejection).not.toBeInstanceOf(TypeError);
+        // restore() returned through its "nothing committed" door rather than the warn path.
+        expect(warnings.join("")).not.toMatch(/failed to restore/);
+      } finally {
+        spy.mockRestore();
+        fresh.dispose();
+      }
+    },
+  );
+
   it("refuses to restore a web version without index.html, and says so", async () => {
     // A push is held to "the web dist has an index.html"; a restart restoring the same
     // artifact was not, so a store file damaged after the push came back as a version

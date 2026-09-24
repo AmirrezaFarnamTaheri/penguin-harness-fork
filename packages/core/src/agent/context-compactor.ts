@@ -30,6 +30,17 @@ export interface ConversationMessage {
 const DECLARATION_START =
   /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:abstract\s+)?(?:function\*?|class|interface|type|enum|const|let|var)\s+[A-Za-z_$][\w$]*/;
 
+/**
+ * Id prefix marking the synthetic summary a compaction emits. The summary carries `role: "user"`
+ * so the model treats it as context, but it is not a real turn: `recentTurnStart` skips it so the
+ * turn count is correct by construction rather than by the accident of the summary's position.
+ */
+const COMPACTION_SUMMARY_ID_PREFIX = "compaction-summary-";
+
+function isCompactionSummary(message: ConversationMessage): boolean {
+  return typeof message.id === "string" && message.id.startsWith(COMPACTION_SUMMARY_ID_PREFIX);
+}
+
 export interface ContextCompactorOptions {
   /** Token budget threshold to trigger auto-compaction (default: 80,000 tokens). */
   tokenThreshold?: number;
@@ -73,13 +84,22 @@ export class ContextCompactor {
   /**
    * Return the start index of the suffix containing the requested number of complete, user-started
    * turns. Tool calls/results and all assistant follow-ups remain attached to their user message.
+   *
+   * A compaction summary carries `role: "user"` but is not a turn, so it is skipped. In practice the
+   * summary is always the first message of the pool, which makes skipping it a no-op — the reverse
+   * scan reaches it last and it can only be counted when fewer real turns remain than
+   * `keepRecentTurns`, a case that returns 0 either way. The skip is kept so the count does not
+   * depend on that positional invariant: a caller that ever places a summary mid-list must still
+   * get the right window.
    */
   private recentTurnStart(messages: ConversationMessage[]): number {
     if (this.keepRecentTurns <= 0) return messages.length;
 
     let turns = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role !== "user") continue;
+      const message = messages[i];
+      if (message?.role !== "user") continue;
+      if (isCompactionSummary(message)) continue;
       turns++;
       if (turns === this.keepRecentTurns) return i;
     }
@@ -163,7 +183,7 @@ export class ContextCompactor {
     const summaryText = this.boundSummary(rawSummary, messagesToFold);
 
     const summaryMessage: ConversationMessage = {
-      id: `compaction-summary-${randomUUID().slice(0, 8)}`,
+      id: `${COMPACTION_SUMMARY_ID_PREFIX}${randomUUID().slice(0, 8)}`,
       role: "user",
       content: `[Context Compaction Summary - ${messagesToFold.length} earlier messages folded]\n${summaryText}`,
     };

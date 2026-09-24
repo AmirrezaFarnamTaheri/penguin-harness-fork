@@ -307,12 +307,27 @@ export class CodeGraph {
     return graph;
   }
 
-  public addEdge(edge: CodeGraphEdge): void {
+  /**
+   * Records an edge. Identical edges are collapsed (upsert) and edges referencing unknown nodes
+   * are refused, returning false in both cases: duplicate adjacency inflates degree/hub scores and
+   * traversals, and dangling endpoints are never reclaimed by `removeNode` (a damaged `fromJSON`
+   * or an out-of-order caller would otherwise leave the graph quietly inconsistent).
+   */
+  public addEdge(edge: CodeGraphEdge): boolean {
+    if (!this.nodes.has(edge.source) || !this.nodes.has(edge.target)) return false;
+
     const stored = cloneEdge(edge);
+
     let outList = this.outgoing.get(stored.source);
     if (!outList) {
       outList = [];
       this.outgoing.set(stored.source, outList);
+    } else if (
+      outList.some(
+        (e) => e.target === stored.target && e.kind === stored.kind && e.line === stored.line,
+      )
+    ) {
+      return false;
     }
     outList.push(stored);
 
@@ -322,6 +337,7 @@ export class CodeGraph {
       this.incoming.set(stored.target, inList);
     }
     inList.push(stored);
+    return true;
   }
 
   public getOutgoingEdges(nodeId: string, kinds?: CodeEdgeKind[]): CodeGraphEdge[] {

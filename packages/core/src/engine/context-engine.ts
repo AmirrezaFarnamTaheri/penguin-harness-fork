@@ -2173,9 +2173,8 @@ export class ContextEngine {
    * itself already a `[turn_aborted]` block (from a previous attempt or a previous run's
    * carry-over), its content is unwrapped and merged in, keeping a single-level structure.
    *
-   * TODO(multimodal): only text input is currently kept — `image_url` / `inline_data` input is
-   * lost during flatten (the `[turn_aborted]` structure has no corresponding transcription yet);
-   * multimodal carry-over support to be added later.
+   * Image and inline data input remains structured alongside the synthetic text block, since
+   * transcribing binary content into `[turn_aborted]` would lose the attachment itself.
    */
   private flattenCarryOver(
     attemptInput: OmniMessage[],
@@ -2187,13 +2186,17 @@ export class ContextEngine {
       (m) => (m.payload as { type?: string }).type === "tool_call_output",
     );
     const textInputs = attemptInput.filter((m) => (m.payload as { type?: string }).type === "text");
+    const mediaInputs = attemptInput.filter((m) => {
+      const type = (m.payload as { type?: string }).type;
+      return type === "image_url" || type === "inline_data";
+    });
     const flattened = userText(
       this.buildTurnAbortedText(textInputs, assistantSegments, toolCalls, toolOutputs),
     );
     // flatten is sent to the model only and not written to Trace (synthetic carry-over isn't
     // persisted): resumption replay resends the discarded turn's **original input** as-is
     // (best-effort), with no dependency on this synthetic message.
-    return [...structured, flattened];
+    return [...structured, flattened, ...mediaInputs];
   }
 
   /** Transcribes the interrupted turn's input, model thinking/text, and tool calls/results into a single `[turn_aborted]` plain-text block. */

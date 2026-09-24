@@ -3,7 +3,6 @@ import {
   CANVAS_THEMES,
   NAMED_COLORS,
   TERMINAL_PALETTES,
-  clamp01,
   clamp255,
   contrastRatio,
   expandHex,
@@ -166,8 +165,8 @@ describe("color space", () => {
     expect(clamp255(-5)).toBe(0);
     expect(clamp255(300)).toBe(255);
     expect(clamp255(128)).toBe(128);
-    expect(clamp01(-1)).toBe(0);
-    expect(clamp01(2)).toBe(1);
+    // clamp01 is asserted in vector-primitives.test.ts — it lives there next to `clamp`,
+    // and color-space now imports it rather than re-defining a duplicate export.
   });
 
   it("emits css strings", () => {

@@ -35,6 +35,13 @@ export default defineConfig({
     "src/browser.ts",
     // Pure filesystem path helpers: zero-dependency subpath so desktop/cli can import resolveRoot without pulling core SDK.
     "src/state/paths.ts",
+    // Canvas math shared with the web UI: colour spaces, vector primitives, viewport
+    // culling, bezier curves, node-graph layout and shape rendering. Published as a
+    // subpath so web imports the public surface instead of core's private src tree.
+    "src/canvas/index.ts",
+    // Terminal primitives shared with the web UI: ANSI colour, the block model, command
+    // history and unified-diff hunk staging. Same reason as canvas.
+    "src/terminal/index.ts",
   ],
   format: ["esm"],
   target: "node24",

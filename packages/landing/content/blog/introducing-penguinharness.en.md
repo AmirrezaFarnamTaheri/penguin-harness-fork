@@ -3,7 +3,7 @@ title: "Introducing PenguinHarness: agents that build agents"
 date: 2026-07-17
 category: news
 pinned: true
-excerpt: We proved agents can self-evolve in our GDPevo Benchmark — now we are bringing that capability to everyone. The first open-source harness with recursive self-improvement covers everything from one-sentence agent construction to continuous self-evolution.
+excerpt: PenguinHarness is an open-source harness for constructing and evolving agents, with a CLI, Web UI, and support for a broad range of models.
 ---
 
 Today we are releasing **PenguinHarness** — an open-source harness built for constructing and evolving agents: a zero-code Harness CLI and Web UI, connected to 1000+ models. The story it tells fits in one line:
@@ -20,29 +20,9 @@ With the capability proven, the question became: how does everyone get to use it
 
 Three reasons, in deliberate order — from task quality, to how agents get built, to how they keep improving.
 
-### 1. Better on complex tasks, at lower cost
+### 1. Built for complex tasks
 
-A deliberately minimal toolset over clean low-level interfaces: fewer tool calls, fewer Tokens, deeply tuned for open models like DeepSeek. Each harness runs the model it is normally paired with — the comparison is between the products as people actually use them — head-to-head on two suites:
-
-![Benchmark: PenguinHarness leads the data-analysis suite and ties OpenAI Codex on coding, at a small fraction of both rivals' cost](/blog-assets/benchmark-light.svg)
-
-Complex data analysis (15 tasks, single run; PenguinHarness and Codex at thinking xhigh, Claude Code at max):
-
-| Framework      | Model           | Accuracy (%) | Tokens (M) | Cost ($) |
-| -------------- | --------------- | -----------: | ---------: | -------: |
-| PenguinHarness | DeepSeek V4 Pro |        66.67 |      18.04 |     0.55 |
-| Claude Code    | Claude Opus 4.8 |        53.33 |      22.20 |    38.48 |
-| OpenAI Codex   | GPT-5.5         |        53.33 |      13.72 |    19.41 |
-
-Coding tasks (40 tasks × 2 runs; accuracy is over all 80 outcomes):
-
-| Framework      | Model           | Accuracy (%) | Tokens (M) | Cost ($) |
-| -------------- | --------------- | -----------: | ---------: | -------: |
-| PenguinHarness | DeepSeek V4 Pro |        71.25 |     200.00 |     3.81 |
-| Claude Code    | Claude Opus 4.8 |        86.25 |     151.61 |   146.97 |
-| OpenAI Codex   | GPT-5.5         |        71.25 |     251.20 |   220.08 |
-
-Tokens and cost are suite totals, not per-run means. On data analysis we take the highest accuracy of the three — 66.67% against 53.33% for both — while spending 1/35 of what Codex spent and 1/70 of Claude Code's. On coding we tie Codex at 71.25% and trail Claude Code's 86.25%, but the whole suite cost us $3.81 against their $220.08 and $146.97: comparable work, one to two orders of magnitude apart on the bill.
+A deliberately minimal toolset over clean low-level interfaces supports agent workflows across models. We are preparing a public benchmark suite, but earlier comparative figures did not include enough evidence to reproduce or verify them, so we have removed those claims. The public release will include the tasks, scoring rules, raw outcomes, run artifacts, and dated pricing used to calculate costs.
 
 ### 2. One sentence, and an Agent builds your Agent app
 

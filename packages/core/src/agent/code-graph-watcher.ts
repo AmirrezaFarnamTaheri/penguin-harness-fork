@@ -8,6 +8,7 @@
 
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { CodeGraph, type CodeGraphEdge, type CodeGraphNode } from "./code-graph.js";
 import { SymbolIndexer, type FileSummary } from "./symbol-indexer.js";
@@ -70,6 +71,77 @@ const DEFAULT_IGNORES: Array<string | RegExp> = [
   ".vscode",
 ];
 
+/**
+ * The memoized result of the recursive-`fs.watch` capability probe. Module-level so every
+ * watcher in a process shares one probe rather than each paying for its own.
+ */
+let supportsRecursiveFsWatch: boolean | undefined;
+
+/**
+ * Ask the runtime whether `fs.watch({ recursive: true })` is honoured here, instead of
+ * maintaining a platform allow-list that goes stale as Node's support grows.
+ *
+ * `recursive` is silently *ignored* on platforms that do not support it — the call returns a
+ * watcher that sees only the root directory — so success is not detectable from the watcher
+ * alone. Node reports the real answer through the listener this probe supplies: on an
+ * unsupported platform the request is rejected with `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`,
+ * and on a supported one the watcher is created (and immediately closed).
+ *
+ * Any unexpected failure is treated as "unsupported", which is the safe direction: it selects
+ * the per-directory fallback that tracks every directory explicitly.
+ */
+function probeRecursiveFsWatch(): boolean {
+  let tempDir: string | undefined;
+  try {
+    tempDir = fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()), "penguin-recwatch-"));
+    const watcher = fs.watch(tempDir, { recursive: true });
+    watcher.close();
+    return true;
+  } catch {
+    // `ERR_FEATURE_UNAVAILABLE_ON_PLATFORM`, or a filesystem/tmpdir that cannot be watched.
+    // Either way the fallback path is the correct one.
+    return false;
+  } finally {
+    if (tempDir) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // Best effort; the OS reaps its own temp dirs.
+      }
+    }
+  }
+}
+
+/**
+ * The form of a directory path that must be handed to `fs.watch`.
+ *
+ * libuv stores the watched directory verbatim (`handle->dirw`) and, when a Windows
+ * change arrives, recomputes the affected name in its long form via
+ * `GetLongPathNameW()`. If the watched path contains an 8.3 short-name component —
+ * `C:\Users\RUNNER~1\...` on GitHub's Windows runners, or `C:\PROGRA~1\...` and
+ * OneDrive aliases on user machines — the long form no longer shares that prefix,
+ * and libuv's prefix check fails with `assert(!_wcsnicmp(...))` in
+ * `src/win/fs-event.c`, which aborts the whole process; the error cannot be caught
+ * from JavaScript (libuv/libuv#5010, nodejs/node#63638). Watching the long form
+ * keeps the two consistent. `realpathSync.native()` is required: the POSIX-style
+ * implementation does not expand 8.3 names on Windows.
+ *
+ * Only the argument passed to `fs.watch` is translated. Everything else — the map
+ * keys, the relative-path arithmetic, the paths handed back to callers — keeps the
+ * caller's own spelling, so a caller that passes short-form paths still sees them
+ * unchanged in events.
+ */
+function resolveWatchDir(dir: string): string {
+  if (process.platform !== "win32") return dir;
+  // Best effort: a directory that does not exist yet falls back to the caller's
+  // path, and `startWatching` re-checks existence before installing any watcher.
+  try {
+    return fs.realpathSync.native(dir);
+  } catch {
+    return dir;
+  }
+}
+
 export class CodeGraphWatcher extends EventEmitter {
   private readonly rootDir: string;
   private readonly graph: CodeGraph;
@@ -79,6 +151,10 @@ export class CodeGraphWatcher extends EventEmitter {
   private readonly debounceMs: number;
 
   private fsWatcher: fs.FSWatcher | null = null;
+  // Non-recursive fallback (see startPerDirectoryWatch): one watcher per directory when the
+  // platform does not support `fs.watch({ recursive: true })`.
+  private readonly dirWatchers = new Map<string, fs.FSWatcher>();
+  private degradationWarned = false;
   // Coalesced dirty paths set to prevent timer starvation and handle burst writes efficiently
   private dirtyPaths = new Set<string>();
   private flushTimer: NodeJS.Timeout | null = null;
@@ -262,33 +338,104 @@ export class CodeGraphWatcher extends EventEmitter {
   }
 
   /**
+   * Sweeps every tracked file under a removed directory out of the tracked set and the graph.
+   *
+   * A deleted directory is reported by the OS as a single event on the directory itself —
+   * FSEvents on macOS, and kqueue/inotify in the per-directory fallback — not as one event per
+   * file inside it. Without this sweep, those files would stay tracked forever and keep
+   * projecting their symbols into the graph long after the directory was gone. Each candidate
+   * is re-checked against the filesystem, so a sweep over a directory that still exists (a
+   * rename in progress, a spurious event) removes nothing.
+   */
+  public sweepRemovedDirectory(dirFullPath: string): void {
+    const prefix = path.relative(this.rootDir, dirFullPath).replace(/\\/g, "/");
+    for (const rel of Array.from(this.trackedFiles)) {
+      if (rel !== prefix && !rel.startsWith(`${prefix}/`)) continue;
+      const abs = path.join(this.rootDir, rel);
+      if (!fs.existsSync(abs)) this.removeFile(abs);
+    }
+  }
+
+  /**
    * Starts native filesystem watching.
+   *
+   * `fs.watch({ recursive: true })` is documented as macOS/Windows-only and is silently ignored
+   * on Linux, where it would make the watcher blind to everything outside the workspace root.
+   * When recursion is unavailable, fall back to one non-recursive watcher per directory.
    */
   public startWatching(): void {
-    if (this.fsWatcher || this.isClosed || !fs.existsSync(this.rootDir)) return;
+    if (this.isClosed || !fs.existsSync(this.rootDir)) return;
+
+    if (this.supportsRecursiveWatch()) {
+      this.startRecursiveWatch();
+    } else {
+      if (!this.degradationWarned) {
+        this.degradationWarned = true;
+        this.emit(
+          "warn",
+          `Recursive filesystem watching is unavailable on ${process.platform}; installing one ` +
+            `watcher per directory instead. Subdirectory file changes are still tracked; newly ` +
+            `created directories are picked up as they appear inside a watched directory.`,
+        );
+      }
+      this.startPerDirectoryWatch();
+    }
+  }
+
+  /**
+   * Whether `fs.watch({ recursive: true })` is honored on this platform. Overridable in tests so
+   * the per-directory fallback can be exercised on platforms that do support recursion.
+   *
+   * Detected by capability, not by platform name: Linux gained recursive `fs.watch()` in Node
+   * 19.1.0, so a hardcoded darwin/win32 list sent every modern Linux install through the
+   * one-watcher-per-directory fallback — paying an inotify watch per directory and emitting a
+   * false degradation warning — for a platform that no longer needs it.
+   */
+  protected supportsRecursiveWatch(): boolean {
+    // Anything we cannot ask can still tell us: probe once and remember, since this is called
+    // at most twice per watcher (startWatching, and the recursive path's own check).
+    if (supportsRecursiveFsWatch === undefined) {
+      supportsRecursiveFsWatch = probeRecursiveFsWatch();
+    }
+    return supportsRecursiveFsWatch;
+  }
+
+  /**
+   * Coalesces a dirty path into a single debounced flush pass (shared by both watch paths).
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer || this.isFlushing || this.isClosed) return;
+    // Source: https://nodejs.org/api/timers.html#setimmediatecallback-args
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushDirtyPaths();
+    }, this.debounceMs);
+  }
+
+  private startRecursiveWatch(): void {
+    if (this.fsWatcher || this.isClosed) return;
 
     try {
       this.fsWatcher = fs.watch(
-        this.rootDir,
+        resolveWatchDir(this.rootDir),
         { recursive: true },
         (_eventType: string, filename: string | null) => {
           if (!filename || this.isClosed) return;
 
           const relPath = filename.replace(/\\/g, "/");
           if (this.isPathIgnored(relPath)) return;
-          if (!this.hasSupportedExtension(relPath)) return;
-
-          const fullPath = path.join(this.rootDir, filename);
-          this.dirtyPaths.add(fullPath);
-
-          // Schedule a single flush worker if none is currently scheduled
-          // Source: https://nodejs.org/api/timers.html#setimmediatecallback-args
-          if (!this.flushTimer && !this.isFlushing) {
-            this.flushTimer = setTimeout(() => {
-              this.flushTimer = null;
-              void this.flushDirtyPaths();
-            }, this.debounceMs);
+          if (!this.hasSupportedExtension(relPath)) {
+            // A directory deletion arrives as one event on the directory itself, with no
+            // extension, and its files do not get their own on every platform. Left alone they
+            // would stay in the graph after the directory is gone.
+            if (!fs.existsSync(path.join(this.rootDir, filename))) {
+              this.sweepRemovedDirectory(path.join(this.rootDir, filename));
+            }
+            return;
           }
+
+          this.dirtyPaths.add(path.join(this.rootDir, filename));
+          this.scheduleFlush();
         },
       );
 
@@ -297,6 +444,129 @@ export class CodeGraphWatcher extends EventEmitter {
       });
     } catch (err) {
       this.emit("error", err);
+    }
+  }
+
+  /**
+   * Fallback used when recursive watching is unavailable: walks the tree once and installs one
+   * non-recursive watcher per (non-ignored) directory. New directories are watched as they are
+   * created inside a watched directory; watchers on removed directories are dropped.
+   */
+  private startPerDirectoryWatch(): void {
+    for (const dir of this.collectWatchedDirectories()) {
+      this.watchDirectory(dir);
+    }
+  }
+
+  private collectWatchedDirectories(): string[] {
+    const dirs: string[] = [this.rootDir];
+    const walk = (dir: string): void => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const fullPath = path.join(dir, entry.name);
+        if (this.isPathIgnored(path.relative(this.rootDir, fullPath))) continue;
+        dirs.push(fullPath);
+        walk(fullPath);
+      }
+    };
+    walk(this.rootDir);
+    return dirs;
+  }
+
+  private watchDirectory(dir: string): void {
+    if (this.isClosed || this.dirWatchers.has(dir)) return;
+
+    let watcher: fs.FSWatcher;
+    try {
+      watcher = fs.watch(resolveWatchDir(dir), (_eventType: string, filename: string | null) => {
+        if (!filename || this.isClosed) return;
+
+        const fullPath = path.join(dir, filename);
+        const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
+
+        let isDirectory = false;
+        let exists = true;
+        try {
+          isDirectory = fs.statSync(fullPath).isDirectory();
+        } catch {
+          // The entry is already gone; a watched subdirectory may have been removed.
+          exists = false;
+        }
+        if (isDirectory) {
+          if (!this.isPathIgnored(relPath)) this.discoverDirectory(fullPath);
+          return;
+        }
+        if (this.dirWatchers.has(fullPath)) this.closeDirectoryWatcher(fullPath);
+        if (!exists && !this.hasSupportedExtension(relPath)) {
+          // A watched directory was deleted or moved away. Its files are reported individually
+          // on some platforms only; sweep the rest out so they cannot outlive the directory.
+          // Extension-bearing entries are handled by the dirty-path flush below instead, so a
+          // deleted file is not removed and announced twice.
+          this.sweepRemovedDirectory(fullPath);
+        }
+        if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(relPath)) return;
+
+        this.dirtyPaths.add(fullPath);
+        this.scheduleFlush();
+      });
+    } catch (err) {
+      this.emit("error", err);
+      return;
+    }
+
+    watcher.on("error", (err) => {
+      // A deleted/renamed directory stops being watchable: drop the handle rather than leak it,
+      // and clear whatever it contained — this may be the only notice that the directory is gone.
+      this.closeDirectoryWatcher(dir);
+      this.sweepRemovedDirectory(dir);
+      this.emit("error", err);
+    });
+    this.dirWatchers.set(dir, watcher);
+  }
+
+  /**
+   * Installs a watcher on a directory discovered at runtime and sweeps it once: files may have
+   * appeared between the directory's creation and this notification, and they would otherwise be
+   * missed forever (the new watcher only sees changes from installation onward).
+   */
+  private discoverDirectory(dir: string): void {
+    this.watchDirectory(dir);
+
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!this.isPathIgnored(path.relative(this.rootDir, fullPath))) {
+          this.discoverDirectory(fullPath);
+        }
+        continue;
+      }
+      const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
+      if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(entry.name)) continue;
+      this.dirtyPaths.add(fullPath);
+    }
+    this.scheduleFlush();
+  }
+
+  private closeDirectoryWatcher(dir: string): void {
+    const watcher = this.dirWatchers.get(dir);
+    if (!watcher) return;
+    this.dirWatchers.delete(dir);
+    try {
+      watcher.close();
+    } catch {
+      // ignore
     }
   }
 
@@ -372,6 +642,10 @@ export class CodeGraphWatcher extends EventEmitter {
         // ignore
       }
       this.fsWatcher = null;
+    }
+
+    for (const dir of [...this.dirWatchers.keys()]) {
+      this.closeDirectoryWatcher(dir);
     }
 
     this.emit("closed");

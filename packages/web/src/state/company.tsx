@@ -115,6 +115,12 @@ interface CompanyStoreState {
   orgsLoading: boolean;
   orgsLoaded: boolean;
   /**
+   * The joined Project ids the listing currently in flight was read for. The Provider re-reads
+   * when the Project set changes and on every event that moves a summary, so two reads overlap
+   * and the later one must not be overwritten by the earlier one's answer.
+   */
+  orgsKey: string;
+  /**
    * At least one Project's listing failed in the last read, so `organizations` is missing
    * whatever that Project holds. An absent organization then means "not listed this time",
    * not "gone", which is what keeps a transient failure from forgetting the open one.
@@ -135,6 +141,13 @@ interface CompanyStoreState {
   channelMentions: number;
   /** Desk and ticket Sessions per organization of the current Project, keyed by org key. */
   orgSessions: ReadonlyMap<string, OrgSessionsResponse>;
+  /**
+   * The identity of the Sessions read currently owed the map (`sessionsSnapshotKey`): the
+   * Project it was for and the organization list it walked. The Provider re-reads on a Project
+   * change and whenever the list moves, so a newer read supersedes an older one and only the
+   * newest may publish.
+   */
+  orgSessionsKey: string;
   /**
    * The open organization's chart — the sidebar's Workstation group is one row per EMPLOYEE, and
    * this is the only listing that holds employees whose desk has never been opened. Null
@@ -167,6 +180,20 @@ function counters(channels: readonly OrgChannelItem[]): {
 }
 
 /**
+ * What a `reloadOrgSessions` read was: the Project it was asked for plus the organizations it
+ * walked (the list decides how many calls it made, so a list that grew meanwhile means this
+ * read is missing an organization's answer). Either moving is a newer read superseding this
+ * one, which is why the key is stored at read time rather than recomputed at publish time — a
+ * read for a Project the shell left looks unchanged to itself.
+ */
+function sessionsSnapshotKey(projectId: string, organizations: readonly OrganizationSummary[]) {
+  return `${projectId}|${organizations
+    .filter((o) => o.projectId === projectId)
+    .map((o) => o.orgId)
+    .join(",")}`;
+}
+
+/**
  * Builds one Provider's store. Exported as a test seam: the package's vitest runs in Node
  * with no DOM, so the event routing below is exercised against the store directly.
  */
@@ -180,6 +207,7 @@ export function createCompanyStore() {
     organizations: [],
     orgsLoading: false,
     orgsLoaded: false,
+    orgsKey: "",
     orgsPartial: false,
     channels: null,
     channelsError: null,
@@ -187,6 +215,7 @@ export function createCompanyStore() {
     channelUnread: 0,
     channelMentions: 0,
     orgSessions: new Map(),
+    orgSessionsKey: "",
     orgChart: null,
     orgChartError: null,
     versions: { orgs: 0, messages: 0, tickets: 0, runs: 0, budget: 0 },
@@ -274,7 +303,8 @@ export function createCompanyStore() {
     },
 
     reloadOrganizations: async (projectIds) => {
-      set({ orgsLoading: true });
+      const key = projectIds.join(",");
+      set({ orgsLoading: true, orgsKey: key });
       try {
         const lists = await Promise.all(
           projectIds.map((projectId) =>
@@ -287,13 +317,19 @@ export function createCompanyStore() {
               .catch(() => null),
           ),
         );
+        // The Provider re-reads on a change of Project set and on every event that moves a
+        // summary, so a newer read can already be in flight when this one answers. Landing the
+        // older answer regresses the sidebar, and through forgetMissingOrganizations can drop
+        // an organization that only the newer list knew about (the shell would then aim itself
+        // away from an organization the user just opened).
+        if (get().orgsKey !== key) return;
         set({
           organizations: lists.filter((list) => list !== null).flat(),
           orgsLoaded: true,
           orgsPartial: lists.some((list) => list === null),
         });
       } finally {
-        set({ orgsLoading: false });
+        if (get().orgsKey === key) set({ orgsLoading: false });
       }
     },
 
@@ -331,6 +367,12 @@ export function createCompanyStore() {
     },
 
     reloadOrgSessions: async (projectId) => {
+      // The Provider re-reads whenever the current Project, the organization list or a run
+      // event moves, so a read for one Project can answer after the shell has moved to another
+      // — landing it would replace the map the newer read built, and the sidebar's folders
+      // would show desks and tickets that do not exist under the Project they are now in.
+      const key = sessionsSnapshotKey(projectId, get().organizations);
+      set({ orgSessionsKey: key });
       const orgs = get().organizations.filter((o) => o.projectId === projectId);
       const entries = await Promise.all(
         orgs.map(async (o) => {
@@ -346,6 +388,7 @@ export function createCompanyStore() {
       );
       const next = new Map<string, OrgSessionsResponse>();
       for (const entry of entries) if (entry !== null) next.set(entry[0], entry[1]);
+      if (get().orgSessionsKey !== key) return;
       set({ orgSessions: next });
     },
 
@@ -501,7 +544,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         organizations: [],
         orgsLoaded: false,
         orgsPartial: false,
+        orgsKey: "",
         orgSessions: new Map(),
+        orgSessionsKey: "",
       });
       return;
     }

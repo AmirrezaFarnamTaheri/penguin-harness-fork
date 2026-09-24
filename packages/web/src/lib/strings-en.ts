@@ -2066,6 +2066,12 @@ Scenarios:
     outlineAnswering: "Answering…",
     inputPlaceholder: "Type a message. Enter to send, Shift+Enter for newline, paste images",
     inputPlaceholderShort: "Type a message…",
+    authFailureTitle: "Model API authentication failed",
+    authFailureAction: "Update this model's API key in Model settings to continue.",
+    authFailurePlaceholder: "Model authentication failed — update credentials or retry",
+    openModelSettings: "Open model settings",
+    newSession: "New session",
+    retry: "Retry",
     /** Placeholder while a Task is running (mid-run steering): the message is delivered between turns with the next request. */
     steerPlaceholder: "Message the running agent — delivered with the next turn",
     steerPlaceholderShort: "Message the running agent…",
@@ -3932,6 +3938,7 @@ Scenarios:
   },
   errors: {
     networkError: "Network error, please check your connection",
+    malformedBody: "The server sent an unexpected response — check your connection and try again",
     modelCredentialMissing: (modelId: string) =>
       `Model ${modelId} has no API key yet — configure it on the Models page first`,
     noDefaultModel: "This project has no default model yet — add one on the Models page first",

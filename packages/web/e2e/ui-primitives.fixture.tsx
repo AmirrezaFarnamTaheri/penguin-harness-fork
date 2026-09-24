@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { en } from "../src/lib/strings-en";
+import { setActiveStrings } from "../src/lib/strings";
+// CloseButton reads S.common.close (3f868ac385, #54) and Sheet renders it, so the
+// dictionary must be bound before any fixture component that contains a dialog can render.
+setActiveStrings(en);
 import { createRoot } from "react-dom/client";
 import { OptionMenu } from "../src/components/ui/option-menu";
 import { Select } from "../src/components/ui/select";

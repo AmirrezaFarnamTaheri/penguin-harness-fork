@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-plugin-sandbox-bwrap",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "private": true,
   "type": "module",
   "description": "Bubblewrap sandbox backend for PenguinHarness: filesystem confinement plus network isolation and path masking.",

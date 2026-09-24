@@ -164,10 +164,12 @@ export function isPrivateIp(hostname: string): boolean {
 
 function normalizeHostname(hostname: string): string {
   const trimmed = hostname.trim().toLowerCase();
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
+  const unbracketed =
+    trimmed.startsWith("[") && trimmed.endsWith("]") ? trimmed.slice(1, -1) : trimmed;
+  // A trailing dot is the DNS root label, not a different host: `127.0.0.1.` and
+  // `127.0.0.1` resolve to the same address, so the dotted spelling is normalized
+  // away rather than allowed to slip past the parser as an empty final component.
+  return unbracketed.endsWith(".") ? unbracketed.slice(0, -1) : unbracketed;
 }
 
 /**
@@ -230,6 +232,11 @@ function parseIpv6(hostname: string): number[] | null {
   let host = hostname;
   let ipv4Tail: [number, number, number, number] | null = null;
 
+  // A scope ID (`fe80::1%eth0`) names an interface, not a different address; it is
+  // not a hextet and would poison every parse below.
+  const zoneIndex = host.indexOf("%");
+  if (zoneIndex >= 0) host = host.slice(0, zoneIndex);
+
   if (host.includes(".")) {
     const lastColon = host.lastIndexOf(":");
     if (lastColon < 0) return null;
@@ -237,15 +244,30 @@ function parseIpv6(hostname: string): number[] | null {
     const parsedV4 = parseIpv4(v4Part);
     if (!parsedV4) return null;
     ipv4Tail = parsedV4;
-    host = host.slice(0, lastColon);
+    const head = host.slice(0, lastColon);
+    // `::127.0.0.1` slices down to `:`, dropping the colon the `::` compression
+    // was using, which would make the address parse as if it had no compression.
+    // Restore it so the compatible form is counted correctly below.
+    host = head.endsWith(":") ? `${head}:` : head;
   }
 
   const doubleColonCount = host.includes("::") ? host.split("::").length - 1 : 0;
   if (doubleColonCount > 1) return null;
 
+  // Split one side into hextets, refusing a stray `:` — `1::2:` is not an address.
+  // A side made entirely of colons (`:::`'s degenerate remainder) is left alone:
+  // it yields no hextets and the caller's fail-closed path handles the result.
+  const splitSide = (text: string): string[] | null => {
+    if (!text) return [];
+    const parts = text.split(":");
+    if (parts.some((part) => part === "") && parts.some((part) => part !== "")) return null;
+    return parts.filter(Boolean);
+  };
+
   const [leftRaw, rightRaw] = host.split("::");
-  const leftParts = leftRaw ? leftRaw.split(":").filter(Boolean) : [];
-  const rightParts = rightRaw ? rightRaw.split(":").filter(Boolean) : [];
+  const leftParts = splitSide(leftRaw ?? "");
+  const rightParts = splitSide(rightRaw ?? "");
+  if (leftParts === null || rightParts === null) return null;
 
   const parseHextet = (part: string): number | null => {
     if (!/^[0-9a-f]{1,4}$/i.test(part)) return null;
@@ -326,6 +348,28 @@ function isPrivateIpv6(hextets: number[]): boolean {
       hextets[7]! & 0xff,
     ];
     return isPrivateIpv4(mapped);
+  }
+
+  // IPv4-compatible ::a.b.c.d (RFC 4291, deprecated): the low 32 bits are an IPv4
+  // address and everything above is zero. Every major stack still routes it onto
+  // the IPv4 table — `::127.0.0.1` reaches loopback — so it is re-checked against
+  // the IPv4 table exactly like the mapped form above. `::` and `::1` are handled
+  // before this branch, so a compatible address is not confused with either.
+  const isCompatible =
+    hextets[0] === 0 &&
+    hextets[1] === 0 &&
+    hextets[2] === 0 &&
+    hextets[3] === 0 &&
+    hextets[4] === 0 &&
+    hextets[5] === 0;
+  if (isCompatible) {
+    const compatible: [number, number, number, number] = [
+      (hextets[6]! >>> 8) & 0xff,
+      hextets[6]! & 0xff,
+      (hextets[7]! >>> 8) & 0xff,
+      hextets[7]! & 0xff,
+    ];
+    return isPrivateIpv4(compatible);
   }
 
   if (hextets[0] === 0x2001 && hextets[1] === 0x0db8) return true; // 2001:db8::/32 documentation (RFC 3849)

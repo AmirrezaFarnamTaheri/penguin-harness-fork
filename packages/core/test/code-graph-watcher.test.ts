@@ -178,3 +178,255 @@ export function divide(a: number, b: number): number { return a / b; }
     watcher.close();
   });
 });
+
+describe("code-graph-watcher non-recursive fallback", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-codegraph-fallback-"));
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
+
+  /** A watcher pinned to the per-directory path regardless of the host platform. */
+  function makeFallbackWatcher(debounceMs = 20): CodeGraphWatcher {
+    return new (class extends CodeGraphWatcher {
+      protected override supportsRecursiveWatch(): boolean {
+        return false;
+      }
+    })(tmpDir, { debounceMs });
+  }
+
+  async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    throw new Error(`waitFor: condition not met within ${timeoutMs}ms`);
+  }
+
+  it("observes a file change in a subdirectory, not just the workspace root", async () => {
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "a.ts"), "export const a = 1;\n");
+
+    const watcher = makeFallbackWatcher();
+    const warnings: string[] = [];
+    watcher.on("warn", (message: string) => warnings.push(message));
+    const changed: string[] = [];
+    watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
+    await watcher.init();
+
+    // A change one level below the root is the exact case the missing `recursive` option breaks.
+    fs.writeFileSync(path.join(srcDir, "b.ts"), "export const b = 2;\n");
+    await waitFor(() => changed.some((f) => f === "src/b.ts"));
+    await watcher.flush();
+
+    expect(watcher.getTrackedFiles()).toContain("src/b.ts");
+    expect(watcher.getGraph().getNode("src/b.ts")).toBeDefined();
+
+    // The degradation is surfaced, and only once.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("unavailable");
+    watcher.startWatching();
+    expect(warnings).toHaveLength(1);
+
+    watcher.close();
+  });
+
+  it("picks up directories created after the initial scan", async () => {
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "seed.ts"), "export const seed = 0;\n");
+
+    const watcher = makeFallbackWatcher();
+    const changed: string[] = [];
+    watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
+    await watcher.init();
+
+    // A brand-new subdirectory must get its own watcher installed on creation.
+    const nested = path.join(srcDir, "nested");
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, "deep.ts"), "export const deep = 3;\n");
+    await waitFor(() => changed.some((f) => f === "src/nested/deep.ts"));
+    await watcher.flush();
+
+    expect(watcher.getTrackedFiles()).toContain("src/nested/deep.ts");
+    watcher.close();
+  });
+
+  it("still honors ignore patterns in the fallback path", async () => {
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "kept.ts"), "export const kept = 1;\n");
+
+    const watcher = makeFallbackWatcher();
+    const changed: string[] = [];
+    watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
+    await watcher.init();
+
+    // node_modules is ignored: no watcher is installed, and its files never enter the graph.
+    const ignored = path.join(tmpDir, "node_modules");
+    fs.mkdirSync(ignored, { recursive: true });
+    fs.writeFileSync(path.join(ignored, "untracked.ts"), "export const untracked = 2;\n");
+
+    expect(watcher.getTrackedFiles()).not.toContain("node_modules/untracked.ts");
+    expect(watcher.getTrackedFiles()).toContain("src/kept.ts");
+    watcher.close();
+  });
+
+  it("stops tracking a removed directory without leaking its watcher", async () => {
+    const srcDir = path.join(tmpDir, "src");
+    const goneDir = path.join(srcDir, "gone");
+    fs.mkdirSync(goneDir, { recursive: true });
+    fs.writeFileSync(path.join(goneDir, "x.ts"), "export const x = 1;\n");
+
+    const watcher = makeFallbackWatcher();
+    const errors: unknown[] = [];
+    watcher.on("error", (err: unknown) => errors.push(err));
+    await watcher.init();
+    expect(watcher.getTrackedFiles()).toContain("src/gone/x.ts");
+
+    // Removing the directory invalidates its watcher; the rest of the tree must keep working.
+    fs.rmSync(goneDir, { recursive: true, force: true });
+    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"));
+    await watcher.flush();
+
+    // Its files leave the tracked set and the graph, not just the watcher.
+    expect(watcher.getTrackedFiles()).not.toContain("src/gone/x.ts");
+    expect(watcher.getGraph().getNode("src/gone/x.ts")).toBeUndefined();
+
+    fs.writeFileSync(path.join(srcDir, "after.ts"), "export const after = 2;\n");
+    await waitFor(() => watcher.getTrackedFiles().includes("src/after.ts"));
+
+    expect(watcher.getTrackedFiles()).toContain("src/after.ts");
+    watcher.close();
+    // A removed directory surfaces an error event from its watcher; it must not crash the run.
+    expect(errors.length).toBeLessThanOrEqual(1);
+  });
+
+  it("sweepRemovedDirectory drops a removed directory's files even with no per-file events", () => {
+    // A deleted directory is reported by the OS as one event on the directory itself, not one
+    // per file inside it. This drives that case directly, without depending on which events the
+    // host filesystem happens to deliver.
+    const srcDir = path.join(tmpDir, "src");
+    const goneDir = path.join(srcDir, "gone");
+    const nestedDir = path.join(goneDir, "nested");
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(path.join(goneDir, "x.ts"), "export const x = 1;\n");
+    fs.writeFileSync(path.join(nestedDir, "y.ts"), "export const y = 2;\n");
+    fs.writeFileSync(path.join(srcDir, "kept.ts"), "export const kept = 3;\n");
+
+    const watcher = makeFallbackWatcher();
+    const removed: string[] = [];
+    watcher.on("change", (event: { action: string; filePath: string }) => {
+      if (event.action === "remove") removed.push(event.filePath);
+    });
+    // scanWorkspace() alone populates the graph without installing any watchers.
+    void watcher.scanWorkspace();
+    expect(watcher.getTrackedFiles()).toEqual(
+      expect.arrayContaining(["src/gone/x.ts", "src/gone/nested/y.ts", "src/kept.ts"]),
+    );
+
+    fs.rmSync(goneDir, { recursive: true, force: true });
+    watcher.sweepRemovedDirectory(goneDir);
+
+    expect(watcher.getTrackedFiles()).toEqual(["src/kept.ts"]);
+    expect(watcher.getGraph().getNode("src/gone/x.ts")).toBeUndefined();
+    expect(watcher.getGraph().getNode("src/gone/nested/y.ts")).toBeUndefined();
+    expect(removed).toEqual(expect.arrayContaining(["src/gone/x.ts", "src/gone/nested/y.ts"]));
+    expect(removed).not.toContain("src/kept.ts");
+  });
+
+  it("sweepRemovedDirectory removes nothing when the directory still exists", () => {
+    const srcDir = path.join(tmpDir, "src");
+    const liveDir = path.join(srcDir, "live");
+    fs.mkdirSync(liveDir, { recursive: true });
+    fs.writeFileSync(path.join(liveDir, "x.ts"), "export const x = 1;\n");
+
+    const watcher = makeFallbackWatcher();
+    void watcher.scanWorkspace();
+    expect(watcher.getTrackedFiles()).toContain("src/live/x.ts");
+
+    // A rename mid-flight or a spurious event must not evict files that are still on disk.
+    watcher.sweepRemovedDirectory(liveDir);
+
+    expect(watcher.getTrackedFiles()).toContain("src/live/x.ts");
+    expect(watcher.getGraph().getNode("src/live/x.ts")).toBeDefined();
+    watcher.close();
+  });
+
+  // libuv stores the watched directory verbatim and resolves change names to their
+  // long form; when the watched path carries an 8.3 short-name component the two no
+  // longer agree and libuv aborts the process with an uncatchable C assertion
+  // (libuv/libuv#5010). GitHub's Windows runners use a short-name TEMP, which is how
+  // this first showed up as a red `test-windows (core)` shard with every test green.
+  it("does not abort the process when the watched root is an 8.3 short-name path", async () => {
+    if (process.platform !== "win32") return;
+
+    const longParent = fs.mkdtempSync(path.join(os.tmpdir(), "LongWatcherRootName-"));
+    const shortParent = shortPathOf(longParent);
+    if (shortParent === longParent) {
+      // The volume has 8.3 generation disabled; nothing to prove here.
+      fs.rmSync(longParent, { recursive: true, force: true });
+      return;
+    }
+
+    const srcDir = path.join(shortParent, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "seed.ts"), "export const seed = 0;\n");
+
+    // Constructed with the SHORT path, as os.tmpdir() hands it to us on the runner.
+    const watcher = new CodeGraphWatcher(shortParent, { debounceMs: 20 });
+    const changed: string[] = [];
+    watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
+    await watcher.init();
+
+    // A write under the short alias is what forces libuv to resolve the long form.
+    fs.writeFileSync(path.join(srcDir, "added.ts"), "export const added = 1;\n");
+    await waitFor(() => changed.some((f) => f === "src/added.ts")).catch(() => {
+      watcher.processFile(path.join(srcDir, "added.ts"));
+    });
+    await watcher.flush();
+
+    expect(watcher.getTrackedFiles()).toContain("src/added.ts");
+    watcher.close();
+    fs.rmSync(longParent, { recursive: true, force: true });
+  });
+});
+
+/**
+ * The 8.3 short form of a path, via the Win32 `GetShortPathNameW` that Node exposes
+ * through `realpathSync`'s inverse. Falls back to the input when short names are
+ * disabled on the volume, in which case the test above skips itself.
+ */
+function shortPathOf(longPath: string): string {
+  const { spawnSync } = require("node:child_process");
+  const out = spawnSync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `Add-Type -Name W -Namespace P -MemberDefinition '[DllImport("kernel32", CharSet=CharSet.Unicode)] public static extern int GetShortPathName(string l, System.Text.StringBuilder s, int c);'; $b = New-Object Text.StringBuilder 260; [void][P.W]::GetShortPathName("${longPath}", $b, 260); Write-Output $b.ToString()`,
+    ],
+    { encoding: "utf8", windowsHide: true },
+  );
+  // A result that is not an existing path is not a short form of anything. When the
+  // Add-Type compile fails — on a machine whose policy removes the transient .cs that
+  // Add-Type writes before csc reads it — the compiler's "WARNING: (0) : No source files
+  // specified" lands on stdout and the StringBuilder stays empty, so this used to hand
+  // the test a bogus "short path" and kill it at mkdirSync with an ENOENT that says
+  // nothing about libuv. Routing that to the fallback makes the test skip itself, the
+  // same outcome the volume-disabled case already had.
+  const shortPath = out.stdout.trim();
+  if (!shortPath || !fs.existsSync(shortPath)) return longPath;
+  return shortPath;
+}

@@ -121,11 +121,9 @@ export const defineModule = moduleDefiner<IfaceRegistry>();
 // ───────────────────────── class form: @Module / @Use / @Provide / @Bind ─────────────────────────
 
 /** An interface handle: an abstract class whose instance type is the interface (see markers.ts Interface). */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type IfaceClass<T = any> = abstract new (...args: never[]) => T;
+export type IfaceClass<T = unknown> = abstract new (...args: never[]) => T;
 /** A module class: decorated with @Module; instantiated once per App; `create` is the module's create. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ModuleClass = abstract new (...args: any[]) => object;
+export type ModuleClass = abstract new (...args: unknown[]) => object;
 
 /** What a module class's `create` receives: everything in {@link ModuleCtx} except `use` — requirements are fields. */
 export type ClassCtx = Omit<ModuleCtx, "use">;

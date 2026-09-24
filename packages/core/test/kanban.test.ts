@@ -175,6 +175,51 @@ describe("KanbanBoard", () => {
     ).toBe("done");
   });
 
+  it("refuses to lease terminal tasks and keeps any live claim exclusive across lanes", () => {
+    const board = new KanbanBoard({ defaultLeaseDurationMs: 60_000 });
+
+    const done = board.createTask({ title: "Shipped", state: "done" });
+    const failed = board.createTask({ title: "Broken", state: "failed" });
+    expect(() => board.claimTask(done.id, "worker-1")).toThrow(/terminal state 'done'/);
+    expect(() => board.claimTask(failed.id, "worker-1")).toThrow(/terminal state 'failed'/);
+
+    // A live claim resists takeover from another worker in every lane, not only in_progress —
+    // otherwise a review claim can be stolen out from under its reviewer.
+    const inReview = board.createTask({ title: "Awaiting review" });
+    const reviewClaim = board.claimTask(inReview.id, "reviewer-a", { leaseDurationMs: 60_000 });
+    board.updateTaskState(inReview.id, "review", {
+      workerId: "reviewer-a",
+      generation: reviewClaim.leaseGeneration!,
+    });
+    expect(() => board.claimTask(inReview.id, "reviewer-b")).toThrow(/already claimed by/);
+
+    // The lease owner may still reclaim to refresh its own lease.
+    const refreshed = board.claimTask(inReview.id, "reviewer-a");
+    expect(refreshed.assignee).toBe("reviewer-a");
+  });
+
+  it("reclaims an expired claim parked in review instead of stranding the dependency chain", () => {
+    const board = new KanbanBoard({ defaultLeaseDurationMs: 60_000 });
+    const task = board.createTask({ title: "Review me" });
+    const claimed = board.claimTask(task.id, "dead-worker", { leaseDurationMs: 60_000 });
+    board.updateTaskState(task.id, "review", {
+      workerId: "dead-worker",
+      generation: claimed.leaseGeneration!,
+    });
+
+    board.setTaskClaimExpiry(task.id, Date.now() - 10);
+    const reclaimed = board.reclaimExpiredLeases();
+
+    // The old code only ever looked at in_progress tasks, so a dead worker's stake on a
+    // review task blocked its dependents forever.
+    expect(reclaimed).toContain(task.id);
+    const after = board.getTask(task.id);
+    expect(after?.assignee).toBeNull();
+    expect(after?.claimExpires).toBeNull();
+    // The lane itself is preserved — the work product exists, it just needs a new reviewer.
+    expect(after?.state).toBe("review");
+  });
+
   it("updates task fields and computes board statistics accurately", () => {
     const board = new KanbanBoard({ boardId: "stats-board" });
     const t1 = board.createTask({ title: "Task 1", priority: "low" });

@@ -2901,6 +2901,7 @@ function SessionRow({
             <SessionRowHoverActions
               actions={HOVER_ROW_ACTIONS}
               state={rowState}
+              moreOpen={ctx.open}
               onRun={run}
               onMore={ctx.openAt}
             />

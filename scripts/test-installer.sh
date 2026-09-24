@@ -51,7 +51,8 @@ for marker in '%DIR%\web' '%DIR%\node\node.exe' '%DIR%\lib\dist\penguin.js'; do
   grep -qF "$marker" "$LAUNCHER_CMD" || fail_test "the Windows launcher does not carry $marker"
 done
 # .gitattributes keeps this one CRLF, the only form cmd.exe is fully reliable with.
-grep -q "$(printf '\r')" "$LAUNCHER_CMD" || fail_test "the Windows launcher is not CRLF"
+od -An -t x1 "$LAUNCHER_CMD" | grep -Eq '0d 0a' \
+  || fail_test "the Windows launcher is not CRLF"
 # No penguin.ps1: PowerShell would prefer it on PATH, and Restricted policy would then break
 # the plain `penguin` command.
 [ ! -e "$ROOT_DIR/scripts/launchers/penguin.ps1" ] \
@@ -231,10 +232,10 @@ for inconsistent_side in posix powershell; do
 done
 
 # Model the release workflow's installer stamping without changing the source installer.
-STAMPED_INSTALLER="$WORK_DIR/install-v0.0.0-test.sh"
+STAMPED_INSTALLER="$WORK_DIR/install-v0.0.0.sh"
 grep -q 'EMBEDDED_RELEASE_VERSION="__PENGUIN_RELEASE_VERSION__"' "$ROOT_DIR/install.sh" \
   || fail_test "POSIX installer release-version token is missing"
-sed 's/__PENGUIN_RELEASE_VERSION__/v0.0.0-test/' "$ROOT_DIR/install.sh" > "$STAMPED_INSTALLER"
+sed 's/__PENGUIN_RELEASE_VERSION__/v0.0.0/' "$ROOT_DIR/install.sh" > "$STAMPED_INSTALLER"
 chmod +x "$STAMPED_INSTALLER"
 
 # --- Canonical layout: flat bundles, exact member set, byte-identical installers, both
@@ -441,12 +442,12 @@ case "$MODE:$base" in
     printf '%s\n' '{"schemaVersion":1,"tag":"../invalid","releaseBaseUrl":"https://example.invalid"}' > "$output"
     ;;
   canonical:latest.json | outer-sha-mismatch:latest.json | inner-sha-mismatch:latest.json | forwarder-oss:latest.json | forced-oss-payload:latest.json)
-    printf '%s\n' '{"schemaVersion":1,"tag":"v0.0.0-test","releaseBaseUrl":"https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test"}' > "$output"
+    printf '%s\n' '{"schemaVersion":1,"tag":"v0.0.0","releaseBaseUrl":"https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0"}' > "$output"
     ;;
   speed-probe-missing-manifest:release-download-manifest.tsv) exit 22 ;;
   speed-probe-*:release-download-manifest.tsv)
     {
-      printf 'penguin-release-download-manifest\t1\tv0.0.0-test\n'
+      printf 'penguin-release-download-manifest\t1\tv0.0.0\n'
       printf 'probe\tsmall\tprobe-64k.bin\t65536\t%s\n' "$PROBE64_HASH"
       printf 'probe\tlarge\tprobe-1m.bin\t1048576\t%s\n' "$PROBE1M_HASH"
       printf 'asset\t%s\t%s\t%s\n' "$HOST_ASSET" "$SPEED_PROBE_ASSET_SIZE" "$HOST_ASSET_HASH"
@@ -539,30 +540,30 @@ run_online_case canonical canonical "" success 3
   || fail_test "canonical online install did not produce a working command"
 grep -q "/latest.json\$" "$WORK_DIR/canonical.log" \
   || fail_test "unstamped installer did not resolve the OSS latest metadata"
-grep -q "/releases/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/canonical.log" \
+grep -q "/releases/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/canonical.log" \
   || fail_test "unstamped installer did not lock the resolved OSS release"
 
 run_online_case stamped canonical "" success 2 "" "" "$STAMPED_INSTALLER"
 [ "$(sed -n '1p' "$WORK_DIR/stamped.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/$HOST_ASSET" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/$HOST_ASSET" ] \
   || fail_test "stamped installer did not select its own immutable OSS release"
 ! grep -q "/latest.json\$" "$WORK_DIR/stamped.log" \
   || fail_test "stamped installer unexpectedly resolved latest metadata"
 
 run_online_case stamped-fallback primary-network "" success 3 "" "" "$STAMPED_INSTALLER"
 [ "$(sed -n '1p' "$WORK_DIR/stamped-fallback.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/$HOST_ASSET" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/$HOST_ASSET" ] \
   || fail_test "stamped installer did not try its own OSS release first"
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/stamped-fallback.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/stamped-fallback.log" \
   || fail_test "stamped installer did not fall back to the same GitHub version"
 
 run_online_case speed-probe-github-fast speed-probe-github-fast "" success 6 "" "" "$STAMPED_INSTALLER" auto 1
 [ "$(grep -c "/$HOST_ASSET\$" "$WORK_DIR/speed-probe-github-fast.log" | tr -d ' ')" -eq 1 ] \
   || fail_test "speed probe selected more than one primary bundle download"
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/speed-probe-github-fast.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/speed-probe-github-fast.log" \
   || fail_test "speed probe did not select GitHub when it met the minimum speed"
 run_online_case speed-probe-default-on speed-probe-github-fast "" success 6 "" "" "$STAMPED_INSTALLER" auto __unset
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/speed-probe-default-on.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/speed-probe-default-on.log" \
   || fail_test "speed probe was not enabled by default"
 # Below the minimum the mirror is measured too, which is the seventh request of these two cases.
 run_online_case speed-probe-oss-clearly-faster speed-probe-oss-clearly-faster "" success 7 "" "" "$STAMPED_INSTALLER" auto 1
@@ -572,7 +573,7 @@ grep -q "penguin-harness-releases.oss-cn-beijing.aliyuncs.com/.*/$HOST_ASSET\$" 
   || fail_test "speed probe did not switch to OSS when it was clearly faster than a slow GitHub"
 
 run_online_case speed-probe-oss-not-worth-switching speed-probe-oss-not-worth-switching "" success 7 "" "" "$STAMPED_INSTALLER" auto 1
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/speed-probe-oss-not-worth-switching.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/speed-probe-oss-not-worth-switching.log" \
   || fail_test "speed probe left GitHub even though OSS was not faster by the switch ratio"
 
 run_online_case speed-probe-missing-manifest speed-probe-missing-manifest "" success 4 "" "" "$STAMPED_INSTALLER" auto 1
@@ -580,29 +581,29 @@ grep -q "Download source test was inconclusive" "$WORK_DIR/speed-probe-missing-m
   || fail_test "missing speed probe manifest did not fall back to the compatible source policy"
 
 run_online_case stamped-github canonical "" success 2 "" "" "$STAMPED_INSTALLER" github
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/stamped-github.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/stamped-github.log" \
   || fail_test "stamped installer did not honor forced GitHub mode"
 run_online_case download-base-override canonical "" success 2 \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test" ""
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0" ""
 grep -q "OSS mirror" "$WORK_DIR/download-base-override.output" \
   || fail_test "download base override did not identify the OSS mirror"
 ! grep -q "aliyuncs.com" "$WORK_DIR/download-base-override.output" \
   || fail_test "download base override exposed the OSS URL in normal output"
 run_online_case download-fallback primary-network "" success 3 \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test" \
-  "https://github.com/Prism-Shadow/penguin-harness/releases/download/v0.0.0-test"
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0" \
+  "https://github.com/Prism-Shadow/penguin-harness/releases/download/v0.0.0"
 [ "$(sed -n '1p' "$WORK_DIR/download-fallback.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/$HOST_ASSET" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/$HOST_ASSET" ] \
   || fail_test "download fallback did not try the primary source first"
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/download-fallback.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/download-fallback.log" \
   || fail_test "download fallback did not use the same-version GitHub source"
 ! grep -q "aliyuncs.com" "$WORK_DIR/download-fallback.output" \
   || fail_test "download fallback exposed the OSS URL in normal output"
 run_online_case fallback-without-base primary-network "" success 3 "" \
-  "https://example.invalid/releases/v0.0.0-test" "$STAMPED_INSTALLER"
+  "https://example.invalid/releases/v0.0.0" "$STAMPED_INSTALLER"
 ! grep -q "example.invalid" "$WORK_DIR/fallback-without-base.log" \
   || fail_test "fallback without base should not override auto/source fallback"
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/fallback-without-base.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/fallback-without-base.log" \
   || fail_test "fallback without base did not keep the internal same-version GitHub fallback"
 run_online_case outer-mismatch outer-sha-mismatch "" failure 3
 run_online_case inner-mismatch inner-sha-mismatch "" failure 3
@@ -665,7 +666,7 @@ run_forwarder_case() {
 run_forwarder_case forwarder-oss forwarder-oss 2
 grep -q "/latest.json\$" "$WORK_DIR/forwarder-oss.log" \
   || fail_test "OSS forwarder did not request release metadata first"
-grep -q "/releases/v0.0.0-test/install.sh\$" "$WORK_DIR/forwarder-oss.log" \
+grep -q "/releases/v0.0.0/install.sh\$" "$WORK_DIR/forwarder-oss.log" \
   || fail_test "OSS forwarder did not request the versioned installer"
 
 run_forwarder_case forwarder-auto-github forwarder-auto-github 2
@@ -680,28 +681,28 @@ run_forwarder_case forwarder-github canonical 1 github
 grep -q "github.com/.*/releases/latest/download/install.sh\$" "$WORK_DIR/forwarder-github.log" \
   || fail_test "forced GitHub mode did not request the GitHub installer"
 
-run_forwarder_case forwarder-forced-oss-no-fallback forced-oss-payload 2 oss v0.0.0-test failure
+run_forwarder_case forwarder-forced-oss-no-fallback forced-oss-payload 2 oss v0.0.0 failure
 ! grep -q "github.com" "$WORK_DIR/forwarder-forced-oss-no-fallback.log" \
   || fail_test "forced OSS mode unexpectedly fell back to GitHub"
 
-run_forwarder_case forwarder-pinned canonical 3 auto v0.0.0-test
+run_forwarder_case forwarder-pinned canonical 3 auto v0.0.0
 [ "$(sed -n '1p' "$WORK_DIR/forwarder-pinned.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/install.sh" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/install.sh" ] \
   || fail_test "pinned forwarder did not request the versioned installer"
 [ "$(sed -n '2p' "$WORK_DIR/forwarder-pinned.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/$HOST_ASSET" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/$HOST_ASSET" ] \
   || fail_test "pinned installer did not keep the selected release version"
 
-run_forwarder_case forwarder-speed-probe-handoff speed-probe-github-fast 7 auto v0.0.0-test success 1
+run_forwarder_case forwarder-speed-probe-handoff speed-probe-github-fast 7 auto v0.0.0 success 1
 [ "$(sed -n '1p' "$WORK_DIR/forwarder-speed-probe-handoff.log")" = \
-  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0-test/install.sh" ] \
+  "https://penguin-harness-releases.oss-cn-beijing.aliyuncs.com/releases/v0.0.0/install.sh" ] \
   || fail_test "speed probe handoff forwarder did not fetch the versioned OSS installer"
 ! grep -q "penguin-harness-releases.oss-cn-beijing.aliyuncs.com/.*/$HOST_ASSET\$" "$WORK_DIR/forwarder-speed-probe-handoff.log" \
   || fail_test "forwarder locked the payload source to OSS instead of letting the installer speed probe"
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/forwarder-speed-probe-handoff.log" \
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/forwarder-speed-probe-handoff.log" \
   || fail_test "forwarder locked the payload source instead of letting the installer speed probe"
-run_forwarder_case forwarder-speed-probe-default-handoff speed-probe-github-fast 7 auto v0.0.0-test success __unset
-grep -q "github.com/.*/releases/download/v0.0.0-test/$HOST_ASSET\$" "$WORK_DIR/forwarder-speed-probe-default-handoff.log" \
+run_forwarder_case forwarder-speed-probe-default-handoff speed-probe-github-fast 7 auto v0.0.0 success __unset
+grep -q "github.com/.*/releases/download/v0.0.0/$HOST_ASSET\$" "$WORK_DIR/forwarder-speed-probe-default-handoff.log" \
   || fail_test "forwarder handoff did not leave speed probing enabled by default"
 
 echo "Installer bundle, offline, rollback and online tests passed."

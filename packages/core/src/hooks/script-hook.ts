@@ -60,7 +60,6 @@ export async function runHookScript(
 ): Promise<unknown> {
   if (opts.signal?.aborted) throw new Error("aborted");
   const serializedInput = `${JSON.stringify(input)}\n`;
-  if (opts.signal?.aborted) throw new Error("aborted");
   const timeoutMs = (opts.timeoutS ?? DEFAULT_HOOK_TIMEOUT_S) * 1000;
   return new Promise<unknown>((resolve, reject) => {
     const child = spawn(process.execPath, [script], {

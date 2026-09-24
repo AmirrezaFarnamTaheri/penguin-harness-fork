@@ -162,4 +162,66 @@ describe("WorkspaceLeaseManager", () => {
     expect(evicted).toBe(1);
     expect(lease.isAlive()).toBe(false);
   });
+
+  it("treats an all-empty key set as a whole-scope request", async () => {
+    manager = new WorkspaceLeaseManager(0);
+
+    const writer = await manager.acquire({
+      scope: "/repo/empty-keys",
+      holderId: "writer-1",
+      mode: "exclusive",
+      keys: ["", "   "],
+    });
+
+    // The empty keys collapsed to a whole-scope exclusive lock, so any other writer is blocked.
+    expect(
+      manager.tryAcquire({
+        scope: "/repo/empty-keys",
+        holderId: "writer-2",
+        mode: "exclusive",
+        keys: ["src/deep/feature.ts"],
+      }),
+    ).toBeNull();
+
+    // And the lease does not advertise empty-string keys.
+    const info = manager.getActiveLeases("/repo/empty-keys")[0]!;
+    expect(info.keys).toEqual([]);
+    expect(manager.isLocked("/repo/empty-keys")).toBe(true);
+
+    writer.release();
+    expect(manager.isLocked("/repo/empty-keys")).toBe(false);
+  });
+
+  it("ignores empty keys when matching per-key overlap", async () => {
+    manager = new WorkspaceLeaseManager(0);
+
+    const holderA = await manager.acquire({
+      scope: "/repo/mixed-keys",
+      holderId: "agent-a",
+      mode: "exclusive",
+      keys: ["", "src/a.ts"],
+    });
+
+    // The empty key must not act as a wildcard that collides with every other key.
+    const holderB = manager.tryAcquire({
+      scope: "/repo/mixed-keys",
+      holderId: "agent-b",
+      mode: "exclusive",
+      keys: ["src/b.ts"],
+    });
+    expect(holderB).not.toBeNull();
+
+    // The real key still conflicts.
+    expect(
+      manager.tryAcquire({
+        scope: "/repo/mixed-keys",
+        holderId: "agent-c",
+        mode: "exclusive",
+        keys: ["src/a.ts"],
+      }),
+    ).toBeNull();
+
+    holderA.release();
+    holderB?.release();
+  });
 });

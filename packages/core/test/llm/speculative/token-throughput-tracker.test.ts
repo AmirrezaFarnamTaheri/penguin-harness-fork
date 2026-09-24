@@ -112,6 +112,30 @@ describe("TokenThroughputTracker", () => {
     expect(cheap).toBeGreaterThan(expensive);
   });
 
+  it("reports speedup at the window the recorded rounds actually ran", () => {
+    // report() models speedup from the acceptance rate, and the model's γ is the window the
+    // rounds used — not a hardcoded 4. A tracker fed γ=8 rounds used to report the γ=4 figure
+    // regardless, so a deployment running any other window read a speedup that was not its
+    // own, in either direction.
+    const wide = new TokenThroughputTracker({ draftCostWeight: 0.35 });
+    wide.recordAll([
+      round("a", { proposed: 8, accepted: 8 }),
+      round("b", { proposed: 8, accepted: 8 }),
+    ]);
+    const wideReport = wide.report();
+    expect(wideReport.acceptanceRate).toBe(1);
+    // γ=8 at draftCostWeight 0.35: (1 + 8) / (1 + 8·0.35) ≈ 2.368. The γ=4 figure (≈2.083) is
+    // what report() produced from a hardcoded window.
+    expect(wideReport.speedup).toBeCloseTo(wide.speedup(1, 8), 9);
+    expect(wideReport.speedup).not.toBeCloseTo(wide.speedup(1, 4), 9);
+
+    // Rounds at the default window still report their own figure, at their own rate.
+    const narrow = new TokenThroughputTracker({ draftCostWeight: 0.35 });
+    narrow.recordAll([round("a", {})]);
+    const narrowReport = narrow.report();
+    expect(narrowReport.speedup).toBeCloseTo(narrow.speedup(narrowReport.acceptanceRate, 4), 9);
+  });
+
   it("resets all counters", () => {
     const tracker = new TokenThroughputTracker();
     tracker.record(round("a", {}));

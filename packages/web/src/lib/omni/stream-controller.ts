@@ -142,6 +142,8 @@ export interface StreamControllerDeps {
   onSessionTitle?: (sessionId: string, title: string) => void;
   /** A new session has been registered (sub-sessions are pushed along the parent session's channel; used to refresh the Session list). */
   onSessionCreated?: (sessionId: string) => void;
+  /** Project model credentials changed while this session was open. */
+  onCredentialsUpdated?: () => void;
   /** Goal-mode progress (goal_started / goal_round / goal_finished): drives the chat page's goal banner. */
   onGoalEvent?: (ev: GoalServerEvent) => void;
   /** Local clock (injectable for tests). */
@@ -336,9 +338,7 @@ export function createStreamController(deps: StreamControllerDeps): StreamContro
         return;
       }
       case "credentials_updated":
-        // The Project's model credentials changed (Models page save): the server already
-        // invalidated cached runtimes, so the next task simply runs with the new key —
-        // nothing to update client-side.
+        deps.onCredentialsUpdated?.();
         return;
       case "hello":
         return;

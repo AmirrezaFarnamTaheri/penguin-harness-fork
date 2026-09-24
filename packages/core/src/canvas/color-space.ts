@@ -62,9 +62,10 @@ export function clamp255(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
-export function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}
+// `clamp01` lives in vector-primitives next to `clamp` (one canonical home — a duplicate
+// export here would force the canvas barrel to disambiguate). This module uses it for
+// alpha and saturation normalization.
+import { clamp01 } from "./vector-primitives.js";
 
 function toByte(v: number): number {
   return Math.round(clamp255(v));

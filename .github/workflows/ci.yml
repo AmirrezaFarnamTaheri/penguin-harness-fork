@@ -44,6 +44,21 @@ jobs:
       - name: Release publishing regression tests
         run: node --test scripts/test-release-publishing.test.mjs
 
+      # Two verification gates that existed only as npm scripts and no workflow ran:
+      # en<->zh string parity, and provenance for the published benchmark claims.
+      - name: i18n parity (en <-> zh)
+        run: pnpm check:i18n
+
+      # The published benchmark claims are consistent with both blog tables but not
+      # certified by run artifacts, so every row carries a `provisional` flag and the gate
+      # reports each suite as a warning instead of blocking. That is the only green state
+      # it accepts: an unflagged row, or an unrecognised provenance-shaped field, still
+      # fails closed, and the landing page and blog mark the provisional rows for readers.
+      # When the run artifacts land, the check that recognises them goes beside the flag
+      # and the flags come off — the gate then certifies instead of disclosing.
+      - name: Benchmark data provenance
+        run: pnpm verify:benchmark-data
+
       # A workflow that does not parse produces a run with zero jobs and no annotation
       # anywhere useful -- the failure this very file shipped once, over a double-quoted
       # string in a ${{ }} expression, where only single quotes are legal. Cheap to catch.
@@ -89,12 +104,18 @@ jobs:
             tests: pnpm --filter @prismshadow/penguin-server test
           - shard: web-cli
             build: "@prismshadow/penguin-core...,@prismshadow/penguin-web..."
-            tests: pnpm --filter @prismshadow/penguin-web --filter @prismshadow/penguin-cli test
+            # One invocation per package: a single `pnpm --filter A --filter B test` stops at
+            # the first package whose script fails, so a red `web` suite would hide every
+            # `cli` failure from this shard.
+            tests: >-
+              failed=0; for pkg in @prismshadow/penguin-web @prismshadow/penguin-cli;
+              do pnpm --filter "$pkg" test || failed=1; done; exit $failed
           - shard: rest
             build: "@prismshadow/penguin-desktop..."
             tests: >-
-              pnpm --filter @prismshadow/penguin-desktop --filter @prismshadow/penguin-landing
-              --filter @prismshadow/penguin-docs test
+              failed=0; for pkg in @prismshadow/penguin-desktop @prismshadow/penguin-landing
+              @prismshadow/penguin-docs; do pnpm --filter "$pkg" test || failed=1; done;
+              exit $failed
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
@@ -125,6 +146,34 @@ jobs:
             exit 0
           fi
           pnpm test:e2e
+
+  # The browser e2e: 75 specs over the real chat UI, driven by Playwright against a mock
+  # Anthropic SSE stream. Nothing else in this workflow exercises the rendered frontend — a
+  # regression that breaks the chat UI outright still passed every unit suite and shipped.
+  # Linux only: the specs need a headless Chromium and the suite is not port-permitting
+  # enough to pay for a second platform. The browsers are cached so the job does not
+  # re-download ~150 MB of Chromium on every run.
+  e2e-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+        with:
+          build: "@prismshadow/penguin-core...,@prismshadow/penguin-server...,@prismshadow/penguin-web"
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
+      # --with-deps installs the OS libraries Chromium needs (libnss3 et al.); the image
+      # does not ship them. Resolves through packages/web's own @playwright/test, so the
+      # browser version always matches the pinned driver.
+      - name: Install Chromium
+        run: pnpm --filter @prismshadow/penguin-web exec playwright install --with-deps chromium
+      # SKIP_BUILD=1: the setup action built core/server/web above, and run.sh would build
+      # them a second time for no reason.
+      - name: Browser e2e (Playwright + mock LLM)
+        run: SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e
 
   # macOS (arm64). This is the only place the terminal's pty suites run on darwin —
   # node-pty compiles against the runner's toolchain and its darwin-only spawn-helper
@@ -321,7 +370,17 @@ jobs:
   ci:
     if: always()
     needs:
-      [style, typecheck, test, installer-e2e, test-macos, test-windows, installer-windows, runtime]
+      [
+        style,
+        typecheck,
+        test,
+        installer-e2e,
+        e2e-browser,
+        test-macos,
+        test-windows,
+        installer-windows,
+        runtime,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Every gate passed

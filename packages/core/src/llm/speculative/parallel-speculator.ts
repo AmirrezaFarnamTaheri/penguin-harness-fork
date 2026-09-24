@@ -246,19 +246,51 @@ export class ParallelSpeculator {
     }
 
     if (draft.tokenIds.length === 0) {
-      // Target-only round: one token, no speculation.
-      const target = await this.target.verify({
-        streamId,
-        context,
-        draftTokens: [],
-        draftPointMass: true,
-      });
-      const token = target.tokenIds[0] ?? -1;
+      // Target-only round: one token, no speculation. This branch is reached when the
+      // draft already failed or was gated out, so the stream is demoted — and the
+      // module's contract is that a failed speculation never kills the serving loop.
+      // The target is the last thing that can fail, so it gets the same guard the
+      // speculative path gives it below: nothing is staged in a target-only round, so
+      // there is no suffix to roll back, but the round is still counted and the failure
+      // is reported as an outcome rather than thrown — `runBatchRound`'s `Promise.all`
+      // would otherwise let one degraded stream abort the whole batch's round.
+      let token = -1;
+      try {
+        const target = await this.target.verify({
+          streamId,
+          context,
+          draftTokens: [],
+          draftPointMass: true,
+        });
+        // Even a target-only round reveals the target's distribution, which the next
+        // round's quality gate can contrast the draft against.
+        const targetRow = target.probs[0];
+        if (targetRow) this.lastTargetRow.set(streamId, targetRow);
+        token = target.tokenIds[0] ?? -1;
+      } catch (error) {
+        stream.rounds += 1;
+        this.tracker.record({
+          streamId,
+          proposed: 0,
+          accepted: 0,
+          bonus: 0,
+          committed: 0,
+          discarded: 0,
+          durationNs: nowNs() - started,
+          priority: stream.priority,
+        });
+        return {
+          streamId,
+          committed: [],
+          acceptCount: 0,
+          allAccepted: false,
+          proposed: 0,
+          durationNs: nowNs() - started,
+          demoted: true,
+          termination: `verify-failed: ${describe(error)}`,
+        };
+      }
       if (token >= 0) ledger.appendCommitted([token]);
-      // Even a target-only round reveals the target's distribution, which the next
-      // round's quality gate can contrast the draft against.
-      const targetRow = target.probs[0];
-      if (targetRow) this.lastTargetRow.set(streamId, targetRow);
       this.tracker.record({
         streamId,
         proposed: 0,
@@ -372,10 +404,12 @@ export class ParallelSpeculator {
   }
 
   /**
-   * Runs one round across all streams. Proposals are issued concurrently — the draft
-   * forwards are independent per stream — while verification is batched by the target
-   * seam. The round outcomes are returned in registration order so callers can rely
-   * on a stable stream ordering.
+   * Runs one round across all streams. Proposals *and* verifications are issued
+   * concurrently — both seams are independent per stream, so the whole round fans out
+   * and `Promise.all` settles it. That is why `runRound` must never throw: one rejected
+   * promise would abort the round for every stream, including the healthy ones. The round
+   * outcomes are returned in registration order so callers can rely on a stable stream
+   * ordering.
    */
   async runBatchRound(): Promise<RoundOutcome[]> {
     const ids = [...this.streams.keys()];

@@ -56,10 +56,11 @@ test("a run_in_background completion reaches the open chat page unprompted", asy
     timeout: 30_000,
   });
 
-  // The launched command is a normal background process: the header stats show a running
-  // service (same registry as the promoted-past-yield path).
+  // The launched command is a normal background process: the header stats show the
+  // background-task count (same registry as the promoted-past-yield path). The pill was renamed
+  // from "运行中的服务" to "后台任务" when it grew to count subagents too (50d5e0ef1).
   const detailsBtn = page.locator('button[title="Session 信息"]');
-  await expect(detailsBtn.locator('span[title="1 个运行中的服务"]')).toBeVisible({
+  await expect(detailsBtn.locator('span[title="1 个后台任务"]')).toBeVisible({
     timeout: 10_000,
   });
 

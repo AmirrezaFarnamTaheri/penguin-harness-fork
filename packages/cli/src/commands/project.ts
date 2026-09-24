@@ -20,7 +20,7 @@ export function registerProjectCommand(program: Command, t: Messages): void {
     .option("--server <url>", t.common.server)
     .action(async (opts) => {
       const client = new ServerClient(await resolveConnection({ server: opts.server }, t), t);
-      const res = await client.request<ProjectsResponse>("GET", "/api/projects");
+      const res = await client.requestJson<ProjectsResponse>("GET", "/api/projects");
       if (opts.json === true) {
         process.stdout.write(`${JSON.stringify(res.projects)}\n`);
         return;

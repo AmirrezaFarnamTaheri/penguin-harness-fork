@@ -1,6 +1,6 @@
 {
   "name": "@prismshadow/penguin-core",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -65,6 +65,14 @@
     "./paths": {
       "types": "./dist/state/paths.d.ts",
       "import": "./dist/state/paths.js"
+    },
+    "./canvas": {
+      "types": "./dist/canvas/index.d.ts",
+      "import": "./dist/canvas/index.js"
+    },
+    "./terminal": {
+      "types": "./dist/terminal/index.d.ts",
+      "import": "./dist/terminal/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -84,6 +92,7 @@
     "@penguinharness/data-analysis": "workspace:*",
     "@penguinharness/goal": "workspace:*",
     "@penguinharness/humanizer": "workspace:*",
+    "@penguinharness/language-porting": "workspace:*",
     "@penguinharness/model-development": "workspace:*",
     "@penguinharness/skill-porting": "workspace:*",
     "@penguinharness/software-development": "workspace:*",

@@ -69,6 +69,21 @@ interface LiveSandbox {
   commands: number;
   /** Whether a command already reported it was killed or died. */
   dead: boolean;
+  /** The egress policy this sandbox is currently running under, as URL strings. */
+  egress: readonly string[];
+}
+
+/**
+ * The egress policy a command carries, as the plane receives it. An empty array is an
+ * explicit network-off, not "no policy": see `applyEgressPolicy`.
+ */
+function egressOf(command: IsolatedCommand): readonly string[] {
+  return (command.allowList ?? []).map((entry) => (typeof entry === "string" ? entry : entry.url));
+}
+
+/** Whether two egress policies are the same list in the same order. */
+function sameEgress(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((url, index) => url === b[index]);
 }
 
 /**
@@ -116,6 +131,8 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
   private readonly templateId: string;
   private readonly log: (line: string) => void;
   private readonly live = new Map<string, LiveSandbox>();
+  /** Serializes commands that share a sandbox, including policy changes and boot. */
+  private readonly sessionRuns = new Map<string, Promise<void>>();
   private readonly telemetry: ExecutionTelemetry[] = [];
   private readonly maxTelemetry: number;
   private disposed = false;
@@ -174,18 +191,57 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
     if (!command.script) {
       throw new MicrovmInvalidArgumentError("command.script is required");
     }
+    if (typeof command.sessionKey !== "string" || command.sessionKey.trim() === "") {
+      throw new MicrovmInvalidArgumentError("command.sessionKey is required");
+    }
 
+    const sessionKey = command.sessionKey;
+    const previous = this.sessionRuns.get(sessionKey);
+    let release!: () => void;
+    const done = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.sessionRuns.set(sessionKey, done);
+    if (previous) await previous;
+    try {
+      if (this.disposed) throw new MicrovmError("escalation runtime is disposed");
+      return await this.runInSession(command, sessionKey);
+    } finally {
+      release();
+      if (this.sessionRuns.get(sessionKey) === done) this.sessionRuns.delete(sessionKey);
+    }
+  }
+
+  private async runInSession(
+    command: IsolatedCommand,
+    sessionKey: string,
+  ): Promise<IsolatedResult> {
     const startedAt = performance.now();
-    const sessionKey =
-      (command as IsolatedCommand & { sessionKey?: string }).sessionKey ?? "default";
     let sandbox = this.live.get(sessionKey);
     let bootedNow = false;
 
     if (!sandbox || sandbox.dead) {
       const info = await this.bootSandbox(command, startedAt);
-      sandbox = { info, commands: 0, dead: false };
+      sandbox = { info, commands: 0, dead: false, egress: egressOf(command) };
       this.live.set(sessionKey, sandbox);
       bootedNow = true;
+    } else {
+      // A reused sandbox keeps the egress policy of its boot — but only while this command's
+      // policy agrees with it. A later command whose policy is narrower must not inherit the
+      // wider allow-list of the first command of the session.
+      const egress = egressOf(command);
+      if (!sameEgress(sandbox.egress, egress)) {
+        try {
+          await this.applyEgressPolicy(sandbox.info.id, command);
+        } catch (error) {
+          // The sandbox is now in an unknown egress state, so it must not be reused: kill the
+          // bookkeeping and let the next command boot a fresh one. This command does not run,
+          // which is the same fail-closed answer a failed boot gives.
+          await this.retireSandbox(sessionKey, sandbox);
+          throw this.translate(error, this.classifyFailure(error));
+        }
+        sandbox.egress = egress;
+      }
     }
 
     const bootMs = bootedNow ? performance.now() - startedAt : 0;
@@ -206,13 +262,13 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
       sandbox.commands += 1;
 
       if (result.timedOut) {
-        sandbox.dead = true;
+        await this.retireSandbox(sessionKey, sandbox);
       }
 
       return this.toIsolatedResult(sandbox.info.id, result, command, startedAt, bootMs);
     } catch (error) {
       // A sandbox that died cannot be reused: the next command must re-boot.
-      sandbox.dead = true;
+      await this.retireSandbox(sessionKey, sandbox);
       const failure = this.classifyFailure(error);
       this.record({
         tier: "isolated",
@@ -237,13 +293,25 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
    * needs to count, and the failure vocabulary is what makes it attributable.
    */
   private async bootSandbox(command: IsolatedCommand, startedAt: number): Promise<MicrovmInfo> {
+    let info: MicrovmInfo | undefined;
     try {
-      return await this.client.create({
+      info = await this.client.create({
         templateId: this.templateId,
         timeoutMs: DEFAULT_SANDBOX_TIMEOUT_MS,
         env: command.env,
+        // The ceilings the policy computed for this escalation are part of the boot: they have
+        // to be in place before the first script runs. The plane applies the ones it recognises
+        // and ignores the rest, so a plane without resource caps still boots.
+        ceilings: command.ceilings,
       });
+      // Egress is applied at boot so the allow-list is in place before the first script runs; a
+      // sandbox reused across later commands keeps it until a command's policy differs (see run).
+      await this.applyEgressPolicy(info.id, command);
+      return info;
     } catch (error) {
+      // A create can succeed before network configuration fails. That VM must not remain
+      // alive on the template's default policy after this command is refused.
+      if (info) await this.killQuietly(info.id);
       const failure = this.classifyFailure(error);
       this.record({
         tier: "isolated",
@@ -260,6 +328,29 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
       this.log(`microvm boot failed (${failure}): ${this.describe(error)}`);
       throw this.translate(error, failure);
     }
+  }
+
+  /**
+   * Push the command's egress allow-list into the sandbox. The runtime has already decided
+   * this escalation may reach the network; the allow-list is the limit on *where*.
+   *
+   * An empty list is not "no policy" — it is an explicit network-off the caller's capability
+   * gate decided (`EMPTY_ALLOW_LIST` in `isolated-execution-runtime.ts`), so it is pushed to
+   * the plane rather than skipped. Skipping it would leave the sandbox on whatever egress its
+   * template happens to default to, which is more access than the policy granted. The control
+   * plane distinguishes an explicit `[]` from an absent field, so the empty list does reach it.
+   *
+   * Failing the boot rather than falling back: a sandbox whose egress could not be constrained
+   * must not run an escalation the harness granted `network:outbound` to.
+   */
+  private async applyEgressPolicy(sandboxId: MicrovmId, command: IsolatedCommand): Promise<void> {
+    const egressAllowList = egressOf(command);
+    this.log(
+      egressAllowList.length === 0
+        ? `revoking egress for sandbox ${String(sandboxId)}: the policy grants no network`
+        : `constraining egress for sandbox ${String(sandboxId)} to ${egressAllowList.length} allowed origin(s)`,
+    );
+    await this.client.updateNetwork(sandboxId, { egressAllowList });
   }
 
   /** Map a client failure onto the backend's failure vocabulary. */
@@ -326,9 +417,28 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
 
   /** Release a session's sandbox. Idempotent; a second call is a no-op. */
   async releaseSession(sessionKey: string): Promise<void> {
-    const sandbox = this.live.get(sessionKey);
-    if (!sandbox) return;
-    this.live.delete(sessionKey);
+    const previous = this.sessionRuns.get(sessionKey);
+    let release!: () => void;
+    const done = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.sessionRuns.set(sessionKey, done);
+    try {
+      await previous;
+      const sandbox = this.live.get(sessionKey);
+      if (!sandbox) return;
+      this.live.delete(sessionKey);
+      await this.killQuietly(sandbox.info.id);
+    } finally {
+      release();
+      if (this.sessionRuns.get(sessionKey) === done) this.sessionRuns.delete(sessionKey);
+    }
+  }
+
+  /** Retire a sandbox after a command or policy failure so no later run reuses it. */
+  private async retireSandbox(sessionKey: string, sandbox: LiveSandbox): Promise<void> {
+    sandbox.dead = true;
+    if (this.live.get(sessionKey) === sandbox) this.live.delete(sessionKey);
     await this.killQuietly(sandbox.info.id);
   }
 
@@ -345,6 +455,7 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
   /** Release every live sandbox. Call on session end or server shutdown. */
   async dispose(): Promise<void> {
     this.disposed = true;
+    await Promise.all([...this.sessionRuns.values()]);
     const ids = [...this.live.values()].map((s) => s.info.id);
     this.live.clear();
     await Promise.all(ids.map((id) => this.killQuietly(id)));

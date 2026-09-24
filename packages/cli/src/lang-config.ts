@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { atomicWriteFile } from "@prismshadow/penguin-core";
-import type { Language } from "./i18n.js";
+import type { Language, Messages } from "./i18n.js";
 
 const BEGIN = "# >>> PenguinHarness PENGUIN_LANG >>>";
 const END = "# <<< PenguinHarness PENGUIN_LANG <<<";
@@ -94,12 +94,19 @@ export async function applyLanguageToRc(
 }
 
 /** Open an interactive shell carrying the new language env var; this process exits when the user exits that shell. */
-export function restartShell(lang: Language): void {
+export function restartShell(lang: Language, t: Messages): void {
   const shell = process.env.SHELL || "/bin/zsh";
   const child = spawn(shell, ["-i"], {
     stdio: "inherit",
     env: { ...process.env, PENGUIN_LANG: lang },
   });
   child.on("exit", (code) => process.exit(code ?? 0));
-  child.on("error", () => process.exit(1));
+  // A spawn failure (the resolved $SHELL is missing or not executable) used to exit
+  // silently, leaving the user at a dead prompt with no idea why the shell never opened.
+  // Report it and let the command finish with a failing status — the same shape the
+  // Windows refusal above uses — instead of yanking the process out from under commander.
+  child.on("error", (err) => {
+    process.stderr.write(`${t.langRestartFailed(err.message)}\n`);
+    process.exitCode = 1;
+  });
 }

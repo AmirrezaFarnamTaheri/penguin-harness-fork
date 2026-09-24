@@ -191,6 +191,54 @@ describe("session references", () => {
   });
 });
 
+describe("request bodies", () => {
+  /** Stubs globalThis.fetch with one fixed response, and undoes it. */
+  function stubFetch(respond: () => Response): () => void {
+    const saved = globalThis.fetch;
+    globalThis.fetch = (async () => respond()) as typeof globalThis.fetch;
+    return () => {
+      globalThis.fetch = saved;
+    };
+  }
+
+  it("a 204 resolves undefined (the type says so) and requestJson names the empty body", async () => {
+    // A route that answers 204 while a caller destructures the result used to hand back
+    // `undefined as T` — a TypeError on the next line, with nothing in the type to warn
+    // about it. request() now says what it can deliver, and requestJson turns the same
+    // answer into an ApiError naming the route.
+    process.env.PENGUIN_API_URL = "http://127.0.0.1:7001";
+    const client = new ServerClient(await resolveConnection({}, t), t);
+    const restore = stubFetch(() => new Response(null, { status: 204 }));
+    try {
+      await expect(client.request<{ agents: string[] }>("GET", "/api/agents")).resolves.toBe(
+        undefined,
+      );
+      await expect(client.requestJson<{ agents: string[] }>("GET", "/api/agents")).rejects.toThrow(
+        "Empty response body for GET /api/agents",
+      );
+      await expect(
+        client.requestJson<{ agents: string[] }>("GET", "/api/agents"),
+      ).rejects.toMatchObject({ code: "empty_body", status: 0 });
+    } finally {
+      restore();
+    }
+  });
+
+  it("a 200 with an empty body resolves undefined too, and requestJson refuses it", async () => {
+    process.env.PENGUIN_API_URL = "http://127.0.0.1:7001";
+    const client = new ServerClient(await resolveConnection({}, t), t);
+    const restore = stubFetch(() => new Response("", { status: 200 }));
+    try {
+      await expect(client.request<unknown>("GET", "/api/whatever")).resolves.toBeUndefined();
+      await expect(
+        client.requestJson<{ ok: boolean }>("GET", "/api/whatever"),
+      ).rejects.toMatchObject({ code: "empty_body" });
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe("option defaults", () => {
   it("project/agent ids: flag > env > built-in default", () => {
     expect(resolveProjectId(undefined)).toBe("default_project");

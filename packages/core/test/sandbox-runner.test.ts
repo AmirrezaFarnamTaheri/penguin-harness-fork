@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import fs from "node:fs";
 import { SandboxedCommandRunner } from "../src/agent/sandbox-runner.js";
 import { SwarmCoordinator } from "../src/agent/swarm-coordinator.js";
+import type { SandboxInstance, SandboxManager } from "../src/environment/sandbox-provider.js";
 
 describe("sandboxed-command-runner", () => {
   it("blocks dangerous commands before process execution", async () => {
@@ -80,5 +82,89 @@ describe("sandboxed-command-runner", () => {
     // Check ledger recorded the tool dispatch
     const replay = coordinator.getReplayView();
     expect(replay.events.some((e) => e.kind === "tool_dispatch")).toBe(true);
+  });
+
+  it("reports a spawn failure distinctly from a command that ran and exited non-zero", async () => {
+    const failingManager: SandboxManager = {
+      createSandbox: () =>
+        ({
+          id: "failing-sandbox",
+          provider: "local_process",
+          status: "running",
+          startedAt: Date.now(),
+          workingDirectory: process.cwd(),
+          env: {},
+        }) as SandboxInstance,
+      exec: async () => {
+        throw new Error("spawn ENOENT: bwrap not found");
+      },
+      terminate: () => {
+        // nothing to terminate
+      },
+    } as unknown as SandboxManager;
+
+    const runner = new SandboxedCommandRunner({
+      sandboxManager: failingManager,
+      platform: "linux",
+    });
+    const result = await runner.execute("some-command --flag");
+
+    // Before the fix this returned allowed:true with exitCode 1 — indistinguishable from a command
+    // that ran and failed, which is exactly what the turn ledger would record.
+    expect(result.allowed).toBe(false);
+    expect(result.spawnFailed).toBe(true);
+    expect(result.exitCode).toBeUndefined();
+    expect(result.error).toContain("spawn ENOENT");
+    expect(result.stderr).toContain("spawn ENOENT");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("still reports a real non-zero exit as allowed with that exit code", async () => {
+    const runner = new SandboxedCommandRunner();
+    const result = await runner.execute('node -e "process.exit(3)"');
+    expect(result.allowed).toBe(true);
+    expect(result.spawnFailed).toBeUndefined();
+    expect(result.exitCode).toBe(3);
+  });
+
+  it("writes a per-process randomized seatbelt profile with 0600 permissions", () => {
+    const first = new SandboxedCommandRunner({ platform: "darwin" });
+    const second = new SandboxedCommandRunner({ platform: "darwin" });
+
+    const planA = first.resolveExecutionPlan("echo hi", "seatbelt", "/app");
+    const planB = second.resolveExecutionPlan("echo hi", "seatbelt", "/app");
+    const pathA = planA.args[1]!;
+    const pathB = planB.args[1]!;
+
+    // Not the old fixed shared path, and not shared between two runners.
+    expect(pathA).not.toBe(pathB);
+    expect(pathA).not.toMatch(/penguin-seatbelt\.sb$/);
+    expect(pathA).toContain("penguin-seatbelt-");
+
+    // The profile the plan points at must actually exist and be private to this process.
+    // (The 0600 mode is a POSIX guarantee; Windows ignores `mode` on file creation.)
+    expect(fs.existsSync(pathA)).toBe(true);
+    if (process.platform !== "win32") {
+      expect(fs.statSync(pathA).mode & 0o777).toBe(0o600);
+    }
+    expect(fs.readFileSync(pathA, "utf8")).toContain("(deny file-read*");
+  });
+
+  it("does not point sandbox-exec at a profile it failed to write", () => {
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(() => {
+      throw new Error("EACCES: permission denied, open");
+    });
+    try {
+      const runner = new SandboxedCommandRunner({ platform: "darwin" });
+      expect(() => runner.resolveExecutionPlan("echo hi", "seatbelt", "/app")).toThrow(
+        /Seatbelt profile/,
+      );
+      // The wrapper path must fail the same way instead of emitting a dangling -f argument.
+      expect(() => runner.wrapCommandForPlatform("echo hi", "seatbelt", "/app")).toThrow(
+        /Seatbelt profile/,
+      );
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 });

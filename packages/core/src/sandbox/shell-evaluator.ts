@@ -210,6 +210,9 @@ const COMMAND_SEPARATORS: ReadonlySet<TokenType> = new Set<TokenType>([
   TokenType.COPROC,
   TokenType.TIME,
   TokenType.FUNCTION,
+  // A newline ends a command the same way `;` does; without it here, the first word of every
+  // line after the first would be read as an argument of the previous command.
+  TokenType.NEWLINE,
 ]);
 
 /**
@@ -279,6 +282,13 @@ export class ShellEvaluator {
   private stderr = "";
   private exitCode = 0;
   private lastStatus = 0;
+  /**
+   * Set by the `exit` builtin. `runPipelineList` stops at the next separator, so
+   * `exit 3; echo after` does not run `after` — and the status `exit` was called with
+   * survives as the script's exit code instead of being overwritten by the commands
+   * that should never have run.
+   */
+  private exiting = false;
 
   constructor(private readonly options: EvaluatorOptions = {}) {
     this.limits = resolveLimits(options.limits, options.profile ?? "normal");
@@ -303,6 +313,10 @@ export class ShellEvaluator {
         `script uses ${classification.reason} at line ${at?.line ?? 0} column ${at?.column ?? 0}`,
       );
     }
+
+    // Per-evaluation state: a reused instance must not carry a terminal signal out of a
+    // previous script, or an `exit` in one call would truncate the next.
+    this.exiting = false;
 
     await this.runPipelineList(classification.tokens);
 
@@ -361,34 +375,40 @@ export class ShellEvaluator {
     let current: Token[] = [];
     let separator: TokenType | null = null;
 
+    const isSeparator = (type: TokenType): boolean =>
+      type === TokenType.SEMICOLON ||
+      type === TokenType.AND_AND ||
+      type === TokenType.OR_OR ||
+      type === TokenType.NEWLINE;
+
+    // A command runs only if the operator that preceded it allows it: `&&` requires the
+    // prior status to be zero, `||` requires non-zero, everything else runs unconditionally.
+    // The separator is retained across word tokens — resetting it on every push destroyed
+    // the operator context by the time the next separator landed, so the guards below never
+    // fired and `false && echo nope` printed `nope`.
+    const separatorAllows = (preceding: TokenType | null): boolean => {
+      if (preceding === TokenType.AND_AND) return this.lastStatus === 0;
+      if (preceding === TokenType.OR_OR) return this.lastStatus !== 0;
+      return true;
+    };
+
     for (const token of tokens) {
-      if (
-        token.type === TokenType.SEMICOLON ||
-        token.type === TokenType.AND_AND ||
-        token.type === TokenType.OR_OR
-      ) {
-        if (separator === TokenType.AND_AND && this.lastStatus !== 0) {
-          current = [];
-          separator = token.type;
-          continue;
-        }
-        if (separator === TokenType.OR_OR && this.lastStatus === 0) {
-          current = [];
-          separator = token.type;
-          continue;
-        }
-        if (current.length > 0) {
+      if (isSeparator(token.type)) {
+        if (current.length > 0 && separatorAllows(separator)) {
           await this.runPipeline(current);
-          current = [];
         }
+        current = [];
         separator = token.type;
+        // `exit` terminated the script at the previous command; anything after this
+        // separator must not run, and `exitCode` must not be overwritten.
+        if (this.exiting) return;
         continue;
       }
       current.push(token);
-      separator = null;
     }
 
-    if (current.length > 0) await this.runPipeline(current);
+    if (!this.exiting && current.length > 0 && separatorAllows(separator))
+      await this.runPipeline(current);
   }
 
   /** Run one pipeline: a sequence of commands joined by `|`. */
@@ -627,8 +647,21 @@ export class ShellEvaluator {
         }
         return 0;
       }
-      case "exit":
-        return Number(args[0] ?? this.lastStatus) === 0 ? 0 : 1;
+      case "exit": {
+        // `exit` ends the script with the status it was given (the last status by default).
+        // It must both record that status — `runPipelineList` stops here rather than letting a
+        // later command overwrite `exitCode` — and return it so the builtin's caller sees it.
+        // The status is preserved as given: like the statuses other builtins already emit (`2`
+        // from `shift` misuse, `127` for a missing command), it is the caller's signal, and a
+        // real shell's `exit 3` is reported as 3. Booleanizing to 0/1 discarded the value the
+        // script asked to exit with, so `exit 3` and `exit 1` were indistinguishable.
+        const code = Number(args[0] ?? this.lastStatus);
+        this.exiting = true;
+        if (!Number.isSafeInteger(code)) return 1;
+        // POSIX truncates an out-of-range status to the low 8 bits, and a negative one is
+        // reported as 256 + n (as `exit -1` → 255 in sh/bash).
+        return ((Math.trunc(code) % 256) + 256) % 256;
+      }
       case "return":
         return Number(args[0] ?? 0) === 0 ? 0 : 1;
       case "type":

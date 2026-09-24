@@ -110,7 +110,15 @@ export function scavengeToolCalls(content: string | null | undefined): Scavenged
   if (!content || typeof content !== "string") return [];
 
   const found: ScavengedToolCall[] = [];
-  const seenCalls = new Set<string>();
+  /**
+   * Signature -> source of its first occurrence. The extraction passes overlap: a think tag is
+   * part of the content the inline pass re-scans, so the same call legitimately surfaces through
+   * several sources. A repeat reaching a *different* source is that re-extraction and is
+   * collapsed; a repeat reaching the *same* source is a genuinely distinct call (a retry after a
+   * transient error, or two reasoning branches reading the same path) and must survive — silently
+   * dropping it is the failure the sibling tool-call-ids.ts exists to prevent.
+   */
+  const firstSourceBySig = new Map<string, ScavengedToolCall["source"]>();
 
   function registerCall(name: string, rawArgs: unknown, source: ScavengedToolCall["source"]): void {
     let args: Record<string, unknown>;
@@ -133,8 +141,9 @@ export function scavengeToolCalls(content: string | null | undefined): Scavenged
     }
 
     const sig = `${name}::${JSON.stringify(args)}`;
-    if (seenCalls.has(sig)) return;
-    seenCalls.add(sig);
+    const firstSource = firstSourceBySig.get(sig);
+    if (firstSource !== undefined && firstSource !== source) return;
+    if (firstSource === undefined) firstSourceBySig.set(sig, source);
     found.push({
       id: `scavenged_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name,

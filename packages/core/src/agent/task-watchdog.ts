@@ -94,7 +94,15 @@ export class TaskWatchdog {
     if (this.currentStep !== previousStep) this.currentStepStartedAt = now;
     if (info?.action) this.lastAction = info.action;
 
-    return this.checkHealth();
+    // The driver alone owns the terminal transition. checkHealth reports an exceeded budget; it
+    // does not persist it, so a host that merely polls health cannot abort (or, once terminal,
+    // wedge) a run.
+    const status = this.checkHealth();
+    if (status.state === "timed_out" || status.state === "max_steps_exceeded") {
+      this.terminalState = status.state;
+      this.abortReason = status.abortReason;
+    }
+    return status;
   }
 
   public abort(reason: string): WatchdogStatus {
@@ -103,6 +111,11 @@ export class TaskWatchdog {
     return this.checkHealth();
   }
 
+  /**
+   * Build a terminal status snapshot. Deliberately free of side effects: it neither reads nor
+   * writes the persisted terminal transition. `checkHealth` must stay a pure read so that a host
+   * polling `isHealthy`/`getStatusSummary` cannot itself abort an otherwise-healthy run.
+   */
   private terminalStatus(
     state: TerminalWatchdogState,
     elapsedMs: number,
@@ -110,8 +123,6 @@ export class TaskWatchdog {
     warnings: string[],
     reason: string,
   ): WatchdogStatus {
-    this.terminalState = state;
-    this.abortReason ??= reason;
     return {
       state,
       currentStep: this.currentStep,
@@ -119,7 +130,7 @@ export class TaskWatchdog {
       lastHeartbeatAgeMs: heartbeatAge,
       lastAction: this.lastAction,
       warnings,
-      abortReason: this.abortReason,
+      abortReason: this.abortReason ?? reason,
     };
   }
 

@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import child_process from "node:child_process";
 import { ShellGuardian, type ShellSafetyAssessment } from "./shell-guardian.js";
 import { SandboxManager, type SandboxExecResult } from "../environment/sandbox-provider.js";
@@ -35,6 +36,15 @@ export interface SandboxExecutionResult {
   stdout?: string;
   stderr?: string;
   durationMs?: number;
+  /**
+   * The command never completed under sandbox supervision: a spawn failure, a missing sandbox
+   * binary, a seatbelt-profile error, a timeout, or an output-limit breach. Distinct from
+   * `allowed: true` + a non-zero `exitCode`, which means the command actually ran and exited.
+   * `exitCode` is intentionally absent here so the two outcomes cannot be conflated.
+   */
+  spawnFailed?: boolean;
+  /** Human-readable failure reason when `allowed` is false. */
+  error?: string;
 }
 
 const DEFAULT_SAFE_ENV_KEYS = [
@@ -82,19 +92,29 @@ export class SandboxedCommandRunner {
     return this.sandboxManager;
   }
 
-  private ensureSeatbeltProfile(): string {
+  /**
+   * Writes the macOS Seatbelt profile to a per-process randomized path. The fixed shared path
+   * (`os.tmpdir()/penguin-seatbelt.sb`) was both a multi-user collision hazard and a symlink
+   * target; and a write failure used to return that path anyway, pointing sandbox-exec at a file
+   * that does not exist. Returns null when the profile cannot be written.
+   */
+  private ensureSeatbeltProfile(): string | null {
     if (this.seatbeltProfilePath && fs.existsSync(this.seatbeltProfilePath)) {
       return this.seatbeltProfilePath;
     }
-    const profileDir = os.tmpdir();
-    const target = path.join(profileDir, "penguin-seatbelt.sb");
     const profile = `(version 1)\n(allow default)\n(deny file-read* file-write* (regex #"/(\\.(ssh|aws|kube))"))\n`;
+    const target = path.join(
+      os.tmpdir(),
+      `penguin-seatbelt-${process.pid}-${randomBytes(8).toString("hex")}.sb`,
+    );
     try {
-      fs.writeFileSync(target, profile, "utf8");
-      this.seatbeltProfilePath = target;
+      fs.writeFileSync(target, profile, { mode: 0o600, encoding: "utf8" });
     } catch {
-      this.seatbeltProfilePath = target;
+      // Never advertise a profile that was not written: sandbox-exec would fail for the wrong reason.
+      this.seatbeltProfilePath = null;
+      return null;
     }
+    this.seatbeltProfilePath = target;
     return target;
   }
 
@@ -138,7 +158,6 @@ export class SandboxedCommandRunner {
     }
 
     const isolationMode = this.resolveIsolationMode();
-    const plan = this.resolveExecutionPlan(command, isolationMode, options.workingDirectory);
 
     // Build sanitized environment without inheriting parent secrets
     const sanitizedEnv: Record<string, string> = {};
@@ -162,6 +181,9 @@ export class SandboxedCommandRunner {
 
     const startTime = Date.now();
     try {
+      // Resolving the plan can itself fail (a seatbelt profile it cannot write), so it belongs
+      // inside the guard: a preparation failure is an execution failure, not an exit code.
+      const plan = this.resolveExecutionPlan(command, isolationMode, options.workingDirectory);
       const execResult: SandboxExecResult = await this.sandboxManager.exec(
         sandbox.id,
         plan.executable,
@@ -188,15 +210,17 @@ export class SandboxedCommandRunner {
         // ignore
       }
 
+      const message = err instanceof Error ? err.message : String(err);
       return {
         command,
-        allowed: true,
+        allowed: false,
+        spawnFailed: true,
+        error: message,
         riskAssessment: assessment,
         platform: this.platform,
         isolationMode,
-        exitCode: (err as any)?.exitCode ?? (err as any)?.status ?? 1,
-        stdout: (err as any)?.stdout ?? "",
-        stderr: err instanceof Error ? err.message : String(err),
+        stdout: (err as { stdout?: string })?.stdout ?? "",
+        stderr: message,
         durationMs,
       };
     }
@@ -234,6 +258,11 @@ export class SandboxedCommandRunner {
   ): { executable: string; args: string[]; shell: boolean } {
     if (mode === "seatbelt") {
       const profilePath = this.ensureSeatbeltProfile();
+      if (!profilePath) {
+        throw new Error(
+          "Failed to write the macOS Seatbelt profile; cannot prepare sandboxed execution.",
+        );
+      }
       return {
         executable: "/usr/bin/sandbox-exec",
         args: ["-f", profilePath, "/bin/sh", "-lc", command],
@@ -282,6 +311,9 @@ export class SandboxedCommandRunner {
   ): string {
     if (mode === "seatbelt") {
       const profilePath = this.ensureSeatbeltProfile();
+      if (!profilePath) {
+        throw new Error("Failed to write the macOS Seatbelt profile; cannot wrap the command.");
+      }
       return `sandbox-exec -f "${profilePath}" /bin/sh -lc ${JSON.stringify(command)}`;
     }
 

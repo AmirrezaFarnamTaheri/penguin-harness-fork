@@ -225,17 +225,23 @@ test("minimap ticks + hover preview + jump, five-turn gate, sticky group header,
     container.scrollTop = card.offsetTop + 400;
     const ct = container.getBoundingClientRect().top;
     const row = [...document.querySelectorAll("button[aria-expanded]")].find((b) =>
-      b.textContent.includes("exec_command"),
+      b.textContent.includes("执行命令"),
     );
+    if (!row) throw new Error("expanded exec_command tool row was not found");
+    const stickyRow = row.parentElement;
+    if (!stickyRow?.classList.contains("sticky")) {
+      throw new Error("tool row's sticky bar wrapper was not found");
+    }
     return {
       delta: Math.abs(head.getBoundingClientRect().top - ct),
-      rowDelta: row.getBoundingClientRect().top - ct,
+      rowDelta: stickyRow.getBoundingClientRect().top - ct,
+      headerBottomDelta: head.getBoundingClientRect().bottom - ct,
       headerHeight: head.getBoundingClientRect().height,
       cardAboveFold: card.getBoundingClientRect().top < ct,
     };
   });
   expect(stuck.delta).toBeLessThan(2);
-  expect(Math.abs(stuck.rowDelta - stuck.headerHeight)).toBeLessThan(2); // stacked right below
+  expect(Math.abs(stuck.rowDelta - stuck.headerBottomDelta)).toBeLessThan(2); // stacked right below
   expect(stuck.cardAboveFold).toBeTruthy();
 
   // Collapsing from the stuck header lands the view back on the group, not on unrelated content.

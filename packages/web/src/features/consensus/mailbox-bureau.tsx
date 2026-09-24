@@ -5,6 +5,8 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { RequiredMark } from "../../components/ui/field";
+import type { Locale } from "../../state/locale";
+import { consensusCopy } from "./consensus-copy";
 
 /**
  * When the cockpit supplies live mailbox entries, they replace the demo
@@ -12,7 +14,14 @@ import { RequiredMark } from "../../components/ui/field";
  * leases (folded from the cockpit WS snapshot). This view is read-only in
  * live mode; the local demo composer is not exposed alongside live queues.
  */
-export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
+export function MailboxBureau({
+  entries,
+  locale = "en",
+}: {
+  entries?: LiveMailboxEntry[];
+  locale?: Locale;
+}) {
+  const c = consensusCopy(locale);
   const [mailboxes, setMailboxes] = useState<MailboxSummary[]>(() => [
     {
       agentName: "agent-orchestrator",
@@ -166,7 +175,7 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-gray-200 dark:border-gray-800">
         <div>
           <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-            {isLive ? "Messages (live)" : "Messages (local demo)"}
+            {isLive ? c.messagesLive : c.messagesDemo}
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
             {isLive
@@ -177,7 +186,7 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
 
         {!isLive && (
           <Button size="sm" variant="primary" onClick={() => setDispatchOpen(true)}>
-            Compose demo message
+            {c.composeMessage}
           </Button>
         )}
       </div>
@@ -285,15 +294,15 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
       {!isLive && (
         <Modal
           open={dispatchOpen}
-          title="Compose demo message"
+          title={c.composeMessage}
           onClose={() => setDispatchOpen(false)}
           footer={
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setDispatchOpen(false)}>
-                Cancel
+                {c.cancel}
               </Button>
               <Button size="sm" variant="primary" onClick={handleDispatchMessage}>
-                Add demo message
+                {c.addDemoMessage}
               </Button>
             </div>
           }
@@ -305,7 +314,7 @@ export function MailboxBureau({ entries }: { entries?: LiveMailboxEntry[] }) {
                   From Agent
                 </label>
                 <Input
-                  aria-label="From agent"
+                  aria-label={c.fromAgent}
                   value={fromAgent}
                   onChange={(e) => setFromAgent(e.target.value)}
                   size="sm"

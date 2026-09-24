@@ -35,6 +35,9 @@ const context = (name) => ({
   contextClosed: false,
   contextWindow: 1000,
   compactionThreshold: 800,
+  // The measured occupancy (latest normal request's total; never inferred from the parts).
+  // Without it the allocation bar reports "no measurement" and renders no capacity bar.
+  occupancyTokens: 300,
 });
 async function boot(page) {
   const errors = [];
@@ -157,6 +160,32 @@ test("memory inspection reads real scopes, opens documents and tests keyword rec
   await page.route("**/memory/scopes/*/files/notes.md", (route) =>
     json(route, { file: topic, content: "# Notes\nRemember the release checklist." }),
   );
+  // The recall simulator runs a live server search (9c7589d77), not a local estimate, so the
+  // query needs its own mock: word-overlap relevance, the way the server scores a file.
+  await page.route("**/memory/search*", (route) => {
+    const q = new URL(route.request().url()).searchParams.get("q") ?? "";
+    const words = q
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    const content = "# Notes\nRemember the release checklist.".toLowerCase();
+    const hit = words.length ? words.filter((w) => content.includes(w)).length / words.length : 0;
+    json(route, {
+      query: q,
+      results:
+        hit > 0
+          ? [
+              {
+                scopeKey: "workspace-a",
+                fileName: "notes.md",
+                relevance: hit,
+                tokens: 20,
+                snippet: "Remember the release checklist.",
+              },
+            ]
+          : [],
+    });
+  });
   const errors = await boot(page);
   await page.getByRole("button", { name: "Open memory" }).click();
   await page.getByRole("button", { name: /Actual saved notes/ }).click();

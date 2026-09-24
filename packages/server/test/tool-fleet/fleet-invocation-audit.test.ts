@@ -150,6 +150,23 @@ describe("FleetInvocationAudit", () => {
     expect(onDisk.toString("utf8")).not.toContain("gh issue create");
   });
 
+  it("serializes concurrent auto-flushes without losing audit records", async () => {
+    const dir = await makeDir();
+    dirs.push(dir);
+    const filePath = path.join(dir, "audit.bin");
+    const audit = new FleetInvocationAudit({ filePath, auditKey: SEAL_KEY });
+
+    await Promise.all(
+      Array.from({ length: 24 }, (_, index) =>
+        audit.record(entry({ at: NOW + index, durationMs: index })),
+      ),
+    );
+
+    const reopened = new FleetInvocationAudit({ filePath, auditKey: SEAL_KEY, autoFlush: false });
+    expect(await reopened.load()).toBe(24);
+    expect(reopened.verify()).toBe(true);
+  });
+
   it("round-trips through disk and re-verifies", async () => {
     const dir = await makeDir();
     dirs.push(dir);

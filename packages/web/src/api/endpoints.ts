@@ -209,12 +209,12 @@ import type {
   SpendFlowReport,
   PersonaMask,
 } from "@prismshadow/penguin-core/browser";
-import { apiFetch, apiFetchWithMeta } from "./client";
+import { apiFetch, apiFetchJson, apiFetchJsonWithMeta } from "./client";
 
 // Auth & user -----------------------------------------------------------------
 
 export const login = (body: AuthLoginRequest) =>
-  apiFetch<AuthResponse>("/api/auth/login", { method: "POST", body });
+  apiFetchJson<AuthResponse>("/api/auth/login", { method: "POST", body });
 
 export const logout = () => apiFetch<void>("/api/auth/logout", { method: "POST", body: {} });
 
@@ -222,25 +222,25 @@ export const logout = () => apiFetch<void>("/api/auth/logout", { method: "POST",
  * The data root's install identity (public — no session needed, which is the point: the web
  * app asks before it knows whether anyone is signed in). See lib/install-scope.ts.
  */
-export const getInstall = () => apiFetch<InstallResponse>("/api/install");
+export const getInstall = () => apiFetchJson<InstallResponse>("/api/install");
 
 export const getMe = (options: { handleUnauthorized?: boolean } = {}) =>
-  apiFetch<MeResponse>("/api/me", options);
+  apiFetchJson<MeResponse>("/api/me", options);
 
 export const changePassword = (body: PasswordChangeRequest) =>
   apiFetch<void>("/api/me/password", { method: "PUT", body });
 
-export const getPrefs = () => apiFetch<PrefsResponse>("/api/me/prefs");
+export const getPrefs = () => apiFetchJson<PrefsResponse>("/api/me/prefs");
 
 export const putPrefs = (prefs: UiPrefs) =>
-  apiFetch<PrefsResponse>("/api/me/prefs", { method: "PUT", body: prefs });
+  apiFetchJson<PrefsResponse>("/api/me/prefs", { method: "PUT", body: prefs });
 
 // Admin user management (admin only) -----------------------------------------------------
 
-export const adminListUsers = () => apiFetch<AdminUsersResponse>("/api/admin/users");
+export const adminListUsers = () => apiFetchJson<AdminUsersResponse>("/api/admin/users");
 
 export const adminCreateUser = (body: AdminUserCreateRequest) =>
-  apiFetch<AdminUserCreateResponse>("/api/admin/users", { method: "POST", body });
+  apiFetchJson<AdminUserCreateResponse>("/api/admin/users", { method: "POST", body });
 
 export const adminResetPassword = (userId: string, body: AdminPasswordResetRequest) =>
   apiFetch<void>(`/api/admin/users/${encodeURIComponent(userId)}/password`, {
@@ -252,11 +252,11 @@ export const adminDeleteUser = (userId: string) =>
   apiFetch<void>(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
 
 /** Server-global settings (admin only): currently the "use system HTTP proxy" switch. */
-export const adminGetSettings = () => apiFetch<ServerSettingsResponse>("/api/admin/settings");
+export const adminGetSettings = () => apiFetchJson<ServerSettingsResponse>("/api/admin/settings");
 
 /** Omitted fields keep their current value; applies immediately (no restart). */
 export const adminPutSettings = (body: ServerSettingsUpdateRequest) =>
-  apiFetch<ServerSettingsResponse>("/api/admin/settings", { method: "PUT", body });
+  apiFetchJson<ServerSettingsResponse>("/api/admin/settings", { method: "PUT", body });
 
 /**
  * What the reachability probe would request — name and exact URL per provider — without
@@ -264,7 +264,7 @@ export const adminPutSettings = (body: ServerSettingsUpdateRequest) =>
  * drift from the ones actually fetched.
  */
 export const adminGetProxyProbeTargets = () =>
-  apiFetch<ProxyProbeTargetsResponse>("/api/admin/settings/proxy-probe");
+  apiFetchJson<ProxyProbeTargetsResponse>("/api/admin/settings/proxy-probe");
 
 /**
  * Measures the server's own outbound path to ONE of those targets, unauthenticated. One
@@ -272,18 +272,20 @@ export const adminGetProxyProbeTargets = () =>
  * provider id is the only thing sent, and the server matches it against the same fixed list.
  */
 export const adminProbeProxy = (provider: ProxyProbeProvider) =>
-  apiFetch<ProxyProbeResponse>(`/api/admin/settings/proxy-probe/${provider}`, { method: "POST" });
+  apiFetchJson<ProxyProbeResponse>(`/api/admin/settings/proxy-probe/${provider}`, {
+    method: "POST",
+  });
 
 // Project & members --------------------------------------------------------------
 
-export const listProjects = () => apiFetch<ProjectsResponse>("/api/projects");
+export const listProjects = () => apiFetchJson<ProjectsResponse>("/api/projects");
 
 export const createProject = (body: ProjectCreateRequest) =>
-  apiFetch<ProjectCreateResponse>("/api/projects", { method: "POST", body });
+  apiFetchJson<ProjectCreateResponse>("/api/projects", { method: "POST", body });
 
 /** Rename a Project's display name (owner); the id is immutable. */
 export const updateProject = (projectId: string, body: ProjectUpdateRequest) =>
-  apiFetch<ProjectUpdateResponse>(`/api/projects/${encodeURIComponent(projectId)}`, {
+  apiFetchJson<ProjectUpdateResponse>(`/api/projects/${encodeURIComponent(projectId)}`, {
     method: "PATCH",
     body,
   });
@@ -292,10 +294,10 @@ export const deleteProject = (projectId: string) =>
   apiFetch<void>(`/api/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
 
 export const listMembers = (projectId: string) =>
-  apiFetch<MembersResponse>(`/api/projects/${encodeURIComponent(projectId)}/members`);
+  apiFetchJson<MembersResponse>(`/api/projects/${encodeURIComponent(projectId)}/members`);
 
 export const addMember = (projectId: string, body: MemberAddRequest) =>
-  apiFetch<MemberAddResponse>(`/api/projects/${encodeURIComponent(projectId)}/members`, {
+  apiFetchJson<MemberAddResponse>(`/api/projects/${encodeURIComponent(projectId)}/members`, {
     method: "POST",
     body,
   });
@@ -308,25 +310,25 @@ export const removeMember = (projectId: string, username: string) =>
 
 /** New-chat defaults ([default_chat]): member-readable prefill for the draft page. */
 export const getChatDefaults = (projectId: string) =>
-  apiFetch<ChatDefaultsDto>(`/api/projects/${encodeURIComponent(projectId)}/chat-defaults`);
+  apiFetchJson<ChatDefaultsDto>(`/api/projects/${encodeURIComponent(projectId)}/chat-defaults`);
 
 /** Whole-block replace (owner): an omitted key clears it; returns the stored block. */
 export const putChatDefaults = (projectId: string, body: ChatDefaultsDto) =>
-  apiFetch<ChatDefaultsDto>(`/api/projects/${encodeURIComponent(projectId)}/chat-defaults`, {
+  apiFetchJson<ChatDefaultsDto>(`/api/projects/${encodeURIComponent(projectId)}/chat-defaults`, {
     method: "PUT",
     body,
   });
 
 /** Sandbox command policy ([command_policy]): member-readable; carries the factory set for "restore defaults". */
 export const getCommandPolicy = (projectId: string) =>
-  apiFetch<CommandPolicyDto>(`/api/projects/${encodeURIComponent(projectId)}/command-policy`);
+  apiFetchJson<CommandPolicyDto>(`/api/projects/${encodeURIComponent(projectId)}/command-policy`);
 
 /** Whole-block replace (owner): the full rule list is required and gets materialized into the config. */
 export const putCommandPolicy = (
   projectId: string,
   body: { enabled: boolean; rules: CommandPolicyRuleDto[] },
 ) =>
-  apiFetch<CommandPolicyDto>(`/api/projects/${encodeURIComponent(projectId)}/command-policy`, {
+  apiFetchJson<CommandPolicyDto>(`/api/projects/${encodeURIComponent(projectId)}/command-policy`, {
     method: "PUT",
     body,
   });
@@ -334,45 +336,48 @@ export const putCommandPolicy = (
 // Model configuration -------------------------------------------------------------------
 
 export const getModels = (projectId: string) =>
-  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`);
+  apiFetchJson<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`);
 
 export const putModels = (projectId: string, body: ModelsUpdateRequest) =>
-  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
+  apiFetchJson<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models`, {
     method: "PUT",
     body,
   });
 
 /** Narrow default-model switch (owner): flips the same default_model the models page maintains, without resending the table. */
 export const putDefaultModel = (projectId: string, body: DefaultModelUpdateRequest) =>
-  apiFetch<DefaultModelResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/default`, {
-    method: "PUT",
-    body,
-  });
+  apiFetchJson<DefaultModelResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/default`,
+    {
+      method: "PUT",
+      body,
+    },
+  );
 
 /** Connectivity test: model reference (provider, modelId) is passed in the request body (may include an unsaved apiKey / baseUrl). */
 export const testModel = (projectId: string, body: ModelTestRequest) =>
-  apiFetch<ModelTestResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/test`, {
+  apiFetchJson<ModelTestResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/test`, {
     method: "POST",
     body,
   });
 
 /** Protocol auto-detection for a custom base URL: probes openai-responses → ant-messages → openai-chat and returns the first protocol the endpoint serves. */
 export const detectProtocol = (projectId: string, body: ModelProtocolDetectRequest) =>
-  apiFetch<ModelProtocolDetectResponse>(
+  apiFetchJson<ModelProtocolDetectResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/models/detect`,
     { method: "POST", body },
   );
 
 /** Endpoint model listing: given a base URL plus the protocol /detect reported, returns every model id the endpoint serves (the add-group import). */
 export const listEndpointModels = (projectId: string, body: EndpointModelListRequest) =>
-  apiFetch<EndpointModelListResponse>(
+  apiFetchJson<EndpointModelListResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/models/list`,
     { method: "POST", body },
   );
 
 /** Vision probe: sends one 1x1 image on this model's credential and reports whether it was accepted (a real, billed completion — unlike the protocol probes). */
 export const detectVision = (projectId: string, body: ModelVisionDetectRequest) =>
-  apiFetch<ModelVisionDetectResponse>(
+  apiFetchJson<ModelVisionDetectResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/models/detect-vision`,
     { method: "POST", body },
   );
@@ -383,7 +388,7 @@ export const getModelKeyHealth = (projectId: string, provider?: string, modelId?
     provider && modelId
       ? `?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`
       : "";
-  return apiFetch<
+  return apiFetchJson<
     import("../features/models/model-keys-health").ModelKeyHealthReportDto & {
       reports?: import("../features/models/model-keys-health").ModelKeyHealthReportDto[];
     }
@@ -392,7 +397,7 @@ export const getModelKeyHealth = (projectId: string, provider?: string, modelId?
 
 /** Resets rate limits and eviction status for a model's API keys. */
 export const resetModelKeys = (projectId: string, provider?: string, modelId?: string) =>
-  apiFetch<{
+  apiFetchJson<{
     ok: boolean;
     report?: import("../features/models/model-keys-health").ModelKeyHealthReportDto;
   }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`, {
@@ -402,7 +407,7 @@ export const resetModelKeys = (projectId: string, provider?: string, modelId?: s
 
 /** Reveals the saved plaintext API key for a model (project owner only). */
 export const getModelApiKey = (projectId: string, provider: string, modelId: string) =>
-  apiFetch<{ provider: string; modelId: string; apiKey: string }>(
+  apiFetchJson<{ provider: string; modelId: string; apiKey: string }>(
     `/api/projects/${encodeURIComponent(projectId)}/models/key?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`,
   );
 
@@ -416,10 +421,13 @@ export const putModelGroupDefaults = (
     applyToExisting?: boolean;
   },
 ) =>
-  apiFetch<ModelsResponse>(`/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`, {
-    method: "PUT",
-    body,
-  });
+  apiFetchJson<ModelsResponse>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/group-defaults`,
+    {
+      method: "PUT",
+      body,
+    },
+  );
 
 // Provider key minting (owner) ----------------------------------------------------------
 
@@ -429,20 +437,20 @@ export const putModelGroupDefaults = (
  * this side only ever holds the flow id.
  */
 export const startModelOAuth = (projectId: string, body: ModelOAuthStartRequest) =>
-  apiFetch<ModelOAuthStartResponse>(
+  apiFetchJson<ModelOAuthStartResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/model-oauth/start`,
     { method: "POST", body },
   );
 
 /** Where a flow stands; 404 once it has expired. */
 export const getModelOAuthStatus = (projectId: string, flowId: string) =>
-  apiFetch<ModelOAuthStatusResponse>(
+  apiFetchJson<ModelOAuthStatusResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/model-oauth/${encodeURIComponent(flowId)}`,
   );
 
 /** Redeems a code the user pasted, for when the provider's redirect cannot reach the harness. */
 export const submitModelOAuthCode = (projectId: string, flowId: string, code: string) =>
-  apiFetch<ModelOAuthCodeResponse>(
+  apiFetchJson<ModelOAuthCodeResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/model-oauth/${encodeURIComponent(flowId)}/code`,
     { method: "POST", body: { code } },
   );
@@ -450,33 +458,33 @@ export const submitModelOAuthCode = (projectId: string, flowId: string, code: st
 // Vault environment variables (Agent-level) -------------------------------------------------------
 
 export const getVault = (projectId: string, agentId: string) =>
-  apiFetch<VaultResponse>(
+  apiFetchJson<VaultResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/vault`,
   );
 
 export const putVault = (projectId: string, agentId: string, body: VaultUpdateRequest) =>
-  apiFetch<VaultResponse>(
+  apiFetchJson<VaultResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/vault`,
     { method: "PUT", body },
   );
 
 /** Inserts the {{VAULT}} placeholder into the agent's prompt template — migrating a legacy hardcoded # Vault section verbatim when one is present (idempotent, owner-only). */
 export const insertVaultPlaceholder = (projectId: string, agentId: string) =>
-  apiFetch<AgentVaultConfigDto>(
+  apiFetchJson<AgentVaultConfigDto>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/vault/template-placeholder`,
     { method: "POST", body: {} },
   );
 
 /** Inserts the {{SKILLS}} placeholder into the agent's prompt template — migrating a legacy hardcoded # Skills section verbatim when one is present (idempotent). */
 export const insertSkillsPlaceholder = (projectId: string, agentId: string) =>
-  apiFetch<AgentSkillsConfigDto>(
+  apiFetchJson<AgentSkillsConfigDto>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/skills/template-placeholder`,
     { method: "POST", body: {} },
   );
 
 /** Inserts the {{SCHEDULES}} placeholder into the agent's prompt template (idempotent, owner-only; Schedules has no legacy section to migrate). */
 export const insertSchedulesPlaceholder = (projectId: string, agentId: string) =>
-  apiFetch<AgentSchedulesConfigDto>(
+  apiFetchJson<AgentSchedulesConfigDto>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/schedules/template-placeholder`,
     { method: "POST", body: {} },
   );
@@ -491,26 +499,26 @@ const memoryFilesBase = (projectId: string, agentId: string, scopeKey: string) =
   `${memoryBase(projectId, agentId)}/scopes/${encodeURIComponent(scopeKey)}/files`;
 
 export const getMemoryOverview = (projectId: string, agentId: string) =>
-  apiFetch<MemoryOverviewResponse>(memoryBase(projectId, agentId));
+  apiFetchJson<MemoryOverviewResponse>(memoryBase(projectId, agentId));
 
 /** Inserts the {{MEMORY}} placeholder into the agent's prompt template (idempotent) — the explicit adoption path for an agent created before Memory. */
 export const insertMemoryPlaceholder = (projectId: string, agentId: string) =>
-  apiFetch<MemoryOverviewResponse>(`${memoryBase(projectId, agentId)}/template-placeholder`, {
+  apiFetchJson<MemoryOverviewResponse>(`${memoryBase(projectId, agentId)}/template-placeholder`, {
     method: "POST",
     body: {},
   });
 
 export const getMemoryFiles = (projectId: string, agentId: string, scopeKey: string) =>
-  apiFetch<MemoryFilesResponse>(memoryFilesBase(projectId, agentId, scopeKey));
+  apiFetchJson<MemoryFilesResponse>(memoryFilesBase(projectId, agentId, scopeKey));
 
 /** Lexical search across every scope's topic files — the recall simulator's server-side query. */
 export const getMemorySearch = (projectId: string, agentId: string, query: string) =>
-  apiFetch<MemorySearchResponse>(
+  apiFetchJson<MemorySearchResponse>(
     `${memoryBase(projectId, agentId)}/search?q=${encodeURIComponent(query)}`,
   );
 
 export const getMemoryFile = (projectId: string, agentId: string, scopeKey: string, name: string) =>
-  apiFetch<MemoryFileResponse>(
+  apiFetchJson<MemoryFileResponse>(
     `${memoryFilesBase(projectId, agentId, scopeKey)}/${encodeURIComponent(name)}`,
   );
 
@@ -534,7 +542,7 @@ const memoryScopeBase = (projectId: string, agentId: string, scopeKey: string) =
  * Content-Disposition, for anyone opening the URL directly.
  */
 export const exportMemoryScope = (projectId: string, agentId: string, scopeKey: string) =>
-  apiFetch<MemoryScopeExport>(`${memoryScopeBase(projectId, agentId, scopeKey)}/export`);
+  apiFetchJson<MemoryScopeExport>(`${memoryScopeBase(projectId, agentId, scopeKey)}/export`);
 
 /** Writes a transfer document into one scope (owner only); `confirm` is required by the modes that would destroy something. */
 export const importMemoryScope = (
@@ -543,7 +551,7 @@ export const importMemoryScope = (
   scopeKey: string,
   body: MemoryImportRequest,
 ) =>
-  apiFetch<MemoryImportResponse>(`${memoryScopeBase(projectId, agentId, scopeKey)}/import`, {
+  apiFetchJson<MemoryImportResponse>(`${memoryScopeBase(projectId, agentId, scopeKey)}/import`, {
     method: "POST",
     body,
   });
@@ -551,16 +559,16 @@ export const importMemoryScope = (
 // Agent & its configuration ----------------------------------------------------------------
 
 export const listAgents = (projectId: string) =>
-  apiFetch<AgentsResponse>(`/api/projects/${encodeURIComponent(projectId)}/agents`);
+  apiFetchJson<AgentsResponse>(`/api/projects/${encodeURIComponent(projectId)}/agents`);
 
 export const createAgent = (projectId: string, body: AgentCreateRequest) =>
-  apiFetch<AgentCreateResponse>(`/api/projects/${encodeURIComponent(projectId)}/agents`, {
+  apiFetchJson<AgentCreateResponse>(`/api/projects/${encodeURIComponent(projectId)}/agents`, {
     method: "POST",
     body,
   });
 
 export const getAgentConfig = (projectId: string, agentId: string) =>
-  apiFetch<AgentConfigResponse>(
+  apiFetchJson<AgentConfigResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/config`,
   );
 
@@ -569,28 +577,28 @@ export const putAgentConfig = (
   agentId: string,
   body: AgentConfigUpdateRequest,
 ) =>
-  apiFetch<AgentConfigResponse>(
+  apiFetchJson<AgentConfigResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/config`,
     { method: "PUT", body },
   );
 
 /** Probes one MCP Server entry's reachability (server-side connect + tool discovery; nothing is saved). */
 export const testAgentMcpServer = (projectId: string, agentId: string, body: MCPServerConfig) =>
-  apiFetch<McpServerTestResponse>(
+  apiFetchJson<McpServerTestResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/config/mcp-test`,
     { method: "POST", body },
   );
 
 /** Overwrite system_config.yaml with the current defaults (keeps only name/description/version). */
 export const resetAgentConfig = (projectId: string, agentId: string) =>
-  apiFetch<AgentConfigResponse>(
+  apiFetchJson<AgentConfigResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/config/reset`,
     { method: "POST" },
   );
 
 /** Smart-merge the config up to the current defaults generation (customizations kept and reported); non-destructive sibling of resetAgentConfig. */
 export const kernelUpdateAgentConfig = (projectId: string, agentId: string) =>
-  apiFetch<AgentKernelUpdateResponse>(
+  apiFetchJson<AgentKernelUpdateResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/config/kernel-update`,
     { method: "POST" },
   );
@@ -621,14 +629,14 @@ export const listSessions = (
       (opts.workspaceGroup ? `&workspaceGroup=${encodeURIComponent(opts.workspaceGroup)}` : "") +
       (opts.withCounts ? "&counts=1" : "")
     : "";
-  return apiFetch<SessionsResponse>(
+  return apiFetchJson<SessionsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/sessions${qs}`,
   );
 };
 
 /** Server directory browsing: `path` is an absolute path; empty means start from the server's home directory. */
 export const listDirs = (projectId: string, path = "") =>
-  apiFetch<DirListResponse>(
+  apiFetchJson<DirListResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/dirs?path=${encodeURIComponent(path)}`,
   );
 
@@ -637,27 +645,27 @@ export const listDirs = (projectId: string, path = "") =>
  * creation would offer to install. `path` must be absolute.
  */
 export const listDirectorySkills = (projectId: string, path: string) =>
-  apiFetch<DirectorySkillsResponse>(
+  apiFetchJson<DirectorySkillsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/dir-skills?path=${encodeURIComponent(path)}`,
   );
 
 export const createSession = (projectId: string, agentId: string, body: SessionCreateRequest) =>
-  apiFetch<SessionCreateResponse>(
+  apiFetchJson<SessionCreateResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/sessions`,
     { method: "POST", body },
   );
 
 export const forkSession = (sessionId: string, body: SessionForkRequest) =>
-  apiFetch<SessionForkResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, {
+  apiFetchJson<SessionForkResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/fork`, {
     method: "POST",
     body,
   });
 
 export const getSession = (sessionId: string) =>
-  apiFetch<SessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}`);
+  apiFetchJson<SessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}`);
 
 export const patchSession = (sessionId: string, body: SessionPatchRequest) =>
-  apiFetch<SessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+  apiFetchJson<SessionResponse>(`/api/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",
     body,
   });
@@ -669,25 +677,27 @@ export const deleteSession = (sessionId: string) =>
 
 /** The channel-agnostic read: every saved channel config + status (the channel-aware editor's load + poll). */
 export const getMessagingBinding = (sessionId: string) =>
-  apiFetch<MessagingBindingsResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/messaging`);
+  apiFetchJson<MessagingBindingsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/messaging`,
+  );
 
 /** Saves Feishu credentials only — the connection toggle is setMessagingBindingState (an enabled binding restarts on save so config and connection never diverge). */
 export const putFeishuBinding = (sessionId: string, body: FeishuBindingPutRequest) =>
-  apiFetch<FeishuBindingResponse>(
+  apiFetchJson<FeishuBindingResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/feishu`,
     { method: "PUT", body },
   );
 
 /** Saves the Telegram token only — the same save/enable split as the Feishu PUT. */
 export const putTelegramBinding = (sessionId: string, body: TelegramBindingPutRequest) =>
-  apiFetch<TelegramBindingResponse>(
+  apiFetchJson<TelegramBindingResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/telegram`,
     { method: "PUT", body },
   );
 
 /** Saves the QQ App ID / App Secret pair only — the same save/enable split as the Feishu PUT. */
 export const putQQBinding = (sessionId: string, body: QQBindingPutRequest) =>
-  apiFetch<QQBindingResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq`, {
+  apiFetchJson<QQBindingResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq`, {
     method: "PUT",
     body,
   });
@@ -697,7 +707,7 @@ export const putQQBinding = (sessionId: string, body: QQBindingPutRequest) =>
  * comes only from a scan, so a PUT before one answers 400 `wechat_token_required`.
  */
 export const putWeChatBinding = (sessionId: string, body: WeChatBindingPutRequest) =>
-  apiFetch<WeChatBindingResponse>(
+  apiFetchJson<WeChatBindingResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/wechat`,
     { method: "PUT", body },
   );
@@ -708,21 +718,21 @@ export const setMessagingBindingState = (
   channel: MessagingChannel,
   enabled: boolean,
 ) =>
-  apiFetch<FeishuBindingResponse | TelegramBindingResponse | QQBindingResponse>(
+  apiFetchJson<FeishuBindingResponse | TelegramBindingResponse | QQBindingResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/${channel}/state`,
     { method: "POST", body: { enabled } },
   );
 
 /** Feishu credential probe with the form's draft values; omitted fields fall back to the stored binding. */
 export const testFeishuBinding = (sessionId: string, body: FeishuTestRequest) =>
-  apiFetch<FeishuTestResponse>(
+  apiFetchJson<FeishuTestResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/feishu/test`,
     { method: "POST", body },
   );
 
 /** Telegram credential probe (`getMe`); success additionally names the bot's @username. */
 export const testTelegramBinding = (sessionId: string, body: TelegramTestRequest) =>
-  apiFetch<TelegramTestResponse>(
+  apiFetchJson<TelegramTestResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/telegram/test`,
     { method: "POST", body },
   );
@@ -732,7 +742,7 @@ export const testTelegramBinding = (sessionId: string, body: TelegramTestRequest
  * a task handle — never the AES key that decrypts the App Secret, which stays on the server.
  */
 export const startQQScan = (sessionId: string) =>
-  apiFetch<QQScanStartResponse>(
+  apiFetchJson<QQScanStartResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq/scan`,
     {
       method: "POST",
@@ -742,7 +752,7 @@ export const startQQScan = (sessionId: string) =>
 
 /** One poll of a scan. `completed` means the server already decrypted and SAVED the credentials. */
 export const pollQQScan = (sessionId: string, taskId: string) =>
-  apiFetch<QQScanPollResponse>(
+  apiFetchJson<QQScanPollResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq/scan/poll`,
     { method: "POST", body: { taskId } },
   );
@@ -760,14 +770,14 @@ export const cancelQQScan = (sessionId: string, taskId: string) =>
  * which is what collects the bot token, stays on the server.
  */
 export const startWeChatScan = (sessionId: string) =>
-  apiFetch<WeChatScanStartResponse>(
+  apiFetchJson<WeChatScanStartResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/wechat/scan`,
     { method: "POST", body: {} },
   );
 
 /** One poll of a scan. `completed` means the server has already SAVED the credential. */
 export const pollWeChatScan = (sessionId: string, taskId: string) =>
-  apiFetch<WeChatScanPollResponse>(
+  apiFetchJson<WeChatScanPollResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/wechat/scan/poll`,
     { method: "POST", body: { taskId } },
   );
@@ -791,21 +801,21 @@ export const cancelWeChatScan = (sessionId: string, taskId: string) =>
 
 /** WeChat credential probe of the STORED binding; there is no draft to send and no account label back. */
 export const testWeChatBinding = (sessionId: string) =>
-  apiFetch<WeChatTestResponse>(
+  apiFetchJson<WeChatTestResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/wechat/test`,
     { method: "POST", body: {} },
   );
 
 /** QQ credential probe (the access-token exchange); the platform names no account, so success carries no label. */
 export const testQQBinding = (sessionId: string, body: QQTestRequest) =>
-  apiFetch<QQTestResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq/test`, {
+  apiFetchJson<QQTestResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/messaging/qq/test`, {
     method: "POST",
     body,
   });
 
 /** Short fixed text to the binding's last known chat (409 `feishu_no_chat` / `telegram_no_chat` / `qq_no_chat` before one exists; on QQ the send can still fail with 502 when no recent QQ message can be replied to). */
 export const sendMessagingTestMessage = (sessionId: string, channel: MessagingChannel) =>
-  apiFetch<MessagingTestMessageResponse>(
+  apiFetchJson<MessagingTestMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messaging/${channel}/test-message`,
     { method: "POST", body: {} },
   );
@@ -832,7 +842,7 @@ export const getMessages = (sessionId: string, page?: MessagesPageQuery) => {
       : page.kind === "tail"
         ? `?tailLimit=${page.limit}`
         : `?before=${encodeURIComponent(page.cursor)}&limit=${page.limit}`;
-  return apiFetchWithMeta<MessagesResponse>(
+  return apiFetchJsonWithMeta<MessagesResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs}`,
   ).then(({ data, serverNowMs }) => ({ ...data, serverNowMs }));
 };
@@ -840,13 +850,13 @@ export const getMessages = (sessionId: string, page?: MessagesPageQuery) => {
 // Task execution, approval, abort, compaction ------------------------------------------------------
 
 export const postTask = (sessionId: string, body: TaskCreateRequest) =>
-  apiFetch<TaskCreateResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/tasks`, {
+  apiFetchJson<TaskCreateResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/tasks`, {
     method: "POST",
     body,
   });
 
 export const getGoal = (sessionId: string) =>
-  apiFetch<GoalResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/goal`);
+  apiFetchJson<GoalResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/goal`);
 
 export const postApproval = (
   sessionId: string,
@@ -877,14 +887,16 @@ export const postAbort = (sessionId: string) =>
 
 /** "Retry now" on the reconnect countdown: skips the remaining backoff wait server-side (skipped:false is the benign "no wait in progress" case — e.g. the timer elapsed in a race — never an error). */
 export const postRetryNow = (sessionId: string) =>
-  apiFetch<RetryNowResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/retry-now`, {
+  apiFetchJson<RetryNowResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/retry-now`, {
     method: "POST",
     body: {},
   });
 
 /** Background processes the conversation started (details popover list); an evicted/never-loaded runtime reports an empty list. */
 export const getSessionProcesses = (sessionId: string) =>
-  apiFetch<SessionProcessesResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/processes`);
+  apiFetchJson<SessionProcessesResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/processes`,
+  );
 
 /** Stops one background process (404 process_not_found when it already exited or the runtime is gone — callers just refresh). */
 export const killSessionProcess = (sessionId: string, processId: string) =>
@@ -909,7 +921,7 @@ export const postSteer = (sessionId: string, body: SteerRequest) =>
 
 /** Panel message to one subagent child (#272) — a user input on the child, whatever its state: steered mid-run, started on an idle child, resumed when the released session was revived (the child runs at its own Session's thinking level; pin it with patchSession). 404 subagent_gone when nothing can be revived, 409 subagent_busy when the child cannot take it right now. */
 export const messageSubagent = (sessionId: string, childSessionId: string, text: string) =>
-  apiFetch<SubagentMessageResponse>(
+  apiFetchJson<SubagentMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childSessionId)}/message`,
     { method: "POST", body: { text } },
   );
@@ -923,28 +935,28 @@ export const abortSubagent = (sessionId: string, childSessionId: string) =>
 
 /** Resume an interrupted or failed subagent child: resumes the session carrying over state. */
 export const resumeSubagent = (sessionId: string, childSessionId: string, text?: string) =>
-  apiFetch<SubagentMessageResponse>(
+  apiFetchJson<SubagentMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(childSessionId)}/resume`,
     { method: "POST", body: text ? { text } : {} },
   );
 
 /** Recall an undelivered steering message back to the composer (#287): returns its original content; 409 not_pending once it was delivered to the model. */
 export const recallSteer = (sessionId: string, steerId: string) =>
-  apiFetch<RecalledMessageResponse>(
+  apiFetchJson<RecalledMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/steer/${encodeURIComponent(steerId)}`,
     { method: "DELETE" },
   );
 
 /** Recall a queued follow-up task back to the composer (#287): returns its original content (+ queued thinking level); 409 follow_up_started once it already auto-started. */
 export const recallFollowUp = (sessionId: string, followUpId: string) =>
-  apiFetch<RecalledMessageResponse>(
+  apiFetchJson<RecalledMessageResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/follow-ups/${encodeURIComponent(followUpId)}`,
     { method: "DELETE" },
   );
 
 export const postCompact = (sessionId: string) =>
   // Same shape as tasks: the response carries the actual current session_id (a new id after self-healing; the frontend updates its route accordingly).
-  apiFetch<TaskCreateResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/compact`, {
+  apiFetchJson<TaskCreateResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/compact`, {
     method: "POST",
     body: {},
   });
@@ -955,20 +967,23 @@ export const postCompact = (sessionId: string) =>
  * estimates whose value is the *shares* they give the measured occupancy.
  */
 export const getSessionContext = (sessionId: string) =>
-  apiFetch<SessionContextResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/context`);
+  apiFetchJson<SessionContextResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/context`);
 
 // Trace browsing & performance analysis -----------------------------------------------------------
 
 export const getSessionTraces = (sessionId: string) =>
-  apiFetch<SessionTracesResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/traces`);
+  apiFetchJson<SessionTracesResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/traces`);
 
 export const getTraceEvents = (sessionId: string, index: number, offset: number, limit: number) =>
-  apiFetch<TraceEventsResponse>(`/api/sessions/${encodeURIComponent(sessionId)}/traces/${index}`, {
-    query: { offset, limit },
-  });
+  apiFetchJson<TraceEventsResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/traces/${index}`,
+    {
+      query: { offset, limit },
+    },
+  );
 
 export const getTraceAnalysis = (sessionId: string, index: number) =>
-  apiFetch<TraceAnalysisResponse>(
+  apiFetchJson<TraceAnalysisResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/traces/${index}/analysis`,
   );
 
@@ -985,7 +1000,7 @@ export const getAgentTraceEvents = (
   offset: number,
   limit: number,
 ) =>
-  apiFetch<TraceEventsResponse>(
+  apiFetchJson<TraceEventsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/traces/${encodeURIComponent(sessionId)}/${index}`,
     { query: { offset, limit } },
@@ -997,7 +1012,7 @@ export const getAgentTraceAnalysis = (
   sessionId: string,
   index: number,
 ) =>
-  apiFetch<TraceAnalysisResponse>(
+  apiFetchJson<TraceAnalysisResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/traces/${encodeURIComponent(sessionId)}/${index}/analysis`,
   );
@@ -1014,7 +1029,7 @@ export const agentTraceDownloadUrl = (
 
 /** Imports a Trace JSONL file (owner only); the response says where the file landed (sessionId / index / date). */
 export const importAgentTrace = (projectId: string, agentId: string, body: TraceImportRequest) =>
-  apiFetch<TraceImportResponse>(
+  apiFetchJson<TraceImportResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/traces/import`,
     { method: "POST", body },
   );
@@ -1042,7 +1057,7 @@ export const getUsageErrors = (
     kind?: UsageErrorKind;
   },
 ) =>
-  apiFetch<UsageErrorsPage>(`/api/projects/${encodeURIComponent(projectId)}/usage/errors`, {
+  apiFetchJson<UsageErrorsPage>(`/api/projects/${encodeURIComponent(projectId)}/usage/errors`, {
     query: {
       offset: String(params.offset),
       limit: String(params.limit),
@@ -1065,7 +1080,7 @@ export const clearUsageErrors = (
   projectId: string,
   params: { from?: string; to?: string; fromTs?: string; toTs?: string; agentId?: string },
 ) =>
-  apiFetch<UsageErrorsClearResponse>(
+  apiFetchJson<UsageErrorsClearResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/usage/errors`,
     {
       method: "DELETE",
@@ -1085,7 +1100,9 @@ export const clearUsageErrors = (
  * not the page.
  */
 export const getUsageModelTotals = (projectId: string) =>
-  apiFetch<UsageModelTotals>(`/api/projects/${encodeURIComponent(projectId)}/usage/model-totals`);
+  apiFetchJson<UsageModelTotals>(
+    `/api/projects/${encodeURIComponent(projectId)}/usage/model-totals`,
+  );
 
 export const getUsage = (
   projectId: string,
@@ -1104,7 +1121,7 @@ export const getUsage = (
     modelId?: string;
   },
 ) =>
-  apiFetch<UsageResponse>(`/api/projects/${encodeURIComponent(projectId)}/usage`, {
+  apiFetchJson<UsageResponse>(`/api/projects/${encodeURIComponent(projectId)}/usage`, {
     query: {
       from: params.from,
       to: params.to,
@@ -1147,10 +1164,13 @@ export const resetModelKeyHealth = (
   projectId: string,
   body?: { provider?: string; modelId?: string; modelRef?: string },
 ) =>
-  apiFetch<{ ok: boolean }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`, {
-    method: "POST",
-    body: body ?? {},
-  });
+  apiFetchJson<{ ok: boolean }>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/keys/reset`,
+    {
+      method: "POST",
+      body: body ?? {},
+    },
+  );
 
 // Agent deletion & Workspace files --------------------------------------------------
 
@@ -1158,7 +1178,7 @@ export const deleteAgent = (projectId: string, agentId: string) =>
   apiFetch<void>(`/api/projects/${projectId}/agents/${agentId}`, { method: "DELETE" });
 
 export const listWorkspaceFiles = (sessionId: string, path: string) =>
-  apiFetch<WorkspaceFilesResponse>(`/api/sessions/${sessionId}/files`, { query: { path } });
+  apiFetchJson<WorkspaceFilesResponse>(`/api/sessions/${sessionId}/files`, { query: { path } });
 
 /** File content URL (inline preview / download=1 triggers download; usable directly in <a>/<img>/fetch). */
 export const workspaceFileUrl = (sessionId: string, path: string, download = false): string =>
@@ -1227,11 +1247,13 @@ export const deleteWorkspaceFile = (sessionId: string, path: string, ifVersion?:
  * caller decides what an empty search box shows, and it is never "every file".
  */
 export const searchWorkspaceFiles = (sessionId: string, q: string) =>
-  apiFetch<WorkspaceSearchResponse>(`/api/sessions/${sessionId}/files/search`, { query: { q } });
+  apiFetchJson<WorkspaceSearchResponse>(`/api/sessions/${sessionId}/files/search`, {
+    query: { q },
+  });
 
 /** Batch file-existence check (message file cards): both out-of-bounds and missing paths simply don't appear in `existing`; always returns 200. */
 export const statSessionFiles = (sessionId: string, paths: string[]) =>
-  apiFetch<FilesStatResponse>(`/api/sessions/${sessionId}/files/stat`, {
+  apiFetchJson<FilesStatResponse>(`/api/sessions/${sessionId}/files/stat`, {
     method: "POST",
     body: { paths } satisfies FilesStatRequest,
   });
@@ -1239,7 +1261,7 @@ export const statSessionFiles = (sessionId: string, paths: string[]) =>
 // Scheduled tasks ----------------------------------------------------------------------
 
 export const listSchedules = (projectId: string, agentId: string) =>
-  apiFetch<SchedulesResponse>(
+  apiFetchJson<SchedulesResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/schedules`,
   );
 
@@ -1248,7 +1270,7 @@ export const createSchedule = (
   agentId: string,
   body: ScheduleUpsertRequest & { name: string },
 ) =>
-  apiFetch<ScheduleItem>(
+  apiFetchJson<ScheduleItem>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/schedules`,
     { method: "POST", body },
   );
@@ -1259,7 +1281,7 @@ export const updateSchedule = (
   name: string,
   body: ScheduleUpsertRequest,
 ) =>
-  apiFetch<ScheduleItem>(
+  apiFetchJson<ScheduleItem>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/schedules/${encodeURIComponent(name)}`,
     { method: "PUT", body },
@@ -1275,11 +1297,11 @@ export const deleteSchedule = (projectId: string, agentId: string, name: string)
 // Plugin library, and an Agent's installed skills and hook packages ----------------------------
 
 /** Plugin library (available to any logged-in user): groups, each plugin's manifest and the metadata of its skills — never SKILL.md bodies or hook scripts. */
-export const getPluginLibrary = () => apiFetch<PluginLibraryResponse>("/api/plugins");
+export const getPluginLibrary = () => apiFetchJson<PluginLibraryResponse>("/api/plugins");
 
 /** Everything one library plugin ships as text keyed by path (skills' files, hook scripts), for the plugin detail view's file browser. */
 export const getPluginFiles = (plugin: string) =>
-  apiFetch<PluginFilesResponse>(`/api/plugins/${encodeURIComponent(plugin)}/files`);
+  apiFetchJson<PluginFilesResponse>(`/api/plugins/${encodeURIComponent(plugin)}/files`);
 
 /**
  * Installs whole library plugins — each one's skills and hook package; an already-installed
@@ -1287,18 +1309,18 @@ export const getPluginFiles = (plugin: string) =>
  * refreshed installed lists.
  */
 export const installAgentPlugins = (projectId: string, agentId: string, names: string[]) =>
-  apiFetch<AgentPluginsInstallResponse>(
+  apiFetchJson<AgentPluginsInstallResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/plugins`,
     { method: "POST", body: { names } satisfies PluginInstallRequest },
   );
 
 export const getAgentSkills = (projectId: string, agentId: string) =>
-  apiFetch<AgentSkillsResponse>(
+  apiFetchJson<AgentSkillsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/skills`,
   );
 
 export const getAgentHooks = (projectId: string, agentId: string) =>
-  apiFetch<AgentHooksResponse>(
+  apiFetchJson<AgentHooksResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/hooks`,
   );
 
@@ -1316,7 +1338,7 @@ export const installAgentHookArchive = (
   agentId: string,
   body: HookArchiveInstallRequest,
 ) =>
-  apiFetch<AgentHooksResponse>(
+  apiFetchJson<AgentHooksResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/hooks/archive`,
     { method: "POST", body },
@@ -1333,7 +1355,7 @@ export const installAgentSkillArchive = (
   agentId: string,
   body: SkillArchiveInstallRequest,
 ) =>
-  apiFetch<AgentSkillsResponse>(
+  apiFetchJson<AgentSkillsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/skills/archive`,
     { method: "POST", body },
@@ -1354,19 +1376,19 @@ export const removeAgentSkill = (projectId: string, agentId: string, name: strin
 // Benchmarks (scores, manual creation and deletion) -------------------------------------------
 
 export const listBenchmarks = (projectId: string, agentId: string) =>
-  apiFetch<BenchmarksResponse>(
+  apiFetchJson<BenchmarksResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/benchmarks`,
   );
 
 export const listBenchmarkCases = (projectId: string, agentId: string, benchmarkId: string) =>
-  apiFetch<BenchmarkCasesResponse>(
+  apiFetchJson<BenchmarkCasesResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}` +
       `/benchmarks/${encodeURIComponent(benchmarkId)}/cases`,
   );
 
 /** Creates a Benchmark by hand (owner only); the server writes the on-disk layout. 409 `benchmark_exists` on a taken id. */
 export const createBenchmark = (projectId: string, agentId: string, body: BenchmarkCreateRequest) =>
-  apiFetch<BenchmarkCreateResponse>(
+  apiFetchJson<BenchmarkCreateResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/benchmarks`,
     { method: "POST", body },
   );
@@ -1398,7 +1420,7 @@ export const listBenchmarkCaseFiles = (
   path: string,
   material: CaseMaterial,
 ) =>
-  apiFetch<WorkspaceFilesResponse>(
+  apiFetchJson<WorkspaceFilesResponse>(
     benchmarkCaseFilesPath(projectId, agentId, benchmarkId, caseId, material),
     { query: { path } },
   );
@@ -1433,14 +1455,14 @@ export const agentExportUrl = (projectId: string, agentId: string): string =>
   `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/export`;
 
 export const importAgent = (projectId: string, agentId: string, body: AgentImportRequest) =>
-  apiFetch<AgentImportResponse>(
+  apiFetchJson<AgentImportResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/import`,
     { method: "POST", body },
   );
 
 /** The Agent State archives on disk for this Agent (GET /snapshots, any project member). */
 export const getAgentSnapshots = (projectId: string, agentId: string) =>
-  apiFetch<AgentSnapshotsResponse>(
+  apiFetchJson<AgentSnapshotsResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/agents/${encodeURIComponent(agentId)}/snapshots`,
   );
 
@@ -1452,40 +1474,41 @@ export const getAgentSnapshots = (projectId: string, agentId: string) =>
  * not on the event channel, because they belong to the one page that is waiting for them.
  */
 export const getMachines = (projectId: string) =>
-  apiFetch<MachinesResponse>(`/api/projects/${encodeURIComponent(projectId)}/machines`);
+  apiFetchJson<MachinesResponse>(`/api/projects/${encodeURIComponent(projectId)}/machines`);
 
 /**
  * Starts an install (202, long-running) and gives the machine to this Project; the returned
  * body already carries the new job.
  */
 export const installOnMachine = (projectId: string, machineId: string) =>
-  apiFetch<MachinesResponse>(
+  apiFetchJson<MachinesResponse>(
     `/api/projects/${encodeURIComponent(projectId)}/machines/${encodeURIComponent(machineId)}/install`,
     { method: "POST", body: {} },
   );
 
 // Version & self-update ----------------------------------------------------------------
 
-export const getVersion = () => apiFetch<VersionResponse>("/api/version");
+export const getVersion = () => apiFetchJson<VersionResponse>("/api/version");
 
 /** `force` (the manual "check for updates" action) bypasses the server's TTL cache. */
 export const checkUpdate = (force = false) =>
-  apiFetch<UpdateCheckResponse>(`/api/version/update-check${force ? "?force=1" : ""}`);
+  apiFetchJson<UpdateCheckResponse>(`/api/version/update-check${force ? "?force=1" : ""}`);
 
 /** Admin only: the self-update job's status — polled while it runs. */
-export const getUpdateJob = () => apiFetch<UpdateJobStatus>("/api/version/update");
+export const getUpdateJob = () => apiFetchJson<UpdateJobStatus>("/api/version/update");
 
 /** Admin only: starts the self-update job (`penguin update` on the server host, in the background) and answers with its status. */
 export const startUpdateJob = () =>
-  apiFetch<UpdateJobStatus>("/api/version/update", { method: "POST", body: {} });
+  apiFetchJson<UpdateJobStatus>("/api/version/update", { method: "POST", body: {} });
 
 /** Admin only: asks the supervised server process to restart into the installed release. */
 export const restartServer = () =>
-  apiFetch<RestartResponse>("/api/version/restart", { method: "POST", body: {} });
+  apiFetchJson<RestartResponse>("/api/version/restart", { method: "POST", body: {} });
 
 // Desktop client update (desktop-shell sessions only) ----------------------------------
 
-export const getDesktopUpdate = () => apiFetch<DesktopUpdateStatusResponse>("/api/desktop/update");
+export const getDesktopUpdate = () =>
+  apiFetchJson<DesktopUpdateStatusResponse>("/api/desktop/update");
 
 export const desktopUpdateCheck = () =>
   apiFetch<void>("/api/desktop/update/check", { method: "POST", body: {} });
@@ -1507,29 +1530,32 @@ const orgBase = (projectId: string, orgId?: string) =>
   }`;
 
 export const listOrganizations = (projectId: string) =>
-  apiFetch<OrganizationsResponse>(orgBase(projectId));
+  apiFetchJson<OrganizationsResponse>(orgBase(projectId));
 
 export const createOrganization = (projectId: string, body: OrganizationCreateRequest) =>
-  apiFetch<OrganizationDetail>(orgBase(projectId), { method: "POST", body });
+  apiFetchJson<OrganizationDetail>(orgBase(projectId), { method: "POST", body });
 
 /** A semantic id for a display name (organization or channel), from the Project's default model with an ASCII fallback. */
 export const suggestSemanticId = (projectId: string, body: SemanticIdSuggestRequest) =>
-  apiFetch<SemanticIdSuggestResponse>(`${orgBase(projectId)}/suggest-id`, { method: "POST", body });
+  apiFetchJson<SemanticIdSuggestResponse>(`${orgBase(projectId)}/suggest-id`, {
+    method: "POST",
+    body,
+  });
 
 export const getOrganization = (projectId: string, orgId: string) =>
-  apiFetch<OrganizationDetail>(orgBase(projectId, orgId));
+  apiFetchJson<OrganizationDetail>(orgBase(projectId, orgId));
 
 export const patchOrganization = (
   projectId: string,
   orgId: string,
   body: OrganizationPatchRequest,
-) => apiFetch<OrganizationSettings>(orgBase(projectId, orgId), { method: "PATCH", body });
+) => apiFetchJson<OrganizationSettings>(orgBase(projectId, orgId), { method: "PATCH", body });
 
 export const getOrgChart = (projectId: string, orgId: string) =>
-  apiFetch<OrgChartResponse>(`${orgBase(projectId, orgId)}/chart`);
+  apiFetchJson<OrgChartResponse>(`${orgBase(projectId, orgId)}/chart`);
 
 export const hireOrgEmployee = (projectId: string, orgId: string, body: OrgHireRequest) =>
-  apiFetch<OrgEmployeeItem>(`${orgBase(projectId, orgId)}/employees`, { method: "POST", body });
+  apiFetchJson<OrgEmployeeItem>(`${orgBase(projectId, orgId)}/employees`, { method: "POST", body });
 
 export const patchOrgEmployee = (
   projectId: string,
@@ -1537,7 +1563,7 @@ export const patchOrgEmployee = (
   agentId: string,
   body: OrgEmployeePatchRequest,
 ) =>
-  apiFetch<OrgEmployeeItem>(
+  apiFetchJson<OrgEmployeeItem>(
     `${orgBase(projectId, orgId)}/employees/${encodeURIComponent(agentId)}`,
     { method: "PATCH", body },
   );
@@ -1549,22 +1575,22 @@ export const leaveOrganization = (projectId: string, orgId: string, agentId: str
 
 /** The employee's desk session, opened on demand (GET creates it when there is none). */
 export const getOrgDesk = (projectId: string, orgId: string, agentId: string) =>
-  apiFetch<OrgDeskResponse>(
+  apiFetchJson<OrgDeskResponse>(
     `${orgBase(projectId, orgId)}/employees/${encodeURIComponent(agentId)}/desk`,
   );
 
 /** A fresh desk session for the employee (the old one stays as an ordinary Session). */
 export const renewOrgDesk = (projectId: string, orgId: string, agentId: string) =>
-  apiFetch<OrgDeskResponse>(
+  apiFetchJson<OrgDeskResponse>(
     `${orgBase(projectId, orgId)}/employees/${encodeURIComponent(agentId)}/desk`,
     { method: "POST", body: {} },
   );
 
 export const getOrgHandbook = (projectId: string, orgId: string) =>
-  apiFetch<OrgHandbookResponse>(`${orgBase(projectId, orgId)}/handbook`);
+  apiFetchJson<OrgHandbookResponse>(`${orgBase(projectId, orgId)}/handbook`);
 
 export const putOrgHandbook = (projectId: string, orgId: string, content: string) =>
-  apiFetch<OrgHandbookResponse>(`${orgBase(projectId, orgId)}/handbook`, {
+  apiFetchJson<OrgHandbookResponse>(`${orgBase(projectId, orgId)}/handbook`, {
     method: "PUT",
     body: { content },
   });
@@ -1574,10 +1600,10 @@ const handbookFileUrl = (projectId: string, orgId: string, path: string) =>
   `${orgBase(projectId, orgId)}/handbook/files/${path.split("/").map(encodeURIComponent).join("/")}`;
 
 export const listOrgHandbookFiles = (projectId: string, orgId: string) =>
-  apiFetch<OrgHandbookFilesResponse>(`${orgBase(projectId, orgId)}/handbook/files`);
+  apiFetchJson<OrgHandbookFilesResponse>(`${orgBase(projectId, orgId)}/handbook/files`);
 
 export const getOrgHandbookFile = (projectId: string, orgId: string, path: string) =>
-  apiFetch<OrgHandbookFileResponse>(handbookFileUrl(projectId, orgId, path));
+  apiFetchJson<OrgHandbookFileResponse>(handbookFileUrl(projectId, orgId, path));
 
 export const putOrgHandbookFile = (
   projectId: string,
@@ -1585,7 +1611,7 @@ export const putOrgHandbookFile = (
   path: string,
   content: string,
 ) =>
-  apiFetch<OrgHandbookFileResponse>(handbookFileUrl(projectId, orgId, path), {
+  apiFetchJson<OrgHandbookFileResponse>(handbookFileUrl(projectId, orgId, path), {
     method: "PUT",
     body: { content },
   });
@@ -1594,14 +1620,14 @@ export const deleteOrgHandbookFile = (projectId: string, orgId: string, path: st
   apiFetch<void>(handbookFileUrl(projectId, orgId, path), { method: "DELETE" });
 
 export const listOrgCalendar = (projectId: string, orgId: string) =>
-  apiFetch<OrgCalendarResponse>(`${orgBase(projectId, orgId)}/calendar`);
+  apiFetchJson<OrgCalendarResponse>(`${orgBase(projectId, orgId)}/calendar`);
 
 export const createOrgCalendarEvent = (
   projectId: string,
   orgId: string,
   body: OrgCalendarUpsertRequest & { agentId: string; name: string },
 ) =>
-  apiFetch<OrgCalendarWriteResponse>(`${orgBase(projectId, orgId)}/calendar`, {
+  apiFetchJson<OrgCalendarWriteResponse>(`${orgBase(projectId, orgId)}/calendar`, {
     method: "POST",
     body,
   });
@@ -1613,7 +1639,7 @@ export const updateOrgCalendarEvent = (
   name: string,
   body: OrgCalendarUpsertRequest,
 ) =>
-  apiFetch<OrgCalendarWriteResponse>(
+  apiFetchJson<OrgCalendarWriteResponse>(
     `${orgBase(projectId, orgId)}/calendar/${encodeURIComponent(agentId)}/${encodeURIComponent(name)}`,
     { method: "PUT", body },
   );
@@ -1630,13 +1656,15 @@ export const deleteOrgCalendarEvent = (
   );
 
 export const listOrgTickets = (projectId: string, orgId: string) =>
-  apiFetch<OrgTicketsResponse>(`${orgBase(projectId, orgId)}/tickets`);
+  apiFetchJson<OrgTicketsResponse>(`${orgBase(projectId, orgId)}/tickets`);
 
 export const getOrgTicket = (projectId: string, orgId: string, ticketId: string) =>
-  apiFetch<OrgTicketDetail>(`${orgBase(projectId, orgId)}/tickets/${encodeURIComponent(ticketId)}`);
+  apiFetchJson<OrgTicketDetail>(
+    `${orgBase(projectId, orgId)}/tickets/${encodeURIComponent(ticketId)}`,
+  );
 
 export const createOrgTicket = (projectId: string, orgId: string, body: OrgTicketCreateRequest) =>
-  apiFetch<OrgTicketDetail>(`${orgBase(projectId, orgId)}/tickets`, { method: "POST", body });
+  apiFetchJson<OrgTicketDetail>(`${orgBase(projectId, orgId)}/tickets`, { method: "POST", body });
 
 export const updateOrgTicket = (
   projectId: string,
@@ -1644,7 +1672,7 @@ export const updateOrgTicket = (
   ticketId: string,
   body: OrgTicketUpdateRequest,
 ) =>
-  apiFetch<OrgTicketDetail>(
+  apiFetchJson<OrgTicketDetail>(
     `${orgBase(projectId, orgId)}/tickets/${encodeURIComponent(ticketId)}`,
     { method: "PUT", body },
   );
@@ -1657,10 +1685,13 @@ const ticketAction = <T>(
   action: string,
   body: unknown,
 ) =>
-  apiFetch<T>(`${orgBase(projectId, orgId)}/tickets/${encodeURIComponent(ticketId)}/${action}`, {
-    method: "POST",
-    body,
-  });
+  apiFetchJson<T>(
+    `${orgBase(projectId, orgId)}/tickets/${encodeURIComponent(ticketId)}/${action}`,
+    {
+      method: "POST",
+      body,
+    },
+  );
 
 export const moveOrgTicket = (
   projectId: string,
@@ -1705,20 +1736,21 @@ const channelBase = (projectId: string, orgId: string, channelId: string) =>
 
 /** The organization's channels: the all-hands one first, then by name. */
 export const listOrgChannels = (projectId: string, orgId: string) =>
-  apiFetch<OrgChannelsResponse>(`${orgBase(projectId, orgId)}/channels`);
+  apiFetchJson<OrgChannelsResponse>(`${orgBase(projectId, orgId)}/channels`);
 
 export const createOrgChannel = (projectId: string, orgId: string, body: OrgChannelCreateRequest) =>
-  apiFetch<OrgChannelItem>(`${orgBase(projectId, orgId)}/channels`, { method: "POST", body });
+  apiFetchJson<OrgChannelItem>(`${orgBase(projectId, orgId)}/channels`, { method: "POST", body });
 
 export const getOrgChannel = (projectId: string, orgId: string, channelId: string) =>
-  apiFetch<OrgChannelDetail>(channelBase(projectId, orgId, channelId));
+  apiFetchJson<OrgChannelDetail>(channelBase(projectId, orgId, channelId));
 
 export const patchOrgChannel = (
   projectId: string,
   orgId: string,
   channelId: string,
   body: OrgChannelPatchRequest,
-) => apiFetch<OrgChannelItem>(channelBase(projectId, orgId, channelId), { method: "PATCH", body });
+) =>
+  apiFetchJson<OrgChannelItem>(channelBase(projectId, orgId, channelId), { method: "PATCH", body });
 
 export const addOrgChannelMember = (
   projectId: string,
@@ -1726,7 +1758,7 @@ export const addOrgChannelMember = (
   channelId: string,
   body: OrgChannelMemberRequest,
 ) =>
-  apiFetch<OrgChannelDetail>(`${channelBase(projectId, orgId, channelId)}/members`, {
+  apiFetchJson<OrgChannelDetail>(`${channelBase(projectId, orgId, channelId)}/members`, {
     method: "POST",
     body,
   });
@@ -1750,7 +1782,7 @@ export const getOrgChannelMessages = (
   channelId: string,
   date?: string,
 ) =>
-  apiFetch<OrgChannelMessagesResponse>(`${channelBase(projectId, orgId, channelId)}/messages`, {
+  apiFetchJson<OrgChannelMessagesResponse>(`${channelBase(projectId, orgId, channelId)}/messages`, {
     query: { date },
   });
 
@@ -1760,7 +1792,7 @@ export const sendOrgChannelMessage = (
   channelId: string,
   body: OrgChannelMessageSendRequest,
 ) =>
-  apiFetch<OrgChannelMessage>(`${channelBase(projectId, orgId, channelId)}/messages`, {
+  apiFetchJson<OrgChannelMessage>(`${channelBase(projectId, orgId, channelId)}/messages`, {
     method: "POST",
     body,
   });
@@ -1774,12 +1806,12 @@ export const readOrgChannel = (
 
 /** Budget and spend for one `yyyy-mm` period (the current one when omitted). */
 export const getOrgFinance = (projectId: string, orgId: string, period?: string) =>
-  apiFetch<OrgFinanceResponse>(`${orgBase(projectId, orgId)}/finance`, {
+  apiFetchJson<OrgFinanceResponse>(`${orgBase(projectId, orgId)}/finance`, {
     query: { period },
   });
 
 export const getOrgSessions = (projectId: string, orgId: string) =>
-  apiFetch<OrgSessionsResponse>(`${orgBase(projectId, orgId)}/sessions`);
+  apiFetchJson<OrgSessionsResponse>(`${orgBase(projectId, orgId)}/sessions`);
 
 // Kanban ----------------------------------------------------------------------
 
@@ -1787,7 +1819,7 @@ export const listKanbanTasks = (
   projectId: string,
   params?: { state?: KanbanTaskState; priority?: KanbanTaskPriority; assignee?: string },
 ) =>
-  apiFetch<{ tasks: KanbanTask[]; total: number }>(`/api/projects/${projectId}/kanban/tasks`, {
+  apiFetchJson<{ tasks: KanbanTask[]; total: number }>(`/api/projects/${projectId}/kanban/tasks`, {
     query: params as Record<string, string | undefined>,
   });
 
@@ -1801,7 +1833,7 @@ export const createKanbanTask = (
     labels?: string[];
   },
 ) =>
-  apiFetch<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks`, {
+  apiFetchJson<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks`, {
     method: "POST",
     body,
   });
@@ -1817,13 +1849,16 @@ export const updateKanbanTask = (
     description?: string;
   },
 ) =>
-  apiFetch<{ ok: boolean; task: KanbanTask }>(`/api/projects/${projectId}/kanban/tasks/${taskId}`, {
-    method: "PATCH",
-    body,
-  });
+  apiFetchJson<{ ok: boolean; task: KanbanTask }>(
+    `/api/projects/${projectId}/kanban/tasks/${taskId}`,
+    {
+      method: "PATCH",
+      body,
+    },
+  );
 
 export const claimKanbanTask = (projectId: string, taskId: string, assignee: string) =>
-  apiFetch<{ ok: boolean; task: KanbanTask }>(
+  apiFetchJson<{ ok: boolean; task: KanbanTask }>(
     `/api/projects/${projectId}/kanban/tasks/${taskId}/claim`,
     {
       method: "POST",
@@ -1832,10 +1867,10 @@ export const claimKanbanTask = (projectId: string, taskId: string, assignee: str
   );
 
 export const listTriageDrafts = (projectId: string) =>
-  apiFetch<{ drafts: TriageDraft[] }>(`/api/projects/${projectId}/kanban/drafts`);
+  apiFetchJson<{ drafts: TriageDraft[] }>(`/api/projects/${projectId}/kanban/drafts`);
 
 export const launchTriageDraft = (projectId: string, draftId: string) =>
-  apiFetch<{ ok: boolean; task: KanbanTask }>(
+  apiFetchJson<{ ok: boolean; task: KanbanTask }>(
     `/api/projects/${projectId}/kanban/drafts/${draftId}/launch`,
     {
       method: "POST",
@@ -1844,7 +1879,7 @@ export const launchTriageDraft = (projectId: string, draftId: string) =>
   );
 
 export const getKanbanStats = (projectId: string) =>
-  apiFetch<{ totalTasks: number; byState: Record<string, number>; activeDrafts: number }>(
+  apiFetchJson<{ totalTasks: number; byState: Record<string, number>; activeDrafts: number }>(
     `/api/projects/${projectId}/kanban/stats`,
   );
 
@@ -1859,7 +1894,7 @@ export interface PipelineRecord {
 }
 
 export const listPipelines = (projectId: string) =>
-  apiFetch<{ pipelines: PipelineRecord[] }>(`/api/projects/${projectId}/pipelines`);
+  apiFetchJson<{ pipelines: PipelineRecord[] }>(`/api/projects/${projectId}/pipelines`);
 
 export const createPipeline = (
   projectId: string,
@@ -1871,16 +1906,16 @@ export const createPipeline = (
     edges: WorkflowEdge[];
   },
 ) =>
-  apiFetch<{ ok: boolean; pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines`, {
+  apiFetchJson<{ ok: boolean; pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines`, {
     method: "POST",
     body,
   });
 
 export const getPipeline = (projectId: string, pipelineId: string) =>
-  apiFetch<{ pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines/${pipelineId}`);
+  apiFetchJson<{ pipeline: PipelineRecord }>(`/api/projects/${projectId}/pipelines/${pipelineId}`);
 
 export const deletePipeline = (projectId: string, pipelineId: string) =>
-  apiFetch<{ ok: boolean }>(`/api/projects/${projectId}/pipelines/${pipelineId}`, {
+  apiFetchJson<{ ok: boolean }>(`/api/projects/${projectId}/pipelines/${pipelineId}`, {
     method: "DELETE",
   });
 
@@ -1889,7 +1924,7 @@ export const runPipeline = (
   pipelineId: string,
   input?: Record<string, unknown>,
 ) =>
-  apiFetch<{ runId: string; run: WorkflowRunState }>(
+  apiFetchJson<{ runId: string; run: WorkflowRunState }>(
     `/api/projects/${projectId}/pipelines/${pipelineId}/run`,
     {
       method: "POST",
@@ -1898,12 +1933,12 @@ export const runPipeline = (
   );
 
 export const getPipelineRun = (projectId: string, pipelineId: string, runId: string) =>
-  apiFetch<{ run: WorkflowRunState }>(
+  apiFetchJson<{ run: WorkflowRunState }>(
     `/api/projects/${projectId}/pipelines/${pipelineId}/runs/${runId}`,
   );
 
 export const stepPipelineRun = (projectId: string, pipelineId: string, runId: string) =>
-  apiFetch<{ run: WorkflowRunState }>(
+  apiFetchJson<{ run: WorkflowRunState }>(
     `/api/projects/${projectId}/pipelines/${pipelineId}/runs/${runId}/step`,
     {
       method: "POST",
@@ -1911,7 +1946,7 @@ export const stepPipelineRun = (projectId: string, pipelineId: string, runId: st
     },
   );
 
-export const listPersonas = () => apiFetch<{ personas: PersonaMask[] }>("/api/personas");
+export const listPersonas = () => apiFetchJson<{ personas: PersonaMask[] }>("/api/personas");
 
 // Knowledge Wiki & Code Graph -------------------------------------------------
 
@@ -1928,16 +1963,16 @@ export interface WikiGraphData {
 }
 
 export const listWikiNodes = (projectId: string, q?: string) =>
-  apiFetch<{
+  apiFetchJson<{
     nodes?: WikiPageItem[];
     matches?: Array<{ id: string; snippet: string; score: number }>;
   }>(`/api/projects/${projectId}/wiki/nodes`, { query: { q } });
 
 export const getWikiGraph = (projectId: string) =>
-  apiFetch<WikiGraphData>(`/api/projects/${projectId}/wiki/graph`);
+  apiFetchJson<WikiGraphData>(`/api/projects/${projectId}/wiki/graph`);
 
 export const getWikiNode = (projectId: string, nodeId: string) =>
-  apiFetch<{
+  apiFetchJson<{
     node: { id: string; content: string; filePath?: string; updatedAt: string; links: string[] };
   }>(`/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}`);
 
@@ -1945,13 +1980,13 @@ export const createWikiNode = (
   projectId: string,
   body: { id: string; content: string; filePath?: string },
 ) =>
-  apiFetch<{ node: unknown }>(`/api/projects/${projectId}/wiki/nodes`, {
+  apiFetchJson<{ node: unknown }>(`/api/projects/${projectId}/wiki/nodes`, {
     method: "POST",
     body,
   });
 
 export const deleteWikiNode = (projectId: string, nodeId: string) =>
-  apiFetch<{ deleted: boolean }>(
+  apiFetchJson<{ deleted: boolean }>(
     `/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}`,
     {
       method: "DELETE",
@@ -1959,18 +1994,18 @@ export const deleteWikiNode = (projectId: string, nodeId: string) =>
   );
 
 export const getWikiNeighbors = (projectId: string, nodeId: string, maxHops = 1) =>
-  apiFetch<{ nodeId: string; neighbors: string[] }>(
+  apiFetchJson<{ nodeId: string; neighbors: string[] }>(
     `/api/projects/${projectId}/wiki/nodes/${encodeURIComponent(nodeId)}/neighbors`,
     { query: { maxHops } },
   );
 
 export const getWikiPath = (projectId: string, from: string, to: string) =>
-  apiFetch<{ path: string[] | null; hops?: number }>(`/api/projects/${projectId}/wiki/path`, {
+  apiFetchJson<{ path: string[] | null; hops?: number }>(`/api/projects/${projectId}/wiki/path`, {
     query: { start: from, end: to, from, to },
   });
 
 export const lintWikiGraph = (projectId: string) =>
-  apiFetch<{ brokenLinks: Array<{ from: string; to: string }>; orphanNodes: string[] }>(
+  apiFetchJson<{ brokenLinks: Array<{ from: string; to: string }>; orphanNodes: string[] }>(
     `/api/projects/${projectId}/wiki/lint`,
   );
 
@@ -1987,19 +2022,19 @@ export interface GatewayQuotaPayload {
 }
 
 export const getGatewayQuota = (projectId: string) =>
-  apiFetch<GatewayQuotaPayload>(`/api/projects/${projectId}/gateway/quota`);
+  apiFetchJson<GatewayQuotaPayload>(`/api/projects/${projectId}/gateway/quota`);
 
 export const getGatewayCombos = (projectId: string) =>
-  apiFetch<{ combos: ModelCombo[] }>(`/api/projects/${projectId}/gateway/combos`);
+  apiFetchJson<{ combos: ModelCombo[] }>(`/api/projects/${projectId}/gateway/combos`);
 
 export const putGatewayCombo = (projectId: string, body: ModelCombo) =>
-  apiFetch<{ ok: boolean; combo: ModelCombo }>(`/api/projects/${projectId}/gateway/combos`, {
+  apiFetchJson<{ ok: boolean; combo: ModelCombo }>(`/api/projects/${projectId}/gateway/combos`, {
     method: "PUT",
     body,
   });
 
 export const deleteGatewayCombo = (projectId: string, id: string) =>
-  apiFetch<{ ok: boolean; deleted: boolean }>(
+  apiFetchJson<{ ok: boolean; deleted: boolean }>(
     `/api/projects/${projectId}/gateway/combos/${encodeURIComponent(id)}`,
     {
       method: "DELETE",
@@ -2007,13 +2042,13 @@ export const deleteGatewayCombo = (projectId: string, id: string) =>
   );
 
 export const getGatewayPricing = (projectId: string) =>
-  apiFetch<{ catalog: unknown }>(`/api/projects/${projectId}/gateway/pricing`);
+  apiFetchJson<{ catalog: unknown }>(`/api/projects/${projectId}/gateway/pricing`);
 
 export const computeGatewaySpendFlow = (
   projectId: string,
   body: { sessions?: SessionCostRecord[]; limit?: number },
 ) =>
-  apiFetch<{ report: SpendFlowReport }>(`/api/projects/${projectId}/gateway/spend-flow`, {
+  apiFetchJson<{ report: SpendFlowReport }>(`/api/projects/${projectId}/gateway/spend-flow`, {
     method: "POST",
     body,
   });

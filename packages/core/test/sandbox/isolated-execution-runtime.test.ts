@@ -54,6 +54,7 @@ function classifyReason(source: string) {
 class RecordingBackend implements IsolatedBackend {
   readonly name = "recording";
   readonly commands: IsolatedCommand[] = [];
+  readonly releasedSessions: string[] = [];
   result: IsolatedResult = {
     exitCode: 0,
     stdout: "isolated output\n",
@@ -67,6 +68,10 @@ class RecordingBackend implements IsolatedBackend {
   async run(command: IsolatedCommand): Promise<IsolatedResult> {
     this.commands.push(command);
     return { ...this.result };
+  }
+
+  async releaseSession(sessionKey: string): Promise<void> {
+    this.releasedSessions.push(sessionKey);
   }
 }
 
@@ -139,6 +144,13 @@ describe("isolated-execution-runtime", () => {
       expect(classifyReason("ls -la")).toBe("external_command");
       expect(classifyReason("(echo hi)")).toBe("subshell");
 
+      // A newline ends a command as surely as `;` does, so a binary named on a later line is in
+      // command position, not an argument of the first line — otherwise the verdict would read
+      // the script as in-memory safe and ask no approval for it.
+      expect(classifyReason("echo hi\nls -la")).toBe("external_command");
+      expect(classifyReason("true\nrm")).toBe("external_command");
+      expect(classifyReason("echo hi && ls -la")).toBe("external_command");
+
       // Every construct the in-memory tier does not model escalates for the same
       // stated cause: the tier is unavailable for it, not merely unimplemented.
       expect(decideTier("echo hi > /tmp/out").reason).toBe("unsupported_construct");
@@ -181,6 +193,12 @@ describe("isolated-execution-runtime", () => {
       expect(Number.isInteger(timed.classificationMs)).toBe(true);
       expect(timed.classificationMs).toBeLessThan(4);
     });
+  });
+
+  it("rejects an empty caller-provided sandbox namespace", () => {
+    expect(() => new IsolatedExecutionRuntime({ sessionKey: "   " })).toThrow(
+      "isolated execution sessionKey must not be empty",
+    );
   });
 
   describe("in-memory execution", () => {
@@ -307,7 +325,31 @@ describe("isolated-execution-runtime", () => {
         maxMemoryBytes: DEFAULT_ISOLATION_CEILINGS.maxMemoryBytes,
         sigkillTimeoutMs: DEFAULT_ISOLATION_CEILINGS.sigkillTimeoutMs,
       });
-      expect(command.allowList).toEqual(["https://example.com"]);
+      // No `network:outbound` capability was granted, so the escalation is network-off: the
+      // configured allow-list is the limit *under a grant*, and handing it to the backend here
+      // would let the script reach a host the policy never permitted.
+      expect(command.allowList).toEqual([]);
+    });
+
+    it("hands the backend the allow-list only when the policy grants the network", async () => {
+      const granted = new RecordingBackend();
+      const grantedRuntime = new IsolatedExecutionRuntime({
+        backend: granted,
+        allowList: ["https://example.com"],
+        policyBox: policyBox("shell:exec", "shell:native-binary", "network:outbound"),
+      });
+      await grantedRuntime.execute("ls -la /");
+      expect(granted.commands[0]!.allowList).toEqual(["https://example.com"]);
+
+      // The same configuration without the capability: same script, same preset, network-off.
+      const denied = new RecordingBackend();
+      const deniedRuntime = new IsolatedExecutionRuntime({
+        backend: denied,
+        allowList: ["https://example.com"],
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+      await deniedRuntime.execute("ls -la /");
+      expect(denied.commands[0]!.allowList).toEqual([]);
     });
 
     it("carries the isolated result into telemetry", async () => {
@@ -371,6 +413,28 @@ describe("isolated-execution-runtime", () => {
 
       expect(backend.commands[0]?.cwd).toBe("/work");
       expect(backend.commands[0]?.env).toEqual({ PATH: "/usr/bin" });
+    });
+
+    it("uses a unique backend session and releases it when disposed", async () => {
+      const backend = new RecordingBackend();
+      const first = new IsolatedExecutionRuntime({
+        backend,
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+      const second = new IsolatedExecutionRuntime({
+        backend,
+        policyBox: policyBox("shell:exec", "shell:native-binary"),
+      });
+
+      await first.execute("ls");
+      await second.execute("ls");
+      const [firstKey, secondKey] = backend.commands.map((command) => command.sessionKey);
+      expect(firstKey).toBeTruthy();
+      expect(secondKey).toBeTruthy();
+      expect(firstKey).not.toBe(secondKey);
+
+      await first.dispose();
+      expect(backend.releasedSessions).toEqual([firstKey]);
     });
 
     it("fails closed when no isolated backend is mounted", async () => {

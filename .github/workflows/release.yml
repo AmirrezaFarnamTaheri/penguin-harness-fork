@@ -139,7 +139,7 @@ jobs:
         run: |
           TAG="${TAG:?release tag is required}"
           V="${TAG#v}"
-          printf '%s\n' "$TAG" | grep -Eq '^v[0-9A-Za-z][0-9A-Za-z._-]*$'
+          printf '%s\n' "$TAG" | grep -Eq '^v([0-9]+\.)*[0-9]+$'
           # Guard: release prep must bump the repo to the tag's version (root + every workspace
           # package.json — packages/* and plugins/* —
           # and core's VERSION constant move together in the release: X.Y.Z PR). v0.2.1 was tagged with
@@ -633,10 +633,24 @@ jobs:
           package_version_exists() {
             name="$1"
             version="$2"
-            versions="$(npm view "$name" versions --json)" || {
-              echo "Failed to query published versions for $name." >&2
-              return 2
-            }
+            # `npm view` exits non-zero both when a package has never been published
+            # (E404) and when the registry itself is unreachable. Only the latter is a
+            # failure for the caller: E404 means "absent", and the caller publishes.
+            err_file="$(mktemp)"
+            out="$(npm view "$name" versions --json 2>"$err_file")"
+            status="$?"
+            err="$(cat "$err_file")"
+            rm -f "$err_file"
+            if [ "$status" -ne 0 ]; then
+              case "$err" in
+                *E404* ) return 1 ;;
+                * )
+                  echo "Failed to query published versions for $name: $err" >&2
+                  return 2
+                  ;;
+              esac
+            fi
+            versions="$out"
             node -e '
               try {
                 const versions = JSON.parse(process.argv[1]);
@@ -661,8 +675,21 @@ jobs:
           cp -r packages/web/dist packages/server/web-dist
           # The @penguinharness/* plugin packages go first: core declares them as workspace:*
           # deps, rewritten to their versions at publish time, so they must exist first.
+          # Names are read from each dir's package.json rather than derived from the directory:
+          # the sandbox-* dirs publish under @prismshadow/... and are private, and a constructed
+          # @penguinharness/<dir> name for one of them 404s — which used to exit the step here
+          # before core/server/cli were ever reached.
           for dir in plugins/*/; do
-            name="@penguinharness/$(basename "$dir")"
+            name="$(node -e "console.log(require('./$dir/package.json').name)" 2>/dev/null)"
+            if [ -z "$name" ]; then
+              echo "Skipping $dir: no package name in package.json." >&2
+              continue
+            fi
+            private="$(node -e "console.log(!!require('./$dir/package.json').private)" 2>/dev/null)"
+            if [ "$private" = "true" ]; then
+              echo "$name is private, skipping."
+              continue
+            fi
             if package_version_exists "$name" "$V"; then
               echo "$name@$V already on the registry, skipping."
               continue

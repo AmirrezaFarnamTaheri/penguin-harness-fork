@@ -67,7 +67,7 @@ export function registerAgentCommand(program: Command, t: Messages): void {
               .map((s: string) => s.trim())
               .filter((s: string) => s.length > 0)
           : undefined;
-      const res = await client.request<AgentCreateResponse>(
+      const res = await client.requestJson<AgentCreateResponse>(
         "POST",
         `/api/projects/${encodeURIComponent(projectId)}/agents`,
         {

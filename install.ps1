@@ -111,7 +111,7 @@ function Assert-HttpsUrl([string]$Name, [string]$Value) {
 }
 
 function Test-ReleaseTag([string]$Value) {
-  return $Value -match '^v[0-9A-Za-z][0-9A-Za-z._-]*$'
+  return $Value -match '^v([0-9]+\.)*[0-9]+$'
 }
 
 function Try-DownloadFile([string]$Uri, [string]$OutFile, [int]$TimeoutSec) {

@@ -95,7 +95,11 @@ test("agent create: pick library plugins (select all / none, filtered) -> they a
   const installed = await (
     await page.request.get(`${BASE}/api/projects/${projectId}/agents/seeded_agent/skills`)
   ).json();
+  // The two picked plugins are agent-development and software-development; the library is the
+  // source of truth for what they ship, so this list tracks the plugin directories rather than
+  // being hand-maintained (agent-development grew a company-setup skill, etc.).
   expect(installed.skills.map((s) => s.name).sort()).toEqual([
+    "company-setup",
     "penguin-config",
     "penguin-orchestration",
     "penguin-sdk",

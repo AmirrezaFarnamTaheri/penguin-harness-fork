@@ -24,6 +24,14 @@ const MOCK = process.env.MOCK_URL;
 const U = "abortcompact";
 const P = "password123";
 
+/**
+ * The compaction row is a step banner: a disclosure button titled by its mode word — "压缩中"
+ * while it runs, "压缩完毕" once it settles ("清空" for a discard). It used to carry a bracketed
+ * "[压缩]" marker; the mode word is the whole title now (see compaction.spec for the same row).
+ */
+const compactionBanner = (page) =>
+  page.locator("button[aria-expanded]").filter({ hasText: "压缩" });
+
 test("aborting before any turn completes: /compact says so instead of doing nothing", async ({
   page,
 }) => {
@@ -85,11 +93,13 @@ test("aborting before any turn completes: /compact says so instead of doing noth
   await ta.fill("/compact");
   await ta.press("Enter");
 
-  // There must be feedback — silently doing nothing is exactly the bug being tested for.
-  await expect(page.getByRole("button", { name: /nothing to compact/ })).toBeVisible();
+  // There must be feedback — silently doing nothing is exactly the bug being tested for. The
+  // toast's text is the 409's code localized (zh here): "nothing to compact" is the
+  // no-completed-turn reason, matched on its distinctive half.
+  await expect(page.getByRole("button", { name: /尚未完成一轮对话/ })).toBeVisible();
   expect(nativeDialogs, "feedback must be an in-app toast, not a native alert").toHaveLength(0);
   // And indeed no compaction was started (no banner).
-  await expect(page.getByText(/\[压缩\]/)).toHaveCount(0);
+  await expect(compactionBanner(page)).toHaveCount(0);
 });
 
 test("compacting twice in a row: says the context was just compacted, not that nothing ever ran", async ({
@@ -128,6 +138,7 @@ test("compacting twice in a row: says the context was just compacted, not that n
   await expect(page.getByText("Command finished; the result looks as expected.")).toBeVisible();
 
   const nativeDialogs = [];
+  const compactUrl = `${BASE}/api/sessions/${sess.session.sessionId}/compact`;
   page.on("dialog", (d) => {
     nativeDialogs.push(d.message());
     void d.dismiss();
@@ -136,21 +147,32 @@ test("compacting twice in a row: says the context was just compacted, not that n
   // First /compact: compacts normally, shows the banner, no toast expected.
   await ta.fill("/compact");
   await ta.press("Enter");
-  await expect(page.getByText(/\[压缩\]/)).toBeVisible();
-  // No compact-unavailable toast (match the 409 reasons, not bare "compact" — usernames like
-  // "dblcompact" would collide).
+  await expect(compactionBanner(page).filter({ hasText: "压缩完毕" })).toBeVisible();
+  // The banner is emitted before the session manager finishes its run cleanup.
+  // Wait for the authoritative session status to return to idle.
+  await expect(page.getByRole("status", { name: "压缩中" })).toHaveCount(0);
+  // No compact-unavailable toast (matched on the three 409 reasons' zh text, not bare "压缩" —
+  // the username "dblcompact" and the banner's own title would collide).
   await expect(
-    page.getByRole("button", { name: /compaction configured|nothing to compact|just compacted/ }),
+    page.getByRole("button", { name: /没有配置上下文压缩|尚未完成一轮对话|刚刚压缩过/ }),
   ).toHaveCount(0);
 
   // Second /compact: there's no conversation yet in the new context -> tell the user clearly, and the wording must match reality.
+  // Wait for the first compaction to settle before starting the next command; the running
+  // compaction is a distinct 409 reason and should not race this already-compacted assertion.
   await ta.fill("/compact");
+  const secondCompactResponse = page.waitForResponse(
+    (response) => response.url() === compactUrl && response.status() === 409,
+  );
   await ta.press("Enter");
-  await expect(page.getByRole("button", { name: /just compacted/ })).toBeVisible();
-  // Having just finished a full round, saying "no completed conversation round yet" would be absurd.
+  const secondCompactError = await (await secondCompactResponse).json();
+  expect(secondCompactError.error.code).toBe("already_compacted");
   await expect(
-    page.getByRole("button", { name: /no completed conversation turns yet/ }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: /刚刚压缩过/ }),
+    `second compact should explain its 409 response: ${JSON.stringify(secondCompactError)}`,
+  ).toBeVisible();
+  // Having just finished a full round, saying "no completed conversation round yet" would be absurd.
+  await expect(page.getByRole("button", { name: /尚未完成一轮对话/ })).toHaveCount(0);
   expect(nativeDialogs, "feedback must be an in-app toast, not a native alert").toHaveLength(0);
-  await expect(page.getByText(/\[压缩\]/)).toHaveCount(1); // no second compaction banner
+  await expect(compactionBanner(page)).toHaveCount(1); // no second compaction banner
 });

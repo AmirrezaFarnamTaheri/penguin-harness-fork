@@ -2,14 +2,13 @@
  * Workspace picker, extracted from draft-view.tsx so the Project settings dialog's
  * "new chat defaults" section can offer the same dir-browser popover the chat draft uses.
  * Two trigger variants, one menu:
- * - "pill" (default): the draft page's pill trigger with viewport-docked in-flow menu —
- *   moved verbatim, unchanged markup/classes/behavior;
+ * - "pill" (default): the draft page's pill trigger with a viewport-aware portaled menu;
  * - "form": the shared FormPicker (full-width Input/Select-styled trigger, portaled menu) —
  *   a dialog's overflow-y-auto content area would clip an in-flow panel, and the portal
  *   tier (z-[60]) clears the Modal overlay.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { DirListResponse } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
@@ -30,12 +29,20 @@ export const pillClass =
   "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100";
 
 /**
+ * Whether a Workspace path is absolute: a POSIX root ("/…") or a win32 drive letter followed
+ * by a separator ("C:\\…" / "C:/…"). Core supports win32, where a selected Workspace arrives
+ * as a drive-letter path — the browser must start there rather than at the server's home
+ * directory. A bare "C:foo" is drive-RELATIVE on win32 and is not treated as absolute.
+ */
+const isAbsoluteWorkspace = (p: string): boolean => p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p);
+
+/**
  * Workspace selection (pill dropdown): the button shows the selected directory name (empty =
  * a temporary workspace). The menu browses server-side directories: **the current path can be
  * edited directly** at the top (Enter/blur commits it, an invalid directory toasts and reverts
  * to the previous path), the list omits hidden directories, and the hint text sits at the bottom
  * of the menu; only loads on first expand. On narrow screens the menu docks to whichever side
- * of the pill keeps it inside the viewport (measured on open — see menuDock).
+ * of the pill keeps it inside the viewport without being clipped by the toolbar.
  */
 export function WorkspaceSelect({
   projectId,
@@ -75,17 +82,6 @@ export function WorkspaceSelect({
 }) {
   const fieldName = fieldLabel ?? S.chat.workspace;
   const [open, setOpen] = useState(false);
-  /**
-   * Menu docking, measured on each open: the pill follows the agent pill in a wrapping row, so
-   * its left offset varies with the agent's name — a statically left-anchored 20rem panel can
-   * cross the viewport's right edge on phones (measured ~143px past a 390px viewport). Keep the
-   * desktop left anchoring whenever the panel fits; otherwise dock to whichever side of the
-   * pill has more room, capping the width to that room via menuStyle. On desktop the panel
-   * always fits, so nothing changes there.
-   */
-  const [menuDock, setMenuDock] = useState<{ right: boolean; maxWidth?: number }>({
-    right: false,
-  });
   const browsedRef = useRef(false);
 
   const [dir, setDir] = useState<DirListResponse | null>(null);
@@ -140,7 +136,7 @@ export function WorkspaceSelect({
     if (next && !browsedRef.current) {
       browsedRef.current = true;
       const ws = workspace.trim();
-      loadDir(ws.startsWith("/") ? ws : "");
+      loadDir(isAbsoluteWorkspace(ws) ? ws : "");
     }
   };
 
@@ -150,23 +146,9 @@ export function WorkspaceSelect({
     loadOnFirstOpen(next);
   };
 
-  /** Pill-variant trigger: measures viewport room to dock the in-flow panel left/right before opening. */
-  const toggle = (e: ReactMouseEvent<HTMLButtonElement>) => {
+  /** Pill-variant trigger: open and load lazily; Dropdown handles viewport placement. */
+  const toggle = () => {
     const next = !open;
-    if (next) {
-      const r = e.currentTarget.getBoundingClientRect();
-      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-      const margin = 12; // breathing room against the viewport edge
-      // The panel's effective width: w-80 capped by its max-w-[calc(100vw-2rem)] class
-      // (rem-derived — the root font size is not 16px here).
-      const width = Math.min(20 * rem, window.innerWidth - 2 * rem);
-      const roomRight = window.innerWidth - margin - r.left; // room for a left-anchored panel
-      const roomLeft = r.right - margin; // room for a right-anchored panel
-      if (roomRight >= width) setMenuDock({ right: false });
-      else if (roomLeft > roomRight)
-        setMenuDock({ right: true, ...(roomLeft < width ? { maxWidth: roomLeft } : {}) });
-      else setMenuDock({ right: false, maxWidth: roomRight });
-    }
     setOpen(next);
     loadOnFirstOpen(next);
   };
@@ -351,15 +333,13 @@ export function WorkspaceSelect({
     );
   }
 
-  // Pill: the composer's compact toolbar trigger, with the in-flow panel docked left/right by `toggle`'s measurement.
+  // Pill: the composer's compact toolbar trigger; the portal flips and clamps on phones.
   return (
     <Dropdown
       open={open}
       setOpen={setOpen}
-      menuClass={`top-full mt-1 w-80 max-w-[calc(100vw-2rem)] ${
-        menuDock.right ? "right-0 origin-top-right" : "left-0 origin-top-left"
-      }`}
-      {...(menuDock.maxWidth !== undefined ? { menuStyle: { maxWidth: menuDock.maxWidth } } : {})}
+      portal={{ direction: "down", align: "right" }}
+      menuClass="w-80 max-w-[calc(100vw-2rem)] origin-top-right"
       button={
         <button
           type="button"

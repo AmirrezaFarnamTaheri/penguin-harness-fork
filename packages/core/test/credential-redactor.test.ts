@@ -3,6 +3,7 @@ import {
   redactCredentials,
   containsCredentials,
   redactObject,
+  splitFieldNameWords,
   REDACTED_MARKER,
 } from "../src/internal/credential-redactor.js";
 
@@ -88,6 +89,26 @@ MIIEowIBAAKCAQEA0Y1u...secret...
     expect(redacted).not.toContain("secret");
     expect(redacted).toContain(`[${REDACTED_MARKER}]`);
   });
+
+  it("redacts secrets whose value contains whitespace", () => {
+    // The value must be allowed to run to its closing quote: a passphrase or a generated token
+    // containing spaces is a real secret, and the old rule backed out of it entirely — leaving
+    // both redactCredentials and containsCredentials reporting the line as clean.
+    const cases = ['password: "hunter2 traced"', 'api_key="my key value"', "PASSWORD='a b c d e'"];
+    for (const raw of cases) {
+      expect(containsCredentials(raw), `containsCredentials(${raw})`).toBe(true);
+      const redacted = redactCredentials(raw);
+      expect(redacted, redacted).not.toContain("hunter2 traced");
+      expect(redacted, redacted).not.toContain("my key value");
+      expect(redacted, redacted).not.toContain("a b c d e");
+      expect(redacted).toContain(REDACTED_MARKER);
+    }
+  });
+
+  it("leaves an unquoted short value alone", () => {
+    // The {8,} floor is deliberate: `password: hi` is not a secret worth a marker.
+    expect(redactCredentials("the password: short")).toBe("the password: short");
+  });
 });
 
 describe("redactObject", () => {
@@ -133,5 +154,84 @@ describe("redactObject", () => {
     expect(redacted.config.signingSecret).toBe(REDACTED_MARKER);
     expect(redacted.config.webhook_secret).toBe(REDACTED_MARKER);
     expect(redacted.safe).toBe("visible");
+  });
+
+  it("redacts sensitive fields whose names carry a prefix or suffix", () => {
+    // The field-name table used to require an exact match, so every prefixed spelling fell
+    // through and its scalar was returned verbatim — the normal shape inside a provider block.
+    const obj = {
+      db: {
+        dbPassword: "postgres://user:hunter2@db:5432/app",
+        userPassword: "hunter2",
+        admin_password: "godmode",
+      },
+      providers: {
+        apiSecret: "sk-live-abcd1234",
+        refreshTokenValue: "rt_abcdef123456",
+        stripeSigningSecret: "whsec_abcdef123456",
+        anthropicKey: "opaque-token-not-a-format-rule",
+      },
+      benign: { monkey: "see no evil", tokenCount: 4, publicKey: "not-a-secret" },
+    };
+
+    const redacted = redactObject(obj) as typeof obj;
+    expect(JSON.stringify(redacted)).not.toContain("hunter2");
+    expect(JSON.stringify(redacted)).not.toContain("godmode");
+    expect(JSON.stringify(redacted)).not.toContain("sk-live-abcd1234");
+    expect(JSON.stringify(redacted)).not.toContain("rt_abcdef123456");
+    expect(JSON.stringify(redacted)).not.toContain("whsec_abcdef123456");
+    expect(JSON.stringify(redacted)).not.toContain("opaque-token-not-a-format-rule");
+    expect(redacted.providers.anthropicKey).toBe(REDACTED_MARKER);
+
+    // The matcher keys on whole words, so a benign word that merely contains the letters is
+    // spared (`monkey` is one word, `keyword` is one word) while `publicKey` — two words, the
+    // second of which is `key` — is censored on the fail-closed side of the trade.
+    expect(redacted.benign.monkey).toBe("see no evil");
+    expect(redacted.benign.publicKey).toBe(REDACTED_MARKER);
+    expect(redacted.benign.tokenCount).toBe(REDACTED_MARKER);
+  });
+
+  it("spares benign names and censors compound ones", () => {
+    const kept = redactObject({
+      keyword: "ranking",
+      keywords: ["a", "b"],
+      hotkey: "F5",
+      maxTokens: 4096,
+      replayTokenBucket: "unchanged",
+    }) as Record<string, unknown>;
+    expect(kept.keyword).toBe("ranking");
+    expect(kept.keywords).toEqual(["a", "b"]);
+    expect(kept.hotkey).toBe("F5");
+    expect(kept.maxTokens).toBe(4096);
+    // `token` is a whole word here, so it fails closed.
+    expect(kept.replayTokenBucket).toBe(REDACTED_MARKER);
+  });
+
+  it("treats a digit run as part of its word rather than as a separator", () => {
+    // A digit is not a word separator: the run attaches to the word it borders, so the acronym
+    // tail of `jwtSecretV2` is the word `V2` and not a stray `V`, and a digit-then-capital
+    // transition still splits (`api2Key` -> `api2`, `Key`).
+    expect(splitFieldNameWords("jwtSecretV2")).toEqual(["jwt", "Secret", "V2"]);
+    expect(splitFieldNameWords("api2Key")).toEqual(["api2", "Key"]);
+    expect(splitFieldNameWords("password1")).toEqual(["password1"]);
+    // The pre-`\d` character classes shredded the digits instead, reading `V` as a word of its own.
+    expect(splitFieldNameWords("jwtSecretV2")).not.toContain("V");
+  });
+
+  it("pins the one boundary the whole-word matcher does not cross", () => {
+    // A compound credential spelled with no separator and no case change is a single word, so
+    // `openaiapikey` is NOT censored while `openaiApiKey` and `OPENAI_API_KEY` are. Closing that
+    // gap means substring matching, and a substring match is exactly what censors `monkey`,
+    // `keyword` and `hotkey` — those end in `key` too. The gap is deliberate and pinned here so a
+    // future "fix" has to delete this assertion and say which side it chose.
+    const mixed = redactObject({
+      openaiApiKey: "sk-live-1",
+      OPENAI_API_KEY: "sk-live-2",
+      openaiapikey: "sk-live-3",
+    }) as Record<string, unknown>;
+    expect(mixed.openaiApiKey).toBe(REDACTED_MARKER);
+    expect(mixed.OPENAI_API_KEY).toBe(REDACTED_MARKER);
+    expect(typeof mixed.openaiapikey).toBe("string");
+    expect(mixed.openaiapikey).not.toBe(REDACTED_MARKER);
   });
 });

@@ -22,6 +22,18 @@ import {
   MIN_ATTACHMENT_MB,
 } from "../../services/attachment-limits.js";
 
+/**
+ * ui_prefs is free-form JSON, but "free-form" still means a JSON object: a stored
+ * `null` / `5` / `"x"` / `[]` parses without throwing and would otherwise be typed
+ * `UiPrefs` and returned as `{ prefs: <that> }`, breaking PrefsResponse. Non-object
+ * values read as `{}` — and in the PUT's merge, that is what lets a corrupted row be
+ * repaired through the API rather than silently preserved forever.
+ */
+function asUiPrefs(parsed: unknown): UiPrefs {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  return parsed as UiPrefs;
+}
+
 export function meRoutes(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -90,7 +102,11 @@ export function meRoutes(deps: AppDeps): Hono<AppEnv> {
     let prefs: UiPrefs = {};
     if (raw !== null) {
       try {
-        prefs = JSON.parse(raw) as UiPrefs;
+        // Free-form does not mean "any JSON": a row stored as null/5/"x"/[] parses fine and
+        // would have been typed UiPrefs and handed to the client as `{prefs: <that>}`,
+        // breaking PrefsResponse's contract.
+        const parsed: unknown = JSON.parse(raw);
+        prefs = asUiPrefs(parsed);
       } catch {
         prefs = {}; // Corrupted prefs fall back to an empty object
       }
@@ -115,7 +131,10 @@ export function meRoutes(deps: AppDeps): Hono<AppEnv> {
     let current: UiPrefs = {};
     if (raw !== null) {
       try {
-        current = JSON.parse(raw) as UiPrefs;
+        // A corrupted row reads as an empty object (same rule as GET) — so the merge below
+        // repairs it instead of silently no-oping and leaving the row unfixable through the API.
+        const parsed: unknown = JSON.parse(raw);
+        current = asUiPrefs(parsed);
       } catch {
         current = {}; // Corrupted prefs fall back to an empty object (consistent with GET).
       }

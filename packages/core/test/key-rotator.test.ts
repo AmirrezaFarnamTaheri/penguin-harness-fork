@@ -197,6 +197,38 @@ describe("ApiKeyRotator", () => {
     expect(rotator.hasWorkingKeys()).toBe(true);
     expect(rotator.nextKey()).toBe("key-1");
   });
+
+  it("releases a lease on a key that updateKeys drops from the pool", () => {
+    // A subagent rotator shares the parent's KeyStatus objects and tracks the leased one, so
+    // the parent's lease count reads on the same object. The subagent's key set is then
+    // refreshed without the leased key: updateKeys used to rebuild the pool without clearing
+    // leasedKey, so the shared status kept activeLeases at 1 and the parent's count leaked
+    // until a release of a key the subagent could no longer name.
+    const parent = new ApiKeyRotator(["key-a", "key-b"]);
+    const { rotator: child } = parent.allocateSubagentRotator();
+    expect(child.activeLeases).toBe(1);
+    expect(parent.activeLeases).toBe(1);
+
+    child.updateKeys(["key-b"]);
+    // The leased status has left both pools, so neither may still count the lease.
+    expect(child.activeLeases).toBe(0);
+    expect(parent.activeLeases).toBe(0);
+  });
+
+  it("keeps a lease on a key that survives updateKeys", () => {
+    // Only a key that actually disappears loses its lease; a holder whose key is still in the
+    // pool must not be released behind its back.
+    const parent = new ApiKeyRotator(["key-a", "key-b"]);
+    const { rotator: child } = parent.allocateSubagentRotator();
+    expect(parent.activeLeases).toBe(1);
+
+    const leasedKey = child.getKeyStatuses().find((status) => status.activeLeases === 1)?.key;
+    expect(leasedKey).toBeDefined();
+
+    child.updateKeys([leasedKey!, "key-c"]);
+    expect(child.activeLeases).toBe(1);
+    expect(parent.activeLeases).toBe(1);
+  });
 });
 
 describe("KeyRotatorRegistry", () => {

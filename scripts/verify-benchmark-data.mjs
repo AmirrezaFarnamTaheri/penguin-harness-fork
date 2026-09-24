@@ -3,18 +3,31 @@
  *   node scripts/verify-benchmark-data.mjs
  *   node --test scripts/verify-benchmark-data.test.mjs
  *
- * Scope: BenchResult values and consistency with the two introducing-penguinharness
- * publication tables. Those tables are secondary claims, NOT measurement evidence.
- * The current BenchResult schema has no provenance, and README.md's roadmap still
+ * Scope: validate archived BenchResult values and ensure public blog posts do not
+ * publish those unverified figures as results.
+ * The current BenchResult schema carries no provenance, and README.md's roadmap still
  * lists public release of the benchmark suite as unfinished. Neither a repeated
  * table nor its GDPevo background link proves these runs or their official pricing.
- * This gate therefore fails closed until real run/scoring/usage/pricing artifacts
- * are supplied and an adapter for their actual schema is implemented. There is no
- * --skip-provenance flag or invented evidence schema that can manufacture a pass.
+ *
+ * Provenance is claim-linked evidence — raw run outcomes, scoring, model attribution,
+ * token usage and dated pricing artifacts — in a schema this gate does not define,
+ * because no such artifacts exist in the repository yet. So a suite has exactly two
+ * states, and only one of them passes:
+ *   - every row carries `provisional: true`: data is archived but uncertified. It is
+ *     reported as a WARNING; the public prose and tables are separately checked.
+ *   - anything else (no flag on some or all rows, or an ad-hoc `provenance` /
+ *     `source` field, or a citation URL): FAILS CLOSED. Nothing a row carries today
+ *     counts as provenance, deliberately — no invented evidence schema or arbitrary
+ *     field can manufacture a pass. When the artifacts land, the check that recognizes
+ *     them goes where the provisional flag is read, and a verified row stops needing it.
+ *
+ * PENGUIN_BENCH_DATA overrides the module the data is read from (an absolute path or
+ * file URL), so the fail-closed arm can be exercised end to end against a candidate
+ * copy; unset, the gate reads the real landing data.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Current suite denominators: benchmark-data.ts header, publication methodology,
 // and packages/landing/test/benchmark-data.test.ts. These are claims, not run proof.
@@ -25,7 +38,23 @@ const FRAMEWORKS = { penguin: "PenguinHarness", claude: "Claude Code", codex: "O
 const PUBLICATIONS = ["en", "zh"].map(
   (locale) => `packages/landing/content/blog/introducing-penguinharness.${locale}.md`,
 );
+const WITHDRAWAL_NOTICES = { en: "we have removed those claims", zh: "因此已撤下" };
 const METRICS = ["accuracyPct", "tokensM", "costUsd"];
+// The schema is closed on purpose. This gate exists because nothing a row carries today
+// certifies its numbers, so an unknown key is either a typo or an attempt to smuggle in
+// unverified provenance — both block. A field that genuinely proves a run belongs in the
+// provenance arm below, where the check that recognizes real artifacts will live; it is
+// added to BenchResult and to this set in the same change, never by widening it silently.
+const ALLOWED_KEYS = new Set([
+  "kind",
+  "framework",
+  "model",
+  "accuracyPct",
+  "tokensM",
+  "costUsd",
+  "emphasized",
+  "provisional",
+]);
 const HEADERS = [
   ["Framework", "Model", "Accuracy (%)", "Tokens (M)", "Cost ($)"],
   ["实验框架", "模型名称", "准确率（%）", "Token 用量（M）", "成本（$）"],
@@ -56,8 +85,13 @@ function publicationTables(text) {
 /** Returns all diagnostics. No consistency-only result is called verification. */
 export function validateBenchmarkData(data, publications) {
   const errors = [];
-  const fail = (code, location, message) => errors.push({ code, location, message });
-  const validRows = new Map();
+  // A diagnostic is a warning or a blocking error (the CLI prints warnings to stderr and
+  // only errors set the exit code). Provenance state is a warning; everything this gate
+  // reports about the numbers, the rows and the publications still blocks.
+  const fail = (code, location, message) =>
+    errors.push({ code, location, message, severity: "error" });
+  const warn = (code, location, message) =>
+    errors.push({ code, location, message, severity: "warning" });
   for (const [suite, outcomes] of Object.entries(SUITES)) {
     const rows = data?.[suite];
     if (!Array.isArray(rows) || rows.length !== Object.keys(FRAMEWORKS).length) {
@@ -78,6 +112,16 @@ export function validateBenchmarkData(data, publications) {
         fail("INVALID_ATTRIBUTION", location, "Unknown, duplicated or mismatched kind/framework.");
       }
       seen.add(row.kind);
+      for (const key of Object.keys(row)) {
+        if (!ALLOWED_KEYS.has(key))
+          fail(
+            "UNKNOWN_FIELD",
+            `${location}.${key}`,
+            "Not part of the BenchResult schema — an unknown key cannot certify a number, and a provenance field only counts once the gate is taught to recognize it.",
+          );
+      }
+      if (row.provisional !== undefined && typeof row.provisional !== "boolean")
+        fail("INVALID_PROVISIONAL", `${location}.provisional`, "Expected a boolean flag.");
       if (typeof row.model !== "string" || !row.model.trim())
         fail("INVALID_ATTRIBUTION", `${location}.model`, "Expected a nonempty model name.");
       if (
@@ -116,10 +160,26 @@ export function validateBenchmarkData(data, publications) {
           `${location}.costUsd`,
           "The published cost-ratio denominator must be positive.",
         );
-      validRows.set(`${suite}:${row.framework}`, { row, location });
     }
     for (const kind of Object.keys(FRAMEWORKS)) {
       if (!seen.has(kind)) fail("INVALID_ATTRIBUTION", suite, `Missing ${FRAMEWORKS[kind]}.`);
+    }
+    // Archived data stays explicitly provisional until claim-linked evidence exists.
+    const objects = (Array.isArray(rows) ? rows : []).filter(
+      (r) => r && typeof r === "object" && !Array.isArray(r),
+    );
+    if (objects.length > 0 && objects.every((r) => r.provisional === true)) {
+      warn(
+        "PROVISIONAL",
+        suite,
+        "Every row is archived as provisional: not certified by run outcomes, scoring, model attribution, token usage or dated pricing artifacts.",
+      );
+    } else {
+      fail(
+        "MISSING_PROVENANCE",
+        suite,
+        "Not certified, and not every row is flagged provisional: attach claim-linked run outcomes, scoring, model attribution, token usage and dated pricing artifacts before publishing these numbers.",
+      );
     }
   }
 
@@ -138,68 +198,34 @@ export function validateBenchmarkData(data, publications) {
       fail("INVALID_PUBLICATION", path, error.message);
       continue;
     }
-    if (tables.length !== Object.keys(SUITES).length) {
+    const locale = path.endsWith(".zh.md") ? "zh" : "en";
+    if (
+      tables.length > 0 ||
+      Object.values(data ?? {}).some(
+        (rows) =>
+          Array.isArray(rows) &&
+          rows.some(
+            (row) =>
+              row &&
+              METRICS.some(
+                (field) =>
+                  Number.isFinite(row[field]) && matches[0].text.includes(row[field].toFixed(2)),
+              ),
+          ),
+      )
+    ) {
       fail(
-        "INVALID_PUBLICATION",
+        "UNVERIFIED_PUBLICATION",
         path,
-        "Expected the data-analysis and coding benchmark tables, in that order.",
+        "This publication contains comparative benchmark data without reproducible evidence.",
       );
-      continue;
+    } else if (!matches[0].text.toLocaleLowerCase().includes(WITHDRAWAL_NOTICES[locale])) {
+      fail(
+        "MISSING_WITHDRAWAL_NOTICE",
+        path,
+        "State clearly that earlier comparative figures were withdrawn pending verification.",
+      );
     }
-    for (const [index, suite] of Object.keys(SUITES).entries()) {
-      const table = tables[index];
-      const names = table.map((cells) => cells[0]);
-      if (
-        table.length !== Object.keys(FRAMEWORKS).length ||
-        new Set(names).size !== names.length ||
-        !Object.values(FRAMEWORKS).every((name) => names.includes(name))
-      ) {
-        fail(
-          "INVALID_PUBLICATION",
-          `${path}:${suite}`,
-          "Missing, duplicate or unknown framework rows.",
-        );
-      }
-      for (const cells of table) {
-        if (
-          cells.length !== 5 ||
-          !cells[1] ||
-          !cells.slice(2).every((value) => /^\d+\.\d{2}$/.test(value))
-        ) {
-          fail(
-            "INVALID_PUBLICATION",
-            `${path}:${suite}`,
-            "Expected framework/model and three two-decimal metric cells.",
-          );
-          continue;
-        }
-        const result = validRows.get(`${suite}:${cells[0]}`);
-        if (!result) continue; // Missing/invalid landing rows already reported above.
-        const { row, location } = result;
-        if (row.model !== cells[1])
-          fail(
-            "PUBLICATION_MISMATCH",
-            `${location}.model`,
-            `${path} attributes ${cells[0]} to ${cells[1]}, not ${String(row.model)}.`,
-          );
-        for (const [metricIndex, field] of METRICS.entries()) {
-          if (Number.isFinite(row[field]) && row[field].toFixed(2) !== cells[metricIndex + 2]) {
-            fail(
-              "PUBLICATION_MISMATCH",
-              `${location}.${field}`,
-              `${path} publishes ${cells[metricIndex + 2]}, not ${row[field].toFixed(2)}.`,
-            );
-          }
-        }
-      }
-    }
-  }
-  for (const suite of Object.keys(SUITES)) {
-    fail(
-      "MISSING_PROVENANCE",
-      suite,
-      "No claim-linked run outcomes/scoring, model attribution, token usage or dated pricing artifacts in the current schema. Matching blog tables and the GDPevo background citation are not proof; supply source artifacts before this gate can pass.",
-    );
   }
   return errors;
 }
@@ -208,17 +234,40 @@ async function main() {
   try {
     // Node's native TS stripping imports actual exports (including constant model
     // references), rather than regex-extracting arrays or looking for keywords.
-    const data = await import("../packages/landing/src/lib/benchmark-data.ts");
+    // PENGUIN_BENCH_DATA swaps the module under test (an absolute path or file URL) so the
+    // fail-closed arm can be exercised end to end against a candidate copy; unset, the gate
+    // reads the real landing data it is the integrity check for.
+    const override = process.env.PENGUIN_BENCH_DATA;
+    const dataUrl = override
+      ? override.startsWith("file:")
+        ? new URL(override)
+        : pathToFileURL(resolve(override))
+      : new URL("../packages/landing/src/lib/benchmark-data.ts", import.meta.url);
+    const data = await import(dataUrl.href);
     const publications = PUBLICATIONS.map((path) => ({
       path,
       text: readFileSync(new URL(`../${path}`, import.meta.url), "utf8"),
     }));
     const errors = validateBenchmarkData(data, publications);
-    for (const { code, location, message } of errors)
-      console.error(`[${code}] ${location}: ${message}`);
-    if (errors.length) {
-      console.error(`Benchmark integrity BLOCKED (${errors.length} errors); no results certified.`);
+    // Warnings are printed and never set the exit code; only errors block. The archived
+    // values remain explicitly provisional until claim-linked artifacts are committed.
+    const failures = errors.filter((diagnostic) => diagnostic.severity !== "warning");
+    const warnings = errors.filter((diagnostic) => diagnostic.severity === "warning");
+    for (const { code, location, message, severity } of errors)
+      console.error(
+        `[${severity === "warning" ? "WARN" : "FAIL"} ${code}] ${location}: ${message}`,
+      );
+    if (failures.length) {
+      console.error(
+        `Benchmark integrity BLOCKED (${failures.length} error${failures.length === 1 ? "" : "s"}); no results certified.`,
+      );
       process.exitCode = 1;
+    } else if (warnings.length) {
+      console.log(
+        `Benchmark data checked with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}: archived values remain provisional and are not published.`,
+      );
+    } else {
+      console.log("Benchmark data verified: every suite carries certified provenance.");
     }
   } catch (error) {
     console.error(`[INPUT_ERROR] ${error.message}`);

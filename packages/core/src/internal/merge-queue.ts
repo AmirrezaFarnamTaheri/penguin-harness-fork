@@ -12,7 +12,9 @@ import type { OmniMessage } from "../omnimessage/index.js";
 export class MergeQueue {
   private items: OmniMessage[] = [];
   private producers = 0;
-  private wake: (() => void) | null = null;
+  private waiters: Array<() => void> = [];
+  /** Deregistrations with no matching registration; a negative producer count would hang the consumer forever. */
+  public producerUnderflows = 0;
 
   /** Registers a producer. */
   addProducer(): void {
@@ -21,8 +23,19 @@ export class MergeQueue {
 
   /** Deregisters a producer (its stream has finished). */
   removeProducer(): void {
+    if (this.producers === 0) {
+      // A double deregister must not drive the count below zero: `producers === 0` would then
+      // never hold again and `next()` would await a wakeup that never comes.
+      this.producerUnderflows++;
+      return;
+    }
     this.producers -= 1;
-    this.signal();
+    if (this.producers === 0) {
+      // Closing the queue resolves every waiter; each re-checks the count and yields null.
+      this.signalAll();
+    } else {
+      this.signal();
+    }
   }
 
   /** Pushes a message and wakes the consumer. */
@@ -31,12 +44,16 @@ export class MergeQueue {
     this.signal();
   }
 
+  /** Wake one waiter, in registration order. */
   private signal(): void {
-    if (this.wake) {
-      const w = this.wake;
-      this.wake = null;
-      w();
-    }
+    const waiter = this.waiters.shift();
+    if (waiter) waiter();
+  }
+
+  /** Wake every waiter — used only when the queue closes. */
+  private signalAll(): void {
+    const waiters = this.waiters.splice(0);
+    for (const waiter of waiters) waiter();
   }
 
   /** Takes the next message; waits if empty but producers remain; returns null if empty and no producers remain. */
@@ -44,8 +61,10 @@ export class MergeQueue {
     for (;;) {
       if (this.items.length > 0) return this.items.shift()!;
       if (this.producers === 0) return null;
+      // A second consumer registering while the first waits must not clobber its wakeup:
+      // waiters are a queue and each is resolved exactly once.
       await new Promise<void>((resolve) => {
-        this.wake = resolve;
+        this.waiters.push(resolve);
       });
     }
   }

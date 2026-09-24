@@ -284,7 +284,9 @@ test("all work tools fit mobile and desktop; missing HUD values stay unknown", a
   await expect(page.getByText("Context unavailable", { exact: true })).toBeVisible();
   await expect(page.getByText("Cost unavailable", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Session details" }).click();
-  await expect(page.getByText("Not reported")).toHaveCount(4);
+  // 137c8105e restored the measured cache-warm badge, whose missing-data label
+  // "Cache not reported" is a fifth honest "unknown" (getByText is case-insensitive).
+  await expect(page.getByText("Not reported")).toHaveCount(5);
   expect(errors).toEqual([]);
 });
 

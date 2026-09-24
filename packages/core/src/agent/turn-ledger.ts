@@ -59,6 +59,14 @@ export interface TurnLedgerMetrics {
   replayResets: number;
   compactions: number;
   acknowledgedTurns: number;
+  /**
+   * Appends that landed while `records` was already past `maxRecords`. Zero while the ledger
+   * honors its bound; each append past the bound adds one. It is a count of overflow *events*,
+   * not a high-water mark — `trimRecords` deliberately keeps the records a lagging projection
+   * still needs, so this is the size of that deliberate overshoot, and it drops back toward
+   * zero as `compact` drains them.
+   */
+  overflowEvents: number;
 }
 
 export interface TurnLedgerOptions {
@@ -106,6 +114,7 @@ export class TurnLedger {
     replayResets: 0,
     compactions: 0,
     acknowledgedTurns: 0,
+    overflowEvents: 0,
   };
 
   constructor(sessionId: string, options: TurnLedgerOptions = {}) {
@@ -195,20 +204,8 @@ export class TurnLedger {
       this.metrics.streamRecords++;
     }
 
-    // Bound in-memory records to prevent heap leaks during long-running sessions
-    if (this.records.length > this.maxRecords) {
-      if (this.projectionCommittedThroughSeq > this.compactedThroughSeq) {
-        this.compact(this.projectionCommittedThroughSeq);
-      }
-      if (this.records.length > this.maxRecords) {
-        const excess = this.records.length - this.maxRecords;
-        const lastDroppedSeq = this.records[excess - 1]?.seq ?? 0;
-        this.records.splice(0, excess);
-        if (lastDroppedSeq > this.compactedThroughSeq) {
-          this.compactedThroughSeq = lastDroppedSeq;
-        }
-      }
-    }
+    // Bound in-memory records to prevent heap leaks during long-running sessions.
+    this.trimRecords();
 
     if (isTerminalStatus(this.currentStatus)) {
       this.isTerminal = true;
@@ -337,6 +334,34 @@ export class TurnLedger {
   }
 
   /**
+   * Bound the raw record buffer. Eviction is gated on projection acknowledgment: a turn the
+   * projection has not acknowledged yet must stay in `records`, because `pendingProjections`
+   * rebuilds its view from `records` and the projection watermark advances only across a
+   * contiguous acknowledged prefix. Splicing the oldest records blindly orphans such turns —
+   * they can never be replayed and the watermark stalls at the gap, so the ledger keeps the
+   * overflow rather than lose replay data it has not yet delivered. The overshoot is counted
+   * in `metrics.overflowEvents` so a bound that has silently stopped being honored is visible
+   * from the outside instead of only inferable from replay length.
+   */
+  private trimRecords(): void {
+    if (this.records.length <= this.maxRecords) return;
+
+    this.metrics.overflowEvents++;
+    if (this.projectionCommittedThroughSeq > this.compactedThroughSeq) {
+      this.compact(this.projectionCommittedThroughSeq);
+    }
+    // Anything still past the bound belongs to turns the projection has not caught up with;
+    // refuse to evict past the acknowledged watermark.
+  }
+
+  /** Drop acknowledgment records the committed watermark has already absorbed. */
+  private pruneStaleAcks(): void {
+    for (const [turnId, ackSeq] of this.projectionAcks) {
+      if (ackSeq <= this.compactedThroughSeq) this.projectionAcks.delete(turnId);
+    }
+  }
+
+  /**
    * Compacts raw event history up through throughSeq.
    * Discards intermediate stream deltas only for a contiguous prefix of fully acknowledged turns.
    */
@@ -352,6 +377,7 @@ export class TurnLedger {
 
     this.records = this.records.filter((rec) => rec.seq > safeLimit);
     this.compactedThroughSeq = safeLimit;
+    this.pruneStaleAcks();
     this.metrics.compactions++;
   }
 

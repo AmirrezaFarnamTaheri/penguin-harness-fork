@@ -72,7 +72,11 @@ export type {
   FallbackTrigger,
   ComboResolutionContext,
 } from "./model-combos.js";
-export { PricingCatalog, DEFAULT_PRICING_CATALOG } from "./pricing-catalog.js";
+export {
+  PricingCatalog,
+  DEFAULT_PRICING_CATALOG,
+  usageCountsFromTokenCounts,
+} from "./pricing-catalog.js";
 export type { ModelPricingEntry, DetailedUsageCounts, CostBreakdown } from "./pricing-catalog.js";
 export { InferenceProxyPool, parseProxyUrl } from "./proxy-pool.js";
 export type {

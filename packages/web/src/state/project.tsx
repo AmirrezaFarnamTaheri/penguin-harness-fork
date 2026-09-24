@@ -50,6 +50,10 @@ interface ProjectStoreState {
   projects: ProjectSummary[];
   projectsLoading: boolean;
   currentProjectId: string | null;
+  // Generation counter for reloadProjects: bumped at the start of each read so a read can tell
+  // whether a newer reload started after it. Instance-scoped like every other field — the store
+  // is one instance per Provider mount, so a module-level counter would leak across mounts.
+  reloadProjectsGeneration: number;
 
   agents: AgentSummary[];
   agentsLoading: boolean;
@@ -61,20 +65,32 @@ interface ProjectStoreState {
   reloadAgents: () => Promise<void>;
 }
 
-function createProjectStore() {
+/**
+ * Builds one Provider's store. Exported as a test seam: the package's vitest runs in Node with
+ * no DOM, so the Agent-list race in `reloadAgents` and the Project-list race in
+ * `reloadProjects` are exercised against the store directly.
+ */
+export function createProjectStore() {
   return createStore<ProjectStoreState>((set, get) => ({
     projects: [],
     projectsLoading: true,
     currentProjectId: null,
+    reloadProjectsGeneration: 0,
 
     agents: [],
     agentsLoading: true,
     currentAgentId: null,
 
     reloadProjects: async () => {
-      set({ projectsLoading: true });
+      const generation = get().reloadProjectsGeneration + 1;
+      set({ projectsLoading: true, reloadProjectsGeneration: generation });
       try {
         const res = await api.listProjects();
+        // Dialogs chain a switch onto this reload ("reload, then select the new Project"), and
+        // a second reload can start while a first is in flight, so this answer may be stale —
+        // both for the list itself and for the selection, which the reload re-derives from the
+        // answer and would otherwise move to whatever an older, shorter list still knew about.
+        if (get().reloadProjectsGeneration !== generation) return;
         const wanted = get().currentProjectId ?? localStorage.getItem(PROJECT_KEY);
         const found = res.projects.find((p) => p.projectId === wanted);
         set({
@@ -82,7 +98,7 @@ function createProjectStore() {
           currentProjectId: (found ?? res.projects[0])?.projectId ?? null,
         });
       } finally {
-        set({ projectsLoading: false });
+        if (get().reloadProjectsGeneration === generation) set({ projectsLoading: false });
       }
     },
 
@@ -113,6 +129,11 @@ function createProjectStore() {
       set({ agentsLoading: true });
       try {
         const res = await api.listAgents(currentProjectId);
+        // A response for a Project the shell has since left is stale: landing it would put the
+        // old Project's agents under the new one, and the Session list mounted under it would
+        // fetch with the wrong Agent set (see setCurrentProjectId, which clears the list for
+        // exactly this reason).
+        if (get().currentProjectId !== currentProjectId) return;
         const wanted = get().currentAgentId ?? localStorage.getItem(agentKey(currentProjectId));
         const found = res.agents.find((a) => a.agentId === wanted);
         // Default to conversing with default_agent.
@@ -120,7 +141,7 @@ function createProjectStore() {
           res.agents.find((a) => a.agentId === "default_agent") ?? res.agents[0] ?? null;
         set({ agents: res.agents, currentAgentId: (found ?? fallback)?.agentId ?? null });
       } finally {
-        set({ agentsLoading: false });
+        if (get().currentProjectId === currentProjectId) set({ agentsLoading: false });
       }
     },
 

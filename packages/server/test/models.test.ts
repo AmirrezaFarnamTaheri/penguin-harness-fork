@@ -801,27 +801,46 @@ describe("model-reference rekeying and the connectivity test", () => {
   });
 
   it("connectivity test: both a saved model and a **not-yet-saved** custom model can be tested (the LLM layer throws nothing, every outcome converges)", async () => {
-    await api.put(url(), {
-      models: [{ provider: "openai", modelId: "gpt-5.5", apiKey: "sk-invalid-key-for-test" }],
+    const server = createServer((_req, res) => {
+      res.statusCode = 401;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: { message: "invalid test credential" } }));
     });
-    const saved = await api.post(testUrl(), { provider: "openai", modelId: "gpt-5.5" });
-    expect(saved.status).toBe(200);
-    const savedBody = (await saved.json()) as ModelTestResponse;
-    expect(savedBody.ok).toBe(false);
-    expect(typeof savedBody.message).toBe("string");
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+    try {
+      await api.put(url(), {
+        models: [
+          {
+            provider: "custom",
+            modelId: "saved-model",
+            apiKey: "sk-invalid-key-for-test",
+            baseUrl,
+            clientType: "openai",
+          },
+        ],
+      });
+      const saved = await api.post(testUrl(), { provider: "custom", modelId: "saved-model" });
+      expect(saved.status).toBe(200);
+      const savedBody = (await saved.json()) as ModelTestResponse;
+      expect(savedBody.ok).toBe(false);
+      expect(typeof savedBody.message).toBe("string");
 
-    // "Test before save" for adding a custom model: the model isn't in the config, so all params come from the request body.
-    const unsaved = await api.post(testUrl(), {
-      provider: "custom",
-      modelId: "my-new-model",
-      apiKey: "sk-invalid",
-      baseUrl: "https://example.invalid/v1",
-      clientType: "openai",
-    });
-    expect(unsaved.status).toBe(200);
-    const unsavedBody = (await unsaved.json()) as ModelTestResponse;
-    expect(unsavedBody.ok).toBe(false);
-    expect(typeof unsavedBody.message).toBe("string");
+      // Test before save: the model is absent from config, so all settings come from this draft.
+      const unsaved = await api.post(testUrl(), {
+        provider: "custom",
+        modelId: "my-new-model",
+        apiKey: "sk-invalid",
+        baseUrl,
+        clientType: "openai",
+      });
+      expect(unsaved.status).toBe(200);
+      const unsavedBody = (await unsaved.json()) as ModelTestResponse;
+      expect(unsavedBody.ok).toBe(false);
+      expect(typeof unsavedBody.message).toBe("string");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   }, 40_000);
 
   it("connectivity test: a model with no credential at all converges to ok:false instead of 500", async () => {

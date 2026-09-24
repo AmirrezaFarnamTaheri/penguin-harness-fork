@@ -146,6 +146,9 @@ export class QuorumConsensusEngine {
     if (standing.status === "refuted") {
       throw new Error(`Cannot endorse refuted topic '${topicId}'`);
     }
+    if (standing.status === "settled") {
+      throw new Error(`Cannot endorse settled topic '${topicId}'`);
+    }
 
     const normalizedAgentId = agentId.trim();
     if (!normalizedAgentId) throw new Error("Endorser agentId cannot be empty");
@@ -170,9 +173,10 @@ export class QuorumConsensusEngine {
       });
     }
 
-    // Check if threshold of distinct peer endorsements is reached
+    // Check if threshold of distinct peer endorsements is reached. A settled standing has
+    // already thrown above, so reaching the threshold here is the only path to `settled`.
     const peerSupporters = standing.supporters.filter((s) => s.agentId !== standing.proposerId);
-    if (peerSupporters.length >= standing.policy.threshold && standing.status !== "settled") {
+    if (peerSupporters.length >= standing.policy.threshold) {
       standing.status = "settled";
       standing.settledAt = Date.now();
     }
@@ -186,8 +190,23 @@ export class QuorumConsensusEngine {
       throw new Error(`Topic with id '${topicId}' not found`);
     }
 
+    // Settle and refute are mutually exclusive terminal states: endorsement already carried the
+    // topic past quorum, so a later refutation would leave both `settledAt` and `refutedAt` set
+    // and peers reading either field disagree about the outcome.
+    if (standing.status === "refuted") {
+      throw new Error(`Cannot refute refuted topic '${topicId}'`);
+    }
+    if (standing.status === "settled") {
+      throw new Error(`Cannot refute settled topic '${topicId}'`);
+    }
+
     const normalizedAgentId = agentId.trim();
     if (!normalizedAgentId) throw new Error("Refuter agentId cannot be empty");
+    // A self-refutation is the echo-chamber escape hatch this engine exists to close: the
+    // proposer's own proposal retracting itself needs no peer evidence.
+    if (normalizedAgentId === standing.proposerId) {
+      throw new Error(`Proposer '${normalizedAgentId}' cannot refute their own topic`);
+    }
     if (!grounds || !grounds.trim()) {
       throw new Error("Refutation must provide explicit grounds or contradicting evidence");
     }

@@ -250,7 +250,12 @@ jobs:
 
           if ([string]::IsNullOrWhiteSpace($env:EVSIGN_KEY)) {
             if ($env:REQUIRE_WINDOWS_SIGNING -eq "true") {
-              Write-Error "Missing EVSIGN_KEY secret required for Windows release signing."
+              # Exit 1, not Write-Error: the step only fails today because
+              # $ErrorActionPreference = "Stop" turns Write-Error terminating. Mirror the
+              # macOS arm of this policy (which exits 1) so a future edit that moves or
+              # relaxes the preference cannot turn a release that requires signing into a
+              # pass-while-unsigned.
+              exit 1
             }
             "EVSIGN_REQUIRE=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
             Write-Host "EVSIGN_KEY is not configured; unsigned Windows artifacts are allowed for this dry-run."

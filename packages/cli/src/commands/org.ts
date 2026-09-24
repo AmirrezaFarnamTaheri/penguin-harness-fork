@@ -208,7 +208,7 @@ async function callerPrincipal(client: ServerClient): Promise<string> {
   if (sessionId !== undefined) {
     return `agent:${(await getSessionInfo(client, sessionId)).agentId}`;
   }
-  const me = await client.request<MeResponse>("GET", "/api/me");
+  const me = await client.requestJson<MeResponse>("GET", "/api/me");
   return `user:${me.user.userId}`;
 }
 
@@ -499,7 +499,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     .action(async (opts) => {
       const client = new ServerClient(await resolveConnection({ server: opts.server }, t), t);
       const projectId = resolveProjectId(opts.projectId);
-      const res = await client.request<OrganizationsResponse>(
+      const res = await client.requestJson<OrganizationsResponse>(
         "GET",
         `/api/projects/${enc(projectId)}/organizations`,
       );
@@ -567,7 +567,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       }
       const client = new ServerClient(await resolveConnection({ server: opts.server }, t), t);
       const projectId = resolveProjectId(opts.projectId);
-      const detail = await client.request<OrganizationDetail>(
+      const detail = await client.requestJson<OrganizationDetail>(
         "POST",
         `/api/projects/${enc(projectId)}/organizations`,
         {
@@ -589,7 +589,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   scoped(org.command("show").description(t.org.showDesc), t).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const detail = await scope.client.request<OrganizationDetail>("GET", scope.base);
+    const detail = await scope.client.requestJson<OrganizationDetail>("GET", scope.base);
     if (opts.json === true) printJson(detail);
     else process.stdout.write(renderDetail(detail, t));
   });
@@ -597,7 +597,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   scoped(org.command("chart").description(t.org.chartDesc), t).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgChartResponse>("GET", `${scope.base}/chart`);
+    const res = await scope.client.requestJson<OrgChartResponse>("GET", `${scope.base}/chart`);
     if (opts.json === true) printJson(res);
     else process.stdout.write(renderChart(res, t));
   });
@@ -638,24 +638,30 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const plugins = commaList(opts.skills);
-    const item = await scope.client.request<OrgEmployeeItem>("POST", `${scope.base}/employees`, {
-      ...(opts.agentId !== undefined ? { agentId: String(opts.agentId) } : {}),
-      ...(opts.newAgent !== undefined
-        ? {
-            newAgent: {
-              agentId: String(opts.newAgent),
-              ...(opts.name !== undefined ? { name: String(opts.name) } : {}),
-              ...(opts.description !== undefined ? { description: String(opts.description) } : {}),
-              ...(plugins !== undefined ? { plugins } : {}),
-            },
-          }
-        : {}),
-      title: String(opts.title),
-      reportsTo: String(opts.reportsTo),
-      ...(opts.workspace !== undefined ? { workspace: String(opts.workspace) } : {}),
-      ...(budget !== undefined ? { budget } : {}),
-      ...(opts.duties !== undefined ? { duties: String(opts.duties) } : {}),
-    });
+    const item = await scope.client.requestJson<OrgEmployeeItem>(
+      "POST",
+      `${scope.base}/employees`,
+      {
+        ...(opts.agentId !== undefined ? { agentId: String(opts.agentId) } : {}),
+        ...(opts.newAgent !== undefined
+          ? {
+              newAgent: {
+                agentId: String(opts.newAgent),
+                ...(opts.name !== undefined ? { name: String(opts.name) } : {}),
+                ...(opts.description !== undefined
+                  ? { description: String(opts.description) }
+                  : {}),
+                ...(plugins !== undefined ? { plugins } : {}),
+              },
+            }
+          : {}),
+        title: String(opts.title),
+        reportsTo: String(opts.reportsTo),
+        ...(opts.workspace !== undefined ? { workspace: String(opts.workspace) } : {}),
+        ...(budget !== undefined ? { budget } : {}),
+        ...(opts.duties !== undefined ? { duties: String(opts.duties) } : {}),
+      },
+    );
     if (opts.json === true) printJson(item);
     else printLine(t.org.hired(item.agentId, item.title, item.reportsTo));
   });
@@ -699,7 +705,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     }
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const item = await scope.client.request<OrgEmployeeItem>(
+    const item = await scope.client.requestJson<OrgEmployeeItem>(
       "PATCH",
       `${scope.base}/employees/${enc(agentId)}`,
       body,
@@ -728,7 +734,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       const scope = await orgScope(opts, t);
       if (scope === null) return;
       const agentId = resolveAgentId(agentArg);
-      const res = await scope.client.request<OrgDeskResponse>(
+      const res = await scope.client.requestJson<OrgDeskResponse>(
         "GET",
         `${scope.base}/employees/${enc(agentId)}/desk`,
       );
@@ -744,7 +750,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       const scope = await orgScope(opts, t);
       if (scope === null) return;
       const agentId = resolveAgentId(agentArg);
-      const res = await scope.client.request<OrgDeskResponse>(
+      const res = await scope.client.requestJson<OrgDeskResponse>(
         "POST",
         `${scope.base}/employees/${enc(agentId)}/desk`,
       );
@@ -766,7 +772,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   ).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const all = await scope.client.request<OrgCalendarResponse>("GET", `${scope.base}/calendar`);
+    const all = await scope.client.requestJson<OrgCalendarResponse>(
+      "GET",
+      `${scope.base}/calendar`,
+    );
     // Without --agent-id the whole organization's calendar; with it, that employee's events.
     const only = opts.agentId !== undefined ? resolveAgentId(opts.agentId) : undefined;
     const res: OrgCalendarResponse =
@@ -831,7 +840,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const agentId = resolveAgentId(opts.agentId);
-    const item = await scope.client.request<OrgCalendarWriteResponse>(
+    const item = await scope.client.requestJson<OrgCalendarWriteResponse>(
       "POST",
       `${scope.base}/calendar`,
       {
@@ -873,7 +882,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const agentId = resolveAgentId(opts.agentId);
     const target = `${scope.base}/calendar/${enc(agentId)}/${enc(name)}`;
     // Read-modify-write: unspecified fields keep the stored values.
-    const stored = await scope.client.request<OrgCalendarItem>("GET", target);
+    const stored = await scope.client.requestJson<OrgCalendarItem>("GET", target);
     const body: Record<string, unknown> = {
       enabled: opts.enable === true ? true : opts.disable === true ? false : stored.enabled,
       prompt: opts.prompt !== undefined ? String(opts.prompt) : stored.prompt,
@@ -885,7 +894,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (period !== undefined) body.period = period;
     const endAt = opts.endAt !== undefined ? String(opts.endAt) : stored.endAt;
     if (endAt !== undefined) body.endAt = endAt;
-    const item = await scope.client.request<OrgCalendarWriteResponse>("PUT", target, body);
+    const item = await scope.client.requestJson<OrgCalendarWriteResponse>("PUT", target, body);
     if (opts.json === true) printJson(item);
     else printCalendarWrite(t, item);
   });
@@ -922,7 +931,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (status === null) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgTicketsResponse>("GET", `${scope.base}/tickets`);
+    const res = await scope.client.requestJson<OrgTicketsResponse>("GET", `${scope.base}/tickets`);
     // The board comes whole; the filters are local, over every column in board order.
     const tickets: OrgTicketItem[] = TICKET_COLUMNS.flatMap((column) => res.columns[column]).filter(
       (item) =>
@@ -968,7 +977,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     async (ticketId: string, opts) => {
       const scope = await orgScope(opts, t);
       if (scope === null) return;
-      const detail = await scope.client.request<OrgTicketDetail>(
+      const detail = await scope.client.requestJson<OrgTicketDetail>(
         "GET",
         `${scope.base}/tickets/${enc(ticketId)}`,
       );
@@ -1017,19 +1026,23 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const notify = commaList(opts.notify);
-    const detail = await scope.client.request<OrgTicketDetail>("POST", `${scope.base}/tickets`, {
-      title: String(opts.title),
-      ...(opts.initiator !== undefined ? { initiator: String(opts.initiator) } : {}),
-      ...(opts.goal !== undefined ? { goal: String(opts.goal) } : {}),
-      ...(opts.criteria !== undefined ? { acceptanceCriteria: String(opts.criteria) } : {}),
-      ...(body !== undefined ? { body } : {}),
-      ...(opts.owner !== undefined ? { owner: String(opts.owner) } : {}),
-      ...(opts.parent !== undefined ? { parent: String(opts.parent) } : {}),
-      ...(notify !== undefined ? { notify } : {}),
-      ...(priority !== undefined ? { priority } : {}),
-      ...(opts.due !== undefined ? { due: String(opts.due) } : {}),
-      ...actorFields(),
-    });
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
+      "POST",
+      `${scope.base}/tickets`,
+      {
+        title: String(opts.title),
+        ...(opts.initiator !== undefined ? { initiator: String(opts.initiator) } : {}),
+        ...(opts.goal !== undefined ? { goal: String(opts.goal) } : {}),
+        ...(opts.criteria !== undefined ? { acceptanceCriteria: String(opts.criteria) } : {}),
+        ...(body !== undefined ? { body } : {}),
+        ...(opts.owner !== undefined ? { owner: String(opts.owner) } : {}),
+        ...(opts.parent !== undefined ? { parent: String(opts.parent) } : {}),
+        ...(notify !== undefined ? { notify } : {}),
+        ...(priority !== undefined ? { priority } : {}),
+        ...(opts.due !== undefined ? { due: String(opts.due) } : {}),
+        ...actorFields(),
+      },
+    );
     if (opts.json === true) printJson(detail);
     else printLine(t.org.ticketCreated(detail.ticketId, detail.status));
   });
@@ -1046,7 +1059,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (status === null) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const detail = await scope.client.request<OrgTicketDetail>(
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
       "POST",
       `${scope.base}/tickets/${enc(ticketId)}/move`,
       {
@@ -1068,7 +1081,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   ).action(async (ticketId: string, opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const detail = await scope.client.request<OrgTicketDetail>(
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
       "PUT",
       `${scope.base}/tickets/${enc(ticketId)}`,
       { owner: String(opts.owner), ...actorFields() },
@@ -1087,7 +1100,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   ).action(async (ticketId: string, opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const detail = await scope.client.request<OrgTicketDetail>(
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
       "POST",
       `${scope.base}/tickets/${enc(ticketId)}/block`,
       {
@@ -1104,7 +1117,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     async (ticketId: string, opts) => {
       const scope = await orgScope(opts, t);
       if (scope === null) return;
-      const detail = await scope.client.request<OrgTicketDetail>(
+      const detail = await scope.client.requestJson<OrgTicketDetail>(
         "POST",
         `${scope.base}/tickets/${enc(ticketId)}/unblock`,
         { ...actorFields() },
@@ -1123,7 +1136,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   ).action(async (ticketId: string, opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const detail = await scope.client.request<OrgTicketDetail>(
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
       "POST",
       `${scope.base}/tickets/${enc(ticketId)}/progress`,
       { text: String(opts.message), ...actorFields() },
@@ -1152,7 +1165,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       (typeof opts.agentId === "string" ? opts.agentId.trim() : "") ||
       process.env.PENGUIN_AGENT_ID?.trim() ||
       undefined;
-    const res = await scope.client.request<OrgTicketStartResponse>(
+    const res = await scope.client.requestJson<OrgTicketStartResponse>(
       "POST",
       `${scope.base}/tickets/${enc(ticketId)}/start`,
       {
@@ -1182,7 +1195,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const sessionId = await resolveSessionRef(scope.client, scope.projectId, ref, t);
-    const detail = await scope.client.request<OrgTicketDetail>(
+    const detail = await scope.client.requestJson<OrgTicketDetail>(
       "POST",
       `${scope.base}/tickets/${enc(ticketId)}/attach`,
       { sessionId },
@@ -1204,7 +1217,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (refuseDotSegments(channelId, t)) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const item = await scope.client.request<OrgChannelItem>(
+    const item = await scope.client.requestJson<OrgChannelItem>(
       "PATCH",
       `${scope.base}/channels/${enc(channelId)}`,
       { archived, ...actorFields() },
@@ -1220,7 +1233,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   scoped(channel.command("ls").description(t.org.channelLsDesc), t).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgChannelsResponse>(
+    const res = await scope.client.requestJson<OrgChannelsResponse>(
       "GET",
       `${scope.base}/channels${query([["sessionId", callerSessionId()]])}`,
     );
@@ -1247,7 +1260,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (scope === null) return;
     // The id travels in the body, so the server owns every rule about it; a bad one is its
     // bad_request, not a second opinion here.
-    const item = await scope.client.request<OrgChannelItem>("POST", `${scope.base}/channels`, {
+    const item = await scope.client.requestJson<OrgChannelItem>("POST", `${scope.base}/channels`, {
       channelId,
       ...(opts.name !== undefined ? { name: String(opts.name) } : {}),
       ...(opts.purpose !== undefined ? { purpose: String(opts.purpose) } : {}),
@@ -1262,7 +1275,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       if (refuseDotSegments(channelId, t)) return;
       const scope = await orgScope(opts, t);
       if (scope === null) return;
-      const detail = await scope.client.request<OrgChannelDetail>(
+      const detail = await scope.client.requestJson<OrgChannelDetail>(
         "GET",
         `${scope.base}/channels/${enc(channelId)}${query([["sessionId", callerSessionId()]])}`,
       );
@@ -1281,7 +1294,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     // One POST per principal, in order, each printed as it lands: the route takes one
     // principal, and a refusal then stops on the one it refused with the rest unsent.
     for (const principal of principals) {
-      const detail = await scope.client.request<OrgChannelDetail>(
+      const detail = await scope.client.requestJson<OrgChannelDetail>(
         "POST",
         `${scope.base}/channels/${enc(channelId)}/members`,
         { principal, ...actorFields() },
@@ -1300,7 +1313,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       // else: a person adds itself, and an employee asks for itself and is refused — an
       // employee reaches a channel only when a member invites it.
       const principal = await callerPrincipal(scope.client);
-      const detail = await scope.client.request<OrgChannelDetail>(
+      const detail = await scope.client.requestJson<OrgChannelDetail>(
         "POST",
         `${scope.base}/channels/${enc(channelId)}/members`,
         { principal, ...actorFields() },
@@ -1369,7 +1382,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (refuseDotSegments(channelId, t)) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgChannelMessagesResponse>(
+    const res = await scope.client.requestJson<OrgChannelMessagesResponse>(
       "GET",
       `${scope.base}/channels/${enc(channelId)}/messages${query([
         ["date", opts.date !== undefined ? String(opts.date) : undefined],
@@ -1409,7 +1422,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       ...(opts.refTicket !== undefined ? { ticket: String(opts.refTicket) } : {}),
       ...(opts.refSession !== undefined ? { session: String(opts.refSession) } : {}),
     };
-    const msg = await scope.client.request<OrgChannelMessage>(
+    const msg = await scope.client.requestJson<OrgChannelMessage>(
       "POST",
       `${scope.base}/channels/${enc(channelId)}/messages`,
       {
@@ -1431,7 +1444,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
   scoped(handbook.command("list").description(t.org.handbookListDesc), t).action(async (opts) => {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgHandbookFilesResponse>(
+    const res = await scope.client.requestJson<OrgHandbookFilesResponse>(
       "GET",
       `${scope.base}/handbook/files`,
     );
@@ -1455,7 +1468,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     if (refuseDotSegments(rel, t)) return;
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgHandbookFileResponse>(
+    const res = await scope.client.requestJson<OrgHandbookFileResponse>(
       "GET",
       `${scope.base}/handbook/files/${encPath(rel)}`,
     );
@@ -1481,7 +1494,7 @@ export function registerOrgCommand(program: Command, t: Messages): void {
       opts.file !== undefined ? fs.readFileSync(String(opts.file), "utf8") : String(opts.message);
     const scope = await orgScope(opts, t);
     if (scope === null) return;
-    const res = await scope.client.request<OrgHandbookFileResponse>(
+    const res = await scope.client.requestJson<OrgHandbookFileResponse>(
       "PUT",
       `${scope.base}/handbook/files/${encPath(rel)}`,
       { content },
@@ -1514,7 +1527,10 @@ export function registerOrgCommand(program: Command, t: Messages): void {
     const scope = await orgScope(opts, t);
     if (scope === null) return;
     const qs = opts.period !== undefined ? `?period=${enc(String(opts.period))}` : "";
-    const res = await scope.client.request<OrgFinanceResponse>("GET", `${scope.base}/finance${qs}`);
+    const res = await scope.client.requestJson<OrgFinanceResponse>(
+      "GET",
+      `${scope.base}/finance${qs}`,
+    );
     if (opts.json === true) {
       printJson(res);
       return;

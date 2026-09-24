@@ -80,7 +80,7 @@ The intuition that more context means better decisions is not stupid. It is wron
 
 There is a third, practical reason: **portability**. Post-training binds models to the *protocol*, not to a harness. Every serious model trains on the same function-calling contract. From the model's side, a lean harness is just a standard request that happens to be short — which is why several vendors' models plus open-weight GLM all did well through the same minimal wrapper, and why lean designs keep working when you switch models. For a project whose proposition is 1000+ models behind one interface, that is the foundation.
 
-It is also why our own numbers land where they do. On complex data analysis, PenguinHarness on DeepSeek V4 Pro took the highest accuracy of the three harnesses we tested (66.67% against 53.33% for both) at **$0.55** against Claude Code's **$38.48** — roughly 1/70 the bill. On coding we tie Codex at 71.25% and trail Claude Code's 86.25%, but the suite cost **$3.81** against **$220.08** and **$146.97**. We do not claim to beat a frontier model on every axis. We claim the quality gap is one to two orders of magnitude smaller than the price gap.
+We have removed our earlier comparative benchmark figures because they were not accompanied by the artifacts and dated pricing needed for independent verification. We are preparing a public suite that will include its tasks, scoring rules, raw outcomes, run artifacts, and cost inputs. Until then, we make no comparative score or cost claim.
 
 ## 5. What minimalism must not cost
 

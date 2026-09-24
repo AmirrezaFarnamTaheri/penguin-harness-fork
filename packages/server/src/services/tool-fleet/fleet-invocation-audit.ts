@@ -97,6 +97,8 @@ export class FleetInvocationAudit {
   private readonly recordedFingerprints = new Map<string, string>();
   private readonly limit: number;
   private dirty = false;
+  private revision = 0;
+  private flushPromise: Promise<void> | undefined;
 
   constructor(private readonly options: FleetInvocationAuditOptions = {}) {
     this.limit = options.limit ?? 4096;
@@ -115,6 +117,7 @@ export class FleetInvocationAudit {
   async record(entry: Omit<FleetAuditEntry, "id">): Promise<FleetAuditEntry> {
     const full: FleetAuditEntry = { ...entry, id: `audit-${randomUUID()}` };
     this.entries.push(full);
+    this.revision++;
     this.recordedFingerprints.set(full.id, fingerprintEntry(full));
     if (this.entries.length > this.limit) {
       const dropped = this.entries.splice(0, this.entries.length - this.limit);
@@ -186,27 +189,55 @@ export class FleetInvocationAudit {
   /** Writes the encrypted envelope to disk. Missing file is not an error. */
   async flush(): Promise<void> {
     if (this.options.filePath === undefined) return;
+    if (this.flushPromise !== undefined) {
+      await this.flushPromise;
+      if (this.dirty) await this.flush();
+      return;
+    }
     if (!this.dirty) return;
-    const envelope: AuditEnvelope = {
-      version: 1,
-      algorithm: "sha256-fingerprint",
-      entries: this.entries,
-    };
-    const payload = Buffer.from(JSON.stringify(envelope), "utf8");
-    // The trail holds redacted call context, but a copied data directory should not read it
-    // without the key either, so the envelope is sealed with AES-256-GCM — the same format
-    // as the credential vault, a fresh salt and IV per write — before it touches disk.
-    const sealed = encryptEnvelope(payload, this.sealKey());
-    const dir = path.dirname(this.options.filePath);
-    await fs.mkdir(dir, { recursive: true });
-    // A unique suffix per write: two records landing on the same trail (the service's own
-    // entry and a mirrored mesh entry, both autoflushing) share a static tmp name, and the
-    // second rename would find the first's file already gone — ENOENT. A per-write name makes
-    // the write-rename pair immune to interleaving.
-    const tmp = `${this.options.filePath}.tmp-${process.pid}-${randomUUID()}`;
-    await fs.writeFile(tmp, sealed);
-    await fs.rename(tmp, this.options.filePath);
-    this.dirty = false;
+    const write = this.writeDirtySnapshots();
+    this.flushPromise = write;
+    try {
+      await write;
+    } finally {
+      if (this.flushPromise === write) this.flushPromise = undefined;
+    }
+    // A record or clear can arrive while the snapshot is being encrypted and renamed. Keep
+    // flushing until the on-disk revision catches up instead of clearing the dirty bit for a
+    // newer in-memory state.
+    if (this.dirty) await this.flush();
+  }
+
+  private async writeDirtySnapshots(): Promise<void> {
+    const filePath = this.options.filePath;
+    if (filePath === undefined) return;
+    while (this.dirty) {
+      const revision = this.revision;
+      const envelope: AuditEnvelope = {
+        version: 1,
+        algorithm: "sha256-fingerprint",
+        entries: [...this.entries],
+      };
+      const payload = Buffer.from(JSON.stringify(envelope), "utf8");
+      // The trail holds redacted call context, but a copied data directory should not read it
+      // without the key either, so the envelope is sealed with AES-256-GCM — the same format
+      // as the credential vault, a fresh salt and IV per write — before it touches disk.
+      const sealed = encryptEnvelope(payload, this.sealKey());
+      const dir = path.dirname(filePath);
+      await fs.mkdir(dir, { recursive: true });
+      // The flush queue permits one rename at a time per audit instance. Keep a unique temp
+      // path as well, so a second process or another instance cannot share a partial write.
+      const tmp = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+      try {
+        await fs.writeFile(tmp, sealed);
+        await fs.rename(tmp, filePath);
+      } finally {
+        // A failed write/rename leaves the dirty state retryable; it must not also leave
+        // abandoned ciphertext temp files accumulating in the audit directory.
+        await fs.rm(tmp, { force: true }).catch(() => {});
+      }
+      if (this.revision === revision) this.dirty = false;
+    }
   }
 
   /** Loads a trail from disk; a missing file yields an empty trail, not an error. */
@@ -240,6 +271,7 @@ export class FleetInvocationAudit {
     }
     this.entries.length = 0;
     this.recordedFingerprints.clear();
+    this.revision++;
     for (const entry of parsed.entries) {
       if (entry && typeof entry.id === "string") {
         this.entries.push(entry);
@@ -285,5 +317,6 @@ export class FleetInvocationAudit {
     this.entries.length = 0;
     this.recordedFingerprints.clear();
     this.dirty = true;
+    this.revision++;
   }
 }

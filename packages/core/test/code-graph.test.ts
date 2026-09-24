@@ -173,4 +173,105 @@ describe("code-graph", () => {
     // Depth 1 should NOT include remote (which is depth 2)
     expect(sub.nodes.some((n) => n.id === "remote")).toBe(false);
   });
+
+  describe("addEdge validation and deduplication", () => {
+    it("collapses two identical edges into one instead of accumulating duplicates", () => {
+      const graph = new CodeGraph();
+      graph.addNode({ id: "a", name: "A", filePath: "a.ts", kind: "file" });
+      graph.addNode({ id: "b", name: "B", filePath: "b.ts", kind: "file" });
+
+      expect(graph.addEdge({ source: "a", target: "b", kind: "imports" })).toBe(true);
+      // The same edge again (import + `export * from` resolving to the same file) must not dupe.
+      expect(graph.addEdge({ source: "a", target: "b", kind: "imports" })).toBe(false);
+
+      expect(graph.getAllEdges()).toHaveLength(1);
+      expect(graph.getOutgoingEdges("a")).toHaveLength(1);
+      expect(graph.getIncomingEdges("b")).toHaveLength(1);
+      // Duplicate adjacency would have double-counted the hub degree.
+      expect(graph.getHubNodes(1).find((h) => h.node.id === "b")?.degree).toBe(1);
+    });
+
+    it("keeps distinct call sites at different lines as separate edges", () => {
+      const graph = new CodeGraph();
+      graph.addNode({ id: "svc", name: "Svc", filePath: "svc.ts", kind: "function" });
+      graph.addNode({ id: "util", name: "Util", filePath: "util.ts", kind: "function" });
+
+      expect(graph.addEdge({ source: "svc", target: "util", kind: "calls", line: 12 })).toBe(true);
+      expect(graph.addEdge({ source: "svc", target: "util", kind: "calls", line: 47 })).toBe(true);
+      expect(graph.getAllEdges()).toHaveLength(2);
+    });
+
+    it("refuses edges whose endpoints were never added as nodes", () => {
+      const graph = new CodeGraph();
+      graph.addNode({ id: "a", name: "A", filePath: "a.ts", kind: "file" });
+      graph.addNode({ id: "b", name: "B", filePath: "b.ts", kind: "file" });
+      graph.addEdge({ source: "a", target: "b", kind: "imports" });
+
+      expect(graph.addEdge({ source: "a", target: "ghost", kind: "imports" })).toBe(false);
+      expect(graph.addEdge({ source: "ghost", target: "b", kind: "imports" })).toBe(false);
+      expect(graph.getAllEdges()).toHaveLength(1);
+      // No dangling adjacency is left behind for removeNode to miss.
+      expect(graph.getIncomingEdges("ghost")).toHaveLength(0);
+      expect(graph.getOutgoingEdges("ghost")).toHaveLength(0);
+    });
+
+    it("does not leave dangling adjacency when fromJSON contains a broken edge", () => {
+      const graph = CodeGraph.fromJSON({
+        nodes: [{ id: "n1", name: "n1", filePath: "n1.ts", kind: "file" }],
+        edges: [{ source: "n1", target: "gone", kind: "imports" }],
+      });
+      expect(graph.getAllEdges()).toHaveLength(0);
+      expect(graph.getOutgoingEdges("n1")).toHaveLength(0);
+      // The traversal view of the graph stays consistent (only the focal node, no dangling edges).
+      const radius = graph.getImpactRadius("n1");
+      expect(radius.edges).toHaveLength(0);
+      expect(radius.nodes.map((n) => n.id)).toEqual(["n1"]);
+    });
+
+    it("deduplicates the import edges updateFile records from both directions", () => {
+      // A file importing the same module twice, plus the reverse-scan pass, must yield one edge.
+      const graph = CodeGraph.fromFileSummaries([
+        {
+          filePath: "a.ts",
+          language: "typescript",
+          classes: [],
+          interfaces: [],
+          types: [],
+          functions: [],
+          imports: ["./b.js", "./b.js"],
+          exports: [],
+          linesOfCode: 1,
+          summary: "",
+        },
+        {
+          filePath: "b.ts",
+          language: "typescript",
+          classes: [],
+          interfaces: [],
+          types: [],
+          functions: [],
+          imports: [],
+          exports: [],
+          linesOfCode: 1,
+          summary: "",
+        },
+      ]);
+
+      const imports = graph.getOutgoingEdges("a.ts", ["imports"]);
+      expect(imports).toHaveLength(1);
+      expect(imports[0]!.target).toBe("b.ts");
+    });
+
+    it("still cleans up both adjacency lists when a node is removed after dedup", () => {
+      const graph = new CodeGraph();
+      graph.addNode({ id: "a", name: "A", filePath: "a.ts", kind: "file" });
+      graph.addNode({ id: "b", name: "B", filePath: "b.ts", kind: "file" });
+      graph.addEdge({ source: "a", target: "b", kind: "imports" });
+      graph.addEdge({ source: "a", target: "b", kind: "imports" });
+
+      graph.removeNode("a");
+      expect(graph.getAllEdges()).toHaveLength(0);
+      expect(graph.getIncomingEdges("b")).toHaveLength(0);
+    });
+  });
 });

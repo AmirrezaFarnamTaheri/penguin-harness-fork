@@ -30,6 +30,23 @@ describe("cockpit credential destination", () => {
     );
   });
 
+  it("cancels a live provider request when the fleet deadline aborts", async () => {
+    const controller = new AbortController();
+    let sawAbort = false;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      controller.abort();
+      sawAbort = init?.signal?.aborted === true;
+      throw new Error("aborted");
+    });
+    const probing = probeProviderKey("openai", "test-only-credential", {
+      signal: controller.signal,
+    });
+    const result = await probing;
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(sawAbort).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: "Probe cancelled" });
+  });
+
   it("inherits the configured group gateway when synchronizing the project's keys", async () => {
     const service = new ProjectConfigService("unused-test-root");
     vi.spyOn(service, "readRaw").mockResolvedValue({

@@ -128,6 +128,37 @@ describe("ResearchLoop", () => {
     }
   });
 
+  it("stops fetching once targetPapers sources are in hand", async () => {
+    // The cap must count what has actually been fetched: `this.sources` is populated by
+    // the parse phase that runs *after* fetching, so keying the cap on it made the guard
+    // unreachable and the loop drained the queue whatever the target said.
+    const fetched: string[] = [];
+    const loop = new ResearchLoop({
+      // Deliberately returns the whole corpus, ignoring the requested result count.
+      search: {
+        search: async () =>
+          PAPERS.map((paper) => ({
+            id: paper.id,
+            title: paper.title,
+            year: paper.year,
+            doi: paper.doi,
+            url: `https://example.org/${paper.id}`,
+          })),
+      },
+      fetch: {
+        fetch: async (hit) => {
+          fetched.push(hit.id);
+          return fixtureFetch(hit);
+        },
+      },
+      targetPapers: 2,
+    });
+    const result = await loop.run(QUESTION);
+
+    expect(fetched).toHaveLength(2);
+    expect(result.state).toBe("completed");
+  });
+
   it("assigns globally unique claim ids across sections and sources", () => {
     // The extractor's ids are only unique within one section; the loop must re-stamp them
     // or verification would look claims up against the wrong paper.

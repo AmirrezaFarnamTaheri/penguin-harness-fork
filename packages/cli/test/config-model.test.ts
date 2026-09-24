@@ -372,6 +372,24 @@ describe("penguin config model add/list (--root plus provider / model_id stored 
     ]);
     expect(nan.code).not.toBe(0);
     expect((await entryOf())?.max_tokens).toBe(8000);
+    // A leading-numeric typo is not silently truncated: Number.parseInt("4k") is 4, so before
+    // the whole-string guard this wrote 4 into the config without a complaint. Each is
+    // rejected, and the stored value is left at the 8000 written above.
+    for (const truncated of ["4k", "8000abc", "12.5"]) {
+      const res = await runModel([
+        "add",
+        "--model-id",
+        "local-32k",
+        "--provider",
+        "custom",
+        "--max-tokens",
+        truncated,
+        "--root",
+        tmpRoot,
+      ]);
+      expect(res.code).not.toBe(0);
+    }
+    expect((await entryOf())?.max_tokens).toBe(8000);
   });
 
   it("--fast-mode round-trips as fast_mode=true; --no-fast-mode clears it; neither keeps current", async () => {

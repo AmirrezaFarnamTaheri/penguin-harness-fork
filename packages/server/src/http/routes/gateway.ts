@@ -296,8 +296,15 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     const body = await readJson(c);
     const provider = requireString(body, "provider", { minLen: 1, maxLen: 64, label: "provider" });
     const modelId = requireString(body, "modelId", { minLen: 1, maxLen: 200, label: "modelId" });
+    if (Object.hasOwn(body, "promptTokens")) {
+      throw badRequest(
+        "promptTokens is ambiguous. Send uncachedPromptTokens as input tokens excluding cacheReadTokens and cacheWriteTokens.",
+      );
+    }
     const usage: DetailedUsageCounts = {
-      promptTokens: tokenCount(body, "promptTokens"),
+      // The HTTP contract names this bucket explicitly; provider totals must not be
+      // forwarded alongside cache buckets and billed twice.
+      promptTokens: tokenCount(body, "uncachedPromptTokens"),
       completionTokens: tokenCount(body, "completionTokens"),
       reasoningTokens: tokenCount(body, "reasoningTokens"),
       cacheReadTokens: tokenCount(body, "cacheReadTokens"),

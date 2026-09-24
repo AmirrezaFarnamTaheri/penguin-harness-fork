@@ -296,5 +296,37 @@ describe("upstream-features integration", () => {
       const lintAfter = (await lintAfterRes.json()) as { brokenLinks: Array<{ target: string }> };
       expect(lintAfter.brokenLinks.some((l) => l.target === "arch/storage")).toBe(true);
     });
+
+    it("reads a damaged .wiki_graph.json as empty instead of 500ing, and repairs it on the next write", async () => {
+      // The store's decoder used to assert only parseability and hand the raw string back, so
+      // a document that parsed but was not a graph reached the engine, whose own cast trusted
+      // it — a literal null body threw reading `.nodes` and every route on the project 500'd.
+      const pageRes = await userA.post(`/api/projects/${projectA}/wiki/nodes`, {
+        id: "arch/overview",
+        content: "---\ntitle: Architecture\n---\nBody.",
+      });
+      expect(pageRes.status).toBe(201);
+
+      const wikiDisk = path.join(t.root, projectA, ".wiki_graph.json");
+      await fs.writeFile(wikiDisk, "null");
+
+      // Every read answers the empty graph rather than an error.
+      const graphRes = await userA.get(`/api/projects/${projectA}/wiki/graph`);
+      expect(graphRes.status).toBe(200);
+      expect((await graphRes.json()) as { nodes: unknown[] }).toMatchObject({ nodes: [] });
+
+      // And the next write repairs the file: the decoder handed the mutation a valid (empty)
+      // graph, so the stored document is a graph again rather than junk. The page the
+      // corruption had masked is gone — unreadable is unreadable — but the store is usable.
+      const repairRes = await userA.post(`/api/projects/${projectA}/wiki/nodes`, {
+        id: "arch/storage",
+        content: "---\ntitle: Storage\n---\nBody.",
+      });
+      expect(repairRes.status).toBe(201);
+      const repaired = JSON.parse(await fs.readFile(wikiDisk, "utf-8")) as {
+        nodes: Array<{ id: string }>;
+      };
+      expect(repaired.nodes.map((n) => n.id)).toEqual(["arch/storage"]);
+    });
   });
 });

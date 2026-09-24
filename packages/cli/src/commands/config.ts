@@ -406,7 +406,7 @@ export function registerConfigCommand(program: Command, t: Messages): void {
       const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
       if (interactive && (await confirmYes(m.langRestartConfirm()))) {
         process.stdout.write(`${m.langRestart()}\n`);
-        restartShell(lang);
+        restartShell(lang, m);
       } else {
         process.stdout.write(`${m.langRestartHint(rcPath)}\n`);
       }
@@ -433,17 +433,20 @@ function confirmYes(prompt: string): Promise<boolean> {
 }
 
 function parseIntArg(value: string): number {
-  const n = Number.parseInt(value, 10);
-  if (Number.isNaN(n)) {
+  // The whole string must be the integer. Number.parseInt takes the leading digits and
+  // ignores the rest — `parseInt("8k", 10)` is 8 — so a typo like `--max-tokens 4k` was
+  // stored as 4 without a complaint. auth.ts rejects the same class of input with Number()
+  // for exactly this reason ("parseInt('3600abc') is 3600 … worse than a rejected flag").
+  if (!/^[+-]?[0-9]+$/.test(value.trim())) {
     throw new Error(`Invalid integer: ${value}`);
   }
-  return n;
+  return Number.parseInt(value.trim(), 10);
 }
 
 function parseFloatArg(value: string): number {
-  const n = Number.parseFloat(value);
-  if (Number.isNaN(n)) {
+  // As above: Number.parseFloat ignores a trailing unit, so `1.5abc` became 1.5.
+  if (!/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)$/.test(value.trim())) {
     throw new Error(`Invalid number: ${value}`);
   }
-  return n;
+  return Number.parseFloat(value.trim());
 }

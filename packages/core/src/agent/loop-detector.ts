@@ -47,6 +47,7 @@ export class LoopDetector {
   public readonly maxCycleLength: number;
 
   private toolHistory: ToolCallEntry[] = [];
+  private readonly historyCapacity: number;
   private readonly startTime: number;
   private lastProgressTime: number;
   private consecutiveErrors = 0;
@@ -59,6 +60,10 @@ export class LoopDetector {
     this.stallThreshold = options.stallThreshold ?? 300;
     this.maxErrors = options.maxErrors ?? 10;
     this.maxCycleLength = options.maxCycleLength ?? 3;
+
+    // The window must hold both a full consecutive repeat run and three repetitions of the
+    // longest cycle, or the configured limits can never fire.
+    this.historyCapacity = Math.max(this.maxRepeats, this.maxCycleLength * 3);
 
     const now = Date.now();
     this.startTime = now;
@@ -89,8 +94,8 @@ export class LoopDetector {
         timestamp: now,
       });
 
-      if (this.toolHistory.length > 20) {
-        this.toolHistory = this.toolHistory.slice(-20);
+      if (this.toolHistory.length > this.historyCapacity) {
+        this.toolHistory = this.toolHistory.slice(-this.historyCapacity);
       }
     }
 
@@ -181,10 +186,18 @@ export class LoopDetector {
       const recent = this.toolHistory.slice(-minEntries);
       let matches = true;
 
+      // Match on tool name *and* arguments: `read_file(a) -> grep(x) -> read_file(b) -> grep(y)`
+      // alternates names but works distinct files, and must not be flagged as a cycle. The
+      // input hash is computed for every entry precisely so it can be consulted here.
       for (let i = 0; i < minEntries; i++) {
-        const expected = recent[i % period]?.toolName;
-        const actual = recent[i]?.toolName;
-        if (!expected || !actual || actual !== expected) {
+        const expected = recent[i % period];
+        const actual = recent[i];
+        if (
+          !expected ||
+          !actual ||
+          actual.toolName !== expected.toolName ||
+          actual.inputHash !== expected.inputHash
+        ) {
           matches = false;
           break;
         }

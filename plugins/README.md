@@ -9,7 +9,7 @@ Included plugins, by category (`PLUGIN_CATEGORIES` in `packages/core/src/plugins
 | Category | Plugins |
 | --- | --- |
 | Office Productivity | `data-analysis`, `use-firecrawl`, `use-bento-slides`, `humanizer`, `goal`, `continual-learning` |
-| Software Development | `software-development`, `use-claude-code`, `use-spexcode` |
+| Software Development | `software-development`, `language-porting`, `use-claude-code`, `use-spexcode` |
 | AI App Development | `agent-development`, `model-development`, `skill-porting`, `agent-tuning` |
 | Agent Company | `agent-company` |
 
@@ -18,6 +18,8 @@ Included plugins, by category (`PLUGIN_CATEGORIES` in `packages/core/src/plugins
 `agent-tuning` powers the self-improvement loop: create the Target Agent, design a Benchmark, evaluate it, optimize it to version N+1 with a snapshot before every round.
 
 `agent-company` is the employee toolkit of company mode: `company-employee` is the protocol every desk and ticket session follows, and `company-ceo`, `company-hr` and `company-finance` are the playbooks of those titles. Company mode's other entry point is on the other side of the fence: `company-setup` ships with `agent-development`, which `default_agent` does carry, so the general agent can create an organization with a user who has never seen the company-mode UI — it asks one question at a time and ends at `penguin org create`, leaving hiring and tickets to the CEO.
+
+`language-porting` is how this product ports itself out of TypeScript: `port-architecture` decides which subsystem ports to which language and where the seams go, `code-port` carries one file or module across without changing behavior, and `port-verify` proves the port matches the original before anyone calls it done.
 
 ## Documentation
 

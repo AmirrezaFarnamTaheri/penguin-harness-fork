@@ -191,11 +191,14 @@ const hoverButtonClass =
 export function SessionRowHoverActions({
   actions,
   state,
+  moreOpen,
   onRun,
   onMore,
 }: {
   actions: readonly SessionRowAction[];
   state: SessionRowState;
+  /** Expose the ellipsis menu's expanded state to assistive technology. */
+  moreOpen: boolean;
   onRun: (action: SessionRowAction) => void;
   /** Opens the row's context menu anchored at the ellipsis button's own box. */
   onMore: (anchor: AnchorRect) => void;
@@ -230,6 +233,7 @@ export function SessionRowHoverActions({
         title={S.chat.moreActions}
         aria-label={S.chat.moreActions}
         aria-haspopup="menu"
+        aria-expanded={moreOpen}
         onClick={openMore}
         className={`${hoverButtonClass} hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200`}
       >

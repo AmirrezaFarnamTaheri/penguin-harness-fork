@@ -1,7 +1,7 @@
 /**
- * Renders the README / blog benchmark chart from the same data the landing page uses
- * (src/lib/benchmark-data.ts), so the static SVGs cannot drift from the site when the
- * numbers are refreshed. Emits:
+ * Renders the README / blog benchmark chart from the landing page data only after the
+ * results have reproducible run artifacts and dated pricing. It refuses to emit assets
+ * while any row remains provisional. When evidence is ready, it emits:
  *   assets/readme/benchmark-light.svg          (committed here, used by the README)
  *   assets/readme/benchmark-dark.svg           (committed here, used by the README)
  *   packages/landing/.blog-assets/benchmark-light.svg
@@ -28,6 +28,13 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LANDING = path.resolve(HERE, "..");
 const REPO = path.resolve(LANDING, "..", "..");
+const DATA_SOURCE = path.join(LANDING, "src/lib/benchmark-data.ts");
+
+if (/provisional:\s*true/.test(readFileSync(DATA_SOURCE, "utf8"))) {
+  throw new Error(
+    "Benchmark results are provisional; publish chart assets only after reproducible run artifacts and dated pricing are available.",
+  );
+}
 
 /**
  * The data module is TypeScript; rather than add a build step, read the two exported

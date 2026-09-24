@@ -237,6 +237,23 @@ describe("release source selection", () => {
     expect(
       parseOssLatestManifest({ ...manifest, releaseBaseUrl: "https://example.com/v0.2.1" }),
     ).toBeNull();
+    // The tag grammar is `v` plus a dotted numeric version, matching install.sh,
+    // install.ps1 and release.yml. A tag like `v1foo` is not a release the mirror has an
+    // asset for: accepting it made normalizeVersion hand `1foo` to compareVersions, which
+    // reads it as 0, and the failure surfaced later as an opaque installerFetchFailed.
+    for (const bad of ["v1foo", "v1_bad", "vfoo", "v", "v1.", "v1..2", "v0.2.16-beta", "foo"]) {
+      expect(parseOssLatestManifest({ ...manifest, tag: bad })).toBeNull();
+    }
+    for (const good of ["v2", "v0.2", "v0.2.16"]) {
+      const tag = good as "v2" | "v0.2" | "v0.2.16";
+      expect(
+        parseOssLatestManifest({
+          ...manifest,
+          tag,
+          releaseBaseUrl: `${ossOrigin}/releases/${tag}`,
+        }),
+      ).not.toBeNull();
+    }
   });
 
   it("auto discovers latest through OSS without touching GitHub when metadata is valid", async () => {

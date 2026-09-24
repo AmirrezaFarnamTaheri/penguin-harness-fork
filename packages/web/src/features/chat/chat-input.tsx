@@ -789,6 +789,7 @@ const dismissedWindowNotices = new Set<string>();
 
 export function ChatInput({
   status,
+  authDead = false,
   onSend,
   onSteer,
   steeringDeliveredCount,
@@ -839,6 +840,8 @@ export function ChatInput({
   variant = "session",
 }: {
   status: SessionStatus;
+  /** A fatal authentication error is waiting for credential repair or an explicit retry. */
+  authDead?: boolean;
   /**
    * Returns whether it succeeded: on failure the input draft is kept (not cleared).
    * `goal` is non-null when goal mode is engaged: the text is the objective and the server
@@ -1155,6 +1158,7 @@ export function ChatInput({
   // lines so they survive the rounds), but they don't substitute for the text; file
   // attachments cannot — nothing folds those into a re-injected objective.
   const canSend =
+    !authDead &&
     !running &&
     !compacting &&
     !busy &&
@@ -2338,7 +2342,7 @@ export function ChatInput({
           legitimate answer and a notice with no way down stops being read. */}
       {windowNoticeOpen && contextWindow !== undefined && compactionLimit !== undefined && (
         <div
-          className={`anim-fade mb-1 flex items-center justify-between gap-3 rounded-md border px-2.5 py-2 text-xs ${toneStrip.attention}`}
+          className={`anim-fade mb-1 flex flex-col items-start gap-2 rounded-md border px-2.5 py-2 text-xs sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${toneStrip.attention}`}
         >
           <p className="min-w-0">
             {S.chat.contextWindowUnderThreshold(
@@ -2346,7 +2350,7 @@ export function ChatInput({
               humanizeTokens(compactionLimit),
             )}
           </p>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
             <Button
               size="sm"
               onClick={() => {
@@ -2631,6 +2635,7 @@ export function ChatInput({
         <textarea
           ref={textareaRef}
           rows={2}
+          disabled={authDead}
           value={text}
           autoFocus={autoFocus}
           onChange={(e) => {
@@ -2654,17 +2659,19 @@ export function ChatInput({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           placeholder={
-            running && followUpMode
-              ? narrow
-                ? S.chat.followUpPlaceholderShort
-                : S.chat.followUpPlaceholder
-              : running && onSteer
+            authDead
+              ? S.chat.authFailurePlaceholder
+              : running && followUpMode
                 ? narrow
-                  ? S.chat.steerPlaceholderShort
-                  : S.chat.steerPlaceholder
-                : narrow
-                  ? S.chat.inputPlaceholderShort
-                  : S.chat.inputPlaceholder
+                  ? S.chat.followUpPlaceholderShort
+                  : S.chat.followUpPlaceholder
+                : running && onSteer
+                  ? narrow
+                    ? S.chat.steerPlaceholderShort
+                    : S.chat.steerPlaceholder
+                  : narrow
+                    ? S.chat.inputPlaceholderShort
+                    : S.chat.inputPlaceholder
           }
           // text-base, not the sm rung the form controls take: this is a full-height typing
           // surface for prose the user composes and re-reads, not a field in a form, and the
@@ -2760,7 +2767,7 @@ export function ChatInput({
               skills={skills}
               selected={selectedSkills}
               onToggle={toggleSkill}
-              disabled={busy}
+              disabled={busy || running || compacting}
               direction={models && onChangeModel ? "down" : "up"}
             />
             {/* Help text: shown only when the card is wide enough (@lg); it never competes for

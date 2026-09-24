@@ -322,7 +322,7 @@ for (const width of [1440, 390]) {
       ).toBeVisible();
       if (theme === "dark") {
         await page.getByRole("button", { name: "Handoffs", exact: true }).click();
-        await expect(page.getByRole("heading", { name: "Handoffs (local demo)" })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Handoffs (live)" })).toBeVisible();
       }
       await capture(
         page,

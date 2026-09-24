@@ -72,7 +72,7 @@ export interface KeyRule {
 }
 
 /**
- * Every `penguin.*` key the web app persists in `localStorage`, classified.
+ * Every `penguin.*` key the web app persists in browser storage, classified.
  *
  * ADDING A KEY: add it here too. An unclassified key is left alone by the sweep (never
  * deleting something we do not understand is the safe default), so a forgotten
@@ -80,12 +80,8 @@ export interface KeyRule {
  * rather than asked for: install-scope.test.ts scans `packages/web/src` for key literals and
  * fails on any this table does not cover.
  *
- * Two `penguin.*` strings in the source are NOT here on purpose:
- *   - `penguin.chatRouteApplied.<field>` (features/chat/draft-view.tsx) is `sessionStorage`,
- *     not `localStorage`: it is scoped to one tab's history and dies with the tab, so it
- *     cannot outlive a data root.
- *   - `penguin.ooo` (lib/remark-autolink-boundary.ts) is the product's domain inside an
- *     example URL in a doc comment. It is not a storage key.
+ * SessionStorage keys that refer to Sessions are classified too. A tab can stay open while
+ * the data root changes, so syncInstallScope and watchInstallScope sweep those keys as well.
  */
 export const KEY_RULES: readonly KeyRule[] = [
   // ---------------------------------------------------------------- browser preferences
@@ -205,6 +201,18 @@ export const KEY_RULES: readonly KeyRule[] = [
   },
 
   // --------------------------------------------------------------- install-scoped state
+  {
+    kind: "family",
+    key: "penguin.authAck.",
+    scope: "install",
+    why: "Per-tab acknowledgment of a Session's authentication failure, keyed by Session id.",
+  },
+  {
+    kind: "family",
+    key: "penguin.chatRouteApplied.",
+    scope: "install",
+    why: "Per-tab route application state tied to a Session and the current data root.",
+  },
   {
     kind: "family",
     key: "penguin.chatDraft.",
@@ -408,6 +416,15 @@ function sweep(storage: InstallScopeStorage): string[] {
   return removed;
 }
 
+/** SessionStorage can survive an app reload in the same tab after a data-root replacement. */
+function sweepTabState(): void {
+  try {
+    sweep(sessionStorage);
+  } catch {
+    // Storage may be disabled; there is then no persisted tab state to clear.
+  }
+}
+
 /**
  * Compares the server's install id against the one this browser recorded, and acts on the
  * difference. Pure with respect to everything but the store, so the whole decision table is
@@ -469,7 +486,9 @@ export async function syncInstallScope(storage?: InstallScopeStorage): Promise<I
     // `localStorage` is resolved INSIDE the try, never as a default parameter: merely
     // touching it throws a SecurityError when site data is blocked (the convention every
     // storage module here follows).
-    return reconcileInstallScope(installId, storage ?? localStorage);
+    const result = reconcileInstallScope(installId, storage ?? localStorage);
+    if (result === "swept" || result === "swept-unrecorded") sweepTabState();
+    return result;
   } catch {
     return "unknown";
   }
@@ -548,6 +567,9 @@ export function watchInstallScope(storage?: InstallScopeStorage): void {
     } catch {
       return; // blocked site data: there was nothing readable to restore either
     }
-    if (stale) location.reload();
+    if (stale) {
+      sweepTabState();
+      location.reload();
+    }
   });
 }

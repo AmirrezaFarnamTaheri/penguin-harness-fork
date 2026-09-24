@@ -93,7 +93,7 @@ describe("TurnLedger", () => {
     expect(ledger.metrics.compactions).toBe(1);
   });
 
-  it("bounds in-memory records and summaries to configured capacities", () => {
+  it("keeps unacknowledged turns replayable past the record bound, and compacts them once acked", () => {
     const ledger = new TurnLedger("sess-bounded", { maxRecords: 5, maxSummaries: 2 });
 
     for (let i = 1; i <= 4; i++) {
@@ -103,14 +103,94 @@ describe("TurnLedger", () => {
       ledger.append("turn_done", `finished ${i}`, "completed");
     }
 
-    // 4 turns * 3 events = 12 events total, but maxRecords is 5
-    const replay = ledger.replay(0);
-    expect(replay.events.length).toBeLessThanOrEqual(5);
+    // 4 turns * 3 events = 12 events, maxRecords is 5 — but no projection has acknowledged any
+    // turn yet. Evicting the oldest records here would orphan those turns from
+    // `pendingProjections` (it rebuilds from `records`) and stall the projection watermark at
+    // the gap, so the ledger keeps the overflow rather than lose replay data.
+    expect(ledger.replay(0).events.length).toBe(12);
+    expect(ledger.pendingProjections().length).toBe(4);
+    // The overshoot is counted, not hidden: 12 records against a bound of 5 means 7 of the
+    // 12 appends landed while already past it. A regression to blind eviction drops this to 0.
+    expect(ledger.metrics.overflowEvents).toBe(7);
 
     // 4 completed turns, but maxSummaries is 2
     const summaries = ledger.getSummaries();
     expect(summaries.length).toBe(2);
     expect(summaries[0]!.outcome).toBe("finished 3");
     expect(summaries[1]!.outcome).toBe("finished 4");
+  });
+
+  it("compacts acknowledged turns to satisfy the record bound", () => {
+    const ledger = new TurnLedger("sess-bounded-ack", { maxRecords: 5 });
+
+    for (let i = 1; i <= 4; i++) {
+      const turnId = ledger.begin();
+      ledger.append("turn_status", null, "running");
+      ledger.append("text", `step ${i}`);
+      ledger.append("turn_done", `finished ${i}`, "completed");
+      // The projection keeps pace, so compaction to the watermark is always safe.
+      ledger.acknowledgeProjection(turnId);
+    }
+
+    // Every turn is acknowledged: compaction drains the records to the projection watermark, so
+    // nothing stays past the bound. That the ledger had to grow past it transiently — turn 2's
+    // events arrive while turn 1's acknowledgement has not compacted them yet — is expected;
+    // the metric that matters is what remains outstanding at the end.
+    expect(ledger.replay(0).events.length).toBeLessThanOrEqual(5);
+    expect(ledger.pendingProjections().length).toBe(0);
+    expect(ledger.metrics.overflowEvents).toBeGreaterThan(0);
+  });
+
+  it("stalls the projection watermark at an unacknowledged turn and keeps it replayable", () => {
+    const ledger = new TurnLedger("sess-watermark", { maxRecords: 6 });
+
+    const makeTurn = () => {
+      const turnId = ledger.begin();
+      ledger.append("turn_status", null, "running");
+      ledger.append("text", "work");
+      ledger.append("turn_done", null, "completed");
+      return turnId;
+    };
+
+    const t1 = makeTurn();
+    const t2 = makeTurn();
+    const t3 = makeTurn();
+
+    // Acks arrive out of order: t1 and t3 are acknowledged while t2 lags. The watermark must
+    // not skip the gap, and t2's events must survive the bound — otherwise the projection can
+    // never catch up and the ledger grows past maxRecords anyway.
+    ledger.acknowledgeProjection(t1);
+    ledger.acknowledgeProjection(t3);
+
+    expect(ledger.pendingProjections().map((p) => p.turnId)).toEqual([t2]);
+    expect(ledger.replay(0).events.filter((e) => e.turnId === t2).length).toBe(3);
+    expect(ledger.metrics.overflowEvents).toBe(3);
+  });
+
+  it("drains the overflow count as a lagging projection catches up", () => {
+    const ledger = new TurnLedger("sess-drain", { maxRecords: 3 });
+
+    // Two turns, three events each. The first is acknowledged, so its records can compact away;
+    // the second is not, and the bound holds against it.
+    const t1 = ledger.begin();
+    ledger.append("turn_status", null, "running");
+    ledger.append("text", "work");
+    ledger.append("turn_done", null, "completed");
+    ledger.acknowledgeProjection(t1);
+
+    const t2 = ledger.begin();
+    ledger.append("turn_status", null, "running");
+    ledger.append("text", "more work");
+    ledger.append("turn_done", null, "completed");
+
+    const midOverflow = ledger.metrics.overflowEvents;
+    expect(midOverflow).toBeGreaterThan(0);
+
+    // The projection catches up with t2, which lets compaction reclaim its records. Whatever
+    // the overshoot was, honoring the bound again means nothing stays past it unmeasured.
+    ledger.acknowledgeProjection(t2);
+    ledger.compact(ledger.getSummaries()[ledger.getSummaries().length - 1]!.terminalSeq);
+    expect(ledger.replay(0).events.length).toBeLessThanOrEqual(3);
+    expect(ledger.pendingProjections().length).toBe(0);
   });
 });

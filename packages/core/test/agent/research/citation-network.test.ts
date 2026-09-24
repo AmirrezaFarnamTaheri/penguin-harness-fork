@@ -25,6 +25,22 @@ describe("CitationNetwork", () => {
     expect(synthId).toMatch(/^paper_\d+_neither-here-nor-there$/);
   });
 
+  it("preserves a node's fetched flag when text arrives in an earlier upsert", () => {
+    // `addNode` kept the earlier text but recomputed `fetched` from the textless write, so
+    // a node carrying full source text reported itself unfetched and `verifyMarkers`
+    // flagged its own citations as hallucinated.
+    const network = new CitationNetwork();
+    network.addNode({
+      id: "p1",
+      title: "Photonic Tensor Cores",
+      authors: [],
+      text: "Full text of the photonic paper.",
+      fetched: true,
+    });
+    network.addNode({ id: "p1", title: "Photonic Tensor Cores", authors: [], fetched: false });
+    expect(network.report().coverage).toBe(1);
+  });
+
   it("adds edges and rejects self-citations and unknown endpoints", () => {
     const network = new CitationNetwork();
     network.addPaper({ id: "a", title: "A" });

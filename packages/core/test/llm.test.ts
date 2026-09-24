@@ -40,6 +40,7 @@ import {
   isRateLimitError,
   ApiKeyRotator,
   parseApiKeys,
+  detectQuotaExhaustion,
 } from "../src/llm/index.js";
 import {
   assistantText,
@@ -1192,13 +1193,26 @@ describe("config helpers", () => {
 });
 
 describe("isFatalProviderRejection (the fatal allowlist; everything it misses stays retryable)", () => {
-  it("matches definitive 4xx rejections — including quota-coded and bare 403s", () => {
+  it("matches definitive 4xx rejections while excluding explicit quota failures", () => {
     expect(isFatalProviderRejection({ status: 400 })).toBe(true);
     expect(isFatalProviderRejection({ status: 403 })).toBe(true);
     expect(isFatalProviderRejection({ status: 404 })).toBe(true);
     expect(isFatalProviderRejection({ statusCode: 422 })).toBe(true);
-    expect(isFatalProviderRejection({ status: 403, code: "insufficient_user_quota" })).toBe(true);
-    expect(isFatalProviderRejection({ status: 402, code: "insufficient_quota" })).toBe(true);
+    expect(isFatalProviderRejection({ status: 403, code: "insufficient_user_quota" })).toBe(false);
+    expect(isFatalProviderRejection({ status: 402, code: "insufficient_quota" })).toBe(false);
+    expect(
+      isFatalProviderRejection({
+        status: 403,
+        error: { error: { code: "insufficient_user_quota", message: "no active subscription" } },
+      }),
+    ).toBe(false);
+    expect(
+      isFatalProviderRejection(
+        Object.assign(new Error("403", { cause: 'code: "insufficient_user_quota"' }), {
+          status: 403,
+        }),
+      ),
+    ).toBe(false);
     expect(isFatalProviderRejection({ status: 403, message: "no active subscription" })).toBe(true);
     // 401 matches here too, but the auth detector runs first and gives it the more
     // specific credentials handling.
@@ -1291,6 +1305,86 @@ describe("isAuthenticationError", () => {
     expect(isAuthenticationError({ status: 403, code: "insufficient_user_quota" })).toBe(false);
     expect(isAuthenticationError(new Error("socket hang up"))).toBe(false);
     expect(isAuthenticationError(null)).toBe(false);
+  });
+});
+
+describe("isRateLimitError (one wording table for both classifiers)", () => {
+  // The runtime's rate-limit verdict and the combo cascade's quota verdict used to keep
+  // disjoint tables. "usage limit reached" was a generic network error to the runtime, so
+  // the key was never cooled and rotation kept handing it back, while the cascade saw no
+  // quota failure at all; and "rate limit exceeded" written in spaces was retryable per the
+  // runtime but `isQuota: false` per the cascade. Both now read RATE_LIMIT_MESSAGE_PATTERNS
+  // (quota-parser.ts), so an error is classified the same way wherever it is classified.
+  it("recognises the wordings only the cascade used to recognise", () => {
+    expect(isRateLimitError(new Error("Usage limit reached"))).toBe(true);
+    expect(isRateLimitError(new Error("You have exceeded your current quota"))).toBe(true);
+    expect(isRateLimitError(new Error("tokens per minute exceeded"))).toBe(true);
+    expect(isRateLimitError(new Error("requests per minute exceeded"))).toBe(true);
+    expect(isRateLimitError(new Error("requests per day exceeded"))).toBe(true);
+    expect(isRateLimitError(new Error("rate limit exceeded"))).toBe(true);
+  });
+
+  it("recognises the codes and the HTTP status that used to live only on the runtime side", () => {
+    expect(isRateLimitError({ status: 429 })).toBe(true);
+    expect(isRateLimitError({ statusCode: 429 })).toBe(true);
+    expect(isRateLimitError({ code: "rate_limit" })).toBe(true);
+    expect(isRateLimitError({ code: "resource_exhausted" })).toBe(true);
+    expect(isRateLimitError({ code: "insufficient_quota" })).toBe(true);
+    expect(isRateLimitError({ status: 403, code: "insufficient_user_quota" })).toBe(true);
+    expect(
+      isRateLimitError({
+        status: 403,
+        response: {
+          data: { error: { code: "insufficient_user_quota", message: "no active subscription" } },
+        },
+      }),
+    ).toBe(true);
+    expect(isRateLimitError({ code: "requests_exceeded" })).toBe(true);
+    expect(isRateLimitError({ code: "tokens_exceeded" })).toBe(true);
+  });
+
+  it("recognises quota errors thrown as plain provider strings", () => {
+    expect(
+      isRateLimitError(
+        '403 {"error":{"code":"insufficient_user_quota","message":"no active subscription"}}',
+      ),
+    ).toBe(true);
+    const wrapped = Object.assign(
+      new Error("403", {
+        cause:
+          'provider response: {"error":{"code":"insufficient_user_quota","message":"no active subscription"}}',
+      }),
+      { status: 403 },
+    );
+    expect(isRateLimitError(wrapped)).toBe(true);
+  });
+
+  it("agrees with the cascade's quota verdict on every shared wording", () => {
+    const messages = [
+      "RESOURCE_EXHAUSTED",
+      "rate_limit_exceeded",
+      "quota_exceeded",
+      "insufficient_quota",
+      "insufficient_user_quota",
+      "too many requests",
+      "exceeded your current quota",
+      "usage limit reached",
+      "tokens per minute exceeded",
+      "requests per minute exceeded",
+      "requests per day exceeded",
+      "rate limit exceeded",
+    ];
+    for (const message of messages) {
+      const error = new Error(message);
+      expect(isRateLimitError(error), message).toBe(true);
+      expect(detectQuotaExhaustion(error).isQuota, message).toBe(true);
+    }
+  });
+
+  it("leaves a generic failure retryable and unquotaed", () => {
+    const error = new Error("socket hang up");
+    expect(isRateLimitError(error)).toBe(false);
+    expect(detectQuotaExhaustion(error).isQuota).toBe(false);
   });
 });
 
@@ -1973,10 +2067,9 @@ describe("GenerativeModel.streamGenerate outcome classification (PRN-013)", () =
     expect(messages.map(typeOf)).not.toContain("token_usage");
   });
 
-  it("labels a bare 403 as fatal — a definitive provider rejection, no message heuristics involved", async () => {
-    // A 4xx (minus 408/429) is a definitive rejection: fatal, whatever the message says.
-    // A quota-coded provider rejection classifies exactly the same way, and its real
-    // message still rides on the outcome for observability.
+  it("keeps bare 403 fatal while retrying explicitly quota-coded 403 responses", async () => {
+    // A bare 4xx (minus 408/429) is definitive. Providers also use 403 for exhausted
+    // quota, which is retryable and must be recognized by its explicit machine code.
     async function* bare403(): AsyncGenerator<UniEvent> {
       throw Object.assign(new Error("forbidden"), { status: 403 });
     }
@@ -1998,8 +2091,23 @@ describe("GenerativeModel.streamGenerate outcome classification (PRN-013)", () =
     const { outcome: outcome2 } = await drain(
       model2.streamGenerate({ newMessages: [userText("go")] }),
     );
-    expect(outcome2.status).toBe("fatal");
+    expect(outcome2.status).toBe("retryable");
     expect(outcome2.errorMessage).toContain("insufficient_user_quota");
+
+    async function* permissionClassQuota403(): AsyncGenerator<UniEvent> {
+      const error = Object.assign(
+        new Error(
+          '403 {"error":{"code":"insufficient_user_quota","message":"no active subscription"}}',
+        ),
+        { status: 403, name: "AuthenticationError" },
+      );
+      throw error;
+    }
+    const model3 = new SeamModel(() => permissionClassQuota403());
+    const { outcome: outcome3 } = await drain(
+      model3.streamGenerate({ newMessages: [userText("go")] }),
+    );
+    expect(outcome3.status).toBe("retryable");
   });
 
   it("classifies an undici transport drop (TypeError terminated, cause UND_ERR_SOCKET) as retryable", async () => {

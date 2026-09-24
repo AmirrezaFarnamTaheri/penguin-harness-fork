@@ -356,13 +356,22 @@ export class KanbanBoard {
   ): KanbanTask {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error(`Task with id '${taskId}' not found`);
+
+    const isTerminal =
+      task.state === "done" || task.state === "failed" || task.state === "archived";
+    if (isTerminal) {
+      throw new Error(`Cannot claim task '${task.id}': task is in terminal state '${task.state}'`);
+    }
+
     if (task.state === "backlog" || task.state === "triage")
       this.assertDependenciesComplete(task.dependencies);
 
     const now = Date.now();
     const isExpired =
       task.claimExpires !== null && task.claimExpires !== undefined && task.claimExpires <= now;
-    if (task.assignee && task.assignee !== assignee && !isExpired && task.state === "in_progress") {
+    // A live lease resists takeover from a different worker in any state, not just
+    // in_progress — a claim parked on a review or triage task is just as exclusive.
+    if (task.assignee && task.assignee !== assignee && !isExpired) {
       throw new Error(
         `Task is already claimed by ${task.assignee} until ${new Date(task.claimExpires ?? 0).toISOString()}`,
       );
@@ -458,8 +467,13 @@ export class KanbanBoard {
     const now = Date.now();
     const reclaimed: string[] = [];
     for (const [id, task] of this.tasks.entries()) {
+      // Any task holding an expired claim is releasable, whatever lane it sits in: a dead
+      // worker's stake on a review task blocks its dependency chain forever if only
+      // in_progress tasks are ever reclaimed.
       if (
-        task.state === "in_progress" &&
+        task.state !== "done" &&
+        task.state !== "failed" &&
+        task.state !== "archived" &&
         task.claimExpires !== null &&
         task.claimExpires !== undefined &&
         task.claimExpires <= now
@@ -469,7 +483,9 @@ export class KanbanBoard {
         task.workerPid = null;
         task.claimExpires = null;
         task.leaseGeneration = (task.leaseGeneration ?? 0) + 1;
-        task.state = "triage";
+        // Work in flight did not finish, so the task goes back to triage rather than
+        // implying it is ready for review.
+        if (task.state === "in_progress") task.state = "triage";
         reclaimed.push(id);
         this.emit({
           type: "task.lease_expired",

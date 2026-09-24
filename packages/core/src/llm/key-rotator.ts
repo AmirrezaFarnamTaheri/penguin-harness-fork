@@ -172,8 +172,11 @@ export class ApiKeyRotator {
   /**
    * Selects the next eligible key via round-robin.
    *
-   * 1. Filters for keys that are not permanently failed and not currently in cooldown.
-   * 2. If all working keys are currently in cooldown, falls back to the one with the earliest cooldown expiry.
+   * 1. Considers only keys that are not permanently failed and whose cooldown has expired.
+   * 2. Returns undefined when every working key is still in cooldown. Callers that prefer to
+   *    wait out the cooldown rather than fail should read `getEarliestCooldownMs` (or
+   *    `getEarliestAvailableTime`) and sleep until then — that is the waiting strategy; this
+   *    method deliberately never returns a key that is still cooling.
    * 3. Returns undefined if all keys have permanently failed or if no keys are configured.
    */
   nextKey(now: number = Date.now()): string | undefined {
@@ -354,10 +357,25 @@ export class ApiKeyRotator {
           cooldownUntil: 0,
           successCount: 0,
           failureCount: 0,
+          // Mirrors the constructor's default so `activeLeases` is a number from the start
+          // instead of `undefined` until first leased.
+          activeLeases: 0,
         });
       }
     }
     this.currentIndex = -1;
+    // A leased key that is no longer in the pool must not stay leased: the next `nextKey`
+    // would decrement a detached KeyStatus this rotator no longer sums over, and the lease
+    // would only be released by an explicit `releaseLease` on a key the caller can no longer
+    // name. Releasing it here keeps `activeLeases` and the pool in step.
+    const leased = this.leasedKey;
+    // Membership has to be tested against the *rebuilt* pool. Testing the pre-rebuild map
+    // never fires: a leased key is in that map by construction, so the lease survived every
+    // key-set change and the status kept its count after disappearing.
+    if (leased && !this.keys.some((k) => k.key === leased.key)) {
+      leased.activeLeases = Math.max(0, (leased.activeLeases ?? 0) - 1);
+      this.leasedKey = undefined;
+    }
     this.emitChange("keys_updated");
   }
 

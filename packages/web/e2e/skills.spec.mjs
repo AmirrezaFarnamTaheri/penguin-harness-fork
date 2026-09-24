@@ -102,6 +102,7 @@ test("skills: library groups and cards -> manage-install Modal -> quick-invoke p
 
   // —— Plugin library page: sidebar nav entry + grouped cards (group headers are collapsible buttons, all expanded by default) ——
   await page.goto(`${BASE}/chat`);
+  await page.getByRole("button", { name: "构建与知识" }).click();
   const navLink = page.getByRole("link", { name: "插件库" });
   await expect(navLink).toBeVisible();
   await navLink.click();
@@ -180,6 +181,7 @@ test("skills: library groups and cards -> manage-install Modal -> quick-invoke p
     .toContain("data-analysis");
   // Clicking "已安装" ("Installed") uninstalls: flips back to "安装" ("Install").
   await uninstallHelper.click();
+  await page.getByRole("button", { name: "卸载", exact: true }).click();
   await expect(page.getByRole("button", { name: "安装 agent_helper" })).toBeVisible();
   // Escape closes the Modal (built into the Modal).
   await page.keyboard.press("Escape");
@@ -272,6 +274,6 @@ test("skills: library groups and cards -> manage-install Modal -> quick-invoke p
   ).json();
   const flat = JSON.stringify(messages);
   expect(flat, "stored message keeps the [use_skills] block").toContain("[use_skills]");
-  expect(flat, "block lists the selected skill").toContain("skills: agent-initialization");
-  expect(flat, "prefilled body follows the block").toContain("使用 agent-initialization 技能");
+  expect(flat, "block lists the selected skill").toContain("skills: data-analysis");
+  expect(flat, "prefilled body follows the block").toContain("使用 data-analysis 技能");
 });

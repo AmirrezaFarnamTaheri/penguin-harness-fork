@@ -89,25 +89,35 @@ test("clicking the current Project in the dropdown: Agent and Session lists must
   // (target) Project via the API, then switch over from the initial Project's plugin library page
   // — before the fix, the old Project's snapshot would overwrite the freshly fetched data, so
   // "Manage installation" would always show "Installed."
-  const del = await page.request.delete(
-    `${BASE}/api/projects/${projectId}/agents/default_agent/skills/agent-initialization`,
-  );
-  expect(del.ok(), "uninstall agent-initialization on target project").toBeTruthy();
+  // agent-tuning is a four-skill plugin and a partial install correctly still counts as
+  // installed. Remove every shipped skill so this project has a distinct, fully absent state.
+  for (const skill of [
+    "agent-evaluation",
+    "agent-initialization",
+    "agent-optimization",
+    "benchmark-design",
+  ]) {
+    const del = await page.request.delete(
+      `${BASE}/api/projects/${projectId}/agents/default_agent/skills/${skill}`,
+    );
+    expect(del.ok(), `uninstall ${skill} on target project`).toBeTruthy();
+  }
 
   // Switch back to the initial Project, populating the plugin library page's snapshot (default_agent has everything preinstalled -> Installed).
   await byName.first().click();
   await page.getByRole("button", { name: U }).first().click();
   await expect(generalAgent).toBeVisible();
+  await page.getByRole("button", { name: "构建与知识" }).click();
   await page.getByRole("link", { name: "插件库" }).click();
   await expect(page).toHaveURL(/\/plugins$/);
-  await page.getByRole("button", { name: "管理安装 agent-initialization" }).click();
+  await page.getByRole("button", { name: "管理安装 agent-tuning" }).click();
   await expect(page.getByRole("button", { name: "卸载 default_agent" })).toBeVisible();
   await page.keyboard.press("Escape");
 
   // Staying on the plugin library page while switching to target: the same-named default_agent's state must flip to "Install" (not installed).
   await page.getByRole("button", { name: U }).first().click();
   await byName.first().click();
-  await page.getByRole("button", { name: "管理安装 agent-initialization" }).click();
+  await page.getByRole("button", { name: "管理安装 agent-tuning" }).click();
   await expect(page.getByRole("button", { name: "安装 default_agent" })).toBeVisible();
   await page.keyboard.press("Escape");
 });

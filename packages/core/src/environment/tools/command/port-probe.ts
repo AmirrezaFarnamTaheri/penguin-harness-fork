@@ -111,7 +111,13 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 export function parseWindowsProbe(json: string, rootPid: number): number[] | null {
   let payload: WindowsProbePayload;
   try {
-    payload = JSON.parse(json) as WindowsProbePayload;
+    const parsed: unknown = JSON.parse(json);
+    // The "JSON" here is PowerShell stdout, so assume it can be anything: an error message, a
+    // profile prompt, a literal null. A null parses without throwing and would have been
+    // typed a payload by the cast, so the first dereference below threw a TypeError the
+    // "null on failure" contract never promised a caller.
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    payload = parsed as WindowsProbePayload;
   } catch {
     return null;
   }

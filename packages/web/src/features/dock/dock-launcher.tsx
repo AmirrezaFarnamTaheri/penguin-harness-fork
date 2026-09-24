@@ -114,7 +114,7 @@ interface FanEntry {
 }
 
 const CAPTION_CLASS =
-  "pointer-events-none absolute whitespace-nowrap rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-xs font-medium leading-4 dark:border-gray-700 dark:bg-gray-950";
+  "pointer-events-none absolute hidden whitespace-nowrap rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-xs font-medium leading-4 dark:border-gray-700 dark:bg-gray-950 sm:block";
 const BALL_CLASS =
   "relative flex touch-none select-none items-center justify-center rounded-lg border border-gray-300 text-gray-600 transition-colors duration-150 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800";
 
@@ -489,10 +489,11 @@ function LauncherBall({
         } ${dragging ? "cursor-grabbing" : "cursor-pointer"}`}
       >
         <GlyphIcon d={WORKBENCH_ICON} size={ICON_SIZE.sectionMark} />
-        {/* The caption hangs below the ball's circle: the launcher's own word at rest, the
+        {/* On wider screens the caption hangs below the ball's circle: the launcher's own word at rest, the
             pointed-at entry's name while the fan is open. It is the visible readout only —
             every button carries its own accessible name — so it is hidden from assistive
-            technology and never folded into the ball's. Its height is spelled from the
+            technology and never folded into the ball's. On narrow screens it stays hidden
+            to keep the transcript readable behind the floating launcher. Its height is spelled from the
             constant the vertical clamp reserves, so the two cannot drift apart. */}
         <span
           aria-hidden

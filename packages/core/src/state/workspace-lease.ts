@@ -126,7 +126,7 @@ export class WorkspaceLeaseManager {
       throw new Error("WorkspaceLeaseManager: scope cannot be empty");
     }
 
-    const normalizedKeys = (request.keys ?? []).map(normalizeScopePath);
+    const normalizedKeys = this.normalizeKeys(request.keys);
     const timeoutMs = request.timeoutMs ?? 30000;
     const ttlMs = request.ttlMs ?? 60000;
 
@@ -147,10 +147,11 @@ export class WorkspaceLeaseManager {
     return new Promise<WorkspaceLease>((resolvePromise, rejectPromise) => {
       const waitId = randomUUID();
       const timer = setTimeout(() => {
+        // A granted request is dequeued and its timer cleared, so this only fires for a request
+        // still genuinely waiting; guard anyway so a late fire can never reject a granted lease.
         const idx = this.waitQueue.findIndex((q) => q.id === waitId);
-        if (idx !== -1) {
-          this.waitQueue.splice(idx, 1);
-        }
+        if (idx === -1) return;
+        this.waitQueue.splice(idx, 1);
         rejectPromise(
           new Error(
             `WorkspaceLeaseManager: Timeout after ${timeoutMs}ms waiting for ${request.mode} lease on '${request.scope}' (holder: ${request.holderId})`,
@@ -183,7 +184,7 @@ export class WorkspaceLeaseManager {
       return null;
     }
 
-    const normalizedKeys = (request.keys ?? []).map(normalizeScopePath);
+    const normalizedKeys = this.normalizeKeys(request.keys);
     const ttlMs = request.ttlMs ?? 60000;
 
     if (!this.canGrant(normalizedScope, request.mode, normalizedKeys)) {
@@ -227,7 +228,7 @@ export class WorkspaceLeaseManager {
   public isLocked(scope: string, keys?: string[]): boolean {
     this.evictExpired();
     const normalizedScope = normalizeScopePath(scope);
-    const normalizedKeys = (keys ?? []).map(normalizeScopePath);
+    const normalizedKeys = this.normalizeKeys(keys);
 
     for (const lease of this.activeLeases.values()) {
       if (lease.status !== "active") continue;
@@ -310,6 +311,15 @@ export class WorkspaceLeaseManager {
   }
 
   // --- Internal helpers ---
+
+  /**
+   * Normalizes request keys and drops empty ones: an empty path (a caller bug) would otherwise join
+   * key-overlap matching as if it were a real path, and an all-empty key set must read as
+   * whole-scope rather than as a per-key request that conflicts with nothing.
+   */
+  private normalizeKeys(keys?: string[]): string[] {
+    return (keys ?? []).map(normalizeScopePath).filter((key) => key.length > 0);
+  }
 
   private canGrant(scope: string, mode: LeaseMode, keys: string[]): boolean {
     for (const lease of this.activeLeases.values()) {

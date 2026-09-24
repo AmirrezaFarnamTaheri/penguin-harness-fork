@@ -52,9 +52,11 @@ test("background process appears in the details card and can be stopped", async 
   await page.getByRole("button", { name: "发送" }).click();
 
   // The turn finishes with the command promoted to background: the stats trigger (far
-  // right; it doubles as the "Session 信息" details button) gains the services count.
+  // right; it doubles as the "Session 信息" details button) gains the background-work count.
+  // The count was renamed from "运行中的服务" to "后台任务" when it grew to cover subagents
+  // too (50d5e0ef1).
   const detailsBtn = page.locator('button[title="Session 信息"]');
-  await expect(detailsBtn.locator('span[title="1 个运行中的服务"]')).toBeVisible({
+  await expect(detailsBtn.locator('span[title="1 个后台任务"]')).toBeVisible({
     timeout: 30_000,
   });
 
@@ -80,7 +82,7 @@ test("background process appears in the details card and can be stopped", async 
   // The kill drops the process from the registry: the row disappears on the follow-up
   // refresh and the header count goes with it.
   await expect(page.getByText("会话进程")).toHaveCount(0, { timeout: 10_000 });
-  await expect(detailsBtn.locator('span[title="1 个运行中的服务"]')).toHaveCount(0);
+  await expect(detailsBtn.locator('span[title="1 个后台任务"]')).toHaveCount(0);
 
   // The server-side list agrees (the registry entry is gone, not merely marked exited).
   const procs = await (

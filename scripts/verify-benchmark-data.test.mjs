@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DATA_BENCH, CODE_BENCH } from "../packages/landing/src/lib/benchmark-data.ts";
 import { validateBenchmarkData } from "./verify-benchmark-data.mjs";
 
@@ -18,15 +20,22 @@ const publications = ["en", "zh"].map((locale) => ({
 }));
 const fresh = () => structuredClone({ DATA_BENCH, CODE_BENCH });
 const check = (data = fresh(), sources = publications) => validateBenchmarkData(data, sources);
-const consistencyErrors = (errors) => errors.filter((error) => error.code !== "MISSING_PROVENANCE");
+// Provenance state is a warning now, not a consistency error: it is the state every suite
+// in the repository is actually in. Everything below still has to hold without it.
+const consistencyErrors = (errors) =>
+  errors.filter((error) => error.code !== "PROVISIONAL" && error.code !== "MISSING_PROVENANCE");
 
 // These are copies/mutations of the real schema, not synthetic benchmark outcomes.
-test("current tables are consistent, but neither suite has verifiable provenance", () => {
+test("archived values stay provisional and public posts explicitly withdraw comparisons", () => {
   const errors = check();
   assert.deepEqual(consistencyErrors(errors), []);
   assert.deepEqual(
     errors.map((error) => error.code),
-    ["MISSING_PROVENANCE", "MISSING_PROVENANCE"],
+    ["PROVISIONAL", "PROVISIONAL"],
+  );
+  assert.deepEqual(
+    errors.map((error) => error.severity),
+    ["warning", "warning"],
   );
   for (const suite of ["DATA_BENCH", "CODE_BENCH"]) {
     assert.ok(errors.some((error) => error.location === suite));
@@ -96,39 +105,28 @@ test("rejects duplicate, missing, unknown and misattributed frameworks", () => {
   }
 });
 
-test("rejects stale model attribution even when metrics have not changed", () => {
-  const data = fresh();
-  // The initial repository revision paired Claude Code with DeepSeek; the publication no longer does.
-  data.DATA_BENCH[1].model = data.DATA_BENCH[0].model;
-  assert.ok(
-    check(data).some(
-      (error) => error.code === "PUBLICATION_MISMATCH" && error.location.endsWith(".model"),
-    ),
-  );
-});
-
-test("checks all published numeric columns, at the publication's precision", () => {
-  for (const field of ["accuracyPct", "tokensM", "costUsd"]) {
-    const data = fresh();
-    data.CODE_BENCH[0][field] += 1;
-    assert.ok(
-      check(data).some(
-        (error) => error.code === "PUBLICATION_MISMATCH" && error.location.endsWith(`.${field}`),
-      ),
-    );
+test("refuses comparative tables or numbers in either public locale", () => {
+  for (let index = 0; index < publications.length; index++) {
+    const sources = structuredClone(publications);
+    sources[index].text +=
+      "\n| Framework | Model | Accuracy (%) | Tokens (M) | Cost ($) |\n|---|---|---:|---:|---:|\n| PenguinHarness | model | 66.67 | 1.00 | 1.00 |\n";
+    assert.ok(check(fresh(), sources).some((error) => error.code === "UNVERIFIED_PUBLICATION"));
+    sources[index].text = `${publications[index].text}\nUnverified result: 66.67%.`;
+    assert.ok(check(fresh(), sources).some((error) => error.code === "UNVERIFIED_PUBLICATION"));
   }
 });
 
-test("checks both locales and refuses missing, malformed or truncated publications", () => {
+test("requires both locale publications and their withdrawal notices", () => {
   for (const sources of [[], [{ path: "missing", text: "" }], publications.slice(0, 1)]) {
     assert.ok(check(fresh(), sources).some((error) => error.code === "INVALID_PUBLICATION"));
   }
   for (let index = 0; index < publications.length; index++) {
     const sources = structuredClone(publications);
-    sources[index].text = sources[index].text.replace("66.67", "66.68");
-    assert.ok(check(fresh(), sources).some((error) => error.code === "PUBLICATION_MISMATCH"));
-    sources[index].text = sources[index].text.replace(/^\| Claude Code.*$/m, "");
-    assert.ok(check(fresh(), sources).some((error) => error.code === "INVALID_PUBLICATION"));
+    sources[index].text = sources[index].text.replace(
+      index === 0 ? "we have removed those claims" : "因此已撤下",
+      "withdrawal text removed",
+    );
+    assert.ok(check(fresh(), sources).some((error) => error.code === "MISSING_WITHDRAWAL_NOTICE"));
   }
 });
 
@@ -159,17 +157,16 @@ test("rejects invalid model and emphasis types", () => {
   }
 });
 
-test("rejects duplicate sources, broken separators and nonnumeric published cells", () => {
+test("rejects duplicate sources and malformed benchmark tables", () => {
   const duplicate = [...publications, publications[0]];
   assert.ok(check(fresh(), duplicate).some((error) => error.code === "INVALID_PUBLICATION"));
-  for (const [before, after] of [
-    ["-----------:", "broken"],
-    ["66.67", "NaN"],
+  for (const table of [
+    "| Framework | Model | Accuracy (%) | Tokens (M) | Cost ($) |\n|-----------:|---|---:|---:|---:|\n| PenguinHarness | model | 1.00 | 2.00 | 3.00 |",
+    "| Framework | Model | Accuracy (%) | Tokens (M) | Cost ($) |\n|---|---|---:|---:|---:|\n| PenguinHarness | model | NaN | 2.00 | 3.00 |",
   ]) {
     const sources = structuredClone(publications);
-    assert.ok(sources[0].text.includes(before));
-    sources[0].text = sources[0].text.replace(before, after);
-    assert.ok(check(fresh(), sources).some((error) => error.code === "INVALID_PUBLICATION"));
+    sources[0].text += `\n${table}\n`;
+    assert.ok(check(fresh(), sources).some((error) => error.severity === "error"));
   }
 });
 
@@ -177,10 +174,23 @@ test("does not bless arbitrary citations or extra provenance fields absent from 
   const data = fresh();
   data.DATA_BENCH[0].source = "https://example.invalid/unverified";
   data.DATA_BENCH[0].provenance = { verified: true };
-  assert.equal(check(data).filter((error) => error.code === "MISSING_PROVENANCE").length, 2);
+  // The smuggled fields are blocking, and the suite loses its provisional warning only if a
+  // row stops being flagged — the citation never converts into a pass of any kind.
+  const errors = check(data);
+  assert.deepEqual(
+    errors.filter((error) => error.code === "UNKNOWN_FIELD").map((error) => error.location),
+    ["DATA_BENCH[0].source", "DATA_BENCH[0].provenance"],
+  );
+  assert.deepEqual(
+    errors.filter((error) => error.severity === "error").map((error) => error.code),
+    ["UNKNOWN_FIELD", "UNKNOWN_FIELD"],
+  );
 });
 
-test("CLI fails closed on the real landing data, also outside the repository cwd", () => {
+// The real data is the safe state this gate is in today: every row flagged provisional, and
+// the public posts withdrawn. Run from outside the repository cwd to prove module resolution is not
+// accidentally cwd-dependent.
+test("CLI passes on the real landing data with a disclosed provisional warning, also outside the repository cwd", () => {
   const result = spawnSync(
     process.execPath,
     [fileURLToPath(new URL("./verify-benchmark-data.mjs", import.meta.url))],
@@ -190,8 +200,41 @@ test("CLI fails closed on the real landing data, also outside the repository cwd
     },
   );
   assert.equal(result.error, undefined);
-  assert.equal(result.status, 1, result.stderr);
-  assert.match(result.stderr, /MISSING_PROVENANCE.*DATA_BENCH/);
-  assert.match(result.stderr, /MISSING_PROVENANCE.*CODE_BENCH/);
-  assert.doesNotMatch(result.stdout, /Benchmark data verified/);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /WARN PROVISIONAL.*DATA_BENCH/);
+  assert.match(result.stderr, /WARN PROVISIONAL.*CODE_BENCH/);
+  assert.match(result.stdout, /checked with 2 warnings/);
+  assert.doesNotMatch(result.stdout, /certified provenance/);
+});
+
+// A candidate copy that drops the flag is the case the fail-closed arm exists for: the gate
+// must refuse to certify it, and the override is what makes that exercisable end to end.
+test("CLI fails closed on a candidate copy that is not flagged provisional", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bench-"));
+  // A Windows bare path is not an importable specifier — the generated module needs a file URL
+  // for its own dependency, which is the same conversion the gate's override performs.
+  const source = pathToFileURL(
+    fileURLToPath(new URL("../packages/landing/src/lib/benchmark-data.ts", import.meta.url)),
+  ).href;
+  writeFileSync(
+    join(dir, "benchmark-data.ts"),
+    `import { DATA_BENCH as D, CODE_BENCH as C } from ${JSON.stringify(source)};\n` +
+      "const DATA_BENCH = structuredClone(D);\n" +
+      "const CODE_BENCH = structuredClone(C);\n" +
+      "delete DATA_BENCH[0].provisional;\n" +
+      "export { DATA_BENCH, CODE_BENCH };\n",
+  );
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL("./verify-benchmark-data.mjs", import.meta.url))],
+    {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, PENGUIN_BENCH_DATA: join(dir, "benchmark-data.ts") },
+    },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /FAIL MISSING_PROVENANCE.*DATA_BENCH/);
+  assert.match(result.stderr, /Benchmark integrity BLOCKED/);
 });
