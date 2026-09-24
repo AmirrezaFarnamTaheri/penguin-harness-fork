@@ -222,7 +222,10 @@ describe("ApiKeyRotator", () => {
     const { rotator: child } = parent.allocateSubagentRotator();
     expect(parent.activeLeases).toBe(1);
 
-    child.updateKeys(["key-a", "key-c"]);
+    const leasedKey = child.getKeyStatuses().find((status) => status.activeLeases === 1)?.key;
+    expect(leasedKey).toBeDefined();
+
+    child.updateKeys([leasedKey!, "key-c"]);
     expect(child.activeLeases).toBe(1);
     expect(parent.activeLeases).toBe(1);
   });
