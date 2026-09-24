@@ -366,9 +366,15 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   // --- session rename (manual title wins over the auto-generated one) ---
   // Row actions live in the per-row ellipsis menu ("更多"); its panel is body-portaled,
   // so the items are page-level, not inside the row locator.
-  const renameTarget = sidebar.locator("li", { hasText: "Configure Tailwind theme" }).first();
+  const renameRowButton = sidebar
+    .getByTestId("session-row")
+    .filter({ hasText: "Configure Tailwind theme" });
+  await expect(renameRowButton).toHaveCount(1);
+  const renameTarget = renameRowButton.locator("xpath=..");
   await renameTarget.hover();
-  await renameTarget.getByRole("button", { name: "更多" }).click();
+  const renameMenuButton = renameTarget.getByRole("button", { name: "更多" });
+  await renameMenuButton.click();
+  await expect(renameMenuButton).toHaveAttribute("aria-expanded", "true");
   const rowMenu = page.locator("body > .anim-pop");
   await expect(rowMenu.getByRole("button", { name: "重命名对话" })).toBeVisible();
   await rowMenu.getByRole("button", { name: "重命名对话" }).click();
@@ -379,15 +385,22 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
   await expect(sidebar.getByText("My renamed title")).toBeVisible();
 
   // --- session archive + delete (throwaway session) ---
-  await page.request.post(`${BASE}/api/projects/${projectId}/agents/${agentId}/sessions`, {
-    data: { provider: "custom", modelId: "claude-4-8" },
-  });
+  const throwawayResponse = await page.request.post(
+    `${BASE}/api/projects/${projectId}/agents/${agentId}/sessions`,
+    { data: { provider: "custom", modelId: "claude-4-8" } },
+  );
+  const { session: throwawaySession } = await throwawayResponse.json();
   await page.reload();
-  const throwaway = sidebar.locator("li", { hasText: "新对话" }).first();
+  const throwawayRowButton = sidebar.locator(
+    `[data-testid="session-row"][data-session-id="${throwawaySession.sessionId}"]`,
+  );
+  const throwaway = throwawayRowButton.locator("xpath=..");
   await expect(throwaway).toBeVisible();
   // Archive via the row menu: moves it under the collapsed "已归档" group.
   await throwaway.hover();
-  await throwaway.getByRole("button", { name: "更多" }).click();
+  const throwawayMenuButton = throwaway.getByRole("button", { name: "更多" });
+  await throwawayMenuButton.click();
+  await expect(throwawayMenuButton).toHaveAttribute("aria-expanded", "true");
   // Archive also appears as an inline hover action on every row. The dropdown panel is
   // body-portaled, so scope the click to the currently open portal instead of relying on
   // a page-wide exact-name match.
@@ -397,14 +410,16 @@ test("chat + tool approval + stats/cost/copy + traces + files", async ({ page })
     .getByText(/已归档（\d+）/)
     .first()
     .click();
-  const archived = sidebar.locator("li", { hasText: "新对话" }).first();
+  const archived = throwawayRowButton.locator("xpath=..");
   await expect(archived).toBeVisible();
   // Delete from the archived group (delete + archive share the same row menu).
   await archived.hover();
-  await archived.getByRole("button", { name: "更多" }).click();
+  const archivedMenuButton = archived.getByRole("button", { name: "更多" });
+  await archivedMenuButton.click();
+  await expect(archivedMenuButton).toHaveAttribute("aria-expanded", "true");
   await page.getByRole("button", { name: "删除对话" }).click();
   await page.getByRole("button", { name: "删除", exact: true }).click();
-  await expect(sidebar.getByText("新对话")).toHaveCount(0);
+  await expect(throwawayRowButton).toHaveCount(0);
 
   // --- session expiry: any 401 sends the user back to /login (no stuck error page) ---
   // Clearing the cookie is what a rebuilt web.db looks like to the browser.
