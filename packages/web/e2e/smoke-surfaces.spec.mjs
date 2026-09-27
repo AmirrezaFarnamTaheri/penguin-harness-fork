@@ -12,6 +12,7 @@
  * error fails the run. A dashboard that throws on load, or renders an empty frame, is caught
  * here rather than by a user.
  */
+import { mkdirSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 import { provisionAndLogin } from "./auth.mjs";
 
@@ -19,6 +20,24 @@ const BASE = process.env.BASE_URL;
 const MOCK = process.env.MOCK_URL;
 const U = "smokeuser";
 const P = "password123";
+
+/**
+ * Where rendered evidence lands. Defaults to a gitignored scratch dir so a local run does
+ * not dirty the tree; CI sets SCREENSHOT_DIR to publish them alongside the run.
+ */
+const SHOTS = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
+mkdirSync(SHOTS, { recursive: true });
+
+/**
+ * Capture the CURRENT viewport, and assert the page is worth capturing: a screenshot of a
+ * blank frame is worse than no screenshot, because it looks like evidence.
+ */
+async function shot(page, name) {
+  const body = await page.locator("body").boundingBox();
+  expect(body, `${name} has no layout box`).not.toBeNull();
+  await page.screenshot({ path: `${SHOTS}/${name}.png` });
+  return `${SHOTS}/${name}.png`;
+}
 
 /** Collect console + page errors for the life of a test; asserted empty at the end. */
 function watchErrors(page) {
@@ -105,17 +124,18 @@ test("smoke: every top-level route renders with no console or page error", async
       .textContent()
       .catch(() => null);
     expect(heading, `${route} rendered no <h1>`).toBeTruthy();
+    await shot(page, `route${route.replace(/\//g, "-")}`);
     // A 404 on one route must name that route, not surface as an unattributed list.
     if (errors.length > before) {
       throw new Error(`${route} produced: ${errors.slice(before).join(" | ")}`);
     }
   }
-  // KNOWN DEFECT, found by this spec on its first run and deliberately left failing
-  // rather than filtered out: /models/keys requests `/api/cockpit/keys?project=default`,
-  // which the server does not serve — 404 on every load of that page. The query param is
-  // `project`, not the `projectId` every other route uses, so this reads like a call site
-  // left behind by an earlier API shape. Until it is fixed or the route is removed, this
-  // assertion is the record. Deleting the check to make the suite green would hide it.
+  // This sweep FOUND a real defect on its first run and still guards it: /models/keys
+  // asked for a Project literally called "default" — not a Project id in this codebase —
+  // so it 404'd on every load and the key fleet rendered empty. Fixed in
+  // models-key-fleet-page.tsx by waiting for the real id instead of guessing one. The
+  // assertion stays: the whole value of this spec is that a page which starts throwing
+  // on load cannot pass quietly.
   expect(errors, `console/page errors: ${errors.join(" | ")}`).toEqual([]);
   expect(projectId).toBeTruthy();
 });
@@ -159,12 +179,15 @@ test("calendar: month is a real table and the hour grid is one tab stop", async 
   if (await grid.count()) {
     const cells = grid.getByRole("gridcell");
     expect(await cells.count()).toBeGreaterThan(0);
+    await shot(page, "calendar-week");
     // One tab stop: focusing the grid must not require stepping through every cell.
     const tabbable = await cells.evaluateAll(
       (els) => els.filter((e) => e.querySelector('[tabindex="0"]') !== null).length,
     );
     expect(tabbable, "the hour grid has more than one tab stop").toBeLessThanOrEqual(1);
   }
+
+  await shot(page, "calendar-month");
 
   // A chip must announce the day it sits on — the specific failure the audit named.
   const chips = page.locator('[aria-label*=":"]');
@@ -185,6 +208,7 @@ test("org chart: the kebab keeps a 24px target at minimum zoom", async ({ page }
   await page.goto(`${BASE}/org/${projectId}/${orgId}/chart`, {
     waitUntil: "domcontentloaded",
   });
+  await shot(page, "org-chart");
   const kebab = page.getByRole("button").filter({ hasNot: page.locator("svg[aria-hidden]") });
   const anyButton = page.locator("button").first();
   if (await anyButton.count()) {

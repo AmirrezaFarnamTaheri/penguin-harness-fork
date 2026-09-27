@@ -233,7 +233,16 @@ const DEMO_FLEET_REPORTS: ModelKeyFleetReport[] = [
 
 export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { currentProject } = useProject();
-  const projectId = currentProject?.projectId ?? "default";
+  // The Project this page is scoped to, or null while the Project list is still resolving.
+  //
+  // This used to fall back to the literal string "default", which is not a Project id in
+  // this codebase — real ones are `default_project` or `<user>-default_project`. The
+  // server's `DEFAULT_PROJECT_ID` fallback cannot rescue it, because that only applies when
+  // the param is ABSENT and `?project=default` is present. So the first fetch of this page
+  // asked about a Project that does not exist, took a 404, and rendered the key fleet
+  // empty on first paint. There is no correct value to guess: `null` until it resolves, and
+  // every fetch below waits for it.
+  const projectId = currentProject?.projectId ?? null;
 
   const [reports, setReports] = useState<ModelKeyFleetReport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -289,6 +298,12 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   useEffect(() => {
     setReports([]);
     setProbingTarget(null);
+    // No Project yet: there is nothing to ask about, and the effect re-runs the moment the
+    // real id lands. Firing with a placeholder is the 404 this replaces.
+    if (projectId === null) {
+      setLoading(true);
+      return;
+    }
     void fetchLiveFleet();
     return () => {
       fetchAbortRef.current?.abort();
@@ -696,7 +711,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           provider={probingTarget.provider}
           modelId={probingTarget.modelId}
           isDemo={isDemo}
-          projectId={projectId}
+          projectId={projectId ?? undefined}
           onClose={() => {
             setProbingTarget(null);
             if (!isDemo) void fetchLiveFleet();
