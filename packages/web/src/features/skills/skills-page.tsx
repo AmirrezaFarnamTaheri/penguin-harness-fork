@@ -175,7 +175,14 @@ export function SkillsPage() {
           <div className="p-3 border-b border-gray-200 dark:border-gray-800 space-y-2">
             <input
               type="text"
-              placeholder="Search 2,400+ skills by name, tag, or role..."
+              // No count in the placeholder. It used to read "Search 2,400+ skills by name,
+              // tag, or role…" — a hardcoded marketing number with nothing behind it, on a
+              // page that lists whatever the user has actually installed. A search box that
+              // promises a size it cannot know is the invented-metric tell in its purest
+              // form, and it is the one place a reader would most expect the number to be
+              // true. The real count is available above, from the list itself.
+              placeholder="Search skills by name, tag, or role..."
+              aria-label="Search skills"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-2.5 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-hidden"

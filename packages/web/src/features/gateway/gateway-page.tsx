@@ -179,7 +179,12 @@ export function GatewayPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 LLM Gateway & Quota Cockpit
               </h1>
-              <Badge tone="brand">Router v2 Active</Badge>
+              {/* The "Router v2 Active" badge that stood here was a hardcoded string with no
+                  data source behind it: it could not become untrue, which is the opposite of
+                  what a status badge is for. There is no version field on the gateway
+                  response to bind it to, so rather than invent one it is simply gone. If a
+                  router version ever becomes something the server reports, it belongs here
+                  again — reading a value, not asserting a claim. */}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Multi-model routing chains, live cooldown gates, spend flow analysis, and quota
@@ -287,7 +292,7 @@ export function GatewayPage() {
                     </div>
                     <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                       <div
-                        className="h-full bg-purple-500 rounded-full"
+                        className="h-full bg-[var(--accent-bg)] rounded-full"
                         style={{ width: `${quota.activeQuota.weeklyUsedPct ?? 0}%` }}
                       />
                     </div>
@@ -295,7 +300,20 @@ export function GatewayPage() {
 
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
                     <div className="text-[11px] text-gray-400 font-medium">Next Reset Window</div>
-                    <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+                    {/* Green means "fine", and an unknown reset window is not fine — it is
+                        simply not something the server told us. Rendered in the same ink as
+                        the two N/A tiles beside it, which is the whole point: a reader
+                        scanning this row should not conclude that a value nobody reported
+                        is a healthy one. A missing value and a good value must not share a
+                        colour. */}
+                    <div
+                      className={`text-2xl font-bold font-mono mt-1 ${
+                        quota.activeQuota.resetsIn === null ||
+                        quota.activeQuota.resetsIn === undefined
+                          ? "text-gray-900 dark:text-gray-100"
+                          : "text-emerald-600 dark:text-emerald-400"
+                      }`}
+                    >
                       {quota.activeQuota.resetsIn ?? "N/A"}
                     </div>
                     <div className="mt-2 text-[11px] text-gray-400">
