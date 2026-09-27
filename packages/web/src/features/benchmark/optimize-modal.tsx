@@ -223,7 +223,7 @@ export function OptimizeModal({
             {missingSkillStrip}
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {S.benchmark.targetAgentFixed(target ? agentDisplayName(target) : agentId)}
-              <span className="ml-1.5 font-mono text-gray-400 dark:text-gray-500">{agentId}</span>
+              <span className="ml-1.5 font-mono text-gray-500 dark:text-gray-500">{agentId}</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Input

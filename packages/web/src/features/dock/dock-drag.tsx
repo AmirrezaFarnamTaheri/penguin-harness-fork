@@ -88,7 +88,7 @@ function DropTarget(props: {
       data-testid="dock-layout-target"
       className={`${props.shape} rounded-[3px] border transition-colors duration-100 ${
         active
-          ? "border-sky-400 bg-sky-500/60"
+          ? "border-[var(--accent-bg)] bg-[var(--accent-bg)]/60"
           : "border-gray-400/70 bg-gray-500/10 dark:border-white/30 dark:bg-white/10"
       }`}
     />
@@ -113,7 +113,7 @@ export function DockDragOverlay({ candidate }: { candidate: DockPosition | null 
           data-testid="dock-layout-preview"
           data-pos={candidate}
           aria-hidden
-          className="pointer-events-none fixed z-[65] rounded-sm border border-sky-400/70 bg-sky-500/20"
+          className="pointer-events-none fixed z-[65] rounded-sm border border-[var(--accent-bg)]/70 bg-[var(--accent-bg)]/20"
           style={previewStyle(host, candidate)}
         />
       )}

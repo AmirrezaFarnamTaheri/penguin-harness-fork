@@ -506,7 +506,7 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
           onClick={toggleOpen}
           className="flex shrink-0 items-center self-stretch"
         >
-          <Chevron open={open} className="text-gray-400" />
+          <Chevron open={open} className="text-gray-500" />
         </button>
       </div>
 

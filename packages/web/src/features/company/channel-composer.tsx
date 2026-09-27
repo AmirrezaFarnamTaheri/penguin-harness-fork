@@ -178,7 +178,7 @@ export function ChannelComposer({
               }}
               onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
               onKeyDown={onKeyDown}
-              className="block max-h-40 min-h-10 w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-[9px] text-sm leading-5 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:placeholder:text-gray-500"
+              className="block max-h-40 min-h-10 w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-[9px] text-sm leading-5 placeholder:text-gray-500 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:placeholder:text-gray-500"
             />
           }
         >
@@ -186,7 +186,7 @@ export function ChannelComposer({
             {rows.map(({ c, i, head }) => (
               <div key={c.principal}>
                 {head && (
-                  <p className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500">
+                  <p className="px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-500">
                     {kindTitle(c.kind)}
                   </p>
                 )}
@@ -205,7 +205,7 @@ export function ChannelComposer({
                   <span className="min-w-0 truncate">
                     <PrincipalChip principal={c.principal} names={names} />
                   </span>
-                  <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">
+                  <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">
                     {c.kind === "all"
                       ? S.company.channels.mentionAllDesc
                       : c.kind === "employee"

@@ -118,7 +118,7 @@ export function DomTreeInspector({
                 event.stopPropagation();
                 toggle(node.key);
               }}
-              className="shrink-0 w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              className="shrink-0 w-4 h-4 flex items-center justify-center text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
               aria-label={isOpen ? "Collapse node" : "Expand node"}
               aria-expanded={isOpen}
             >
@@ -159,26 +159,26 @@ export function DomTreeInspector({
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">DOM Tree</h3>
         {snapshot ? (
           <>
-            <span className="text-gray-400 font-mono text-[10px]">{nodeCount} nodes</span>
-            <span className="text-gray-400 font-mono text-[10px]">
+            <span className="text-gray-500 font-mono text-[10px]">{nodeCount} nodes</span>
+            <span className="text-gray-500 font-mono text-[10px]">
               {snapshot.viewport.width}×{snapshot.viewport.height}
             </span>
-            <span className="text-gray-400 font-mono text-[10px]">
+            <span className="text-gray-500 font-mono text-[10px]">
               scroll {Math.round(snapshot.scrollX)},{Math.round(snapshot.scrollY)}
             </span>
-            <span className="ml-auto truncate text-gray-400 font-mono text-[10px]">
+            <span className="ml-auto truncate text-gray-500 font-mono text-[10px]">
               {snapshot.targetId}
             </span>
           </>
         ) : (
-          <span className="text-gray-400 font-mono text-[10px]">no snapshot</span>
+          <span className="text-gray-500 font-mono text-[10px]">no snapshot</span>
         )}
       </div>
 
       {snapshot ? (
         <div className="max-h-96 overflow-y-auto -mx-1 px-1">{renderNode(snapshot.root, 0)}</div>
       ) : (
-        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-500">
           No DOM snapshot yet — the session has not captured the page.
         </div>
       )}

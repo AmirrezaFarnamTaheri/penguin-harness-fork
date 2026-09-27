@@ -331,9 +331,15 @@ export function ConversationOutline({
               className="group/tick pointer-events-auto flex w-10 items-center pl-2.5"
             >
               {/* The visible tick: a short bar, longer and darker at the reading position
-                  (the button is the real hit target — pitch-tall and wider than the bar). */}
+                  (the button is the real hit target — pitch-tall and wider than the bar).
+                  The transition names the only two properties that change here: the width
+                  swap (w-3.5 ↔ w-5) and the gray swap that rides with it. `transition-all`
+                  was the shorthand, and it does not misbehave today — a property only
+                  tweens if something changes it — but it opts the tick into every property
+                  the browser can, so the first class that touches anything else starts
+                  animating a 2px bar whose whole job is to be readable at a glance. */}
               <span
-                className={`h-[2px] rounded-full transition-all duration-150 ${
+                className={`h-[2px] rounded-full transition-[width,background-color] duration-150 ${
                   active
                     ? "w-5 bg-gray-800 dark:bg-gray-200"
                     : "w-3.5 bg-gray-300 group-hover/tick:bg-gray-500 dark:bg-gray-700 dark:group-hover/tick:bg-gray-400"

@@ -144,7 +144,7 @@ function MemberPopover({
             className="z-[60] max-h-[60vh] overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
           >
             {members.length === 0 ? (
-              <p className="px-2.5 py-1.5 text-xs text-gray-400 dark:text-gray-500">
+              <p className="px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-500">
                 {S.company.channels.memberCount(0)}
               </p>
             ) : (
@@ -220,7 +220,7 @@ function InvitePicker({
         </div>
         <div className="max-h-64 overflow-y-auto">
           {candidates.length === 0 ? (
-            <p className="px-2.5 py-1.5 text-xs text-gray-400 dark:text-gray-500">
+            <p className="px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-500">
               {S.company.channels.inviteEmpty}
             </p>
           ) : (
@@ -243,7 +243,7 @@ function InvitePicker({
                   />
                   <span className="min-w-0 truncate">{c.name}</span>
                 </span>
-                <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">
+                <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">
                   {c.detail ?? (c.kind === "user" ? S.company.channels.members : "")}
                 </span>
               </button>
@@ -393,7 +393,7 @@ export function ChannelHeader({
             title={label}
             className={`flex min-w-0 items-center overflow-hidden whitespace-nowrap ${ICON_GAP.row} text-[15px] font-semibold`}
           >
-            <span className="shrink-0 text-gray-400 dark:text-gray-500">
+            <span className="shrink-0 text-gray-500 dark:text-gray-500">
               <GlyphIcon d={channelGlyph(detail.channelId)} size={ICON_SIZE.rowLead} />
             </span>
             {label}
@@ -458,7 +458,7 @@ export function ChannelHeader({
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen(!menuOpen)}
-                className="flex h-7 w-7 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                className="flex h-7 w-7 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
               >
                 <GlyphIcon d={ELLIPSIS_ICON} size={ICON_SIZE.iconButton} filled />
               </button>
@@ -519,7 +519,7 @@ export function ChannelHeader({
                 </button>
               ))}
             {allHands && detail.archived === false && (
-              <p className="px-2.5 py-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+              <p className="px-2.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-500">
                 {S.company.channels.allHandsInfo}
               </p>
             )}

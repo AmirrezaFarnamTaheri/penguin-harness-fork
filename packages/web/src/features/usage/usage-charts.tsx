@@ -39,7 +39,8 @@ import { useState } from "react";
 import type { UsageGranularity, UsageSeriesPoint } from "@prismshadow/penguin-server/api";
 import { S } from "../../lib/strings";
 import { formatPercent, humanizeTokens } from "../../lib/format";
-import { TOKEN_COLORS } from "../../lib/token-colors";
+import { tokenColors } from "../../lib/token-colors";
+import { useTheme } from "../../state/theme";
 import { NEUTRAL_SERIES, seriesColor, type SeriesColor } from "../../lib/category-colors";
 import {
   makeGeom,
@@ -53,6 +54,7 @@ import {
   type TokenBucketKey,
 } from "./chart-geom";
 import { ChartFrame, DATA_STROKE_W, LineHits, useChartWidth } from "./chart-svg";
+import { ChartDataTable, type ChartDataRow } from "./chart-data-table";
 import {
   bucketAxisLabel,
   bucketFullLabel,
@@ -181,12 +183,18 @@ function RequestsLegend({
  * legend item (that entity everywhere). The lines are drawn above the bars
  * and their hit bands sit above the bars' too, so a line is never lost behind
  * a tall segment.
+ *
+ * `title` names the chart twice over: as the svg's accessible name and as the
+ * hidden table's caption, because the marks themselves are only readable by
+ * hovering. The table repeats the bubble's numbers row for row — same values,
+ * same dash where a bucket had nothing to rate.
  */
 export function RequestsChart({
   series,
   entities,
   granularity,
   breaks,
+  title,
 }: {
   series: UsageSeriesPoint[];
   /** Per-entity counts, already re-indexed onto `series` by compactCounts — the stack and its rate lines read them by position. */
@@ -194,6 +202,8 @@ export function RequestsChart({
   granularity: UsageGranularity;
   /** Indices after which the series skipped at least one empty bucket (see compactSeries): ChartFrame marks the axis there. */
   breaks?: number[];
+  /** What this breakdown shows (the card's own title): names the svg and captions the data table. */
+  title: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [mark, setMark] = useState<RequestsMark | null>(null);
@@ -228,12 +238,37 @@ export function RequestsChart({
     return mark === null && hover !== null && hover !== i ? 0.35 : 1;
   };
 
+  // The hidden table's rows: one per bucket per drawn series, then the column
+  // total where the bubble shows one. `rateCell` is the bubble's own formatter,
+  // so a bucket with nothing to rate prints the same dash in the table and in
+  // the bubble — the drawn 100 (NO_RATE_PLOT) never reaches either.
+  const tableRows: ChartDataRow[] = series.flatMap((p, i) => {
+    const bucket = bucketFullLabel(granularity, p.bucket);
+    const rows = drawn.map((e, si) => ({
+      key: `${p.bucket}:${si}`,
+      cells: [bucket, e.label, String(e.requests[i] ?? 0), rateCell(rates[si]![i])],
+    }));
+    if (drawn.length > 1) {
+      rows.push({
+        key: `${p.bucket}:total`,
+        cells: [
+          bucket,
+          S.usage.bucketTotal,
+          String(totals.requests[i] ?? 0),
+          rateCell(totalRate[i]),
+        ],
+      });
+    }
+    return rows;
+  });
+
   return (
     <div ref={ref}>
       {width > 0 && (
         <>
           <ChartFrame
             geom={geom}
+            ariaLabel={title}
             fmtY={(v) => String(Math.round(v))}
             dates={buckets}
             fmtX={(b) => bucketAxisLabel(granularity, b)}
@@ -374,6 +409,20 @@ export function RequestsChart({
           />
         </>
       )}
+      {/* Outside the `width > 0` gate, like the other two charts' tables: the
+          values are the props themselves and do not depend on the measured
+          width, so there is nothing to wait for — a reader gets the numbers as
+          soon as the data is there. */}
+      <ChartDataTable
+        caption={title}
+        head={[
+          S.usage.chartDataBucket,
+          S.usage.chartDataSeries,
+          S.usage.requests,
+          S.usage.legendSuccessRate,
+        ]}
+        rows={tableRows}
+      />
     </div>
   );
 }
@@ -389,9 +438,16 @@ interface SegHover {
   key: TokenLegendKey | null;
 }
 
-/** The hit-rate curve's color classes (amber — distinct from the bars' blue family, CVD-checked against sky in the series palette). */
-const HIT_RATE_TEXT = "text-amber-500 dark:text-amber-600";
-const HIT_RATE_SWATCH = "bg-amber-500 dark:bg-amber-600";
+/**
+ * The hit-rate curve's color classes (amber — distinct from the bars' blue
+ * family, CVD-checked against sky in the series palette). Theme-aware because
+ * one amber cannot clear 3:1 on both cards: amber-500 is 2.15:1 on the white
+ * card (WCAG 2.2 SC 1.4.11 wants 3:1 for a graphical object), so light mode
+ * drops to amber-700 — 5.02:1 on white — while dark keeps the lighter
+ * amber-600, which is 6.10:1 on the dark card (#0d0d0d, see token-colors).
+ */
+const HIT_RATE_TEXT = "text-amber-700 dark:text-amber-600";
+const HIT_RATE_SWATCH = "bg-amber-700 dark:bg-amber-600";
 
 /**
  * Per-bucket Token buckets → a three-segment stacked bar (SVG, reusing the
@@ -416,12 +472,18 @@ const HIT_RATE_SWATCH = "bg-amber-500 dark:bg-amber-600";
  * un-hoverable). When legend is passed in (legend hover), it highlights all
  * segments of the matching bucket — or the curve alone for `hitRate`.
  * No hover vertical line is drawn (hoverLine={false}): the bar itself already indicates the x position.
+ *
+ * The bucket fills and swatches resolve through the theme (token-colors), since
+ * no single sky hex clears 3:1 on both cards, and `title` names the chart for
+ * the svg and the hidden table that repeats the bubble's three counts and the
+ * hit rate row for row.
  */
 export function TokenBarChart({
   series,
   granularity,
   legend,
   breaks,
+  title,
 }: {
   series: UsageSeriesPoint[];
   granularity: UsageGranularity;
@@ -429,9 +491,13 @@ export function TokenBarChart({
   legend?: TokenLegendKey | null;
   /** Indices after which the series skipped at least one empty bucket (see compactSeries): ChartFrame marks the axis there. */
   breaks?: number[];
+  /** What the chart shows (the card's own title): names the svg and captions the data table. */
+  title: string;
 }) {
   const [hover, setHover] = useState<SegHover | null>(null);
   const [ref, width] = useChartWidth();
+  const { dark } = useTheme();
+  const colors = tokenColors(dark);
   if (series.length === 0 || series.every((p) => p.total === 0)) return <Empty />;
 
   const sums = series.map((p) => p.cacheRead + p.cacheWrite + p.output);
@@ -465,11 +531,28 @@ export function TokenBarChart({
     </p>
   );
 
+  // The hidden table: the bubble's four rows laid out as one row per bucket, in
+  // the bubble's own order (the three counts, then the hit rate). `humanizeTokens`
+  // and `rateCell` are the bubble's formatters, so the two cannot disagree, and a
+  // bucket with no cache traffic still prints the dash rather than the 100 the
+  // line is drawn at.
+  const tableRows: ChartDataRow[] = series.map((p, i) => ({
+    key: p.bucket,
+    cells: [
+      bucketFullLabel(granularity, p.bucket),
+      humanizeTokens(p.cacheRead),
+      humanizeTokens(p.cacheWrite),
+      humanizeTokens(p.output),
+      rateCell(rates[i]),
+    ],
+  }));
+
   return (
     <div ref={ref}>
       {width > 0 && (
         <ChartFrame
           geom={geom}
+          ariaLabel={title}
           fmtY={(v) => humanizeTokens(Math.round(v))}
           dates={buckets}
           fmtX={(b) => bucketAxisLabel(granularity, b)}
@@ -496,7 +579,7 @@ export function TokenBarChart({
               <>
                 <p className="text-gray-400">{bucketFullLabel(granularity, p.bucket)}</p>
                 {(["cacheRead", "cacheWrite", "output"] as const).map((k) =>
-                  bubbleRow(sq(TOKEN_COLORS[k]), bucketLabel(k), humanizeTokens(p[k]), key === k),
+                  bubbleRow(sq(colors[k]), bucketLabel(k), humanizeTokens(p[k]), key === k),
                 )}
                 {bubbleRow(
                   <span
@@ -562,7 +645,7 @@ export function TokenBarChart({
                 y={s.y}
                 width={barW}
                 height={s.h}
-                fill={TOKEN_COLORS[s.key]}
+                fill={colors[s.key]}
                 className="transition-opacity duration-150"
                 opacity={dimmed(i, s.key) ? 0.2 : 1}
               />
@@ -592,6 +675,20 @@ export function TokenBarChart({
           </g>
         </ChartFrame>
       )}
+      {/* Outside the `width > 0` gate: the counts are the props themselves, so
+          there is nothing to wait for (and `sr-only` is absolutely positioned,
+          so it never disturbs the layout the gate is about). */}
+      <ChartDataTable
+        caption={title}
+        head={[
+          S.usage.chartDataBucket,
+          S.usage.colCacheRead,
+          S.usage.colCacheWrite,
+          S.usage.colOutput,
+          S.usage.legendHitRate,
+        ]}
+        rows={tableRows}
+      />
     </div>
   );
 }
@@ -604,6 +701,11 @@ export function TokenLegend({
   active?: TokenLegendKey | null;
   onHover?: (key: TokenLegendKey | null) => void;
 }) {
+  // The swatches resolve through the theme for the same reason the bars do: a
+  // swatch is a graphical object and has to clear 3:1 on the card it sits in,
+  // which is the same card the bar chart draws on.
+  const { dark } = useTheme();
+  const colors = tokenColors(dark);
   const items: Array<[TokenBucketKey, string]> = [
     ["cacheRead", S.usage.colCacheRead],
     ["cacheWrite", S.usage.colCacheWrite],
@@ -622,7 +724,7 @@ export function TokenLegend({
         >
           <span
             className="inline-block h-2 w-3 rounded-sm"
-            style={{ backgroundColor: TOKEN_COLORS[key] }}
+            style={{ backgroundColor: colors[key] }}
           />
           {label}
         </button>

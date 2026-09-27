@@ -125,7 +125,7 @@ export function OrgSessionGroups({
             </Button>
           </div>
         ) : desks.length === 0 ? (
-          <p className="px-2.5 py-1 text-xs text-gray-400 dark:text-gray-600">
+          <p className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-600">
             {S.company.sessionList.noEmployees}
           </p>
         ) : (
@@ -170,7 +170,7 @@ export function OrgSessionGroups({
         onToggle={() => setTicketsOpen((v) => !v)}
       >
         {tickets.length === 0 ? (
-          <p className="px-2.5 py-1 text-xs text-gray-400 dark:text-gray-600">
+          <p className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-600">
             {S.company.sessionList.noTicketSessions}
           </p>
         ) : (
@@ -189,7 +189,7 @@ export function OrgSessionGroups({
                     onClick={() => openSession(t.sessionId, t.agentId)}
                     className={`${rowClass(active)} items-start`}
                   >
-                    <span className="mt-0.5 shrink-0 text-gray-400 dark:text-gray-500">
+                    <span className="mt-0.5 shrink-0 text-gray-500 dark:text-gray-500">
                       <GlyphIcon d={NAV_ICONS.orgTickets} size={ICON_SIZE.rowLead} />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -199,7 +199,7 @@ export function OrgSessionGroups({
                           against the ticket it is working. */}
                       <Truncated
                         text={t.ticketTitle}
-                        className="block text-[11px] text-gray-400 dark:text-gray-500"
+                        className="block text-[11px] text-gray-500 dark:text-gray-500"
                       />
                     </span>
                     {activity !== null && (

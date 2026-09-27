@@ -265,7 +265,7 @@ export function AgentSettingsPage() {
           {S.agent.backToList}
         </Button>
         <h1 className="mb-1 text-xl font-semibold">{data.config.name ?? agentId}</h1>
-        <p className="mb-4 font-mono text-xs text-gray-400">{agentId}</p>
+        <p className="mb-4 font-mono text-xs text-gray-500">{agentId}</p>
         {/* The kernel update action lives in the Overview tab's Kernel section, so the trail
             from the Agents list has to cross the tab strip to reach it. */}
         <Tabs

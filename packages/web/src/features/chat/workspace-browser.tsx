@@ -1756,7 +1756,7 @@ export function WorkspaceBrowser({
               aria-label={S.files.searchClear}
               title={S.files.searchClear}
               onClick={() => setQuery("")}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <CloseIcon size={12} />
             </button>
@@ -1802,7 +1802,7 @@ export function WorkspaceBrowser({
       ) : filter !== "" && searchResult === null ? (
         // No answer for this query yet. An empty list here would read as "nothing matches",
         // which is a different thing and the one answer that must not be guessed.
-        <p className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500">{S.files.searching}</p>
+        <p className="px-3 py-3 text-xs text-gray-500 dark:text-gray-500">{S.files.searching}</p>
       ) : (
         <>
           <WorkspaceTreeView
@@ -1819,7 +1819,7 @@ export function WorkspaceBrowser({
             onOpenFile={openFile}
           />
           {searchResult?.truncated === true && (
-            <p className="shrink-0 border-t border-gray-100 px-3 py-1.5 text-[11px] text-gray-400 dark:border-gray-800 dark:text-gray-500">
+            <p className="shrink-0 border-t border-gray-100 px-3 py-1.5 text-[11px] text-gray-500 dark:border-gray-800 dark:text-gray-500">
               {S.files.searchTruncated(searchResult.hits.length)}
             </p>
           )}
@@ -2203,7 +2203,7 @@ export function WorkspaceBrowser({
                   </ReactMarkdown>
                 </div>
                 {p.truncated && (
-                  <p className="mt-1 text-xs text-gray-400">… {S.files.previewTruncated}</p>
+                  <p className="mt-1 text-xs text-gray-500">… {S.files.previewTruncated}</p>
                 )}
               </>
             ) : p.kind === "text" || p.kind === "html" || p.kind === "md" ? (
@@ -2232,7 +2232,7 @@ export function WorkspaceBrowser({
                     className="text-xs leading-relaxed"
                   />
                   {p.truncated && (
-                    <p className="px-3 pb-2 text-xs text-gray-400">… {S.files.previewTruncated}</p>
+                    <p className="px-3 pb-2 text-xs text-gray-500">… {S.files.previewTruncated}</p>
                   )}
                 </>
               )
@@ -2408,7 +2408,7 @@ export function WorkspaceBrowser({
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors duration-150 ${
               treeVisible
                 ? "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                : "text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             }`}
           >
             <GlyphIcon d={PANEL_LEFT_ICON} size={ICON_SIZE.iconButton} />
@@ -2423,7 +2423,7 @@ export function WorkspaceBrowser({
           className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-1 text-sm"
         >
           {crumbFit.collapsed && (
-            <span className="shrink-0 text-gray-400 dark:text-gray-500">{CRUMB_ELLIPSIS}</span>
+            <span className="shrink-0 text-gray-500 dark:text-gray-500">{CRUMB_ELLIPSIS}</span>
           )}
           {crumbFit.visible.map((seg, i) => (
             <Fragment key={`${i}-${seg}`}>
@@ -2477,7 +2477,7 @@ export function WorkspaceBrowser({
           >
             <div className="absolute inset-1 rounded-lg border-2 border-dashed border-gray-400 bg-white/40 dark:border-gray-500 dark:bg-gray-950/40" />
             <div className="relative flex items-center gap-2 rounded-md border border-gray-300 bg-white/95 px-3 py-1.5 text-xs font-medium text-gray-800 shadow-sm dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-100">
-              <GlyphIcon d={PAPERCLIP_ICON} size={ICON_SIZE.rowLead} className="text-gray-400" />
+              <GlyphIcon d={PAPERCLIP_ICON} size={ICON_SIZE.rowLead} className="text-gray-500" />
               <span className="truncate">{S.files.dropToUpload(dirLabel(drag.targetDir))}</span>
             </div>
           </div>

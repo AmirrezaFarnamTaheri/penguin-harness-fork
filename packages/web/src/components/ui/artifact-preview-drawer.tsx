@@ -5,11 +5,17 @@
  * Tablet, Mobile), theme toggle, popout window, and file download.
  *
  * Synthesized from archify showcase and effective-html preview runners.
+ *
+ * It lives here, not in features/chat, because nothing about it is chat: it takes a
+ * document and a title and previews it. Its first caller is the code block, but the
+ * drawer's own copy is the same as anyone else's, and every string on it comes from
+ * the dictionary (S.artifactPreview) so it is translatable wherever it is mounted.
  */
 import { useState, useMemo } from "react";
-import { Drawer } from "../../components/ui/drawer";
-import { CopyButton } from "../../components/ui/copy-button";
-import { GlyphIcon } from "../../components/ui/glyph-icon";
+import { S } from "../../lib/strings";
+import { Drawer } from "./drawer";
+import { CopyButton } from "./copy-button";
+import { GlyphIcon } from "./glyph-icon";
 import { ICON_SIZE } from "../../lib/icon-scale";
 
 /** Moon and sun, as paths in the same thin-line family as the drawer's other glyphs. The
@@ -29,10 +35,12 @@ export interface ArtifactPreviewDrawerProps {
 
 type ViewportSize = "desktop" | "tablet" | "mobile";
 
-const VIEWPORTS: Record<ViewportSize, { label: string; width: string }> = {
-  desktop: { label: "Desktop", width: "w-full" },
-  tablet: { label: "Tablet (768px)", width: "w-[768px]" },
-  mobile: { label: "Mobile (375px)", width: "w-[375px]" },
+/** Labels are thunks, not values: the dictionary is bound at boot and re-bound on every
+ *  language switch, so a module-scope `S.x` here would freeze the English string. */
+const VIEWPORTS: Record<ViewportSize, { label: () => string; width: string }> = {
+  desktop: { label: () => S.artifactPreview.viewportDesktop, width: "w-full" },
+  tablet: { label: () => S.artifactPreview.viewportTablet, width: "w-[768px]" },
+  mobile: { label: () => S.artifactPreview.viewportMobile, width: "w-[375px]" },
 };
 
 /**
@@ -164,7 +172,7 @@ ${content}
                     : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                 }`}
               >
-                {VIEWPORTS[vp].label}
+                {VIEWPORTS[vp].label()}
               </button>
             ))}
           </div>
@@ -175,7 +183,11 @@ ${content}
               type="button"
               onClick={() => setPreviewTheme((t) => (t === "light" ? "dark" : "light"))}
               className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-              title={`Switch to ${previewTheme === "light" ? "dark" : "light"} mode`}
+              title={
+                previewTheme === "light"
+                  ? S.artifactPreview.switchToDark
+                  : S.artifactPreview.switchToLight
+              }
             >
               <GlyphIcon
                 d={previewTheme === "light" ? MOON_ICON : SUN_ICON}
@@ -187,21 +199,21 @@ ${content}
               type="button"
               onClick={handleOpenInNewTab}
               className="rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-800"
-              title="Open preview in new tab"
+              title={S.artifactPreview.openInNewTab}
             >
-              Popout
+              {S.artifactPreview.popout}
             </button>
 
             <button
               type="button"
               onClick={handleDownload}
               className="rounded px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-800"
-              title="Download file"
+              title={S.artifactPreview.download}
             >
-              Export
+              {S.artifactPreview.export}
             </button>
 
-            <CopyButton label="Copy artifact source" text={content} />
+            <CopyButton label={S.artifactPreview.copySource} text={content} />
           </div>
         </div>
 

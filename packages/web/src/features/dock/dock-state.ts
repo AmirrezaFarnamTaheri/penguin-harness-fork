@@ -39,6 +39,15 @@ const MAX_SCOPES = 40;
 
 export type DockPosition = "right" | "bottom";
 
+/**
+ * A tab that shows this conversation. Every kind here is scoped BY this conversation —
+ * it either takes a sessionId or reports on the project the conversation belongs to, and
+ * re-reads it when the tab is shown. Code Topology, Shell Guardian, Quorum Consensus and
+ * the Key Fleet were here once and were not: they take no session at all, so a single tab
+ * rendered project-wide data inside a per-conversation dock and refetched all of it on
+ * every conversation switch. They are pages, reachable from the nav, and nothing links
+ * deep into a dock tab.
+ */
 export type PanelKind =
   | "agents"
   | "workspace"
@@ -49,11 +58,7 @@ export type PanelKind =
   | "apiTracker"
   | "cockpit"
   | "spendFlow"
-  | "topology"
-  | "guardian"
-  | "consensus"
   | "contextBreakdown"
-  | "keyFleet"
   | "flamegraph"
   | "snapshots";
 
@@ -67,11 +72,7 @@ export const PANEL_KINDS: readonly PanelKind[] = [
   "apiTracker",
   "cockpit",
   "spendFlow",
-  "topology",
-  "guardian",
-  "consensus",
   "contextBreakdown",
-  "keyFleet",
   "flamegraph",
   "snapshots",
 ];

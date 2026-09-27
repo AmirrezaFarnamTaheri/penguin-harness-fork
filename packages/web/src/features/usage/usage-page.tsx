@@ -24,6 +24,18 @@
  * re-indexed through the same `kept` list (compactCounts); one list for all
  * of them is what keeps an entity's history from sliding onto the wrong
  * intervals. Each chart marks the skipped intervals on its own axis.
+ *
+ * The data region below the filters has three states and keeps them apart
+ * rather than collapsing "nothing yet" into "nothing there": a load in flight
+ * draws the skeletons, a failed load draws the failure **in the skeletons'
+ * place** with a retry button, and only a loaded range draws the page. A failed
+ * load used to print one red line at the very bottom of a page still showing
+ * three grey skeletons, which reads as "still loading" to anyone who has not
+ * read to the bottom — and announced nothing at all on a screen reader, the
+ * line not being in a live region. A range that loaded but recorded nothing is
+ * a fourth state, and it belongs to the charts: each one says so itself
+ * (usage-charts' `Empty`), which is the only place it can be said honestly,
+ * because one of the four can be empty while the others are not.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -43,6 +55,7 @@ import { useTheme } from "../../state/theme";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Button } from "../../components/ui/button";
 import { TrendChart } from "./trend-chart";
 import { RequestsChart, TokenBarChart, TokenLegend, type TokenLegendKey } from "./usage-charts";
 import {
@@ -182,6 +195,15 @@ export function UsagePage() {
   };
   const [data, setData] = useState<UsageResponse | null>(null);
   /**
+   * Whether a load is in flight. A failed fetch used to be reported as one red
+   * line at the very bottom of a page still showing three grey skeletons, which
+   * reads as "still loading" to anyone who has not read to the bottom. The three
+   * states branch apart now (see the data region), and this is what that region
+   * reports as `aria-busy`, so assistive tech is told the region is still being
+   * filled instead of having to infer it from the skeletons.
+   */
+  const [loading, setLoading] = useState(false);
+  /**
    * The range the dashboard actually READ, which is not always the one the picker holds. A
    * trailing preset computes its window at load time and deliberately leaves `from`/`to` on
    * whatever the last calendar preset put there, so the two diverge the moment "last hour" is
@@ -199,6 +221,7 @@ export function UsagePage() {
   const load = useCallback(async () => {
     if (!projectId) return;
     setError(null);
+    setLoading(true);
     try {
       // The trailing presets recompute their window at load time, so a reload
       // keeps trailing "now"; the calendar presets use the stored date pair.
@@ -218,6 +241,8 @@ export function UsagePage() {
       setLoaded({ preset, ...range });
     } catch (e) {
       setError(apiErrorText(e));
+    } finally {
+      setLoading(false);
     }
   }, [projectId, preset, from, to, agentFilter, modelFilter?.provider, modelFilter?.modelId]);
 
@@ -288,6 +313,7 @@ export function UsagePage() {
               <Select
                 size="sm"
                 value={agentFilter}
+                aria-label={S.usage.filterAgentLabel}
                 onChange={(e) => setAgentFilter(e.target.value)}
               >
                 <option value="">{S.usage.filterAllAgents}</option>
@@ -306,6 +332,7 @@ export function UsagePage() {
               <Select
                 size="sm"
                 value={modelFilterIndex}
+                aria-label={S.usage.filterModelLabel}
                 onChange={(e) => {
                   const i = e.target.value;
                   setModelFilter(i === "" ? null : (modelOptions[Number(i)] ?? null));
@@ -384,91 +411,140 @@ export function UsagePage() {
           />
         )}
 
-        {/* Summary cards (today / last 7 days / cumulative) */}
-        {data ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <SummaryCard title={S.usage.today} bucket={data.summary.today} currency={currency} />
-            <SummaryCard title={S.usage.last7d} bucket={data.summary.last7d} currency={currency} />
-            <SummaryCard title={S.usage.total} bucket={data.summary.total} currency={currency} />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
-          </div>
-        )}
+        {/* ── The data region, in three told-apart states (see the header) ──
+            A load in flight shows the skeletons (plus a spoken status, since
+            they are otherwise a silent grey grid); a failed load shows the
+            failure **in their place** with a retry, not as a line at the bottom
+            of a page that still looks like it is loading; a loaded range that
+            recorded nothing is not this branch at all — each chart says so
+            itself (usage-charts' `Empty`), which is where that state belongs,
+            since one of the four can be empty while the others are not. */}
+        <div aria-busy={loading} className="space-y-4">
+          {error && !data ? (
+            <div
+              role="alert"
+              className="space-y-2 rounded-md border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-gray-900"
+            >
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                {S.usage.loadFailed}
+              </p>
+              {/* The server's own words, in the muted tier: the heading says what
+                  failed, this says why, and the button below is the way out. */}
+              <p className="text-xs text-gray-500 dark:text-gray-400">{error}</p>
+              <Button size="sm" onClick={() => void load()}>
+                {S.common.retry}
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Summary cards (today / last 7 days / cumulative) */}
+              {data ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <SummaryCard
+                    title={S.usage.today}
+                    bucket={data.summary.today}
+                    currency={currency}
+                  />
+                  <SummaryCard
+                    title={S.usage.last7d}
+                    bucket={data.summary.last7d}
+                    currency={currency}
+                  />
+                  <SummaryCard
+                    title={S.usage.total}
+                    bucket={data.summary.total}
+                    currency={currency}
+                  />
+                </div>
+              ) : (
+                <>
+                  <p role="status" className="sr-only">
+                    {S.usage.loadingUsage}
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Skeleton className="h-24" />
+                    <Skeleton className="h-24" />
+                    <Skeleton className="h-24" />
+                  </div>
+                </>
+              )}
 
-        {/* Time-series charts, all over the shared range + precision: requests +
+              {/* Time-series charts, all over the shared range + precision: requests +
             success rate by Agent and by Model on the first row, Token buckets +
             cache hit rate and cost on the second. Charts always fit their card — nothing scrolls. */}
-        {data ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard title={S.usage.chartRequestsByAgent}>
-              <RequestsChart
-                series={plotted.points}
-                entities={agentEntities}
-                granularity={data.granularity}
-                breaks={plotted.breaks}
-              />
-            </ChartCard>
-            <ChartCard title={S.usage.chartRequestsByModel}>
-              <RequestsChart
-                series={plotted.points}
-                entities={modelEntities}
-                granularity={data.granularity}
-                breaks={plotted.breaks}
-              />
-            </ChartCard>
-            {/* The Token legend lives in its card header while its marks live inside the card, so that state is lifted to this level */}
-            <ChartCard
-              title={S.usage.chartTokenTrend}
-              extra={<TokenLegend active={tokenBucket} onHover={setTokenBucket} />}
-            >
-              <TokenBarChart
-                series={plotted.points}
-                granularity={data.granularity}
-                legend={tokenBucket}
-                breaks={plotted.breaks}
-              />
-            </ChartCard>
-            <ChartCard title={S.usage.chartCostTrend}>
-              <TrendChart
-                series={plotted.points}
-                granularity={data.granularity}
-                currency={currency}
-                breaks={plotted.breaks}
-              />
-            </ChartCard>
-          </div>
-        ) : (
-          <Skeleton className="h-64" />
-        )}
+              {data ? (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <ChartCard title={S.usage.chartRequestsByAgent}>
+                    <RequestsChart
+                      series={plotted.points}
+                      entities={agentEntities}
+                      granularity={data.granularity}
+                      breaks={plotted.breaks}
+                      title={S.usage.chartRequestsByAgent}
+                    />
+                  </ChartCard>
+                  <ChartCard title={S.usage.chartRequestsByModel}>
+                    <RequestsChart
+                      series={plotted.points}
+                      entities={modelEntities}
+                      granularity={data.granularity}
+                      breaks={plotted.breaks}
+                      title={S.usage.chartRequestsByModel}
+                    />
+                  </ChartCard>
+                  {/* The Token legend lives in its card header while its marks live inside the card, so that state is lifted to this level */}
+                  <ChartCard
+                    title={S.usage.chartTokenTrend}
+                    extra={<TokenLegend active={tokenBucket} onHover={setTokenBucket} />}
+                  >
+                    <TokenBarChart
+                      series={plotted.points}
+                      granularity={data.granularity}
+                      legend={tokenBucket}
+                      breaks={plotted.breaks}
+                      title={S.usage.chartTokenTrend}
+                    />
+                  </ChartCard>
+                  <ChartCard title={S.usage.chartCostTrend}>
+                    <TrendChart
+                      series={plotted.points}
+                      granularity={data.granularity}
+                      currency={currency}
+                      breaks={plotted.breaks}
+                      title={S.usage.chartCostTrend}
+                    />
+                  </ChartCard>
+                </div>
+              ) : (
+                <Skeleton className="h-64" />
+              )}
 
-        {/* Errors (a single full-width panel: stats + a recent-errors table) */}
-        {data && (
-          <ChartCard title={S.usage.errors}>
-            <ErrorsPanel
-              errors={data.errors}
-              projectId={projectId}
-              filters={errorFilters}
-              preset={loaded.preset === "custom" ? undefined : loaded.preset}
-              // Clearing the log is a Project-level management operation, gated on the owner
-              // by the route; a member reads the panel without the action.
-              canClear={currentProject?.role === "owner"}
-              // The badge and the notice above are gated on a probe cached per Project for the
-              // browser session, not on this response — without the re-probe an emptied table
-              // would sit under a dot still pointing at the rows that just went.
-              onCleared={() => {
-                refreshProjectTodos(projectId);
-                void load();
-              }}
-            />
-          </ChartCard>
-        )}
+              {/* Errors (a single full-width panel: stats + a recent-errors table) */}
+              {data && (
+                <ChartCard title={S.usage.errors}>
+                  <ErrorsPanel
+                    errors={data.errors}
+                    projectId={projectId}
+                    filters={errorFilters}
+                    preset={loaded.preset === "custom" ? undefined : loaded.preset}
+                    // Clearing the log is a Project-level management operation, gated on the owner
+                    // by the route; a member reads the panel without the action.
+                    canClear={currentProject?.role === "owner"}
+                    // The badge and the notice above are gated on a probe cached per Project for the
+                    // browser session, not on this response — without the re-probe an emptied table
+                    // would sit under a dot still pointing at the rows that just went.
+                    onCleared={() => {
+                      refreshProjectTodos(projectId);
+                      void load();
+                    }}
+                  />
+                </ChartCard>
+              )}
+            </>
+          )}
+        </div>
 
         {hasUncostedRows && <p className="text-xs text-gray-400">{S.usage.uncostedNote}</p>}
-        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
       </div>
     </div>
   );

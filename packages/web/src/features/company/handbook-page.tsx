@@ -282,7 +282,7 @@ export function HandbookPage() {
                 aria-label={S.company.handbook.collapseAll}
                 disabled={expanded.size === 0}
                 onClick={() => setExpanded(new Set<string>())}
-                className="inline-flex items-center justify-center rounded p-0.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                className="inline-flex items-center justify-center rounded p-0.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
               >
                 <GlyphIcon d={COLLAPSE_ALL_ICON} size={ICON_SIZE.groupHeaderAction} />
               </button>
@@ -325,7 +325,7 @@ export function HandbookPage() {
               )}
               {selectedFile !== null && (
                 <span
-                  className="hidden shrink-0 text-[11px] text-gray-400 sm:inline dark:text-gray-500"
+                  className="hidden shrink-0 text-[11px] text-gray-500 sm:inline dark:text-gray-500"
                   title={S.company.handbook.updatedAt(
                     formatDateTime(selectedFile.updatedAt),
                     formatBytes(selectedFile.size),
@@ -338,7 +338,7 @@ export function HandbookPage() {
             <div className="flex shrink-0 items-center gap-1.5">
               {editing ? (
                 <>
-                  <span className="hidden text-[11px] text-gray-400 sm:inline dark:text-gray-500">
+                  <span className="hidden text-[11px] text-gray-500 sm:inline dark:text-gray-500">
                     {S.company.handbook.editorHint}
                   </span>
                   <Button size="sm" disabled={saving} onClick={() => setEditing(false)}>

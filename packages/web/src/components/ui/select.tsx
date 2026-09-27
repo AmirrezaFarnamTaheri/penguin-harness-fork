@@ -180,7 +180,7 @@ export function Select({
         <span className="min-w-0 flex-1 truncate">
           {selected?.label ?? options[0]?.label ?? ""}
         </span>
-        <ChevronDown className="text-gray-400" />
+        <ChevronDown className="text-gray-500" />
       </button>
       {open &&
         position &&

@@ -65,7 +65,7 @@ function TypeIcon({ type }: { type: string }) {
       strokeWidth="1.7"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0 text-gray-400 dark:text-gray-500"
+      className="shrink-0 text-gray-500 dark:text-gray-500"
       aria-hidden
     >
       <path d={TYPE_ICON[type] ?? DEFAULT_ICON} />
@@ -171,7 +171,7 @@ function UsageTable({ p }: { p: Record<string, unknown> }) {
   const ses = (p.session ?? {}) as Record<string, number>;
   const row = (label: string, r: Record<string, number>) => (
     <tr>
-      <td className="pr-3 text-gray-400">{label}</td>
+      <td className="pr-3 text-gray-500">{label}</td>
       <td className="pr-3 text-right font-mono">{humanizeTokens(r.cache_read ?? 0)}</td>
       <td className="pr-3 text-right font-mono">{humanizeTokens(r.cache_write ?? 0)}</td>
       <td className="pr-3 text-right font-mono">{humanizeTokens(r.output ?? 0)}</td>
@@ -181,7 +181,7 @@ function UsageTable({ p }: { p: Record<string, unknown> }) {
   return (
     <table className="text-xs">
       <thead>
-        <tr className="text-gray-400">
+        <tr className="text-gray-500">
           <th />
           <th className="pr-3 text-right font-normal">cacheRead</th>
           <th className="pr-3 text-right font-normal">cacheWrite</th>
@@ -198,7 +198,7 @@ function UsageTable({ p }: { p: Record<string, unknown> }) {
 }
 
 const summaryClass =
-  "cursor-pointer text-xs font-medium text-gray-500 marker:text-gray-400 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200";
+  "cursor-pointer text-xs font-medium text-gray-500 marker:text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200";
 
 /** session_meta: a field table + system prompt (Markdown) + tool definition list. */
 function SessionMetaBody({ p }: { p: Record<string, unknown> }) {
@@ -225,7 +225,7 @@ function SessionMetaBody({ p }: { p: Record<string, unknown> }) {
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-xs">
         {rows.map(([k, v]) => (
           <Fragment key={k}>
-            <dt className="text-gray-400">{k}</dt>
+            <dt className="text-gray-500">{k}</dt>
             <dd className="min-w-0 break-all font-mono text-gray-700 dark:text-gray-300">
               {v || "—"}
             </dd>
@@ -285,7 +285,7 @@ function ParamsTable({ schema }: { schema: Record<string, unknown> }) {
               {name}
               {required.has(name) && <RequiredMark label={S.traces.requiredParam} />}
             </td>
-            <td className="whitespace-nowrap pr-3 font-mono text-gray-400 dark:text-gray-500">
+            <td className="whitespace-nowrap pr-3 font-mono text-gray-500 dark:text-gray-500">
               {typeOf(s)}
             </td>
             <td className="text-gray-500 dark:text-gray-400">
@@ -307,7 +307,7 @@ function ToolListReadyBody({ p }: { p: Record<string, unknown> }) {
   const tools = Array.isArray(p.tools)
     ? (p.tools as Array<{ name?: string; description?: string; parameters?: unknown }>)
     : [];
-  if (tools.length === 0) return <p className="text-xs text-gray-400">—</p>;
+  if (tools.length === 0) return <p className="text-xs text-gray-500">—</p>;
   return (
     <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-gray-800/60 dark:border-gray-800">
       {tools.map((t, i) => (
@@ -339,7 +339,7 @@ function EventBody({ msg }: { msg: OmniMessage }) {
     case "text":
     case "thinking": {
       const md = String(p.text ?? p.thinking ?? "");
-      if (!md.trim()) return <p className="text-xs text-gray-400">—</p>;
+      if (!md.trim()) return <p className="text-xs text-gray-500">—</p>;
       return (
         <div className="md-body text-sm leading-relaxed text-gray-700 dark:text-gray-300">
           <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
@@ -430,7 +430,7 @@ export function EventRow({
             : "hover:bg-gray-50 dark:hover:bg-gray-800/50"
         }`}
       >
-        <span className="shrink-0 font-mono text-[11px] text-gray-400">
+        <span className="shrink-0 font-mono text-[11px] text-gray-500">
           {formatTime(msg.timestamp)}
         </span>
         <TypeIcon type={payloadType} />

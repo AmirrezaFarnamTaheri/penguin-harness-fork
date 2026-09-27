@@ -24,7 +24,6 @@ import {
   initialNavGroupCollapsed,
   navKeysFor,
   storeNavGroupCollapsed,
-  visibleNavKeys,
 } from "../src/lib/nav-group-collapse";
 import type { NavCollapseStorage } from "../src/lib/nav-group-collapse";
 import { NAV_ICONS } from "../src/components/ui/icons";
@@ -141,17 +140,7 @@ describe("navKeysFor", () => {
   });
 });
 
-describe("visibleNavKeys", () => {
-  it("expanded shows the whole group; collapsed leaves no entry visible or reachable (the sidebar renders the mounted rows inert at zero height)", () => {
-    expect(visibleNavKeys(false)).toEqual(navKeysFor(true));
-    expect(visibleNavKeys(true)).toEqual([]);
-  });
-
-  it("a member's expanded group is their own manifest, not the admin's", () => {
-    expect(visibleNavKeys(false, false)).toEqual(navKeysFor(false));
-    expect(visibleNavKeys(true, false)).toEqual([]);
-  });
-
+describe("the collapse toggle", () => {
   it("the chevron-button toggle's accessible names exist in both languages (icon-only button: aria + tooltip carry them)", () => {
     for (const [locale, dict] of [
       ["zh", zh],
@@ -179,12 +168,10 @@ describe("persisted collapse state (one global localStorage key)", () => {
     expect(s.map.get(NAV_GROUP_COLLAPSED_KEY)).toBe("collapsed");
     // … and a re-mount (initialNavGroupCollapsed is the useState initializer) restores it.
     expect(initialNavGroupCollapsed(s)).toBe(true);
-    expect(visibleNavKeys(initialNavGroupCollapsed(s))).toEqual([]);
     // Expand again: the choice round-trips both ways.
     storeNavGroupCollapsed(false, s);
     expect(s.map.get(NAV_GROUP_COLLAPSED_KEY)).toBe("expanded");
     expect(initialNavGroupCollapsed(s)).toBe(false);
-    expect(visibleNavKeys(initialNavGroupCollapsed(s))).toEqual(navKeysFor(true));
   });
 
   it("unrecognized stored values fall back to expanded", () => {

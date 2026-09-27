@@ -10,7 +10,7 @@ import { Field, controlBase } from "./field";
 // Adds width, placeholder and disabled styling on top of the shared control look; each of Input/Textarea appends its own font size and padding (see their size).
 const baseClass =
   `w-full ${controlBase} ` +
-  "placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-60 " +
+  "placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 " +
   "dark:placeholder:text-gray-500";
 
 /**
@@ -130,7 +130,7 @@ export const noAutofill = autofillProps(undefined, false);
  */
 const searchSharedClass =
   `w-full bg-transparent ${sizeTextClass.sm} text-gray-700 ` +
-  "placeholder:text-gray-400 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500";
+  "placeholder:text-gray-500 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500";
 
 export const menuSearchClass = `${searchSharedClass} rounded border border-transparent`;
 

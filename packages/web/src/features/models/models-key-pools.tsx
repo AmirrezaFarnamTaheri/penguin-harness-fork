@@ -78,13 +78,34 @@ export function ModelsKeyPools({
 
   const handleResetAll = async () => {
     if (!isOwner) return;
+    // A reset that names no pool is refused by the server (400). It used to be answered
+    // { ok: true } — so this button could show "Key pool status reset successfully" over a
+    // pool that had not changed at all. There is no ref-less call to make any more: send
+    // the refs this button actually means, one request each, so every request names its
+    // own pool and the count in the toast is a count of work that really happened.
+    const targets = resettableRefs;
+    if (targets.length === 0) return;
     setResettingAll(true);
     try {
-      await api.resetModelKeys(projectId);
-      toastSuccess(S.models.resetSuccess);
+      let done = 0;
+      let failure: unknown;
+      for (const target of targets) {
+        try {
+          await api.resetModelKeys(projectId, target.provider, target.modelId);
+          done += 1;
+        } catch (e) {
+          // Keep going rather than bail: the pools already cleared are cleared, and
+          // stopping at the first failure would leave the rest cooling while the user
+          // believed the button had reset everything.
+          failure ??= e;
+        }
+      }
+      // A partial run is reported as the failure it is, not as a success. loadHealth()
+      // below then puts each pool that did NOT clear back on screen still cooling, which
+      // is the per-pool truth the single success toast used to paper over.
+      if (failure !== undefined) toastError(apiErrorText(failure));
+      else toastSuccess(S.models.resetAllKeysDone(done));
       await loadHealth();
-    } catch (e) {
-      toastError(apiErrorText(e));
     } finally {
       setResettingAll(false);
     }
@@ -120,6 +141,29 @@ export function ModelsKeyPools({
     }
     return map;
   }, [reports]);
+
+  /**
+   * Every pool the "Reset All Key Pools" button means, as (provider, modelId) pairs.
+   *
+   * Derived from `rows` + `reportMap` rather than from `modelEntries`, because
+   * `modelEntries` is already narrowed by the search box and the filter chips: a search in
+   * progress would have made "reset all" clear only the pools that search happened to
+   * leave on screen, which is the same class of silent surprise as the bug this replaces.
+   * A pool qualifies exactly when its health report says a key is cooling down or evicted
+   * — and a `rows` entry (not a bare report) is what guarantees a real provider/modelId to
+   * send, which is the one thing a reset request cannot do without.
+   */
+  const resettableRefs = useMemo(() => {
+    const out: Array<{ provider: string; modelId: string }> = [];
+    for (const row of rows ?? []) {
+      const report = reportMap.get(`${row.provider}/${row.modelId}`);
+      if (!report) continue;
+      if (report.cooldownCount > 0 || report.evictedCount > 0) {
+        out.push({ provider: row.provider, modelId: row.modelId });
+      }
+    }
+    return out;
+  }, [rows, reportMap]);
 
   // Aggregate stats across all models
   const summaryStats = useMemo(() => {
@@ -244,10 +288,10 @@ export function ModelsKeyPools({
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={
-                  resettingAll ||
-                  (summaryStats.cooldownCount === 0 && summaryStats.evictedCount === 0)
-                }
+                // Disabled when there is no pool to clear — and `resettableRefs` is the
+                // same list the click handler iterates, so the button can never be
+                // enabled with nothing behind it, nor fire with a list it did not mean.
+                disabled={resettingAll || resettableRefs.length === 0}
                 onClick={() => void handleResetAll()}
               >
                 {resettingAll ? S.models.resettingKeys : S.models.resetAllKeys}
@@ -382,11 +426,16 @@ export function ModelsKeyPools({
         </div>
 
         <div className="w-full sm:w-64">
+          {/* A filter bar's search box has no room for a visible label — and a placeholder
+              is not a name: it is skipped by some screen readers and vanishes on the first
+              keystroke, leaving this control announced as an unlabelled text field. So it
+              takes the same `aria-label` every other search box in the app takes. */}
           <Input
             size="sm"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search model, key, or vendor..."
+            aria-label={S.models.searchKeyPools}
+            placeholder={S.models.searchKeyPools}
           />
         </div>
       </div>

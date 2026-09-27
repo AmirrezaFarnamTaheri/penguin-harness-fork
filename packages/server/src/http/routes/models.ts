@@ -455,6 +455,14 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
 
   /**
    * Resets cooldown and eviction status for a model's keys. Requires project ownership.
+   *
+   * The request must NAME the key pool. A ref-less reset used to fall through to
+   * `{ ok: true }` — work that did not happen, reported as work that did. The
+   * web cockpit's "Reset All Key Pools" button sent exactly that (`{}` in the body),
+   * so a user pressing it got a success toast and an unchanged pool, with nothing on
+   * screen saying no. A route whose whole job is to clear state cannot answer "ok"
+   * to a request that cleared none: 400 with the correction is the only honest reply.
+   * Callers that mean "everything" send one request per affected pool.
    */
   app.post("/keys/reset", async (c) => {
     const projectId = requireValidId(c, "projectId");
@@ -471,12 +479,22 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
       targetRef = modelRef;
     }
 
-    if (targetRef) {
-      deps.keyHealthService.resetKeyHealth(projectId, targetRef);
-      return c.json({ ok: true, report: deps.keyHealthService.getKeyHealth(projectId, targetRef) });
+    if (!targetRef) {
+      // Name the half-pair case too: `provider` without `modelId` derives no ref, and
+      // saying only "no target" would leave the caller guessing which half was dropped.
+      const partialPair = (provider !== undefined) !== (modelId !== undefined);
+      throw badRequest(
+        partialPair
+          ? "provider and modelId must be sent together to name one key pool. " +
+              "Send { provider, modelId }, or { modelRef } as 'provider/modelId'."
+          : "No key pool named, so nothing was reset. Send { provider, modelId }, or " +
+              "{ modelRef } as 'provider/modelId', naming the pool to clear. " +
+              "To reset every pool, send one request per affected pool.",
+      );
     }
 
-    return c.json({ ok: true });
+    deps.keyHealthService.resetKeyHealth(projectId, targetRef);
+    return c.json({ ok: true, report: deps.keyHealthService.getKeyHealth(projectId, targetRef) });
   });
 
   /**

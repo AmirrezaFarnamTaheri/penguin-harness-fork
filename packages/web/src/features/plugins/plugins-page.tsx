@@ -515,11 +515,11 @@ export function PluginsPage() {
                     <span className="min-w-0 truncate text-sm font-semibold">
                       {localizedText(locale, group.title, group.titleZh)}
                     </span>
-                    <span className="shrink-0 whitespace-nowrap font-mono text-xs text-gray-400">
+                    <span className="shrink-0 whitespace-nowrap font-mono text-xs text-gray-500">
                       {S.plugins.pluginCount(group.plugins.length)}
                     </span>
                     <span className="min-w-0 flex-1" />
-                    <Chevron open={open} className="text-gray-400" />
+                    <Chevron open={open} className="text-gray-500" />
                   </button>
 
                   {/* Expand/collapse height transition: grid-template-rows tweens between
@@ -699,7 +699,7 @@ function PluginCard({
         </div>
         {/* Metadata line under the header (e.g. `v2026.08.29.1 · updated 3 days ago · used by
             2 agents`); what the plugin contains lives in the detail Modal this card opens. */}
-        <p className="mt-2.5 truncate text-[11px] text-gray-400 dark:text-gray-500" title={meta}>
+        <p className="mt-2.5 truncate text-[11px] text-gray-500 dark:text-gray-500" title={meta}>
           {meta}
         </p>
       </button>
@@ -762,7 +762,7 @@ function PluginCard({
         >
           <div className="space-y-0.5">
             {agents.length === 0 && (
-              <p className="py-1.5 text-xs text-gray-400">{S.common.loading}</p>
+              <p className="py-1.5 text-xs text-gray-500">{S.common.loading}</p>
             )}
             {agents.map((a) => (
               <InstallRow

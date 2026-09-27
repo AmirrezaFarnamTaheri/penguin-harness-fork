@@ -522,7 +522,7 @@ export function MemoryTab({
           <p className="truncate text-xs text-gray-500 dark:text-gray-400">{file.description}</p>
         )}
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+      <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-500">
         {file.updatedAt ?? formatRelativeDate(file.modifiedAt, locale)}
       </span>
       {rowActions(scope, file)}
@@ -532,7 +532,7 @@ export function MemoryTab({
   /** Metadata + rendered body of the memory in view, shared by the Drawer and the Sheet. */
   const viewMeta = viewing && (
     <>
-      <span className="text-xs text-gray-400 dark:text-gray-500">
+      <span className="text-xs text-gray-500 dark:text-gray-500">
         {viewing.file.updatedAt ?? formatRelativeDate(viewing.file.modifiedAt, locale)}
       </span>
       {viewing.file.description && (
@@ -612,12 +612,12 @@ export function MemoryTab({
                       {scopeTitle(scope)}
                     </span>
                     {scope.kind === "workspace" && scope.workspacePath !== undefined && (
-                      <span className="min-w-0 truncate font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                      <span className="min-w-0 truncate font-mono text-[11px] text-gray-500 dark:text-gray-500">
                         {scope.workspacePath}
                       </span>
                     )}
                     <span className="min-w-0 flex-1" />
-                    <span className="shrink-0 whitespace-nowrap text-xs text-gray-400 dark:text-gray-500">
+                    <span className="shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-500">
                       {S.memory.itemCount(files.length)}
                     </span>
                   </button>
@@ -672,7 +672,7 @@ export function MemoryTab({
                     onClick={() => toggleCollapsed(scope.scopeKey)}
                     className="shrink-0 p-1.5"
                   >
-                    <Chevron open={open} className="text-gray-400" />
+                    <Chevron open={open} className="text-gray-500" />
                   </button>
                 </div>
                 <div
@@ -681,7 +681,7 @@ export function MemoryTab({
                   {/* inert while collapsed: rows at zero height shouldn't still be Tab-focusable or clickable. */}
                   <div className="overflow-hidden" inert={!open}>
                     {files.length === 0 ? (
-                      <p className="px-4 py-4 text-center text-xs text-gray-400 dark:text-gray-500">
+                      <p className="px-4 py-4 text-center text-xs text-gray-500 dark:text-gray-500">
                         {scope.kind === "user" ? S.memory.emptyUserScope : S.memory.emptyScope}
                       </p>
                     ) : (
@@ -804,7 +804,7 @@ export function MemoryTab({
         {editing && (
           <div className="space-y-2.5">
             <p className="text-xs text-gray-500 dark:text-gray-400">{S.memory.editWhy}</p>
-            <p className="break-all font-mono text-[11px] text-gray-400 dark:text-gray-500">
+            <p className="break-all font-mono text-[11px] text-gray-500 dark:text-gray-500">
               {memoryFilePath(editing.scope, editing.file)}
             </p>
             <Textarea
@@ -848,7 +848,7 @@ export function MemoryTab({
         {adding && (
           <div className="space-y-2.5">
             <p className="text-xs text-gray-500 dark:text-gray-400">{S.memory.addWhy}</p>
-            <p className="break-all font-mono text-[11px] text-gray-400 dark:text-gray-500">
+            <p className="break-all font-mono text-[11px] text-gray-500 dark:text-gray-500">
               {`${memoryDir}/${adding.scopeKey}`}
             </p>
             <Textarea

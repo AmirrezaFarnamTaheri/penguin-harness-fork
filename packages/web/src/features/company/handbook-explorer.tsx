@@ -241,16 +241,16 @@ function ExplorerRowButton({
           className="absolute bottom-0 top-0 w-px bg-gray-200 dark:bg-gray-800"
         />
       ))}
-      <span className="flex w-3 shrink-0 justify-center text-gray-400 dark:text-gray-500">
+      <span className="flex w-3 shrink-0 justify-center text-gray-500 dark:text-gray-500">
         {folder !== null && <Chevron open={expanded} size={ICON_SIZE.chevronDense} />}
       </span>
       <span
-        className={`shrink-0 ${selected ? "text-gray-700 dark:text-gray-200" : "text-gray-400 dark:text-gray-500"}`}
+        className={`shrink-0 ${selected ? "text-gray-700 dark:text-gray-200" : "text-gray-500 dark:text-gray-500"}`}
       >
         <GlyphIcon d={glyph} size={ICON_SIZE.rowLead} />
       </span>
       <span className="min-w-0 flex-1 truncate">{name}</span>
-      <span className="shrink-0 text-[11px] font-normal tabular-nums text-gray-400 dark:text-gray-500">
+      <span className="shrink-0 text-[11px] font-normal tabular-nums text-gray-500 dark:text-gray-500">
         {folder !== null
           ? countDocuments(folder.children)
           : file === null

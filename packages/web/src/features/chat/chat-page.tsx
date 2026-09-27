@@ -119,12 +119,8 @@ import { noteScheduleEvent } from "../schedules/schedule-store";
 import { HudStatusline } from "../hud/hud-statusline";
 import { AgentCockpit } from "../agent/agent-cockpit";
 import { SpendFlowPanel } from "../hud/spend-flow-panel";
-import { TopologyPage } from "../topology/topology-page";
-import { GuardianPage } from "../guardian/guardian-page";
-import { ConsensusPage } from "../consensus/consensus-page";
 import { ContextBreakdownPage } from "../context/context-breakdown-page";
 import { MemoryPage } from "../memory/memory-page";
-import { ModelsKeyFleetPage } from "../models/models-key-fleet-page";
 import { TraceFlamegraphPage } from "../traces/trace-flamegraph-page";
 import { SnapshotsPage } from "../snapshots/snapshots-page";
 import { DockPanel } from "../dock/dock-panel";
@@ -1636,6 +1632,26 @@ export function ChatPage() {
   // Real-time cost for this turn: converts the Task's bucketed usage using the session Model's
   // (paired reference) current pricing; null if no pricing is configured.
   const modelPricing = models?.models.find((m) => sameModelRef(m, activeModelRef))?.pricing;
+  // DELIBERATELY INLINE, and it must stay that way. This object is rebuilt — new identity, and
+  // seven new closures for taskCost / onRetryNow / onGiveUp / onOpenFile / onOpenSubagent /
+  // onOpenMemory / onLocateMemoryChange — on every render, and a chat page re-renders on every
+  // stream commit while a turn runs. Nothing downstream memoizes on `ctx` identity; what keeps
+  // that from costing a re-render per item per commit is the two custom comparators that
+  // reach past the prop and decide from the item instead:
+  //   - areMessageItemPropsEqual (message-item.tsx) returns false on `prev.item !== next.item`
+  //     before it ever looks at `ctx`; for a settled item the only ctx fields it reads
+  //     directly are `deletedMemoryKeys` and `workspace` (plus `isItemActive`, which reads
+  //     `pendingApprovals`/`origin` and only ever answers "is this still in flight");
+  //   - areWorkGroupPropsEqual (work-group.tsx) likewise compares items/isLast and returns
+  //     early for an active group.
+  // Those two comparators are the load-bearing part, and neither says so anywhere. If either
+  // grows a `prev.ctx !== next.ctx` check (the obvious "correct" prop comparison) or starts
+  // diffing the closures, the transcript re-renders every item in the session on every commit
+  // — the full message tree, at streaming rate, on a page that is already the app's heaviest.
+  // The same goes for a `useMemo`/ref hoist of this object: it would be correct in isolation
+  // and would hide the fact that the comparators are what is carrying the load, and a stale
+  // memo here silently freezes live prices and callbacks. Change a comparator and re-measure
+  // a long streaming turn before you believe the change is free.
   const ctx: StreamRenderContext = {
     subagents: stream.subagents,
     pendingApprovals: stream.pendingApprovals,
@@ -1810,18 +1826,10 @@ export function ChatPage() {
         return <AgentCockpit key={selected.sessionId} embedded sessionId={selected.sessionId} />;
       case "spendFlow":
         return <SpendFlowPanel key={selected.sessionId} projectId={projectId ?? ""} />;
-      case "topology":
-        return <TopologyPage key={selected.sessionId} embedded />;
-      case "guardian":
-        return <GuardianPage key={selected.sessionId} embedded />;
-      case "consensus":
-        return <ConsensusPage key={selected.sessionId} embedded />;
       case "contextBreakdown":
         return (
           <ContextBreakdownPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
         );
-      case "keyFleet":
-        return <ModelsKeyFleetPage key={selected.sessionId} embedded />;
       case "flamegraph":
         return (
           <TraceFlamegraphPage key={selected.sessionId} embedded sessionId={selected.sessionId} />
@@ -2100,7 +2108,7 @@ export function ChatPage() {
                 <p className="truncate text-xs">
                   <span className="font-mono">{selected.agentId}</span>
                   {sessionAgentName !== null && (
-                    <span className="ml-1.5 text-gray-400 dark:text-gray-500">
+                    <span className="ml-1.5 text-gray-500 dark:text-gray-500">
                       {sessionAgentName}
                     </span>
                   )}
@@ -2113,7 +2121,7 @@ export function ChatPage() {
                 {/* Paired display: upstream model_id + provider name (two separate fields on the Session DTO). */}
                 <p className="truncate text-xs">
                   <span className="font-mono">{selected.modelId}</span>
-                  <span className="ml-1.5 text-gray-400 dark:text-gray-500">
+                  <span className="ml-1.5 text-gray-500 dark:text-gray-500">
                     {providerInfo(selected.provider)?.label ?? selected.provider}
                   </span>
                 </p>
@@ -2183,7 +2191,7 @@ export function ChatPage() {
                           <span className="block truncate font-mono text-xs" title={p.cmd}>
                             {p.cmd}
                           </span>
-                          <span className="block truncate text-[11px] text-gray-400 dark:text-gray-500">
+                          <span className="block truncate text-[11px] text-gray-500 dark:text-gray-500">
                             {formatDateTime(p.startedAt)}
                             {p.pid !== null && ` · pid ${p.pid}`}
                             {/* Detected service URL (output scan or port probe), running rows
@@ -2216,7 +2224,7 @@ export function ChatPage() {
                           </button>
                         ) : (
                           <>
-                            <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">
+                            <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">
                               {S.chat.processExited}
                             </span>
                             {/* The row is the only handle on that process's captured
@@ -2367,7 +2375,7 @@ export function ChatPage() {
                     <div className="relative min-h-0 flex-1">
                       {emptyChat ? (
                         <div className="flex h-full items-center justify-center px-4">
-                          <p className="text-lg font-medium text-gray-400 dark:text-gray-500">
+                          <p className="text-lg font-medium text-gray-500 dark:text-gray-500">
                             {S.chat.emptyGreeting}
                           </p>
                         </div>

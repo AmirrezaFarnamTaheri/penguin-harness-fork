@@ -62,6 +62,28 @@ export const zh = {
     },
   },
 
+  /**
+   * Gateway & Quotas 页面（features/gateway/gateway-page.tsx）：顶部三个配额磁贴与
+   * 「注册组合」弹窗。其中承担「服务端没有给这个值」的那些文案是关键：N/A 及其下方
+   * 说明必须与中性色一起出现，否则缺失的读数会被读成健康的读数。
+   */
+  gateway: {
+    /** 冷却表格上方的三个配额磁贴。 */
+    sessionQuotaUsed: "会话配额已用",
+    weeklyQuotaUsed: "每周配额已用",
+    nextResetWindow: "下次重置窗口",
+    /** 服务端返回 null 时的占位文案，始终配中性色使用。 */
+    notAvailable: "无数据",
+    /** 服务端未给出配额数字时的磁贴说明：此时不绘制进度条。 */
+    quotaNotReported: "服务端未提供数字",
+    /** 重置窗口磁贴下方的补充说明。 */
+    resetReplenishment: "配额自动补充",
+    /** 注册组合弹窗的字段；前两个必填（Input 的 required 会自动加星号）。 */
+    comboIdLabel: "组合标识（slug）",
+    comboNameLabel: "显示名称",
+    comboTargetsLabel: "路由目标链（逗号分隔的 provider:model）",
+  },
+
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
   machines: {
     pageTitle: "机器",
@@ -1227,6 +1249,10 @@ export const zh = {
     filterHealthy: "仅健康",
     filterIssues: "存在冷却/异常",
     resetAllKeys: "重置全部 Key 状态",
+    /** Key 池过滤框的可访问名称：可见 label 会挤乱工具栏，仅靠 placeholder 不算名称。 */
+    searchKeyPools: "搜索模型、Key 或供应商",
+    /** 「重置全部」现在按名称逐个重置受影响的 Key 池，告知实际处理数量。 */
+    resetAllKeysDone: (n: number): string => `已重置 ${n} 个 Key 池`,
     refreshHealth: "刷新状态",
     activeLeases: "活跃租约",
     successRate: "成功率",
@@ -1241,7 +1267,6 @@ export const zh = {
     keysEvicted: (n: number) => `${n} 个 Key 已失效 (401)`,
     totalKeysConfigured: "已配置 Key 总数",
     healthyPoolsRatio: "健康 Key 占比",
-    resetSuccess: "Key 池状态已重置",
   },
 
   memory: {
@@ -1994,7 +2019,7 @@ Benchmark：
           "先看已有记忆索引避免重复，再逐条问我该记什么、要不要改已有的，我确认后你写进 Memory。",
       },
     },
-    sessionList: "Session",
+    sessionList: "会话",
     defaultSessionTitle: "新对话",
     agent: "Agent",
     model: "Model",
@@ -2910,6 +2935,22 @@ Benchmark：
     overwriteAnyway: "仍然覆盖",
   },
 
+  /** 产物预览抽屉（components/ui/artifact-preview-drawer）：工具栏上的视口切换、主题切换、弹出与导出。 */
+  artifactPreview: {
+    /** 三个固定视口；括号里是被模拟的视口宽度。 */
+    viewportDesktop: "桌面",
+    viewportTablet: "平板 (768px)",
+    viewportMobile: "手机 (375px)",
+    /** 主题切换按钮：说明「点了会变成什么」，而不是当前处于什么模式。 */
+    switchToDark: "切换到深色模式",
+    switchToLight: "切换到浅色模式",
+    openInNewTab: "在新标签页打开预览",
+    popout: "弹出窗口",
+    download: "下载文件",
+    export: "导出",
+    copySource: "复制产物源码",
+  },
+
   usage: {
     title: "成本与统计",
     today: "今日",
@@ -2925,6 +2966,9 @@ Benchmark：
     uncostedNote: "* 只计入配置了价格的模型成本",
     filterAllAgents: "全部 Agent",
     filterAllModels: "全部模型",
+    /** 两个筛选下拉框的无障碍名称：它们没有可见标签，缺少名称时读屏只会念出一个未命名的组合框（当前选项说明的是"选了什么"，而不是"在选什么"）。 */
+    filterAgentLabel: "按 Agent 筛选",
+    filterModelLabel: "按模型筛选",
     rangeLabel: "日期范围",
     rangeHour: "最近一小时",
     rangeDay: "最近一天",
@@ -2941,6 +2985,17 @@ Benchmark：
     bucketTotal: "合计",
     legendHitRate: "缓存命中率",
     empty: "暂无用量记录",
+    /**
+     * 每个图表的读屏数据表格的列名（WCAG 2.2 SC 1.1.1 / 2.1.1：这些数值同时也出现在悬浮气泡里，
+     * 而键盘与读屏用户够不到气泡）。`chartDataBucket` 是横轴的时间区间，
+     * `chartDataSeries` 是请求类图表拆分所用的维度。
+     */
+    chartDataBucket: "时间区间",
+    chartDataSeries: "系列",
+    /** 骨架屏的朗读文案（否则它只是一片无声的灰色网格）。 */
+    loadingUsage: "正在加载用量数据…",
+    /** 加载失败分支的标题，取代骨架屏。 */
+    loadFailed: "无法加载用量数据。",
     errors: "异常",
     errorsTotal: "总数",
     errorsUnexpected: "未预期",
@@ -3590,6 +3645,13 @@ Benchmark：
       legendEmpty: "还没有日程",
       legendFilter: (name: string): string => `只看 ${name} 的日程`,
       createAt: (label: string): string => `在 ${label} 新建日程`,
+      /** Names the week / day hour grid, then the range it covers: read on entering the grid. */
+      hourGrid: "小时网格",
+      /**
+       * A chip in the week and day columns: the DAY it is on, then its time and name. The month
+       * cell already names its day, so its chips pass no `day` and do not repeat it.
+       */
+      eventOnDay: (day: string, time: string, label: string): string => `${day} ${time} · ${label}`,
       loadFailed: (error: string): string => `日历加载失败：${error}`,
       /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
       dismissHint: "知道了",

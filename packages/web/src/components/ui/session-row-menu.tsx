@@ -16,6 +16,32 @@
  * Rename therefore keeps a home: every Session must stay renamable, archivable and
  * deletable, and paring the hover affordance down would otherwise have dropped rename
  * off the row entirely.
+ *
+ * ## Secondary ink: `text-gray-500 dark:text-gray-400`
+ *
+ * Written once here because this is where the app mints the shared muted-ink class strings
+ * (below and in the menus across the app), and a sweep of the raw `text-gray-400` class
+ * cannot be checked from any one call site. Contrast ratios, WCAG 2.x formula
+ * (L = 0.2126R + 0.7152G + 0.0722B over linearised sRGB, ratio = (L1+0.05)/(L2+0.05)),
+ * against the four surfaces these marks actually sit on — white, gray-50, gray-100, and
+ * the two neutrals styles.css overrides for dark, gray-900 `#0d0d0d` and gray-950 `#000000`:
+ *
+ * | ink        | white | gray-50 | gray-100 | gray-900 | gray-950 |
+ * | ---------- | ----- | ------- | -------- | -------- | -------- |
+ * | gray-400   | 2.54  | 2.43    | 2.31     | 7.66     | 8.27     |
+ * | gray-500   | 4.83  | 4.62    | 4.39     | 4.02     | 4.34     |
+ * | gray-600   | 7.56  | 7.23    | 6.87     | 2.57     | 2.78     |
+ *
+ * Read across: `text-gray-400` fails the 4.5:1 that WCAG 1.4.3 asks of body and metadata
+ * text in light mode on every light surface, and `text-gray-500` is the lightest step that
+ * clears it — 4.83:1 on white, 4.62:1 on gray-50. (On gray-100 it is 4.39:1, a shade under,
+ * so text that sits on a gray-100 chip takes gray-600.) The same table says why the dark
+ * half of the pair must stay gray-400: in dark mode gray-500 is 4.02:1 on gray-900, which
+ * is why `toneInk.muted` in lib/tone.ts is the pair and not a single step.
+ *
+ * So: text that carries meaning is `text-gray-500` in light with its `dark:` partner left at
+ * gray-400. A mark that is allowed to recede — a state already spelled out beside it, a
+ * purely decorative glyph under `aria-hidden` — may keep gray-400, and says so where it does.
  */
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { AnchorRect } from "../../lib/context-menu";
@@ -60,7 +86,7 @@ export const overflowMenuDangerClass =
 
 /** The overflow menus' muted leading glyph (a danger row inlines its own so the red inherits). */
 export const overflowMenuGlyph = (d: string) => (
-  <span className="shrink-0 text-gray-400 dark:text-gray-500">
+  <span className="shrink-0 text-gray-500 dark:text-gray-500">
     <Icon d={d} size={13} />
   </span>
 );
@@ -186,7 +212,7 @@ export function SessionRowMenuRows({
 
 /** The hover buttons' shared reveal classes (see SessionRowHoverActions on why pointer events are gated with opacity). */
 const hoverButtonClass =
-  "pointer-events-none flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-all duration-150 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100";
+  "pointer-events-none flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 opacity-0 transition-all duration-150 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100";
 
 /**
  * Hover affordance: icon-only buttons that fade in over the row — the direct actions

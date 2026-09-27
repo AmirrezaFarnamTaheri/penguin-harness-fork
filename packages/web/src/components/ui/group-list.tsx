@@ -110,7 +110,7 @@ export function storeGroupMode(mode: GroupMode): void {
 
 /** Row class of folder toggles and "More" rows (the sidebar's folderClass). */
 export const FOLDER_ROW_CLASS =
-  "flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[11px] font-medium text-gray-400 transition-colors duration-150 hover:bg-gray-200/50 dark:text-gray-500 dark:hover:bg-gray-800/50";
+  "flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[11px] font-medium text-gray-500 transition-colors duration-150 hover:bg-gray-200/50 dark:text-gray-500 dark:hover:bg-gray-800/50";
 
 /**
  * "More"-style row (a group's load-next-page, a folder's paging, the reveal-more-groups
@@ -178,7 +178,7 @@ export function GroupPager({
     if (next >= 0 && next < pageCount) onChange(next);
   };
   const buttonClass =
-    "flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-200/50 hover:text-gray-700 disabled:pointer-events-none disabled:opacity-40 dark:text-gray-500 dark:hover:bg-gray-800/50 dark:hover:text-gray-300";
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-200/50 hover:text-gray-700 disabled:pointer-events-none disabled:opacity-40 dark:text-gray-500 dark:hover:bg-gray-800/50 dark:hover:text-gray-300";
   return (
     <div className="mt-1 flex items-center justify-center gap-1.5 px-1.5 py-0.5">
       <button
@@ -196,7 +196,7 @@ export function GroupPager({
       <span
         aria-live="polite"
         aria-label={S.chat.groupPagePosition(page + 1, pageCount)}
-        className="min-w-[2.5rem] text-center text-[11px] font-medium tabular-nums text-gray-400 dark:text-gray-500"
+        className="min-w-[2.5rem] text-center text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-500"
       >
         {page + 1}/{pageCount}
       </span>
@@ -342,10 +342,10 @@ export function GroupHeader({
           {label}
         </span>
         {count !== undefined && (
-          <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">{count}</span>
+          <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">{count}</span>
         )}
         {/* Expand/collapse indicator sits right after the label */}
-        <Chevron open={open} size={12} className="text-gray-400" />
+        <Chevron open={open} size={12} className="text-gray-500" />
         <span className="min-w-0 flex-1" />
       </button>
       {actions}

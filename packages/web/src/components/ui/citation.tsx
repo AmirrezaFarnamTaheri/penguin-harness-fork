@@ -114,7 +114,7 @@ export function Citation({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5 rounded cursor-pointer"
+            className="text-gray-500 hover:text-gray-600 dark:hover:text-gray-200 p-0.5 rounded cursor-pointer"
             title="Dismiss source"
           >
             <svg

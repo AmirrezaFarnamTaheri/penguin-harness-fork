@@ -178,7 +178,7 @@ export function OptionMenu<T extends string>({
         <span className={`min-w-0 truncate ${mono ? "font-mono" : ""}`}>
           {current?.triggerLabel ?? placeholder ?? "—"}
         </span>
-        <ChevronDown className="text-gray-400" />
+        <ChevronDown className="text-gray-500" />
       </button>
       {open &&
         position &&

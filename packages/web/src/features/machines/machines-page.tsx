@@ -210,11 +210,11 @@ export function MachinesPage() {
                         <GlyphIcon d={NAV_ICONS.machines} size={ICON_SIZE.rowLead} />
                       </span>
                       <span
-                        className={`min-w-0 flex-1 truncate ${selected === null ? "text-gray-400 dark:text-gray-500" : ""}`}
+                        className={`min-w-0 flex-1 truncate ${selected === null ? "text-gray-500 dark:text-gray-500" : ""}`}
                       >
                         {selected?.alias ?? S.machines.pick}
                       </span>
-                      <ChevronDown className="shrink-0 text-gray-400" />
+                      <ChevronDown className="shrink-0 text-gray-500" />
                     </button>
                   }
                 >
@@ -243,7 +243,7 @@ export function MachinesPage() {
                       className="flex w-full min-w-0 items-center gap-2 px-3.5 py-2 text-left text-sm transition-colors duration-150 hover:bg-gray-100 dark:hover:bg-gray-800"
                     >
                       <span
-                        className={`min-w-0 flex-1 truncate ${positions.length > 0 ? "text-gray-400 dark:text-gray-500" : ""}`}
+                        className={`min-w-0 flex-1 truncate ${positions.length > 0 ? "text-gray-500 dark:text-gray-500" : ""}`}
                       >
                         {positions.length === 0
                           ? machine.alias
@@ -270,12 +270,12 @@ export function MachinesPage() {
                     </button>
                   ))}
                   {visible.length === 0 && (
-                    <p className="px-3.5 py-2 text-sm text-gray-400 dark:text-gray-500">
+                    <p className="px-3.5 py-2 text-sm text-gray-500 dark:text-gray-500">
                       {S.machines.noMatch}
                     </p>
                   )}
                   {hiddenCount > 0 && (
-                    <p className="px-3.5 pt-1 pb-1.5 text-xs text-gray-400 dark:text-gray-500">
+                    <p className="px-3.5 pt-1 pb-1.5 text-xs text-gray-500 dark:text-gray-500">
                       {S.machines.more(hiddenCount)}
                     </p>
                   )}
@@ -342,7 +342,7 @@ export function MachinesPage() {
                       <span className={`shrink-0 text-xs ${toneInk.success}`}>
                         {machine.installed!.version}
                       </span>
-                      <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                      <span className="shrink-0 text-xs text-gray-500 dark:text-gray-500">
                         {formatDateTime(machine.installed!.at)}
                       </span>
                     </button>

@@ -65,7 +65,7 @@ export function QuorumConsensusCard({
             >
               {statusBadge.label}
             </span>
-            <span className="text-gray-400 font-mono text-[10px]">
+            <span className="text-gray-500 font-mono text-[10px]">
               threshold: {currentSupporters}/{threshold}
             </span>
           </div>

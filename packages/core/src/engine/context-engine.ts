@@ -476,18 +476,52 @@ interface TurnRetryState {
 const RETRY_STATUSES: readonly StopReason[] = ["retryable"];
 
 /**
- * Delay before reconnect attempt N (1-based): exponential growth from `base` with a hard
- * ceiling `max` — `min(base × 2^(N−1), max)`. With the defaults (2s base, 30s ceiling,
- * 5 reconnects) the ladder is 2s, 4s, 8s, 16s, 30s ≈ 60s of total patience: one shared
- * schedule serves every retryable class. The base is sized for the slow ones — transient
- * provider failures (restarts, rate limits) need seconds, not milliseconds, to
- * recover, and the old 250ms base burned the whole ladder in ~7.75s (issue #218); it also
- * keeps every planned wait at or above the hosts' 2s countdown floor (the Web App's
- * COUNTDOWN_MIN_MS), so no retry ever looks like a silent stall. Transport blips pay at
- * most one visible 2s wait — an acceptable trade for retries the user can see.
+ * A fresh jitter seed per engine. A module counter rather than `Math.random()`: the value
+ * only has to differ between concurrently-live engines, it never has to be unpredictable,
+ * and a counter makes a test that constructs two engines and compares their ladders
+ * reproducible.
  */
-export function reconnectDelayMs(base: number, max: number, attempt: number): number {
-  return Math.min(base * 2 ** (attempt - 1), max);
+let reconnectSeedCounter = 0;
+function nextReconnectSeed(): number {
+  reconnectSeedCounter += 1;
+  return reconnectSeedCounter;
+}
+
+/**
+ * Delay before reconnect attempt N (1-based): exponential growth from `base` with a hard
+ * ceiling `max` — `min(base × 2^(N−1), max)`, then a bounded jitter above that. With the
+ * defaults (2s base, 30s ceiling, 5 reconnects) the ladder runs 2s → 30s in roughly 60s of
+ * total patience: one shared schedule serves every retryable class. The base is sized for the
+ * slow ones — transient provider failures (restarts, rate limits) need seconds, not
+ * milliseconds, to recover, and the old 250ms base burned the whole ladder in ~7.75s
+ * (issue #218); it also keeps every planned wait at or above the hosts' 2s countdown floor
+ * (the Web App's COUNTDOWN_MIN_MS), so no retry ever looks like a silent stall. Transport
+ * blips pay at most one visible 2s wait — an acceptable trade for retries the user can see.
+ *
+ * **Why jitter, and why this kind.** Without it the ladder is a fixed schedule shared by
+ * every session, so a provider that fails for everyone — a deploy, a rate-limit cliff, a
+ * regional blip — has every client come back at the same instant and fail again, in lockstep,
+ * N times. That is the thundering herd this removes.
+ *
+ * The jitter is derived from a **per-engine seed**, not from the clock, and that is load-
+ * bearing rather than stylistic. `retry_in_ms` is announced to the frontend as a live
+ * countdown and is computed by a DIFFERENT call than the one that sleeps (see `retryDelayMs`
+ * and `backoff`). A clock-derived jitter would make those two disagree — the countdown would
+ * promise one number and the engine wait another — which is precisely the drift the code
+ * explicitly forbids. A seed fixed for the engine's lifetime gives both call sites the same
+ * value for the same attempt, while different engines still spread.
+ *
+ * Jitter only ever adds, and is re-clamped to `max`: the `>= base` floor is what keeps every
+ * wait above the countdown minimum, and absorbing the jitter at the ceiling keeps the total
+ * patience at the ~60s the schedule above promises rather than quietly growing past it.
+ */
+export function reconnectDelayMs(base: number, max: number, attempt: number, seed = 0): number {
+  const ladder = Math.min(base * 2 ** (attempt - 1), max);
+  // Cheap integer mix of the seed and the attempt — FNV-style, no PRNG. The goal is spread
+  // across engines, not unpredictability within one.
+  const mixed = (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(attempt, 0xc2b2ae35)) >>> 0;
+  const jitter = (mixed % 1000) / 1000; // 0 .. 0.999
+  return Math.min(max, Math.round(ladder * (1 + 0.5 * jitter)));
 }
 
 export class ContextEngine {
@@ -501,6 +535,13 @@ export class ContextEngine {
   private readonly maxTurnAttempts: number;
   private readonly reconnectBackoffMs: number;
   private readonly reconnectBackoffMaxMs: number;
+  /**
+   * This engine's jitter seed, fixed for its lifetime. It is what makes two sessions that
+   * hit the same provider failure at the same moment NOT come back at the same instant — and
+   * it is deliberately constant for this engine, because `retryDelayMs` announces the wait
+   * and `backoff` sleeps it, and the two must agree exactly (see `reconnectDelayMs`).
+   */
+  private readonly reconnectSeed: number = nextReconnectSeed();
   private readonly compactionMaxReconnects: number;
   /** Interruption cleanup: content to resend generated when the previous run was aborted, held on the engine across runs. */
   private pendingCarryOver: OmniMessage[] = [];
@@ -1187,6 +1228,7 @@ export class ContextEngine {
       this.reconnectBackoffMs,
       this.reconnectBackoffMaxMs,
       reconnectsSoFar + 1,
+      this.reconnectSeed,
     );
   }
 
@@ -1219,7 +1261,13 @@ export class ContextEngine {
    * proceeding straight to the retry.
    */
   private backoff(attempt: number, signal?: AbortSignal): Promise<boolean> {
-    const ms = reconnectDelayMs(this.reconnectBackoffMs, this.reconnectBackoffMaxMs, attempt);
+    // The same seed the announcement used, so the countdown and the sleep are one number.
+    const ms = reconnectDelayMs(
+      this.reconnectBackoffMs,
+      this.reconnectBackoffMaxMs,
+      attempt,
+      this.reconnectSeed,
+    );
     return new Promise<boolean>((resolve) => {
       if (signal?.aborted) {
         resolve(false);

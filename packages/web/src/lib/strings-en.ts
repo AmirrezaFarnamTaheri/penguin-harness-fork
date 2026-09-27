@@ -62,6 +62,32 @@ export const en: Strings = {
     },
   },
 
+  /**
+   * Gateway & Quotas page (features/gateway/gateway-page.tsx). The stat tiles and the
+   * register-combo modal; the strings that stand in for a value the server did NOT send
+   * are the load-bearing ones here — "N/A" and the caption under it are what keeps an
+   * absent measurement from reading as a healthy one.
+   */
+  gateway: {
+    /** The three quota tiles above the cooldown table. */
+    sessionQuotaUsed: "Session Quota Used",
+    weeklyQuotaUsed: "Weekly Quota Used",
+    nextResetWindow: "Next Reset Window",
+    /**
+     * Stand-in for a value the server sent as null. Always paired with neutral ink —
+     * a green or amber "N/A" is the defect this page was audited for.
+     */
+    notAvailable: "N/A",
+    /** Caption on a quota tile whose figure the server never reported: no meter is drawn. */
+    quotaNotReported: "No figure reported",
+    /** Sub-caption under the reset-window tile. */
+    resetReplenishment: "Automatic quota replenishment",
+    /** Register-combo modal fields; the first two are required (Input `required` adds the mark). */
+    comboIdLabel: "Combo Identifier (slug)",
+    comboNameLabel: "Display Name",
+    comboTargetsLabel: "Routing Target Chain (comma separated provider:model)",
+  },
+
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
   machines: {
     pageTitle: "Machines",
@@ -1231,6 +1257,13 @@ export const en: Strings = {
     filterHealthy: "Healthy Only",
     filterIssues: "Issues / Cooldown",
     resetAllKeys: "Reset All Key Pools",
+    /**
+     * Accessible name for the Key Pools filter box: a visible label would reflow the
+     * toolbar, and the placeholder alone is not a name.
+     */
+    searchKeyPools: "Search model, key, or vendor",
+    /** "Reset All" now resets each affected pool by name; say how many that was. */
+    resetAllKeysDone: (n: number): string => `Reset ${n} key pool(s)`,
     refreshHealth: "Refresh Telemetry",
     activeLeases: "Active Leases",
     successRate: "Success Rate",
@@ -1245,7 +1278,6 @@ export const en: Strings = {
     keysEvicted: (n: number) => `${n} key(s) evicted (401)`,
     totalKeysConfigured: "Total Keys Configured",
     healthyPoolsRatio: "Healthy Ratio",
-    resetSuccess: "Key pool status reset successfully",
   },
 
   memory: {
@@ -2947,6 +2979,23 @@ Scenarios:
     overwriteAnyway: "Overwrite",
   },
 
+  /** The artifact preview drawer (components/ui/artifact-preview-drawer): the viewport
+   *  switch, the theme toggle, and the popout / export pair on its toolbar. */
+  artifactPreview: {
+    /** The three fixed viewports; the number in brackets is the viewport width being simulated. */
+    viewportDesktop: "Desktop",
+    viewportTablet: "Tablet (768px)",
+    viewportMobile: "Mobile (375px)",
+    /** The theme toggle names the mode a press switches TO, not the one currently showing. */
+    switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode",
+    openInNewTab: "Open preview in new tab",
+    popout: "Popout",
+    download: "Download file",
+    export: "Export",
+    copySource: "Copy artifact source",
+  },
+
   usage: {
     title: "Costs & usage",
     today: "Today",
@@ -2962,6 +3011,9 @@ Scenarios:
     uncostedNote: "* Only models with configured pricing count toward cost",
     filterAllAgents: "All agents",
     filterAllModels: "All models",
+    /** Accessible names of the two filter dropdowns: they carry no visible label, so without these they announce as bare combo boxes (the "all" option says what is chosen, not what is being chosen). */
+    filterAgentLabel: "Filter by agent",
+    filterModelLabel: "Filter by model",
     rangeLabel: "Date range",
     rangeHour: "Last hour",
     rangeDay: "Last 24 hours",
@@ -2978,6 +3030,18 @@ Scenarios:
     bucketTotal: "Total",
     legendHitRate: "Cache hit rate",
     empty: "No usage records",
+    /**
+     * Column headers of each chart's screen-reader data table (WCAG 2.2 SC 1.1.1 /
+     * 2.1.1: the values are also in a hover bubble, which a keyboard or a
+     * screen reader cannot reach). `chartDataBucket` names the x-axis interval,
+     * `chartDataSeries` the stacked dimension the requests charts break down by.
+     */
+    chartDataBucket: "Time bucket",
+    chartDataSeries: "Series",
+    /** The skeletons' spoken form (they are otherwise a silent grey grid). */
+    loadingUsage: "Loading usage data…",
+    /** Heading of the failed-fetch branch that takes the skeletons' place. */
+    loadFailed: "Could not load usage data.",
     errors: "Errors",
     errorsTotal: "Total",
     errorsUnexpected: "Unexpected",
@@ -3661,6 +3725,13 @@ Scenarios:
       legendEmpty: "No events yet",
       legendFilter: (name: string): string => `Show only ${name}'s events`,
       createAt: (label: string): string => `New event at ${label}`,
+      /** Names the week / day hour grid, then the range it covers: read on entering the grid. */
+      hourGrid: "Hour grid",
+      /**
+       * A chip in the week and day columns: the DAY it is on, then its time and name. The month
+       * cell already names its day, so its chips pass no `day` and do not repeat it.
+       */
+      eventOnDay: (day: string, time: string, label: string): string => `${day} ${time} · ${label}`,
       loadFailed: (error: string): string => `Could not load the calendar: ${error}`,
       /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
       dismissHint: "Got it",

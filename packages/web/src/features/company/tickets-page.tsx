@@ -307,7 +307,7 @@ export function TicketsPage() {
               </span>
             </span>
           ) : (
-            <span className="text-gray-400 dark:text-gray-500">{S.company.tickets.noOwner}</span>
+            <span className="text-gray-500 dark:text-gray-500">{S.company.tickets.noOwner}</span>
           )}
           <span className="ml-auto inline-flex shrink-0 items-center gap-2 tabular-nums">
             <span className="inline-flex items-center gap-1">
@@ -427,7 +427,7 @@ export function TicketsPage() {
                         className={`flex min-h-20 flex-1 items-center justify-center rounded-md border border-dashed px-2 text-center text-[11px] ${
                           dropOver === col.status
                             ? "border-[var(--accent-bg)] text-gray-600 dark:text-gray-300"
-                            : "border-gray-300 text-gray-400 dark:border-gray-700 dark:text-gray-500"
+                            : "border-gray-300 text-gray-500 dark:border-gray-700 dark:text-gray-500"
                         }`}
                       >
                         {drag !== null && canMove(drag.from, col.status)

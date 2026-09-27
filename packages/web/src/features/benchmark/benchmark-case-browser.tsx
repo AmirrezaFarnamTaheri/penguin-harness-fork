@@ -203,7 +203,7 @@ function MaterialGroup({
         onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800/60"
       >
-        <span className="text-xs text-gray-400">{open ? "▾" : "▸"}</span>
+        <span className="text-xs text-gray-500">{open ? "▾" : "▸"}</span>
         <span className="min-w-0 flex-1 text-sm font-medium">{label}</span>
         {hiddenLabel && (
           <span className="shrink-0 rounded bg-gray-200/70 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
@@ -239,7 +239,7 @@ function MaterialGroup({
           {listError && <p className="px-6 py-2 text-xs text-red-500">{listError}</p>}
           {!listing && !listError && <SkeletonList rows={3} />}
           {listing?.res.entries.length === 0 && (
-            <p className="px-6 py-2 text-xs text-gray-400">{S.files.empty}</p>
+            <p className="px-6 py-2 text-xs text-gray-500">{S.files.empty}</p>
           )}
           {listing?.res.entries.map((entry) => (
             <button
@@ -248,10 +248,10 @@ function MaterialGroup({
               onClick={() => openEntry(entry)}
               className="flex w-full items-center gap-2 border-t border-gray-100 px-6 py-2 text-left hover:bg-gray-100 dark:border-gray-800/70 dark:hover:bg-gray-800/60"
             >
-              <span className="text-sm text-gray-400">{entry.kind === "dir" ? "▸" : "·"}</span>
+              <span className="text-sm text-gray-500">{entry.kind === "dir" ? "▸" : "·"}</span>
               <span className="min-w-0 flex-1 truncate text-sm">{entry.name}</span>
               {entry.kind === "file" && (
-                <span className="shrink-0 text-[11px] text-gray-400">
+                <span className="shrink-0 text-[11px] text-gray-500">
                   {formatBytes(entry.sizeBytes)}
                 </span>
               )}
@@ -434,7 +434,7 @@ export function BenchmarkCaseBrowser({ projectId, agentId, benchmarkId, caseSumm
         </div>
         <div className="max-h-[52vh] min-h-[52vh] overflow-auto p-3">
           {!preview ? (
-            <p className="text-sm text-gray-400">{S.benchmark.caseFileUnavailable}</p>
+            <p className="text-sm text-gray-500">{S.benchmark.caseFileUnavailable}</p>
           ) : preview.loading ? (
             <SkeletonList rows={8} />
           ) : preview.error ? (
@@ -464,7 +464,7 @@ export function BenchmarkCaseBrowser({ projectId, agentId, benchmarkId, caseSumm
                 </ReactMarkdown>
               </div>
               {preview.truncated && (
-                <p className="mt-2 text-xs text-gray-400">{S.files.previewTruncated}</p>
+                <p className="mt-2 text-xs text-gray-500">{S.files.previewTruncated}</p>
               )}
             </>
           ) : preview.kind === "text" ? (
@@ -475,7 +475,7 @@ export function BenchmarkCaseBrowser({ projectId, agentId, benchmarkId, caseSumm
                 highlight={(preview.content?.length ?? 0) <= HIGHLIGHT_LIMIT}
               />
               {preview.truncated && (
-                <p className="mt-2 text-xs text-gray-400">{S.files.previewTruncated}</p>
+                <p className="mt-2 text-xs text-gray-500">{S.files.previewTruncated}</p>
               )}
             </>
           ) : (

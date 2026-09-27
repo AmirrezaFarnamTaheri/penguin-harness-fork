@@ -222,7 +222,7 @@ function ApprovalModeSelect({
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
-            className="shrink-0 text-gray-400 dark:text-gray-500"
+            className="shrink-0 text-gray-500 dark:text-gray-500"
           >
             <path d={APPROVAL_MODE_ICONS[m]} />
           </svg>
@@ -278,7 +278,7 @@ function AgentMenuList({
           />
           <span className="shrink-0 font-mono text-gray-800 dark:text-gray-200">{a.agentId}</span>
           {a.name && a.name !== a.agentId && (
-            <span className="min-w-0 flex-1 truncate text-gray-400 dark:text-gray-500">
+            <span className="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-500">
               {a.name}
             </span>
           )}
@@ -407,7 +407,7 @@ function ThinkingLevelSelect({
         </button>
       ))}
       {note && (
-        <div className="max-w-56 border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-snug text-gray-400 dark:border-gray-800 dark:text-gray-500">
+        <div className="max-w-56 border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-snug text-gray-500 dark:border-gray-800 dark:text-gray-500">
           {note}
         </div>
       )}
@@ -466,7 +466,7 @@ function SteerModeRow({
   );
   return (
     <div className="flex w-full items-center gap-2 px-3 py-1 text-xs">
-      <GlyphIcon d={SLIDERS_ICON} className="shrink-0 text-gray-400 dark:text-gray-500" />
+      <GlyphIcon d={SLIDERS_ICON} className="shrink-0 text-gray-500 dark:text-gray-500" />
       <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400">
         {S.chat.steerModeLabel}
       </span>
@@ -621,9 +621,9 @@ function PlusMenu({
               : "text-gray-600 dark:text-gray-400"
           }`}
         >
-          <GlyphIcon d={item.icon} className="shrink-0 text-gray-400 dark:text-gray-500" />
+          <GlyphIcon d={item.icon} className="shrink-0 text-gray-500 dark:text-gray-500" />
           <span className="shrink-0">{item.label}</span>
-          <span className="min-w-0 flex-1 truncate text-gray-400 dark:text-gray-500">
+          <span className="min-w-0 flex-1 truncate text-gray-500 dark:text-gray-500">
             {item.desc}
           </span>
           <span className="w-3 shrink-0 text-center">{item.active ? "✓" : ""}</span>
@@ -720,7 +720,7 @@ function QueuedMessageLine({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <p className="min-w-0 truncate text-xs text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="min-w-0 truncate text-xs text-gray-500 dark:text-gray-500">{label}</p>
       {onRecall && (
         <button
           type="button"
@@ -2315,17 +2315,17 @@ export function ChatInput({
               <GlyphIcon
                 d={PAPERCLIP_ICON}
                 size={13}
-                className="shrink-0 text-gray-400 dark:text-gray-500"
+                className="shrink-0 text-gray-500 dark:text-gray-500"
               />
               <span className="min-w-0 truncate">{file.name}</span>
-              <span className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+              <span className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-500">
                 {formatBytes(file.size)}
               </span>
               <button
                 type="button"
                 aria-label={`${S.chat.removeFile} ${file.name}`}
                 onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 ×
               </button>
@@ -2374,7 +2374,7 @@ export function ChatInput({
           path into the message text (the model views them via read_file). A small note is
           shown while images are attached. */}
       {!vision && images.length > 0 && (
-        <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
           {S.chat.imagesAsPathHint}
         </p>
       )}
@@ -2384,7 +2384,7 @@ export function ChatInput({
           this is the line that says why — the chip stays staged and goes out on the next Enter
           once the Session settles. */}
       {stagedRoute === "blocked" && (
-        <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
           {S.chat.modelSwitchBusyHint}
         </p>
       )}
@@ -2409,7 +2409,7 @@ export function ChatInput({
         </div>
       ) : (
         steerPending && (
-          <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+          <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
             {S.chat.steerQueuedIndicator}
           </p>
         )
@@ -2434,7 +2434,7 @@ export function ChatInput({
         </div>
       ) : (
         queuedFollowUps > 0 && (
-          <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+          <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
             {S.chat.followUpQueuedChip(queuedFollowUps)}
           </p>
         )
@@ -2513,7 +2513,7 @@ export function ChatInput({
                         title={
                           goalBudgetDraftInvalid ? S.chat.goalBudgetInvalid : S.chat.goalBudgetHint
                         }
-                        className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 font-mono text-xs leading-5 placeholder:text-gray-400 focus:outline-none focus:ring-2 dark:bg-gray-950 dark:placeholder:text-gray-500 ${
+                        className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 font-mono text-xs leading-5 placeholder:text-gray-500 focus:outline-none focus:ring-2 dark:bg-gray-950 dark:placeholder:text-gray-500 ${
                           goalBudgetDraftInvalid
                             ? "border-red-400 text-red-600 focus:border-red-500 focus:ring-red-400/20 dark:border-red-500 dark:text-red-400"
                             : "border-gray-300 text-gray-800 focus:border-gray-500 focus:ring-gray-400/20 dark:border-gray-700 dark:text-gray-100 dark:focus:border-gray-500"
@@ -2535,7 +2535,7 @@ export function ChatInput({
                       className={`mt-1.5 text-[11px] leading-4 ${
                         goalBudgetDraftInvalid
                           ? "text-red-500 dark:text-red-400"
-                          : "text-gray-400 dark:text-gray-500"
+                          : "text-gray-500 dark:text-gray-500"
                       }`}
                     >
                       {goalBudgetDraftInvalid ? S.chat.goalBudgetInvalid : S.chat.goalBudgetHint}
@@ -2546,7 +2546,7 @@ export function ChatInput({
                   type="button"
                   aria-label={S.chat.goalRemove}
                   onClick={() => toggleGoal(false)}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2575,7 +2575,7 @@ export function ChatInput({
                     onHandoffTargetChange?.(null);
                     textareaRef.current?.focus();
                   }}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2597,7 +2597,7 @@ export function ChatInput({
                     stageModel(null);
                     textareaRef.current?.focus();
                   }}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2621,7 +2621,7 @@ export function ChatInput({
                     type="button"
                     aria-label={`${S.chat.skillRemove} ${name}`}
                     onClick={() => toggleSkill(name)}
-                    className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                    className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                   >
                     ×
                   </button>
@@ -2676,7 +2676,7 @@ export function ChatInput({
           // text-base, not the sm rung the form controls take: this is a full-height typing
           // surface for prose the user composes and re-reads, not a field in a form, and the
           // toolbar under it is already text-xs so the two do not compete.
-          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500"
+          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500"
         />
 
         {/* Bottom toolbar row — one line, two groups: the settings controls sit left, the
@@ -2831,7 +2831,7 @@ export function ChatInput({
                  /model command exists here — so the badge is pure display, nothing to click. */
               <span
                 title={modelRef?.modelId ?? ""}
-                className="flex h-8 min-w-0 max-w-44 shrink items-center gap-1.5 rounded-md px-1 text-gray-400 dark:text-gray-500"
+                className="flex h-8 min-w-0 max-w-44 shrink items-center gap-1.5 rounded-md px-1 text-gray-500 dark:text-gray-500"
               >
                 <ProviderLogo
                   provider={modelRef?.provider ?? "custom"}
@@ -2852,7 +2852,7 @@ export function ChatInput({
                 // button's accessible name for assistive tech and name-based test queries.
                 aria-label={`${S.chat.model} ${modelRef?.modelId ?? ""}`}
                 onClick={() => toastInfo(S.chat.modelLockedHint)}
-                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-400 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
               >
                 <ProviderLogo
                   provider={modelRef?.provider ?? "custom"}
@@ -2877,7 +2877,7 @@ export function ChatInput({
               className={
                 stopAction
                   ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 transition-colors duration-150 hover:bg-red-100 dark:bg-red-950/60 dark:text-red-400 dark:hover:bg-red-950"
-                  : "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-900 text-white transition-colors duration-150 hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300 dark:disabled:bg-gray-800 dark:disabled:text-gray-600"
+                  : "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-900 text-white transition-colors duration-150 hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300 dark:disabled:bg-gray-800 dark:disabled:text-gray-600"
               }
             >
               {stopAction ? (

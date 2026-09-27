@@ -140,20 +140,20 @@ export function LiveBrowserViewport({
             {stateBadge.label}
           </span>
         )}
-        <span className="text-gray-400 font-mono text-[10px]">
+        <span className="text-gray-500 font-mono text-[10px]">
           {lastFrame ? `${lastFrame.width}×${lastFrame.height}` : "no frames"}
         </span>
-        <span className="text-gray-400 font-mono text-[10px]">
+        <span className="text-gray-500 font-mono text-[10px]">
           {fps === null ? "— fps" : `${fps.toFixed(1)} fps`}
         </span>
-        <span className="text-gray-400 font-mono text-[10px]">{frames.length} painted</span>
+        <span className="text-gray-500 font-mono text-[10px]">{frames.length} painted</span>
         {droppedFrames !== undefined && droppedFrames > 0 && (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300">
             {droppedFrames} dropped
           </span>
         )}
         {sessionId && (
-          <span className="ml-auto truncate text-gray-400 font-mono text-[10px]">{sessionId}</span>
+          <span className="ml-auto truncate text-gray-500 font-mono text-[10px]">{sessionId}</span>
         )}
       </div>
 
@@ -165,7 +165,7 @@ export function LiveBrowserViewport({
           className="block w-full h-auto rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950"
         />
       ) : (
-        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-500">
           No viewport yet — the session has not delivered a frame.
         </div>
       )}

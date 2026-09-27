@@ -85,7 +85,7 @@ export function CopiedStatus({ copied }: { copied: boolean }) {
 
 /** Default compact icon-button look (message footer / code block). */
 const DEFAULT_CLASS =
-  "rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300";
+  "rounded p-0.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300";
 
 /**
  * The copy button beside a mono value row (details card Session id / Trace file, Agent
@@ -93,7 +93,7 @@ const DEFAULT_CLASS =
  * explicit dark-mode idle tone.
  */
 export const ROW_COPY_CLASS =
-  "shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300";
+  "shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300";
 
 export function CopyButton({
   text,

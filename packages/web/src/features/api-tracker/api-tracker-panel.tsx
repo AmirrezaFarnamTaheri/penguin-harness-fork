@@ -235,7 +235,7 @@ export function ApiTrackerPanel({
               onClick={() => void fetchAll(false)}
               disabled={loading || refreshing}
               title={S.apiTracker.refresh}
-              className="flex h-7 w-7 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              className="flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <GlyphIcon
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
@@ -279,7 +279,7 @@ export function ApiTrackerPanel({
                   <span className="font-mono text-lg font-bold text-green-600 dark:text-green-400">
                     {keySummary.healthyKeys}
                   </span>
-                  <span className="text-xs text-gray-400">/ {keySummary.totalKeys}</span>
+                  <span className="text-xs text-gray-500">/ {keySummary.totalKeys}</span>
                 </div>
               </div>
               <div className="rounded-md border border-gray-200 bg-white p-2.5 dark:border-gray-800 dark:bg-gray-900">
@@ -464,7 +464,7 @@ export function ApiTrackerPanel({
                           {log.source} · {log.code}
                         </span>
                       </div>
-                      <span className="text-[11px] text-gray-400 tabular-nums">
+                      <span className="text-[11px] text-gray-500 tabular-nums">
                         {formatDateTime(log.ts)}
                       </span>
                     </div>
@@ -489,7 +489,7 @@ export function ApiTrackerPanel({
                   <p className="mt-1 font-mono text-lg font-bold text-gray-900 dark:text-gray-100">
                     {humanizeTokens(usageData.summary.today.total)}
                   </p>
-                  <p className="text-[10px] text-gray-400">
+                  <p className="text-[10px] text-gray-500">
                     {S.usage.requests}: {usageData.summary.today.requests}
                   </p>
                 </div>
@@ -500,7 +500,7 @@ export function ApiTrackerPanel({
                   <p className="mt-1 font-mono text-lg font-bold text-gray-900 dark:text-gray-100">
                     {humanizeTokens(usageData.summary.last7d.total)}
                   </p>
-                  <p className="text-[10px] text-gray-400">
+                  <p className="text-[10px] text-gray-500">
                     {S.usage.requests}: {usageData.summary.last7d.requests}
                   </p>
                 </div>
@@ -520,7 +520,7 @@ export function ApiTrackerPanel({
                 {S.usage.chartRequestsByModel}
               </h4>
               {!modelTotals || Object.keys(modelTotals).length === 0 ? (
-                <p className="text-xs text-gray-400">{S.apiTracker.noLogs}</p>
+                <p className="text-xs text-gray-500">{S.apiTracker.noLogs}</p>
               ) : (
                 <div className="space-y-2">
                   {Object.entries(modelTotals).map(([key, tokens]) => (

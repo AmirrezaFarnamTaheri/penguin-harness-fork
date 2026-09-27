@@ -58,7 +58,7 @@ import {
   viewRange,
   weekDays,
 } from "./calendar-geom";
-import type { Cadence, CalendarView, EventInstance, GridDay } from "./calendar-geom";
+import type { Cadence, CalendarView, ChipSlot, EventInstance, GridDay } from "./calendar-geom";
 import { dismissHint, hintKey, isHintDismissed } from "./page-hints";
 
 const PREV_ICON = "M15 18 9 12l6-6";
@@ -129,6 +129,11 @@ function cadenceLabel(c: Cadence): string {
 }
 
 const hourLabel = (h: number) => `${h < 10 ? "0" : ""}${h}:00`;
+/** The footprint of a chip inside its hour band, in px (CHIP_SLOT_MS tall, less the 1px seam). */
+const CHIP_H = (CHIP_SLOT_MS / 3_600_000) * HOUR_PX - 2;
+/** A grid day's weekday name, Monday first — the order the columns and the headers are in. */
+const weekdayName = (day: GridDay): string =>
+  S.company.calendar.weekdays[(new Date(day.dayStartMs).getDay() + 6) % 7] ?? "";
 
 export function CalendarPage() {
   const { projectId, orgId, org } = useOrg();
@@ -330,14 +335,25 @@ export function CalendarPage() {
    * One event instance as a chip. Employee colour carries identity; the recorded outcome (on
    * the one instance it belongs to) rides at the end as a toned glyph; a past instance fades,
    * and a disabled or paused event is struck through so the chip says it will not fire.
+   *
+   * `dayLabel` is what a chip in the week and day columns needs and a month cell's chip does not:
+   * in a column nothing else says which day a chip is on, so its name carries the date. The
+   * name is set with aria-label rather than left to the visible "09:00 label", because the
+   * tooltip already spells out the employee, the recorded outcome and the paused/disabled notes
+   * and a chip with none of them said a third of as much as the card it opens.
    */
-  const chip = (i: EventInstance, opts: { block?: boolean; onOpen?: () => void } = {}) => {
+  const chip = (
+    i: EventInstance,
+    opts: { block?: boolean; dayLabel?: string; onOpen?: () => void } = {},
+  ) => {
     const color = colorOf(i.event.agentId);
     const outcome = i.outcome;
     const label = i.event.title ?? i.event.name;
     const inert = !i.event.enabled || i.event.paused;
     const title = [
-      `${timeLabel(i.atMs)} · ${label}`,
+      opts.dayLabel !== undefined
+        ? S.company.calendar.eventOnDay(opts.dayLabel, timeLabel(i.atMs), label)
+        : `${timeLabel(i.atMs)} · ${label}`,
       names.get(i.event.agentId) ?? i.event.agentId,
       outcome !== null
         ? (S.company.calendarOutcomes[outcome] ?? outcome)
@@ -354,6 +370,7 @@ export function CalendarPage() {
         key={i.key}
         type="button"
         title={title}
+        aria-label={title}
         onClick={(e) => {
           e.stopPropagation();
           opts.onOpen?.();
@@ -370,7 +387,6 @@ export function CalendarPage() {
         {outcome !== null && (
           <span className={`inline-flex shrink-0 items-center ${toneInk[OUTCOME_TONE[outcome]]}`}>
             <GlyphIcon d={OUTCOME_ICON[outcome]} size={ICON_SIZE.inlineGlyph} />
-            <span className="sr-only">{S.company.calendarOutcomes[outcome] ?? outcome}</span>
           </span>
         )}
       </button>
@@ -413,6 +429,11 @@ export function CalendarPage() {
   /**
    * A month cell: the day number, up to three chips, the rest folded into a button that opens
    * the whole day; the cell itself creates at 09:00.
+   *
+   * It is a `td`, because a month grid is a table (WCAG 1.3.1): seven `th scope="col"` weekdays
+   * over rows of days, so a reader can ask what the column of a cell is. Each cell opens with
+   * the day spelled out in text, which is the one thing a chip's own name cannot say in the
+   * month view — the date sits in the cell, not in the chip, or three chips would each repeat it.
    */
   const monthCell = (day: GridDay) => {
     const list = byDay.get(day.key) ?? [];
@@ -421,181 +442,227 @@ export function CalendarPage() {
     const createMs = day.dayStartMs + 9 * 3_600_000;
     const weekday = S.company.calendar.weekdays[(new Date(day.dayStartMs).getDay() + 6) % 7] ?? "";
     return (
-      <div
+      <td
         key={day.key}
-        className={`relative min-h-24 border-r border-gray-100 p-1 transition-colors duration-150 last:border-r-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60 ${
-          day.inMonth ? "" : "bg-gray-50/60 text-gray-400 dark:bg-gray-900/40 dark:text-gray-600"
+        className={`border-r border-gray-100 align-top transition-colors duration-150 last:border-r-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60 ${
+          day.inMonth ? "" : "bg-gray-50/60 text-gray-500 dark:bg-gray-900/40 dark:text-gray-600"
         }`}
       >
-        {/* The cell itself is NOT the control — it holds the day's number and its chips, so
-            making it a button would nest interactive elements (WCAG SC 4.1.2, and invalid
-            HTML). The create affordance is this one real button, absolutely positioned to
-            cover the cell's top strip where the number sits, which is where the pointer
-            target used to be. A keyboard user now gets the same action at the same place. */}
-        <button
-          type="button"
-          title={S.company.calendar.createAt(`${day.key} 09:00`)}
-          aria-label={S.company.calendar.createAt(`${day.key} 09:00`)}
-          onClick={() => openCreate(createMs)}
-          className="absolute inset-x-0 top-0 z-10 h-7 cursor-pointer rounded-t"
-        />
-        <p className="mb-1 flex h-5 items-center">
-          <span
-            className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums ${
-              isToday
-                ? "bg-[var(--accent-bg)] font-semibold text-[var(--accent-fg)]"
-                : day.inMonth
-                  ? "text-gray-600 dark:text-gray-300"
-                  : "text-gray-400 dark:text-gray-600"
-            }`}
-          >
-            {new Date(day.dayStartMs).getDate()}
-          </span>
-        </p>
-        <div className="space-y-0.5">
-          {shown.map((i) => chip(i))}
-          {list.length > shown.length && (
-            <DayOverflow
-              hidden={list.length - shown.length}
-              total={list.length}
-              dateLabel={`${day.key} ${weekday}`}
-              onOpenDay={() => {
-                setAnchor(day.dayStartMs);
-                setView("day");
-              }}
+        {/* The cell's own date, read before its contents. This is CONTENT and not an aria-label on
+            the cell on purpose: a `td`'s aria-label is not announced by every reader's table
+            navigation, while its text always is. The visible day number is hidden from assistive
+            technology so the date is not read twice. */}
+        <span className="sr-only">{`${day.key} ${weekday}`}</span>
+        <div className="relative min-h-24 p-1">
+          {/* The cell itself is NOT the control — it holds the day's number and its chips, so
+              making it a button would nest interactive elements (WCAG SC 4.1.2, and invalid
+              HTML). The create affordance is this one real button, absolutely positioned to
+              cover the cell's top strip where the number sits, which is where the pointer
+              target used to be. A keyboard user now gets the same action at the same place. */}
+          <button
+            type="button"
+            title={S.company.calendar.createAt(`${day.key} 09:00`)}
+            aria-label={S.company.calendar.createAt(`${day.key} 09:00`)}
+            onClick={() => openCreate(createMs)}
+            className="absolute inset-x-0 top-0 z-10 h-7 cursor-pointer rounded-t"
+          />
+          <p className="mb-1 flex h-5 items-center">
+            <span
+              aria-hidden
+              className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums ${
+                isToday
+                  ? "bg-[var(--accent-bg)] font-semibold text-[var(--accent-fg)]"
+                  : day.inMonth
+                    ? "text-gray-600 dark:text-gray-300"
+                    : "text-gray-500 dark:text-gray-600"
+              }`}
             >
-              {(close) => list.map((i) => chip(i, { onOpen: close }))}
-            </DayOverflow>
-          )}
+              {new Date(day.dayStartMs).getDate()}
+            </span>
+          </p>
+          <div className="space-y-0.5">
+            {shown.map((i) => chip(i))}
+            {list.length > shown.length && (
+              <DayOverflow
+                hidden={list.length - shown.length}
+                total={list.length}
+                dateLabel={`${day.key} ${weekday}`}
+                onOpenDay={() => {
+                  setAnchor(day.dayStartMs);
+                  setView("day");
+                }}
+              >
+                {(close) => list.map((i) => chip(i, { onOpen: close }))}
+              </DayOverflow>
+            )}
+          </div>
         </div>
-      </div>
+      </td>
     );
   };
 
   /**
-   * Roving tabindex over the week/day view's create grid (WCAG 2.2 SC 2.1.1).
+   * Roving tabindex over the week/day hour grid, which `role="grid"` now demands of it
+   * (WCAG 2.2 SC 2.1.1, and the APG keyboard contract for a grid).
    *
-   * These 24 hour cells per day column were `<div onClick>`: a week view is SEVEN of them,
-   * so 168 create targets that no keyboard could reach and a screen reader never announced.
-   * The month cell had the same problem. Making every cell a real `<button>` would fix the
-   * role and the keyboard but put 168 stops in the Tab order, which is its own trap.
+   * These 24 hour cells per day column were `<div onClick>`: a week view is SEVEN of them, so
+   * 168 create targets that no keyboard could reach and a screen reader never announced. The
+   * month cell had the same problem. Making every cell a real `<button>` would fix the role and
+   * the keyboard but put 168 stops in the Tab order, which is its own trap.
    *
-   * So: roving tabindex. Each day column exposes exactly ONE tab stop (hour 0 until the
-   * reader moves inside that column, then wherever they left it), and the arrow keys walk
-   * the hours from there. One stop per column, 168 reachable cells, 7 Tab stops.
-   *
-   * Arrow-LEFT/RIGHT between day columns is deliberately not here: `timeColumn` receives
-   * the day but not its index, and threading it through is a follow-up. Every cell is
-   * reachable and operable without it, which is what the failure was.
+   * The grid's semantics and its keyboard have to agree, because a `grid` promises BOTH: a
+   * screen reader announces "row 3, column 2" and a sighted-at-the-keyboard user expects the
+   * arrow keys to move the same way. So the stop is one per GRID, not one per day column —
+   * seven Tab stops became one, which is what the roving tabindex was reaching for anyway — and
+   * all four arrow keys walk it: up and down the hours, left and right across the days. Home
+   * and End walk the row, and with Control the whole grid. Enter or Space still creates: the
+   * focused cell holds a real button.
    */
   const [focusedSlot, setFocusedSlot] = useState<{ day: string; hour: number } | null>(null);
-  /** The one cell currently holding the column's tab stop; the effect below follows it. */
+  /** The one cell currently holding the grid's tab stop; the effect below follows it. */
   const activeCellRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     activeCellRef.current?.focus();
   }, [focusedSlot]);
 
-  /** A day column of the week and day views: hour rows that create on click, chips placed by time and packed into lanes. */
-  const timeColumn = (day: GridDay) => {
-    const slots = chipLanes(byDay.get(day.key) ?? [], CHIP_SLOT_MS);
-    const chipHeight = (CHIP_SLOT_MS / 3_600_000) * HOUR_PX - 2;
+  /**
+   * One hour of one day: the `gridcell`, the create button filling it, and the chips that start
+   * in it. The cell WRAPS its button rather than being one, so the button keeps the role that
+   * says "this creates something" while the cell keeps its place in the grid; the roving
+   * tabindex is on the button, which is what actually takes focus.
+   */
+  const hourCell = (
+    days: GridDay[],
+    day: GridDay,
+    dayIndex: number,
+    h: number,
+    stop: { day: string; hour: number },
+    chips: readonly ChipSlot<EventInstance>[],
+  ) => {
     const isToday = day.key === todayKey;
-    const activeHour = focusedSlot !== null && focusedSlot.day === day.key ? focusedSlot.hour : 0;
-    /** Move the roving stop within this column, wrapping at both ends. */
-    const move = (delta: number) =>
-      setFocusedSlot((prev) => {
-        const from = prev !== null && prev.day === day.key ? prev.hour : activeHour;
-        return { day: day.key, hour: (from + delta + 24) % 24 };
-      });
+    const at = new Date(now);
+    const active = stop.day === day.key && stop.hour === h;
     return (
       <div
-        key={day.key}
-        className={`relative border-l border-gray-100 dark:border-gray-800 ${
+        key={`${day.key}/${h}`}
+        role="gridcell"
+        className={`relative min-w-0 border-l border-gray-100 dark:border-gray-800 ${
           isToday ? "bg-[var(--accent-bg)]/[0.03]" : ""
         }`}
-        style={{ height: HOUR_PX * 24 }}
       >
-        {Array.from({ length: 24 }, (_, h) => {
-          const active = h === activeHour;
-          return (
-            <button
-              key={h}
-              type="button"
-              title={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
-              aria-label={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
-              tabIndex={active ? 0 : -1}
-              {...(active ? { ref: activeCellRef } : {})}
-              className="absolute inset-x-0 cursor-pointer border-t border-gray-100 transition-colors duration-150 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60"
-              style={{ top: h * HOUR_PX, height: HOUR_PX }}
-              onClick={() => openCreate(day.dayStartMs + h * 3_600_000)}
-              onFocus={() =>
-                setFocusedSlot((prev) =>
-                  prev?.day === day.key && prev.hour === h ? prev : { day: day.key, hour: h },
-                )
-              }
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  move(1);
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  move(-1);
-                }
-              }}
-            />
-          );
-        })}
-        {isToday && (
+        <button
+          type="button"
+          title={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
+          aria-label={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
+          tabIndex={active ? 0 : -1}
+          {...(active ? { ref: activeCellRef } : {})}
+          className="absolute inset-0 cursor-pointer border-t border-gray-100 transition-colors duration-150 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60"
+          onClick={() => openCreate(day.dayStartMs + h * 3_600_000)}
+          onFocus={() =>
+            setFocusedSlot((prev) =>
+              prev?.day === day.key && prev.hour === h ? prev : { day: day.key, hour: h },
+            )
+          }
+          onKeyDown={(e) => {
+            /** A step in one direction, wrapping at the ends of the hours and of the days. */
+            const step = (dDay: number, dHour: number) => {
+              e.preventDefault();
+              setFocusedSlot({
+                day: days[(dayIndex + dDay + days.length) % days.length]?.key ?? day.key,
+                hour: (h + dHour + 24) % 24,
+              });
+            };
+            if (e.key === "ArrowDown") step(0, 1);
+            else if (e.key === "ArrowUp") step(0, -1);
+            else if (e.key === "ArrowRight") step(1, 0);
+            else if (e.key === "ArrowLeft") step(-1, 0);
+            // Home / End walk the row; with Control, the first and last cell of the whole grid.
+            else if (e.key === "Home") step(e.ctrlKey ? -dayIndex : 0, e.ctrlKey ? -h : 0);
+            else if (e.key === "End")
+              step(e.ctrlKey ? days.length - 1 - dayIndex : 0, e.ctrlKey ? 23 - h : 0);
+          }}
+        />
+        {isToday && at.getHours() === h && (
           <div
             aria-hidden
             className="pointer-events-none absolute inset-x-0 z-10 flex items-center"
-            style={{ top: dayFraction(now) * HOUR_PX * 24 - 1 }}
+            style={{ top: (at.getMinutes() / 60) * HOUR_PX - 1 }}
           >
             <span className="-ml-1 h-2 w-2 rounded-full bg-[var(--accent-bg)]" />
             <span className="h-0.5 flex-1 bg-[var(--accent-bg)]" />
           </div>
         )}
-        {slots.map(({ item, lane, lanes }) => (
+        {chips.map(({ item, lane, lanes }) => (
           <div
             key={item.key}
-            className="absolute"
+            // z-10 because the NEXT row's cell comes later in the document and would otherwise
+            // paint over, and swallow the clicks of, the few pixels a late chip overhangs it.
+            className="absolute z-10"
             style={{
-              top: dayFraction(item.atMs) * HOUR_PX * 24 + 1,
-              height: chipHeight,
+              top: (new Date(item.atMs).getMinutes() / 60) * HOUR_PX + 1,
+              height: CHIP_H,
               left: `calc(${(lane / lanes) * 100}% + 2px)`,
               width: `calc(${100 / lanes}% - 4px)`,
             }}
           >
-            {chip(item, { block: true })}
+            {chip(item, { block: true, dayLabel: `${day.key} ${weekdayName(day)}` })}
           </div>
         ))}
       </div>
     );
   };
 
-  /** The week and day views share one frame: a day header, then the scrolling hour grid with its gutter. */
+  /** The week and day views share one frame: a day header row, then the hour grid with its gutter.
+   *
+   *  `role="grid"` (WCAG 1.3.1): the frame owns a `row` of `columnheader` days and a `rowgroup`
+   *  of 24 hour `row`s, each a `rowheader` (the hour) plus one `gridcell` per day — so a reader
+   *  hears the day of a cell and where it sits, which the old `grid grid-cols-7` of plain `div`s
+   *  never did. The rows are flex rows rather than one grid of absolutely positioned day
+   *  columns: the hour bands have to BE the rows for that structure to be honest, and a row of a
+   *  3rem gutter plus seven `flex-1` cells lays out exactly as the old seven 1fr columns did. */
   const timeGrid = (days: GridDay[]) => {
-    const cols = days.length === 1 ? "grid-cols-[3rem_1fr]" : "grid-cols-[3rem_repeat(7,1fr)]";
+    /** Lanes packed once per day, then bucketed by the hour band each chip starts in, so a chip
+     *  rides inside the cell of its own hour and overhangs it as it always has. */
+    const chipsByHour = new Map<string, ChipSlot<EventInstance>[]>();
+    for (const day of days) {
+      for (const slot of chipLanes(byDay.get(day.key) ?? [], CHIP_SLOT_MS)) {
+        const key = `${day.key}/${new Date(slot.item.atMs).getHours()}`;
+        const list = chipsByHour.get(key);
+        if (list !== undefined) list.push(slot);
+        else chipsByHour.set(key, [slot]);
+      }
+    }
+    /** Where the grid's single tab stop sits: where the reader left it, and the first hour of
+     *  the first day otherwise — including after a view change left it on a day not on screen,
+     *  which would otherwise leave the grid with no tab stop at all. */
+    const stop =
+      focusedSlot !== null && days.some((d) => d.key === focusedSlot.day)
+        ? focusedSlot
+        : { day: days[0]?.key ?? "", hour: 0 };
     return (
       <div className="overflow-x-auto">
         <div
+          role="grid"
+          aria-label={`${S.company.calendar.hourGrid} · ${heading}`}
           className={`${days.length === 1 ? "" : "min-w-[52rem]"} overflow-hidden rounded-md border border-gray-200 dark:border-gray-800`}
         >
           <div
-            className={`grid ${cols} border-b border-gray-200 text-[11px] font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400`}
+            role="row"
+            className="flex border-b border-gray-200 text-[11px] font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400"
           >
-            <div />
+            <div role="presentation" className="w-12 shrink-0" />
             {days.map((day) => {
               const d = new Date(day.dayStartMs);
               const isToday = day.key === todayKey;
               return (
                 <div
                   key={day.key}
-                  className={`flex items-center gap-1.5 border-l border-gray-100 px-2 py-1.5 dark:border-gray-800 ${
+                  role="columnheader"
+                  className={`flex min-w-0 flex-1 items-center gap-1.5 border-l border-gray-100 px-2 py-1.5 dark:border-gray-800 ${
                     isToday ? "font-semibold text-gray-900 dark:text-gray-100" : ""
                   }`}
                 >
-                  {S.company.calendar.weekdays[(d.getDay() + 6) % 7]}
+                  {weekdayName(day)}
                   <span
                     className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 tabular-nums ${
                       isToday ? "bg-[var(--accent-bg)] text-[var(--accent-fg)]" : ""
@@ -609,23 +676,28 @@ export function CalendarPage() {
           </div>
           <div
             ref={scrollRef}
-            className="overflow-y-auto"
+            role="rowgroup"
+            className="flex flex-col overflow-y-auto"
             style={{ height: VISIBLE_HOURS * HOUR_PX }}
           >
-            <div className={`grid ${cols}`}>
-              <div className="relative" style={{ height: HOUR_PX * 24 }}>
-                {Array.from({ length: 24 }, (_, h) => (
-                  <span
-                    key={h}
-                    className="absolute right-2 font-mono text-[10px] tabular-nums text-gray-400 dark:text-gray-500"
-                    style={{ top: h * HOUR_PX - 6 }}
-                  >
-                    {h === 0 ? "" : hourLabel(h)}
-                  </span>
-                ))}
+            {Array.from({ length: 24 }, (_, h) => (
+              <div key={h} role="row" className="flex shrink-0" style={{ height: HOUR_PX }}>
+                {/* The hour names its own row, so a cell can be placed by time. */}
+                <div role="rowheader" aria-label={hourLabel(h)} className="relative w-12 shrink-0">
+                  {h > 0 && (
+                    <span
+                      aria-hidden
+                      className="absolute -top-1.5 right-2 font-mono text-[10px] tabular-nums text-gray-500 dark:text-gray-400"
+                    >
+                      {hourLabel(h)}
+                    </span>
+                  )}
+                </div>
+                {days.map((day, i) =>
+                  hourCell(days, day, i, h, stop, chipsByHour.get(`${day.key}/${h}`) ?? []),
+                )}
               </div>
-              {days.map(timeColumn)}
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -635,22 +707,31 @@ export function CalendarPage() {
   const grid =
     view === "month" ? (
       <div className="overflow-x-auto">
+        {/* A month grid IS a table (WCAG 1.3.1): seven `th scope="col"` weekdays over rows of
+            days, so a reader gets the weekday of a column and the day of a cell instead of an
+            undifferentiated stream of divs. `table-fixed` gives the seven equal columns the
+            `grid-cols-7` gave it. */}
         <div className="min-w-[44rem] overflow-hidden rounded-md border border-gray-200 dark:border-gray-800">
-          <div className="grid grid-cols-7 border-b border-gray-200 text-[11px] font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400">
-            {S.company.calendar.weekdays.map((w) => (
-              <div key={w} className="px-2 py-1.5">
-                {w}
-              </div>
-            ))}
-          </div>
-          {monthGrid(anchor).map((row, r) => (
-            <div
-              key={r}
-              className="grid grid-cols-7 border-b border-gray-100 last:border-b-0 dark:border-gray-800"
-            >
-              {row.map(monthCell)}
-            </div>
-          ))}
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-800">
+                {S.company.calendar.weekdays.map((w) => (
+                  <th
+                    key={w}
+                    scope="col"
+                    className="px-2 py-1.5 text-left text-[11px] font-medium text-gray-500 dark:text-gray-400"
+                  >
+                    {w}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {monthGrid(anchor).map((row, r) => (
+                <tr key={r}>{row.map(monthCell)}</tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     ) : view === "week" ? (
@@ -1042,7 +1123,7 @@ function DayOverflow({
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="block w-full rounded px-1 text-left text-[10px] text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+        className="block w-full rounded px-1 text-left text-[10px] text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
       >
         {S.company.calendar.moreEvents(hidden)}
       </button>

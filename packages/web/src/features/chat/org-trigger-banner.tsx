@@ -7,6 +7,7 @@
 import { S } from "../../lib/strings";
 import { formatDateTime } from "../../lib/format";
 import { Badge } from "../../components/ui/badge";
+import { STREAM_BANNER_FRAME } from "./disclosure-row";
 import { summarizeOrgTrigger } from "./org-trigger";
 import type { OrgTriggerOrigin } from "./org-trigger";
 
@@ -14,7 +15,9 @@ export function OrgTriggerBanner({ origin }: { origin: OrgTriggerOrigin }) {
   const t = summarizeOrgTrigger(origin);
   const kind = S.chat.orgTriggerKinds[t.kind] ?? t.kind;
   return (
-    <p className="anim-msg my-2 flex w-fit flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+    // `flex-wrap` is this one's own addition: a long subject + change + budget line can exceed
+    // the row, and wrapping the notice beats letting it overflow the transcript.
+    <p className={`anim-msg my-2 flex w-fit flex-wrap ${STREAM_BANNER_FRAME}`}>
       <span>{S.chat.orgTriggerFrom(t.org)}</span>
       <Badge tone="brand">{kind}</Badge>
       {t.subject !== null && (

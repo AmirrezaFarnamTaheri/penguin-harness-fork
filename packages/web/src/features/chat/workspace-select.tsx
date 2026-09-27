@@ -183,7 +183,7 @@ export function WorkspaceSelect({
   const entries = (dir?.entries ?? []).filter((e) => !e.name.startsWith("."));
   /** Folder glyph shared by both triggers. */
   const folderIcon = (extraClass: string) => (
-    <GlyphIcon d={FOLDER_ICON} size={ICON_SIZE.rowLead} className={`text-gray-400 ${extraClass}`} />
+    <GlyphIcon d={FOLDER_ICON} size={ICON_SIZE.rowLead} className={`text-gray-500 ${extraClass}`} />
   );
   const menu = (
     <div className="space-y-1.5 px-2.5 pb-2.5 pt-2">
@@ -246,7 +246,7 @@ export function WorkspaceSelect({
                 onClick={() => loadDir(entry.path)}
                 className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-mono text-xs text-gray-700 transition-colors duration-150 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-800"
               >
-                <GlyphIcon d={FOLDER_ICON} className="text-gray-400" />
+                <GlyphIcon d={FOLDER_ICON} className="text-gray-500" />
                 <span className="min-w-0 flex-1 truncate" title={entry.name}>
                   {entry.name}
                 </span>
@@ -254,9 +254,9 @@ export function WorkspaceSelect({
             </li>
           ))}
           {dir && entries.length === 0 && (
-            <li className="px-2.5 py-1.5 text-xs text-gray-400">{S.chat.workspaceNoSubdirs}</li>
+            <li className="px-2.5 py-1.5 text-xs text-gray-500">{S.chat.workspaceNoSubdirs}</li>
           )}
-          {loading && <li className="px-2.5 py-1.5 text-xs text-gray-400">{S.common.loading}</li>}
+          {loading && <li className="px-2.5 py-1.5 text-xs text-gray-500">{S.common.loading}</li>}
           {/* Load failure (e.g. the cached starting directory was deleted): provide "retry" to fall back to the home directory, avoiding getting stuck in an error state. */}
           {error && (
             <li className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-xs text-red-500">
@@ -289,7 +289,7 @@ export function WorkspaceSelect({
         </button>
       )}
       {/* Hint text (bottom of the menu) */}
-      <p className="px-0.5 text-xs leading-5 text-gray-400 dark:text-gray-500">
+      <p className="px-0.5 text-xs leading-5 text-gray-500 dark:text-gray-500">
         {menuHint ?? S.chat.workspaceHint}
       </p>
     </div>
@@ -350,7 +350,7 @@ export function WorkspaceSelect({
         >
           {folderIcon("ml-0.5")}
           <span className={`min-w-0 truncate ${trimmed ? "font-mono" : ""}`}>{label}</span>
-          <Chevron open={open} size={12} className="shrink-0 text-gray-400" />
+          <Chevron open={open} size={12} className="shrink-0 text-gray-500" />
         </button>
       }
     >

@@ -7,7 +7,7 @@ import type { ButtonHTMLAttributes } from "react";
 import { S } from "../../lib/strings";
 import { AGENT_GROUP_ICON, CALENDAR_ICON } from "./group-list";
 
-/** Downward caret on Select / OptionMenu / composer dropdown triggers. Color follows currentColor (callers add text-gray-400). */
+/** Downward caret on Select / OptionMenu / composer dropdown triggers. Color follows currentColor (callers add text-gray-500). */
 export function ChevronDown({ size = 12, className = "" }: { size?: number; className?: string }) {
   return (
     <svg
@@ -153,7 +153,7 @@ export function CloseButton({
       type="button"
       aria-label={S.common.close}
       onClick={onClose}
-      className={`rounded-md p-1.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 ${className}`}
+      className={`rounded-md p-1.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 ${className}`}
       {...rest}
     >
       <CloseIcon />

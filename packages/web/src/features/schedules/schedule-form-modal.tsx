@@ -144,9 +144,9 @@ function SessionSelect({
       menuClass="w-80 origin-top-left"
     >
       {sessions === null ? (
-        <p className="px-3 py-2 text-xs text-gray-400">{S.common.loading}</p>
+        <p className="px-3 py-2 text-xs text-gray-500">{S.common.loading}</p>
       ) : sessions.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-gray-400">{S.schedule.sessionEmpty}</p>
+        <p className="px-3 py-2 text-xs text-gray-500">{S.schedule.sessionEmpty}</p>
       ) : (
         <PickerList
           items={filterSessions(sessions, query)}
@@ -165,7 +165,7 @@ function SessionSelect({
               <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">
                 {s.title ?? S.chat.defaultSessionTitle}
               </span>
-              <span className="shrink-0 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+              <span className="shrink-0 font-mono text-[11px] text-gray-500 dark:text-gray-500">
                 {s.sessionId.slice(-6)}
               </span>
             </>
@@ -405,7 +405,7 @@ function ScheduleFormDialog({
               <FieldLabel>{S.schedule.target}</FieldLabel>
               <p className="text-xs text-gray-600 dark:text-gray-300">
                 {S.schedule.targetThisSession}
-                <span className="ml-1.5 font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                <span className="ml-1.5 font-mono text-[11px] text-gray-500 dark:text-gray-500">
                   {lockedSessionId.slice(-6)}
                 </span>
               </p>
@@ -451,7 +451,7 @@ function ScheduleFormDialog({
                         variant="form"
                       />
                     ) : (
-                      <p className="text-xs text-gray-400">{S.schedule.modelDefault}</p>
+                      <p className="text-xs text-gray-500">{S.schedule.modelDefault}</p>
                     )}
                   </div>
                   <div>

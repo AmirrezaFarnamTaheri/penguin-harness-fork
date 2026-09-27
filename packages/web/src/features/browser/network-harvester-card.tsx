@@ -124,7 +124,7 @@ export function NetworkHarvesterCard({ entries, maxRows, className }: NetworkHar
     >
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Network</h3>
-        <span className="text-gray-400 font-mono text-[10px]">
+        <span className="text-gray-500 font-mono text-[10px]">
           {rows.length} of {entries.length}
         </span>
         {typeCounts.map(([type, count]) => (
@@ -143,13 +143,13 @@ export function NetworkHarvesterCard({ entries, maxRows, className }: NetworkHar
       </div>
 
       {rows.length === 0 ? (
-        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+        <div className="flex min-h-32 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-500">
           No harvested requests yet — the session has not exchanged traffic.
         </div>
       ) : (
         <div className="space-y-0.5">
           <div
-            className={`grid ${GRID_COLS} gap-x-2 items-center px-1 py-1 text-[10px] font-mono uppercase tracking-wide text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800`}
+            className={`grid ${GRID_COLS} gap-x-2 items-center px-1 py-1 text-[10px] font-mono uppercase tracking-wide text-gray-500 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800`}
           >
             <span>Method</span>
             <span>Status</span>

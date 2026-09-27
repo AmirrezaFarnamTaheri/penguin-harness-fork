@@ -55,7 +55,7 @@ export function AdminUsersSection() {
       </div>
 
       {users === null ? (
-        <p className="text-sm text-gray-400">{S.common.loading}</p>
+        <p className="text-sm text-gray-500">{S.common.loading}</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
           <table className="w-full text-sm">
@@ -219,7 +219,7 @@ function CreateUserDialog({
           hint={S.auth.passwordHint}
         />
         {USERNAME_PATTERN.test(userId.trim()) && (
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-500">
             {S.admin.defaultProjectNote(`${userId.trim()}-default_project`)}
           </p>
         )}
@@ -288,7 +288,7 @@ function ResetPasswordDialog({ user, onClose }: { user: UserInfo | null; onClose
           hint={S.auth.passwordHint}
           autoFocus
         />
-        <p className="text-xs text-gray-400 dark:text-gray-500">{S.admin.resetPasswordNote}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-500">{S.admin.resetPasswordNote}</p>
       </div>
     </Modal>
   );

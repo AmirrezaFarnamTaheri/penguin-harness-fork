@@ -77,7 +77,7 @@ function MessageMeta({
       }`}
     >
       {atMs !== undefined && (
-        <span className="text-[11px] text-gray-400">{formatMessageTime(atMs, locale)}</span>
+        <span className="text-[11px] text-gray-500">{formatMessageTime(atMs, locale)}</span>
       )}
       {/* No copy button for image-only messages: copying an image message has no clear meaning. */}
       {text !== undefined && <CopyButton text={text} label={S.chat.copyMessage} />}
@@ -418,7 +418,7 @@ function MessageItemInner({ item, ctx }: MessageItemProps) {
             <div className="flex items-start gap-1.5">
               <GlyphIcon
                 d={USER_STEERING_ICON}
-                className="mt-1 shrink-0 text-gray-400 dark:text-gray-500"
+                className="mt-1 shrink-0 text-gray-500 dark:text-gray-500"
               />
               <p className="wrap-anywhere whitespace-pre-wrap text-sm leading-relaxed text-gray-800 dark:text-gray-100">
                 <span className="mr-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400">
@@ -480,9 +480,9 @@ function MessageItemInner({ item, ctx }: MessageItemProps) {
         <div className="md-body anim-msg my-3 text-base leading-relaxed text-gray-800 dark:text-gray-100">
           {/* Re-renders the accumulated text directly while streaming (a key point of the contract implementation); memoized so settled messages skip the re-parse, and code blocks highlight once on settle (see md.tsx). */}
           <Md text={item.text} streaming={item.streaming} />
-          {item.streaming && <span className="animate-pulse text-gray-400">▌</span>}
+          {item.streaming && <span className="animate-pulse text-gray-500">▌</span>}
           {item.stopReason && item.stopReason !== "completed" && (
-            <span className="ml-1 font-mono text-xs text-gray-400">[{item.stopReason}]</span>
+            <span className="ml-1 font-mono text-xs text-gray-500">[{item.stopReason}]</span>
           )}
           {/* Nested models don't produce task_stats, so preserve their existing message-level file summaries. The root conversation renders one aggregated card from task_stats instead. */}
           {ctx.origin.length > 0 && !item.streaming && ctx.onOpenFile && ctx.statFiles && (

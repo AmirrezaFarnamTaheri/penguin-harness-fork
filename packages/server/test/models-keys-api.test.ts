@@ -86,6 +86,71 @@ describe("models key health and reset HTTP routes", () => {
     expect(resetBody.report.evictedCount).toBe(0);
   });
 
+  /**
+   * A reset must NAME the key pool it clears. Without this rule the route fell through to
+   * `{ ok: true }` for a request that named nothing — and the web cockpit's "Reset All Key
+   * Pools" button sent exactly that (`{}` in the body), so a user pressing it got a success
+   * toast over a pool that had not changed. A route that clears state must not report
+   * success for clearing none, so the ref-less shape is now a 400 that names the fix.
+   */
+  it("refuses a reset that names no key pool, and the refusal changed no key", async () => {
+    const rotator = t.deps.keyHealthService.getRotator(
+      projectId,
+      "deepseek/deepseek-chat",
+      "sk-proj-key-alpha, sk-proj-key-beta",
+    );
+    rotator.markRateLimited("sk-proj-key-alpha", 60_000);
+    rotator.markFailed("sk-proj-key-beta");
+
+    // The shape the client used to send: an empty object, no provider/modelId, no modelRef.
+    const res = await api.post(`/api/projects/${projectId}/models/keys/reset`, {});
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("bad_request");
+    // The message has to tell the caller what to send instead, not merely that it failed.
+    expect(body.error.message).toContain("provider");
+    expect(body.error.message).toContain("modelId");
+    expect(body.error.message).toContain("modelRef");
+
+    // The refusal is not a no-op that merely reports itself: nothing was cleared.
+    const healthRes = await api.get(
+      `/api/projects/${projectId}/models/keys/health?provider=deepseek&modelId=deepseek-chat`,
+    );
+    expect(healthRes.status).toBe(200);
+    const report = (await healthRes.json()) as ModelKeyHealthReport;
+    expect(report.cooldownCount).toBe(1);
+    expect(report.evictedCount).toBe(1);
+  });
+
+  /** A half-pair names no pool either — `provider` without `modelId` must not slip through. */
+  it("refuses a reset that names only half of a pair", async () => {
+    const res = await api.post(`/api/projects/${projectId}/models/keys/reset`, {
+      provider: "deepseek",
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("together");
+  });
+
+  /** The same route, the ref-ful shape: a pool named by `modelRef` clears exactly as before. */
+  it("accepts a reset that names a pool by modelRef", async () => {
+    const rotator = t.deps.keyHealthService.getRotator(
+      projectId,
+      "deepseek/deepseek-chat",
+      "sk-proj-key-alpha, sk-proj-key-beta",
+    );
+    rotator.markRateLimited("sk-proj-key-alpha", 60_000);
+
+    const res = await api.post(`/api/projects/${projectId}/models/keys/reset`, {
+      modelRef: "deepseek/deepseek-chat",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ModelKeyResetResponse;
+    expect(body.ok).toBe(true);
+    expect(body.report.cooldownCount).toBe(0);
+    expect(body.report.healthyCount).toBe(2);
+  });
+
   it("enforces authentication on key health and reset routes", async () => {
     const unauthed = apiClient(t.app, "");
     const getRes = await unauthed.get(

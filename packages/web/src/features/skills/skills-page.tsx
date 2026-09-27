@@ -252,7 +252,7 @@ export function SkillsPage() {
                 Failed to load skills catalog.
               </div>
             ) : filteredSkills.length === 0 ? (
-              <div className="text-center text-xs text-gray-400 py-12">
+              <div className="text-center text-xs text-gray-500 py-12">
                 {skills.length === 0
                   ? "No skills available in the catalog."
                   : "No skills matching search criteria."}
@@ -291,7 +291,7 @@ export function SkillsPage() {
               {/* Allowed Tools */}
               {selectedSkill.allowedTools.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Required & Allowed Tools
                   </div>
                   <div className="flex items-center gap-2 flex-wrap font-mono text-xs">
@@ -337,7 +337,7 @@ export function SkillsPage() {
               {/* Generated Prompt Block & Copy Button */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                     Slash Command Invocation
                   </div>
                   <CopyButton text={generatedPromptBlock} label="Copy slash command invocation" />
@@ -349,7 +349,7 @@ export function SkillsPage() {
 
               {/* Instructions / System Prompt Preview */}
               <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   Instruction Body (SKILL.md)
                 </div>
                 <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-xs text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto">
@@ -360,13 +360,13 @@ export function SkillsPage() {
           ) : loadError ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-xs gap-3">
               <p className="font-semibold text-rose-400">Failed to load skills catalog</p>
-              <p className="text-gray-400 max-w-sm">{loadError}</p>
+              <p className="text-gray-500 max-w-sm">{loadError}</p>
               <Button variant="secondary" size="sm" onClick={() => void loadSkills()}>
                 Retry
               </Button>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-gray-400">
+            <div className="flex-1 flex items-center justify-center text-xs text-gray-500">
               {skills.length === 0
                 ? "No skills available in the catalog."
                 : "Select a skill to inspect its configuration and capabilities."}

@@ -6,11 +6,12 @@
  */
 import { S } from "../../lib/strings";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
+import { STREAM_BANNER_FRAME } from "./disclosure-row";
 import { BOOK_ICON } from "./skill-use";
 
 export function SkillsBanner({ names }: { names: string[] }) {
   return (
-    <p className="anim-msg my-2 flex w-fit items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
+    <p className={`anim-msg my-2 flex w-fit ${STREAM_BANNER_FRAME}`}>
       <GlyphIcon d={BOOK_ICON} className="text-gray-400 dark:text-gray-500" />
       {S.chat.skillsBanner(names)}
     </p>

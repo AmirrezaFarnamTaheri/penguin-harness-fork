@@ -1067,6 +1067,12 @@ export class OrganizationService {
   ): Promise<void> {
     await this.scheduler.withLock(projectId, orgId, async () => {
       const org = await this.requireOrg(projectId, orgId);
+      // The employee check upsertCalendar makes before a write, made here too: a delete is a write,
+      // and the pair is only a pair while both answer for agents outside the chart the same way.
+      // An organization whose chart does not parse has no employees to check against, so its
+      // events are refused as well rather than deleted by an id that names nothing.
+      if (!org.byId.has(agentId))
+        throw new HttpError(404, "employee_not_found", `${agentId} is not an employee.`);
       const removed = await this.deps.store.deleteCalendarEvent(org.dir, agentId, name);
       if (!removed)
         throw new HttpError(
@@ -1548,6 +1554,13 @@ export class OrganizationService {
       const row = this.deps.sessions.findById(sessionId);
       if (!row || row.projectId !== projectId)
         throw new HttpError(404, "session_not_found", `Session does not exist: ${sessionId}`);
+      // A session of the same Project is not a session of this organization: the agent running it
+      // has to be an employee here, the same bar the calendar write path sets (see upsertCalendar).
+      // Attaching it anyway books the session's whole spend against this ticket through
+      // `addTicketSession` and reports its title under `sessions()`, so the cost of another agent's
+      // work would be moved into this organization by anyone who can read the Project.
+      if (!org.byId.has(row.agentId))
+        throw new HttpError(404, "employee_not_found", `${row.agentId} is not an employee.`);
       if (!t.doc.sessions.includes(sessionId)) {
         t.doc.sessions = [...t.doc.sessions, sessionId];
         t.doc.progress.push(
@@ -1994,6 +2007,38 @@ export class OrganizationService {
     return out;
   }
 
+  /**
+   * The references a channel message carries, minus the ones that name nothing here.
+   *
+   * `refs.ticket` and `refs.session` are stored verbatim in the channel's message file, and that
+   * file is read by this organization's own employees — an id that resolves to nothing would sit in
+   * the file as content a model later reads and may act on. So a reference that does not resolve
+   * inside this organization is dropped rather than persisted: a message without the reference is
+   * still true, a dangling reference is not. A dropped reference is not an error either — the
+   * message itself is the writer's to send, and the other refs stay.
+   *
+   * `refs.replyTo` is left as written: it names another line of the same channel, and a reader
+   * that cannot find it already falls back to the text.
+   */
+  private async resolveMessageRefs(
+    org: LoadedOrg,
+    refs: OrgChannelMessageSendRequest["refs"],
+  ): Promise<NonNullable<OrgChannelMessage["refs"]> | undefined> {
+    if (refs === undefined) return undefined;
+    const out: NonNullable<OrgChannelMessage["refs"]> = {};
+    if (refs.replyTo !== undefined) out.replyTo = refs.replyTo;
+    if (refs.ticket !== undefined) {
+      const file = await this.deps.store.findTicket(org.dir, refs.ticket);
+      if (file !== null && file.parsed.ok) out.ticket = refs.ticket;
+    }
+    if (refs.session !== undefined) {
+      const row = this.deps.sessions.findById(refs.session);
+      if (row && row.projectId === org.projectId && org.byId.has(row.agentId))
+        out.session = refs.session;
+    }
+    return Object.keys(out).length > 0 ? out : undefined;
+  }
+
   async sendChannelMessage(
     projectId: string,
     orgId: string,
@@ -2033,7 +2078,7 @@ export class OrganizationService {
           `Not a member of ${channelId}: ${outsiders.join(", ")}. Invite them first, or write in a channel they are in.`,
         );
       }
-      const refs = req.refs;
+      const refs = await this.resolveMessageRefs(org, req.refs);
       return appendChannelMessage(this.deps, org, channelId, {
         sender,
         hop,

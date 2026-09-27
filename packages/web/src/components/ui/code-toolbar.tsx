@@ -45,7 +45,7 @@ export function CodeToolbar({
         <span className="font-mono font-medium text-gray-800 dark:text-gray-200">
           {filename || language || "text"}
         </span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+        <span className="text-[11px] text-gray-500 dark:text-gray-500">
           {lineCount} {lineCount === 1 ? "line" : "lines"}
         </span>
       </div>

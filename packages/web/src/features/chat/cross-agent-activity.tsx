@@ -476,7 +476,7 @@ const ActivityRow = memo(function ActivityRow({
             </span>
             <span className="min-w-0 flex-1" />
             {time !== null && (
-              <time className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+              <time className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-500">
                 {time}
               </time>
             )}

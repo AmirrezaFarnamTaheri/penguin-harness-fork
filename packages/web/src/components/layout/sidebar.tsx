@@ -456,7 +456,8 @@ export function Sidebar({
   const scheduledSessions = pendingScheduled ?? lastScheduledRef.current;
   const collapseStoreKey = currentProjectId === null ? null : collapsedGroupsKey(currentProjectId);
   const pinStoreKey = currentProjectId === null ? null : pinnedGroupsKey(currentProjectId);
-  /** Company page-nav collapse preference; development tools have independent disclosure state. */
+  /** The page-nav collapse preference. One stored key, one state, both nav surfaces: company
+      mode's flat list and dev mode's ProductNavigation both render this toggle. */
   const [navCollapsed, setNavCollapsed] = useState(initialNavGroupCollapsed);
   /** Grouping mode of the Session list (Workspace by default; the choice persists across sessions). */
   const [groupMode, setGroupModeState] = useState<GroupMode>(initialGroupMode);
@@ -1923,7 +1924,12 @@ export function Sidebar({
           folder made the whole page scroll (composer pushed up, blank space below). */}
       <div ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {!inCompany ? (
-          <ProductNavigation items={navItems} {...(onNavigate ? { onNavigate } : {})} />
+          <ProductNavigation
+            items={navItems}
+            collapsed={navCollapsed}
+            onToggleCollapse={toggleNavGroup}
+            {...(onNavigate ? { onNavigate } : {})}
+          />
         ) : (
           <nav aria-label={S.nav.navigation} className="space-y-0.5">
             {/* Expand/collapse SLIDE: grid-template-rows tweens between 0fr and 1fr with the
@@ -2017,14 +2023,16 @@ export function Sidebar({
               page nav above and the Session list below (the ruled separator it replaces
               was rejected as a line under the button); hover deepens it a step further so
               it stays clearly interactive. Icon-only, so tooltip + aria carry the name
-              (GroupHeader's collapse/expand wording). */}
+              (GroupHeader's collapse/expand wording), and `max-md:min-h-11` is the touch
+              target the nav rows keep on a phone — a 16px strip is a fine mouse target and
+              a poor one under a thumb. ProductNavigation's twin carries the same floor. */}
             <button
               type="button"
               onClick={toggleNavGroup}
               aria-expanded={!navCollapsed}
               aria-label={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
               title={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-              className="flex h-4 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+              className="flex h-4 max-md:min-h-11 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
             >
               <ChevronDown
                 size={12}

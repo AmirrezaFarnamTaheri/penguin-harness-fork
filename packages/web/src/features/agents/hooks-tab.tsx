@@ -287,7 +287,7 @@ export function HooksTab({
                 </div>
                 {hook.version !== "" && (
                   <span
-                    className="hidden shrink-0 text-[11px] text-gray-400 sm:block dark:text-gray-500"
+                    className="hidden shrink-0 text-[11px] text-gray-500 sm:block dark:text-gray-500"
                     title={hook.version}
                   >
                     {hook.version}

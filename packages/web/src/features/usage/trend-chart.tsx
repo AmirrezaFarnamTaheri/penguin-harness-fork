@@ -16,13 +16,19 @@
  * them across the card. A bucket that ran but has no priced model still
  * counts: it reads as a cost of 0, not a dash. `breaks` marks where the axis
  * skipped an interval.
+ *
+ * `title` names the chart for the svg and captions its hidden data table: the
+ * bubble is pointer-only, so without the table this line's values would be
+ * unreachable by keyboard and unreadable by a screen reader.
  */
 import { useState } from "react";
 import type { UsageGranularity, UsageSeriesPoint } from "@prismshadow/penguin-server/api";
 import { formatMoney } from "../../lib/format";
+import { S } from "../../lib/strings";
 import type { Currency } from "../../state/theme";
 import { makeGeom, linePath, areaPath } from "./chart-geom";
 import { ChartFrame, DATA_STROKE_W, useChartWidth } from "./chart-svg";
+import { ChartDataTable, type ChartDataRow } from "./chart-data-table";
 import { bucketAxisLabel, bucketFullLabel } from "./usage-controls";
 import { Empty } from "./usage-charts";
 
@@ -34,12 +40,22 @@ export function TrendChart({
   granularity,
   currency = "USD",
   breaks,
+  title,
 }: {
   series: UsageSeriesPoint[];
   granularity: UsageGranularity;
   currency?: Currency;
   /** Indices after which the series skipped at least one empty bucket (see compactSeries): ChartFrame marks the axis there. */
   breaks?: number[];
+  /**
+   * What the chart shows (the card's own title): names the svg and captions the
+   * data table. Optional only because the Finance page renders this same chart
+   * from its own feature and is owned elsewhere — it has a title of its own to
+   * hand (S.company.finance.trend). Without it this chart keeps exactly what it
+   * showed before: a named-less image and a pointer-only bubble, no invented
+   * label and no untitled table.
+   */
+  title?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const [ref, width] = useChartWidth();
@@ -56,12 +72,20 @@ export function TrendChart({
   // (61 minute buckets in a half-width card sit ~7px apart). Below that the
   // line stands alone and only the hovered point gets its dot.
   const everyDot = geom.step >= MIN_DOT_STEP;
+  // The hidden table: one row per bucket, formatted by the same formatMoney the
+  // bubble uses. A bucket that ran but priced nothing is 0 in both, because
+  // that is what the point and the line are drawn at.
+  const tableRows: ChartDataRow[] = series.map((p) => ({
+    key: p.bucket,
+    cells: [bucketFullLabel(granularity, p.bucket), formatMoney(p.cost ?? 0, currency)],
+  }));
 
   return (
     <div ref={ref}>
       {width > 0 && (
         <ChartFrame
           geom={geom}
+          ariaLabel={title}
           fmtY={(v) => formatMoney(v, currency)}
           dates={buckets}
           fmtX={(b) => bucketAxisLabel(granularity, b)}
@@ -114,6 +138,13 @@ export function TrendChart({
             )}
           </g>
         </ChartFrame>
+      )}
+      {title !== undefined && (
+        <ChartDataTable
+          caption={title}
+          head={[S.usage.chartDataBucket, S.common.cost]}
+          rows={tableRows}
+        />
       )}
     </div>
   );

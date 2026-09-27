@@ -107,7 +107,7 @@ export function SkillCatalogDialog({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search skills, tags, keywords..."
-              className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-900 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
             />
           </div>
         </div>
@@ -235,7 +235,7 @@ export function SkillCatalogDialog({
                 </div>
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-gray-400">
+              <div className="flex h-full items-center justify-center text-xs text-gray-500">
                 No skill selected
               </div>
             )}

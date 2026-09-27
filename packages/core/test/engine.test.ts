@@ -2214,18 +2214,48 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     expect(engine.skipReconnectWait()).toBe(false);
   });
 
-  it("reconnectDelayMs: exponential-with-ceiling ladder (defaults: 2s base, 30s cap)", () => {
-    // The default cap (5) walks 2s/4s/8s/16s and hits the 30s ceiling on the fifth wait —
-    // ≈ 60s of total patience (issue #218: the old 250ms base burned the whole ladder in
-    // ~7.75s, faster than a provider restart or rate-limit window can recover). Every wait
-    // sits at or above the hosts' 2s countdown floor, so each retry is visible.
-    const ladder = [1, 2, 3, 4, 5].map((n) => reconnectDelayMs(2000, 30_000, n));
-    expect(ladder).toEqual([2000, 4000, 8000, 16000, 30000]);
-    expect(ladder.reduce((a, b) => a + b, 0)).toBe(60_000);
+  it("reconnectDelayMs: exponential-with-ceiling ladder plus bounded jitter (2s base, 30s cap)", () => {
+    // The default cap (5) walks 2s/4s/8s/16s and reaches the 30s ceiling on the fifth wait
+    // — ≈ 60s of total patience (issue #218: the old 250ms base burned the whole ladder in
+    // ~7.75s, faster than a provider restart or rate-limit window can recover).
+    //
+    // The contract is now the INVARIANTS, not an exact ladder: the jitter is what stops every
+    // session in the app retrying the same instant, so the exact values are no longer a fixed
+    // function of (base, max, attempt) — they depend on the engine's seed too. What must hold
+    // is: monotone, never below the base (the hosts' 2s countdown floor), never above the
+    // ceiling, and pinned at the ceiling once it is reached.
+    const ladder = [1, 2, 3, 4, 5].map((n) => reconnectDelayMs(2000, 30_000, n, 1));
+    for (const [i, ms] of ladder.entries()) {
+      expect(ms).toBeGreaterThanOrEqual(2000); // never below the countdown floor
+      expect(ms).toBeLessThanOrEqual(30_000); // never above the ceiling
+      if (i > 0) expect(ms).toBeGreaterThanOrEqual(ladder[i - 1]!); // monotone
+    }
+    // Each rung stays within +50% of the un-jittered ladder, so the schedule is still ~60s.
+    const unjittered = [2000, 4000, 8000, 16000, 30_000];
+    for (const [i, ms] of ladder.entries()) {
+      expect(ms).toBeLessThanOrEqual(unjittered[i]! * 1.5);
+    }
     // Past the ceiling the delay stays pinned (no overflow, no further growth).
-    expect([6, 7].map((n) => reconnectDelayMs(2000, 30_000, n))).toEqual([30_000, 30_000]);
+    expect([6, 7].map((n) => reconnectDelayMs(2000, 30_000, n, 1))).toEqual([30_000, 30_000]);
     // The cap also applies when the base itself exceeds it.
-    expect(reconnectDelayMs(50_000, 30_000, 1)).toBe(30_000);
+    expect(reconnectDelayMs(50_000, 30_000, 1, 1)).toBe(30_000);
+  });
+
+  it("reconnectDelayMs: the same seed gives the same delay, different seeds spread", () => {
+    // Both halves matter. Constant-per-engine is what keeps the ANNOUNCED countdown
+    // (retryDelayMs) equal to the wait actually SLEPT (backoff) — they are two call sites.
+    // Varying-per-engine is what stops a provider-wide failure from bringing every client
+    // back at once.
+    for (const attempt of [1, 2, 3, 4, 5]) {
+      expect(reconnectDelayMs(2000, 30_000, attempt, 7)).toBe(
+        reconnectDelayMs(2000, 30_000, attempt, 7),
+      );
+    }
+    // Across a spread of seeds the first rung actually varies — the whole point.
+    const firstRungs = new Set(
+      Array.from({ length: 12 }, (_, s) => reconnectDelayMs(2000, 30_000, 1, s + 1)),
+    );
+    expect(firstRungs.size).toBeGreaterThan(1);
   });
 
   it("request_end carries the outcome's failure detail on non-completed statuses only", async () => {
@@ -2301,10 +2331,28 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     const ends = all.filter((m) => (m.payload as { type?: string }).type === "request_end") as {
       payload: { retry_in_ms?: number };
     }[];
-    // Announced waits follow the same exponential-with-ceiling formula the sleep uses
-    // (10, then min(20, 15) = 15); the FINAL failure carries none — no retry follows,
-    // the exhaustion abort does.
-    expect(ends.map((e) => e.payload.retry_in_ms)).toEqual([10, 15, undefined]);
+    // Announced waits come from the SAME ladder the sleep uses, and the FINAL failure carries
+    // none — no retry follows it, the exhaustion abort does.
+    //
+    // This used to assert the literal [10, 15]. It cannot any more, and the reason is the
+    // point rather than a loosening: the ladder now carries a per-engine jitter, so the
+    // announced value depends on a seed the test does not own. The contract that actually
+    // matters is unchanged and is asserted in full — every announced wait is a valid rung of
+    // the shared ladder (at or above the un-jittered value, within the +50% jitter envelope,
+    // never above the ceiling), the rungs do not shrink, and the announcement stops when the
+    // cap does. A literal would only re-assert one particular seed.
+    const announced = ends.map((e) => e.payload.retry_in_ms);
+    expect(announced[2]).toBeUndefined(); // exhausted: no retry follows
+    const unjittered = [10, 15];
+    for (const [i, ms] of announced.slice(0, 2).entries()) {
+      expect(ms).toBeGreaterThanOrEqual(unjittered[i]!);
+      expect(ms).toBeLessThanOrEqual(15); // the configured ceiling, never exceeded
+      expect(ms).toBeLessThanOrEqual(unjittered[i]! * 1.5); // inside the jitter envelope
+    }
+    expect(announced[1]!).toBeGreaterThanOrEqual(announced[0]!); // monotone
+    // The second wait is at the ceiling, so the jitter is fully absorbed there — the last
+    // rung is the one a user waits out longest, and it must not grow past the cap.
+    expect(announced[1]).toBe(15);
     expect(calls).toBe(3); // Initial attempt + 2 retries.
   });
 

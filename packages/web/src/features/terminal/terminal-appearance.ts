@@ -62,7 +62,7 @@ const LIGHT: TerminalChrome = {
   surface: "bg-white text-gray-900",
   border: "border-gray-200",
   iconButton: "text-gray-500 hover:bg-gray-100 hover:text-gray-800",
-  grip: "text-gray-400",
+  grip: "text-gray-500",
   tabActive: "bg-gray-100 text-gray-900",
   tabIdle: "text-gray-500 hover:bg-gray-100 hover:text-gray-800",
   tabKill: "bg-gray-100 hover:bg-gray-200",

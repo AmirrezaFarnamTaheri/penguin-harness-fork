@@ -104,7 +104,7 @@ export function TopologyGraphCanvas({
                 x2={end.x}
                 y2={end.y}
                 stroke="currentColor"
-                className="text-gray-400 dark:text-gray-600"
+                className="text-gray-500 dark:text-gray-600"
                 strokeDasharray={edge.kind === "imports" ? "5 4" : undefined}
               >
                 <title>

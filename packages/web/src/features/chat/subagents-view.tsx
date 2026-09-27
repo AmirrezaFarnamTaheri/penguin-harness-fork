@@ -319,7 +319,7 @@ export function SubagentsView({
           </div>
         ) : isRoot ? (
           <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-            <p className="text-sm text-gray-400 dark:text-gray-500">
+            <p className="text-sm text-gray-500 dark:text-gray-500">
               {S.subagentPanel.mainSessionNote}
             </p>
           </div>
@@ -363,7 +363,7 @@ export function SubagentsView({
               </span>
               <span
                 title={active.sessionId}
-                className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500"
+                className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-500"
               >
                 {shortSessionId(active.sessionId)}
               </span>
@@ -392,7 +392,7 @@ export function SubagentsView({
                 aria-label={S.subagentPanel.openAsSession}
                 data-testid="subagent-open-session"
                 onClick={openAsSession}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
               >
                 <GlyphIcon
                   d="M14 4h6v6M20 4l-8 8M10 6H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"
