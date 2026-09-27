@@ -435,6 +435,8 @@ export const en: Strings = {
     none: "(none)",
     retry: "Retry",
     unknownError: "Request failed, please try again later",
+    /** Skip link past the navigation (WCAG 2.2 SC 2.4.1). */
+    skipToContent: "Skip to content",
     requiredField: "This field is required",
     copied: "Copied",
     /** Accessible name of the circled "?" that discloses a section or field explanation. */

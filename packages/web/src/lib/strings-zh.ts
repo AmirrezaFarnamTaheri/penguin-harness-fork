@@ -435,6 +435,8 @@ export const zh = {
     none: "（无）",
     retry: "重试",
     unknownError: "请求失败，请稍后重试",
+    /** 跳过导航（WCAG 2.2 SC 2.4.1）。 */
+    skipToContent: "跳到主内容",
     requiredField: "此项必填",
     copied: "已复制",
     /** Accessible name of the circled "?" that discloses a section or field explanation. */

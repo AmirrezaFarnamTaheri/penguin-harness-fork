@@ -417,6 +417,18 @@ export function AppLayout() {
 
   return (
     <div className="flex h-full">
+      {/* Skip to content (WCAG 2.2 SC 2.4.1 Bypass Blocks). The sidebar is a column of ~40
+          focusable stops before the page's own first control, so a keyboard user opening
+          the app landed in the navigation every time and had to Tab through all of it to
+          reach the conversation. Off-screen until focused — `not-sr-only` on focus is the
+          standard idiom and needs no extra CSS or state — and the `focus:` ring comes from
+          the global focus-visible rule, so it is the same ring as every other control. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-[var(--accent-bg)] focus:px-3 focus:py-2 focus:text-sm focus:text-[var(--accent-fg)]"
+      >
+        {S.common.skipToContent}
+      </a>
       {/* Desktop: single-column sidebar (collapsible to a narrow rail).
           Collapsing animates the WIDTH, which is the one animation here that transform cannot
           carry: the sidebar is in flow, so the main content reflows beside it rather than
@@ -508,7 +520,11 @@ export function AppLayout() {
           </div>
         )}
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
+        {/* The skip link's target. `tabIndex={-1}` is what makes it a real target: a
+            fragment link scrolls to a non-focusable element and drops focus on <body>,
+            so the next Tab starts over from the top — the exact thing the link exists to
+            avoid. Focusable-but-not-tabbable is the standard pattern. */}
+        <main id="main" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Outlet />
         </main>
         {/* The docks themselves render inside the chat page (features/dock); the xterm

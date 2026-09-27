@@ -12,7 +12,7 @@
  * `?column=` / `?blocked=1` / `?ticket=` deep links arrive from the overview.
  */
 import { useCallback, useEffect, useState } from "react";
-import type { DragEvent as ReactDragEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { useSearchParams } from "react-router";
 import type {
   OrgChartResponse,
@@ -208,17 +208,9 @@ export function TicketsPage() {
   const card = (t: OrgTicketItem) => {
     const ownerId = t.owner === undefined ? null : principalAgentId(t.owner);
     const overdue = isOverdue(t.due, todayKey) && t.status !== "done" && t.status !== "rejected";
-    const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        openTicket(t.ticketId);
-      }
-    };
     return (
       <div
         key={t.ticketId}
-        role="button"
-        tabIndex={0}
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData(TICKET_DRAG_MIME, t.ticketId);
@@ -229,16 +221,30 @@ export function TicketsPage() {
           setDrag(null);
           setDropOver(null);
         }}
-        onClick={() => openTicket(t.ticketId)}
-        onKeyDown={onKey}
         title={`${t.title} · ${t.ticketId} · ${S.company.tickets.dragHint}`}
-        className={`block w-full cursor-grab rounded-md border bg-white p-2.5 text-left text-xs transition-colors duration-150 hover:border-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-bg)]/40 dark:bg-gray-900 dark:hover:border-gray-600 ${
+        className={`relative block w-full cursor-grab rounded-md border bg-white p-2.5 text-left text-xs transition-colors duration-150 hover:border-gray-300 dark:bg-gray-900 dark:hover:border-gray-600 ${
           t.invalid !== undefined
             ? "border-red-300 dark:border-red-800"
             : "border-gray-200 dark:border-gray-800"
         } ${drag?.ticketId === t.ticketId ? "opacity-50" : ""}`}
       >
-        <div className="flex items-start gap-1.5">
+        {/* The card is NOT the control. It was a `role="button" tabIndex={0}` with an
+            onKeyDown Enter/Space handler, and it contains a real button (the assignee
+            control below) — a button inside a button, which is invalid HTML and an invalid
+            accessibility tree (WCAG SC 4.1.2). Assistive tech sees one control where the
+            markup declares two, and the inner one is unreachable.
+            So the role comes off the card and onto a real button that covers it: `absolute`
+            and inset to the card's own padding box, sitting UNDER the card's text
+            (`z-0` against the content's `relative z-10`) so clicks land on the content
+            where they always did, and on the empty margin land on the button. The card
+            keeps `draggable`, which is not a focusability concern. */}
+        <button
+          type="button"
+          onClick={() => openTicket(t.ticketId)}
+          aria-label={t.title}
+          className="absolute inset-0 z-0 cursor-grab rounded-md focus-visible:outline-3 focus-visible:outline-offset-2"
+        />
+        <div className="relative z-10 flex items-start gap-1.5">
           <span className="line-clamp-2 min-w-0 flex-1 text-[13px] font-medium leading-snug text-gray-900 dark:text-gray-100">
             {t.title}
           </span>

@@ -113,12 +113,23 @@
   kbd {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   }
-  /* Keyboard accessibility: soft brand-colored outer ring (input controls use their own focus ring, not stacked). */
+  /* Keyboard focus ring (WCAG 2.2 SC 1.4.11 Non-text Contrast, AA — needs 3:1 against
+     adjacent colours). Input controls use their own focus ring, so this does not stack.
+
+     The colour is `--accent-bg`, which is what the token block above documents this ring
+     as using. It was a hardcoded `rgb(107 114 128 / 0.4)` — gray-500 at 40% alpha, which
+     composites to #c4c7cc and measures **1.70:1 on white**: below half the 3:1 floor, in
+     BOTH themes, on every focusable element in the app. It also wasn't the brand colour its
+     own comment claimed, which is how it survived review.
+
+     `--accent-bg` clears it in every configuration: 17.7:1 on white in the neutral light
+     theme, 19.1:1 on the pure-black dark base, 5.2:1 for the `data-accent="blue"` preset —
+     and it follows the user's chosen accent, which a hardcoded value could not. */
   button:focus-visible,
   a:focus-visible,
   [role="tab"]:focus-visible,
   summary:focus-visible {
-    outline: 3px solid rgb(107 114 128 / 0.4);
+    outline: 3px solid var(--accent-bg);
     outline-offset: 2px;
   }
   /* Consistent pointer cursor for clickable buttons: Tailwind 4 preflight reverted button to the browser's

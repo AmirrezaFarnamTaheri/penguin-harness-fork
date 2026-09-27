@@ -423,12 +423,22 @@ export function CalendarPage() {
     return (
       <div
         key={day.key}
-        title={S.company.calendar.createAt(`${day.key} 09:00`)}
-        onClick={() => openCreate(createMs)}
-        className={`min-h-24 cursor-pointer border-r border-gray-100 p-1 transition-colors duration-150 last:border-r-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60 ${
+        className={`relative min-h-24 border-r border-gray-100 p-1 transition-colors duration-150 last:border-r-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60 ${
           day.inMonth ? "" : "bg-gray-50/60 text-gray-400 dark:bg-gray-900/40 dark:text-gray-600"
         }`}
       >
+        {/* The cell itself is NOT the control — it holds the day's number and its chips, so
+            making it a button would nest interactive elements (WCAG SC 4.1.2, and invalid
+            HTML). The create affordance is this one real button, absolutely positioned to
+            cover the cell's top strip where the number sits, which is where the pointer
+            target used to be. A keyboard user now gets the same action at the same place. */}
+        <button
+          type="button"
+          title={S.company.calendar.createAt(`${day.key} 09:00`)}
+          aria-label={S.company.calendar.createAt(`${day.key} 09:00`)}
+          onClick={() => openCreate(createMs)}
+          className="absolute inset-x-0 top-0 z-10 h-7 cursor-pointer rounded-t"
+        />
         <p className="mb-1 flex h-5 items-center">
           <span
             className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums ${
@@ -462,11 +472,41 @@ export function CalendarPage() {
     );
   };
 
+  /**
+   * Roving tabindex over the week/day view's create grid (WCAG 2.2 SC 2.1.1).
+   *
+   * These 24 hour cells per day column were `<div onClick>`: a week view is SEVEN of them,
+   * so 168 create targets that no keyboard could reach and a screen reader never announced.
+   * The month cell had the same problem. Making every cell a real `<button>` would fix the
+   * role and the keyboard but put 168 stops in the Tab order, which is its own trap.
+   *
+   * So: roving tabindex. Each day column exposes exactly ONE tab stop (hour 0 until the
+   * reader moves inside that column, then wherever they left it), and the arrow keys walk
+   * the hours from there. One stop per column, 168 reachable cells, 7 Tab stops.
+   *
+   * Arrow-LEFT/RIGHT between day columns is deliberately not here: `timeColumn` receives
+   * the day but not its index, and threading it through is a follow-up. Every cell is
+   * reachable and operable without it, which is what the failure was.
+   */
+  const [focusedSlot, setFocusedSlot] = useState<{ day: string; hour: number } | null>(null);
+  /** The one cell currently holding the column's tab stop; the effect below follows it. */
+  const activeCellRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeCellRef.current?.focus();
+  }, [focusedSlot]);
+
   /** A day column of the week and day views: hour rows that create on click, chips placed by time and packed into lanes. */
   const timeColumn = (day: GridDay) => {
     const slots = chipLanes(byDay.get(day.key) ?? [], CHIP_SLOT_MS);
     const chipHeight = (CHIP_SLOT_MS / 3_600_000) * HOUR_PX - 2;
     const isToday = day.key === todayKey;
+    const activeHour = focusedSlot !== null && focusedSlot.day === day.key ? focusedSlot.hour : 0;
+    /** Move the roving stop within this column, wrapping at both ends. */
+    const move = (delta: number) =>
+      setFocusedSlot((prev) => {
+        const from = prev !== null && prev.day === day.key ? prev.hour : activeHour;
+        return { day: day.key, hour: (from + delta + 24) % 24 };
+      });
     return (
       <div
         key={day.key}
@@ -475,15 +515,36 @@ export function CalendarPage() {
         }`}
         style={{ height: HOUR_PX * 24 }}
       >
-        {Array.from({ length: 24 }, (_, h) => (
-          <div
-            key={h}
-            title={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
-            className="absolute inset-x-0 cursor-pointer border-t border-gray-100 transition-colors duration-150 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60"
-            style={{ top: h * HOUR_PX, height: HOUR_PX }}
-            onClick={() => openCreate(day.dayStartMs + h * 3_600_000)}
-          />
-        ))}
+        {Array.from({ length: 24 }, (_, h) => {
+          const active = h === activeHour;
+          return (
+            <button
+              key={h}
+              type="button"
+              title={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
+              aria-label={S.company.calendar.createAt(`${day.key} ${hourLabel(h)}`)}
+              tabIndex={active ? 0 : -1}
+              {...(active ? { ref: activeCellRef } : {})}
+              className="absolute inset-x-0 cursor-pointer border-t border-gray-100 transition-colors duration-150 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-900/60"
+              style={{ top: h * HOUR_PX, height: HOUR_PX }}
+              onClick={() => openCreate(day.dayStartMs + h * 3_600_000)}
+              onFocus={() =>
+                setFocusedSlot((prev) =>
+                  prev?.day === day.key && prev.hour === h ? prev : { day: day.key, hour: h },
+                )
+              }
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  move(1);
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  move(-1);
+                }
+              }}
+            />
+          );
+        })}
         {isToday && (
           <div
             aria-hidden
