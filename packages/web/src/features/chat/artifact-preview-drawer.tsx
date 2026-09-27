@@ -26,6 +26,17 @@ const VIEWPORTS: Record<ViewportSize, { label: string; width: string }> = {
   mobile: { label: "Mobile (375px)", width: "w-[375px]" },
 };
 
+/**
+ * How long a blob URL opened in a new tab is kept alive before it is revoked.
+ *
+ * The navigation that consumes the URL is not synchronous, so revoking on the next line
+ * races it and can leave the new tab showing nothing. A minute is far longer than any
+ * navigation needs and still bounds the cost of a blocked one, which is the case that
+ * matters: a user stepping through twenty artifacts holds at most twenty blobs rather than
+ * all of them for the life of the page.
+ */
+const OBJECT_URL_TTL_MS = 60_000;
+
 export function ArtifactPreviewDrawer({
   open,
   onClose,
@@ -97,7 +108,19 @@ ${content}
 </html>`;
     const blob = new Blob([isolatedWrapper], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    // `noopener` so the opened document cannot reach back through `window.opener`. The
+    // wrapper already sandboxes its iframe, but the outer document is same-origin with us
+    // and this is the one reference between the two, so it is worth severing.
+    const opened = window.open(url, "_blank", "noopener");
+    // The blob must outlive the navigation that consumes it, so it cannot be revoked on the
+    // next line. Releasing it on a timer bounds the cost to one blob per press; the previous
+    // code never released it at all, so every preview opened in a new tab pinned its Blob for
+    // the life of the page and a user stepping through artifacts grew the tab without limit.
+    setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_TTL_MS);
+    // A blocked popup returns null, and the user asked to see the preview: silently doing
+    // nothing is the one outcome they cannot act on. The download carries the same bytes and
+    // is never blocked, so it is the honest fallback rather than a dead button.
+    if (opened === null) handleDownload();
   };
 
   const handleDownload = () => {
