@@ -55,17 +55,46 @@ export function AgentTopologyView({
           const stateLabel = node.running ? S.subagentPanel.nodeRunning : S.subagentPanel.nodeDone;
           // The node renders the description truncated on its second line; the tooltip carries
           // the full sentence, which is the only place it appears untruncated.
-          const identityLabel = `${label} (${shortSessionId(node.sessionId)})`;
+          const shortId = shortSessionId(node.sessionId);
+          const identityLabel = `${label} (${shortId})`;
+          // The settled duration goes in the name (Label in Name: it is rendered on the node).
+          // A RUNNING node's duration ticks, so there is no fixed string to name here — the
+          // "running" state label already says the thing, and a stale number would be a lie.
+          const elapsed =
+            !node.running && node.elapsedMs !== undefined
+              ? ` · ${humanizeDuration(node.elapsedMs)}`
+              : "";
+          // WHO SPAWNED WHOM, in the accessible name. The edges are aria-hidden, so without
+          // this a screen reader can enumerate the nodes and never learn the one thing a call
+          // graph exists to say. The root has no parent and is named as the main session; a
+          // parent outside this view (a chip click on an older Task) falls back to its short id,
+          // which is still more than the position in the list would say.
+          const parent =
+            node.parentId !== null
+              ? nodes.find((candidate) => candidate.sessionId === node.parentId)
+              : undefined;
+          const spawnedBy =
+            node.parentId === null
+              ? S.subagentPanel.mainSession
+              : `${S.subagentPanel.spawnedBy} ${
+                  parent !== undefined ? labelFor(parent) : shortSessionId(node.parentId)
+                }`;
           const tooltip =
             node.description !== null
-              ? `${label} · ${stateLabel}\n${node.description}`
-              : `${label} · ${stateLabel}`;
+              ? `${label} · ${stateLabel}\n${spawnedBy}\n${node.description}`
+              : `${label} · ${stateLabel}\n${spawnedBy}`;
           return (
             <button
               key={node.sessionId}
               type="button"
-              aria-label={`${label} · ${stateLabel}`}
-              aria-pressed={selected}
+              // The accessible name now contains everything the node renders visibly (label,
+              // short id, elapsed) plus the parent — WCAG 2.5.3, Label in Name. An earlier
+              // version trimmed the visible id and the duration out of it.
+              aria-label={`${identityLabel} · ${stateLabel}${elapsed} · ${spawnedBy}`}
+              // aria-current, not aria-pressed: exactly one of a set is selected, which is not
+              // a toggle. `aria-pressed` announced "toggle button, pressed" per node and never
+              // conveyed "1 of 5".
+              {...(selected ? { "aria-current": true as const } : {})}
               title={`${node.sessionId}
 ${tooltip}`}
               onClick={() => onSelect(node)}

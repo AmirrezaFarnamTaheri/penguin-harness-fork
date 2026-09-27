@@ -104,21 +104,32 @@ export type TerminalTitleListener = (title: string | null) => void;
 
 /**
  * Environment for the pty. `TERM`/`COLORTERM` are what make colour and 256-colour output
- * work at all; the rest of the parent environment is inherited so the shell behaves like the
- * user's own (PATH, proxies, language).
+ * work at all; ordinary parent variables (PATH, proxies, language) are inherited so the shell
+ * behaves like the user's own. Harness `PENGUIN_*` configuration and credentials are not —
+ * except the data-root locator, which is a path rather than a secret: a pty is deliberately
+ * harness-aware (`PENGUIN_TERMINAL`), and a user running `penguin` in it has to reach the same
+ * data root as the Web App they are looking at, not a second one under the home directory.
  */
-function buildTerminalEnv(
+export function buildTerminalEnv(
   extra: Record<string, string> | undefined,
   cwd: string,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
+    // A PTY is user-facing. Never inherit the server's harness credentials or
+    // configuration, including the optional host-owned Jev key.
+    if (key.toUpperCase().startsWith("PENGUIN_")) continue;
     if (typeof value === "string") env[key] = value;
   }
   Object.assign(env, extra ?? {});
+  for (const key of Object.keys(env)) {
+    if (key.toUpperCase().startsWith("PENGUIN_")) delete env[key];
+  }
   env.TERM = "xterm-256color";
   env.COLORTERM = "truecolor";
   env.PENGUIN_TERMINAL = "1";
+  const home = process.env.PENGUIN_HOME;
+  if (home !== undefined && home !== "") env.PENGUIN_HOME = home;
   env.PWD = cwd;
   // Inherited from the server process; a pty is not that server and these would point the
   // shell (and anything it starts) at the wrong runtime.

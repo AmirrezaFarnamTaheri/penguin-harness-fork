@@ -2408,6 +2408,15 @@ Scenarios:
     pinSession: "Pin",
     unpinSession: "Unpin",
     pinnedSession: "Pinned",
+    /** Batch bar over the marked conversations: n = how many rows are marked and still on screen. */
+    selectedConversations: (n: number) => `${n} selected`,
+    /** Batch bar: archive / unarchive every marked conversation. */
+    archiveSelected: "Archive selected",
+    unarchiveSelected: "Unarchive selected",
+    /** Batch bar: leave selection mode, dropping the marks. */
+    cancelSelection: "Cancel selection",
+    /** Row context menu: enter selection mode with this row marked (the keyboard-reachable route; Cmd/Ctrl-click is the pointer one). */
+    selectConversations: "Select",
     /** The hover ellipsis button that opens the row's full context menu. */
     moreActions: "More",
     /** Sidebar group "reveal/load next page" row (display cap + server paging). */
@@ -2788,6 +2797,56 @@ Scenarios:
     nodeDone: "done",
     openAsSession: "Jump to this session",
     subagentGone: "This subagent session no longer exists and could not be revived",
+    spawnedBy: "spawned by",
+    mainSession: "the main session",
+    /** Shown when the selected child is not in the displayed Task's graph (A7). */
+    selectionElsewhere: (label: string) => `Showing ${label} from an earlier task`,
+    backToLatest: "Back to the latest task",
+    loadingChild: "This subagent's transcript is still loading",
+    skillsUnavailable: "Skills could not be loaded for this subagent",
+  },
+
+  coordination: {
+    activityTitle: "Coordination activity",
+    conversationTab: "Conversation",
+    activityTab: "Activity",
+    empty: "No coordination activity is available for this session yet",
+    jevAdvisory: "Jev",
+    advised: "observation available",
+    unavailable: "unavailable",
+    choiceMatches: "fits what the task needs next",
+    choiceDifferent: "another tool fits better",
+    choiceNone: "no tool call needed",
+    choiceUnknown: "no answer",
+    confidence: "confidence",
+    risk: "risk",
+    riskOf: (score: number) => `${score} of 5`,
+    needsTool: "needs a tool",
+    argumentsComplete: "arguments complete",
+    approvalLikely: "wants approval",
+    latency: "latency",
+    tokens: "tokens",
+    model: "model",
+    reason: "reason",
+    toolActivity: "tool",
+    toolRunning: "running",
+    toolDone: "completed",
+    toolDenied: "denied",
+    toolWaiting: "awaiting approval",
+    parentMessage: "parent-agent message",
+    agentFailed: "agent failed",
+    retried: "reconnect",
+    aborted: "aborted",
+    retrying: (attempt: number) => `retrying (attempt ${attempt})`,
+    retryGaveUp: (attempt: number) => `gave up after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+    yourMessage: "your message",
+    childMessage: "input to agent",
+    childSession: "child session",
+    advisoryOnly: "Advisory only — the command policy and the approval prompt decide, not this.",
+    rollup: (children: number, running: number, calls: number) =>
+      `${children} subagent${children === 1 ? "" : "s"} · ${running} running · ${calls} tool call${calls === 1 ? "" : "s"}`,
+    olderRowsHidden: (count: number) => `${count} earlier entries not shown`,
+    jumpToLatest: "Jump to latest",
   },
 
   files: {

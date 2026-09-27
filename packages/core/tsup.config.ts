@@ -33,6 +33,8 @@ export default defineConfig({
     "src/kernel/index.ts",
     // Browser-safe SDK entrypoint: pure types and zero-Node utilities for web bundling.
     "src/browser.ts",
+    // TypeSafe/Jev advisory adapter: a Node-facing subpath so browser bundles do not need to load it.
+    "src/jev/index.ts",
     // Pure filesystem path helpers: zero-dependency subpath so desktop/cli can import resolveRoot without pulling core SDK.
     "src/state/paths.ts",
     // Canvas math shared with the web UI: colour spaces, vector primitives, viewport

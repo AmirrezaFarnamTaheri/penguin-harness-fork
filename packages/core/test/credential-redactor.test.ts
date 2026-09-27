@@ -81,6 +81,28 @@ describe("redactCredentials", () => {
     expect(redacted).toContain(`https://admin:${REDACTED_MARKER}@api.example.com/v1`);
   });
 
+  it("stays linear on a long scheme-character run", () => {
+    // The URI rule used to retry its greedy scheme scan at every position of a run, so cost grew
+    // with the square of the input: 28s on this 256 KiB run, and never finishing on the 8 MiB
+    // tool outputs the truncated-output archive now redacts. The run is inert, so the correct
+    // answer is the input itself — a 256 KiB `x` is one long word, not a URL.
+    const inert = "x".repeat(256 * 1024);
+    const startedAt = performance.now();
+    const redacted = redactCredentials(inert);
+    const elapsedMs = performance.now() - startedAt;
+    expect(redacted).toBe(inert);
+    // Generous next to the ~10ms this takes, and far under the ~28s the old pattern needed.
+    expect(elapsedMs).toBeLessThan(5_000);
+  });
+
+  it("still redacts a URI credential embedded in a long run", () => {
+    // The guard must not buy its speed by missing the credential it exists to catch.
+    const raw = `${"x".repeat(64 * 1024)} https://admin:superSecretPass123@api.example.com/v1`;
+    const redacted = redactCredentials(raw);
+    expect(redacted).not.toContain("superSecretPass123");
+    expect(redacted).toContain(`https://admin:${REDACTED_MARKER}@api.example.com/v1`);
+  });
+
   it("redacts PEM private key blocks", () => {
     const pem = `-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA0Y1u...secret...

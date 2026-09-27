@@ -56,7 +56,10 @@ export const DOCS_NAV: DocsSectionDef[] = [
       "sessions-and-traces",
     ),
   },
-  { id: "reference", pages: pages("cli", "server-api", "configuration", "security") },
+  {
+    id: "reference",
+    pages: pages("cli", "server-api", "configuration", "jev-advisor", "security"),
+  },
 ];
 
 /** All slugs in display order — each parent immediately followed by its children. */

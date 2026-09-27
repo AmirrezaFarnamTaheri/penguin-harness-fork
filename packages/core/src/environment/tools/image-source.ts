@@ -11,6 +11,7 @@
 import path from "node:path";
 import { open, readFile, stat } from "node:fs/promises";
 import { safeFetch } from "../../internal/safe-http.js";
+import { imageDimensions, pixelCount } from "./image-dimensions.js";
 
 /**
  * Image size upper bound (bytes): errors out above this. Taken as the common denominator of
@@ -20,6 +21,14 @@ import { safeFetch } from "../../internal/safe-http.js";
  * avoids oversized images blowing up the context and Trace.
  */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Pixel ceiling: the memory cap the byte cap cannot express. A 5 MB PNG can declare
+ * 30000 x 30000 — a solid colour compresses to almost nothing — and decoding it costs roughly
+ * 3.6 GB of RGBA. 100 megapixels is far beyond any screenshot or photograph a person sends a
+ * model, and comfortably under what a decode would need to hurt the host.
+ */
+export const MAX_IMAGE_PIXELS = 100_000_000;
 
 /** Supported image mime types (the four generally accepted across providers). */
 const SUPPORTED_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -101,6 +110,22 @@ export function formatSize(bytes: number): string {
 
 const OVERSIZE_MESSAGE = (size: number): string =>
   `Image too large: ${formatSize(size)} exceeds the ${formatSize(MAX_IMAGE_BYTES)} limit.`;
+
+const OVERPIXEL_MESSAGE = (width: number, height: number): string =>
+  `Image too large to decode: ${width} x ${height} (${Math.round(pixelCount({ width, height }) / 1_000_000)} megapixels) exceeds the ${Math.round(MAX_IMAGE_PIXELS / 1_000_000)} megapixel limit. Shrink or resample it first.`;
+
+/**
+ * The decode-bomb guard, run on every image that already passed the byte and mime checks.
+ * Returns a message when the declared size is refused, null when it is fine OR when the header
+ * could not be read — an unreadable header is not evidence of a small image, but it is also not
+ * proof of a bomb, and the byte cap still applies to it.
+ */
+export function checkImagePixelCount(bytes: Buffer): string | null {
+  const dimensions = imageDimensions(bytes);
+  if (dimensions === null) return null;
+  if (pixelCount(dimensions) <= MAX_IMAGE_PIXELS) return null;
+  return OVERPIXEL_MESSAGE(dimensions.width, dimensions.height);
+}
 
 const UNSUPPORTED_MESSAGE = (detected: string | null): string =>
   `Unsupported image type${detected ? ` "${detected}"` : ""}: only png, jpeg, gif and webp are supported.`;
@@ -215,6 +240,13 @@ export async function loadImage(
   }
   if (mime === null || !SUPPORTED_MIMES.has(mime)) {
     return { ok: false, reason: "failed", message: UNSUPPORTED_MESSAGE(mime) };
+  }
+  // Last, because it is the only check that needs the bytes AND an accepted type: a file that
+  // is not an image we support has no frame header to read, and reading one anyway would refuse
+  // files for the wrong reason.
+  const overPixels = checkImagePixelCount(bytes);
+  if (overPixels !== null) {
+    return { ok: false, reason: "failed", message: overPixels };
   }
   return { ok: true, bytes, mime };
 }

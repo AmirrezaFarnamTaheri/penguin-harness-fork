@@ -85,11 +85,20 @@ import {
   storeNavGroupCollapsed,
 } from "../../lib/nav-group-collapse";
 import {
+  addPinnedSessions,
   loadPinnedSessions,
   removePinnedSession,
+  removePinnedSessions,
   savePinnedSessions,
   togglePinnedSession,
 } from "../../lib/pinned-sessions";
+import {
+  EMPTY_SELECTION,
+  pruneSelection,
+  reduceSelection,
+  selectedInOrder,
+} from "../../lib/session-selection";
+import type { SelectionAction, SelectionState } from "../../lib/session-selection";
 import {
   loadWorkspaceRegistry,
   mergeRegisteredWorkspaces,
@@ -120,12 +129,14 @@ import {
 import { Dropdown, menuItemClass } from "../ui/dropdown";
 import { useRowContextMenu } from "../ui/context-menu";
 import {
+  ARCHIVE_ICON,
   HOVER_ROW_ACTIONS,
   PENCIL_ICON,
   PIN_ICON,
   SessionRowHoverActions,
   SessionRowMenuRows,
   TRASH_ICON,
+  UNARCHIVE_ICON,
   contextMenuActions,
   overflowMenuDangerClass,
   overflowMenuGlyph,
@@ -461,6 +472,17 @@ export function Sidebar({
   const [pinnedSessions, setPinnedSessions] = useState<ReadonlySet<string>>(() =>
     loadPinnedSessions(currentProjectId),
   );
+  /**
+   * Multi-selection over the conversation list (lib/session-selection.ts holds the rules).
+   * `selectionMode` is the mode flag rather than `selection.selected.size > 0`: an empty
+   * selection can be reached mid-interaction (Esc on the last marked row, "Select all" on a
+   * list that then re-filters to nothing), and a mode that switches itself off there would
+   * turn the checkboxes off under a user who is still holding one.
+   */
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [selectionMode, setSelectionMode] = useState(false);
+  /** The scroll area, so the selection can ask the DOM which rows are on screen and in what order. */
+  const listRef = useRef<HTMLDivElement | null>(null);
   /** Row sort mode ("recent" default / "manual" drag order; the choice persists across sessions like the grouping mode). */
   const [sortMode, setSortModeState] = useState<SessionSortMode>(initialSessionSortMode);
   /** Manual row order (Session ids; only relative order within a co-rendered partition matters); persisted per Project AND grouping mode — the modes cut different partitions. */
@@ -1042,6 +1064,55 @@ export function Sidebar({
     }
   };
 
+  /**
+   * Batch pin / unpin over the marked rows, one pass and one storage write.
+   *
+   * Ids come from `selectedIds()`, which re-reads the DOM and re-checks membership, so a
+   * batch can never reach a row that has since been filtered, collapsed or paged out — the
+   * mark may be a moment stale, the target never is.
+   */
+  const batchPin = (pin: boolean) => {
+    const ids = selectedIds();
+    if (ids.length === 0) return;
+    const next = pin
+      ? addPinnedSessions(pinnedSessions, ids)
+      : removePinnedSessions(pinnedSessions, ids);
+    if (next === pinnedSessions) return;
+    setPinnedSessions(next);
+    savePinnedSessions(currentProjectId, next);
+  };
+
+  /**
+   * Batch archive / unarchive: the single-row operation fanned out over the marked rows.
+   *
+   * Fanned out, NOT one request carrying an array. The per-id route resolves the row's
+   * owner and requires project access, answering 404 for anything the caller cannot reach;
+   * a batch endpoint would have to re-implement that check per element, and the version
+   * that forgot one element would archive another Project's conversation with a perfectly
+   * valid-looking response. Per-id also means one conversation failing does not roll back
+   * the other thirty-nine — the succeeded ones are replaced in the store as they land.
+   */
+  const batchArchive = async (archived: boolean) => {
+    const ids = selectedIds();
+    if (ids.length === 0) return;
+    // Same courtesy the single-row path extends: the conversation that is open right now
+    // must not silently vanish behind a closed folder with no way back.
+    if (archived && activeSessionId !== null && ids.includes(activeSessionId)) {
+      const open = sessions.find((x) => x.sessionId === activeSessionId);
+      if (open !== undefined) {
+        setOpenFolders((prev) => new Set(prev).add(folderKey(sessionGroupKey(open), "archived")));
+      }
+    }
+    const results = await Promise.allSettled(
+      ids.map((id) => api.patchSession(id, { archived }).then((res) => res.session)),
+    );
+    for (const result of results) if (result.status === "fulfilled") replace(result.value);
+    // A row archived away is no longer in its group's active list, so the mark would be
+    // pruned by the next interaction anyway; clearing now keeps the bar from reporting a
+    // count the user can no longer see, and returns the rows to being links.
+    clearSelection();
+  };
+
   const confirmRename = async () => {
     if (!renamingSession) return;
     const title = renameText.trim();
@@ -1243,6 +1314,97 @@ export function Sidebar({
     [agents],
   );
 
+  /**
+   * The conversation rows on screen, in the order the user reads them.
+   *
+   * Read from the DOM at interaction time rather than collected while rendering, because the
+   * render pass does not visit rows in display order: a group's folder rows are BUILT before
+   * its active list is (`renderFolder` runs while the group's element is still being
+   * assembled, `renderRows` for the active list runs inside the JSX), while the DOM puts the
+   * active list first. A Shift-click spanning that boundary would then have marked a set that
+   * does not match the span the user drew. The DOM is the one place where the order is the
+   * order; a single querySelectorAll per click is far cheaper than a layout read to sort a
+   * collected list, and it cannot drift from what is actually rendered.
+   */
+  const visibleSessionIds = (): readonly string[] => {
+    const list = listRef.current;
+    if (list === null) return [];
+    return [...list.querySelectorAll<HTMLElement>("[data-session-id]")]
+      .map((el) => el.dataset.sessionId ?? "")
+      .filter((id) => id !== "");
+  };
+
+  /** Apply one selection action against the rows currently on screen. */
+  const applySelection = (action: SelectionAction) => {
+    setSelection((prev) => reduceSelection(prev, action, visibleSessionIds()));
+  };
+
+  /** Leave selection mode: the marks and the anchor go, the rows go back to being links. */
+  const clearSelection = () => {
+    setSelection(EMPTY_SELECTION);
+    setSelectionMode(false);
+  };
+
+  /** The marked rows in display order — the only thing a batch action is ever handed. */
+  const selectedIds = (): readonly string[] => selectedInOrder(selection, visibleSessionIds());
+
+  /**
+   * What the marked rows have in common, in ONE pass over the selection: whether any is
+   * pinned, whether any is not, whether any is archived, whether any is not. These are what
+   * the batch bar shows, and asking the question per-flag meant a `sessions.find` per marked
+   * row per flag — four linear scans of the whole list for every marked row, on a component
+   * that re-renders on every stream event. A 100-row selection was 40,000 comparisons to
+   * answer four yes/no questions.
+   */
+  const selectionKinds = useMemo(() => {
+    const archivedIds = new Set(sessions.filter((s) => s.archived).map((s) => s.sessionId));
+    const kinds = { pinned: false, unpinned: false, archived: false, active: false };
+    for (const id of selection.selected) {
+      if (pinnedSessions.has(id)) kinds.pinned = true;
+      else kinds.unpinned = true;
+      if (archivedIds.has(id)) kinds.archived = true;
+      else kinds.active = true;
+    }
+    return kinds;
+  }, [selection.selected, pinnedSessions, sessions]);
+
+  /**
+   * Esc leaves selection mode, but only while the focus is inside the conversation list —
+   * not while a dialog or a menu over it is open, where Esc belongs to that. Scoped to the
+   * list element rather than the document so a keystroke aimed at the composer (which also
+   * answers to Esc) never throws away a selection the user is one row away from finishing.
+   */
+  useEffect(() => {
+    const list = listRef.current;
+    if (list === null || !selectionMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") clearSelection();
+    };
+    list.addEventListener("keydown", onKeyDown);
+    return () => list.removeEventListener("keydown", onKeyDown);
+  }, [selectionMode]);
+
+  /**
+   * Re-prune the selection against the rows on screen, after every commit that could have
+   * changed them.
+   *
+   * The reducer already refuses to ADD an id the user cannot see, and the batch actions
+   * re-intersect at the moment they run — so nothing here is about safety. It is about the
+   * COUNT. Without this, a search query that filters the last marked row away leaves the
+   * bar reading "1 selected" over a list showing none of it, and the user's next click on
+   * Pin reports success having done nothing. A number that cannot be acted on is worse
+   * than no number, because the bar is the only place the count is stated.
+   *
+   * Reading the DOM in an effect rather than during render is deliberate: the rendered set
+   * is only knowable once the commit lands.
+   */
+  useEffect(() => {
+    if (!selectionMode) return;
+    const list = listRef.current;
+    if (list === null) return;
+    setSelection((prev) => pruneSelection(prev, visibleSessionIds()));
+  });
+
   /** Session rows shared by both modes; withAgentHint adds a small Agent avatar per row (workspace mode, where the group no longer names the Agent). */
   const renderRows = (
     rows: SessionInfo[],
@@ -1352,6 +1514,21 @@ export function Sidebar({
             onMessaging={(x) => setMessagingSession(x)}
             onDelete={(x) => setDeletingSession(x)}
             onToggleArchive={(x) => void toggleArchive(x)}
+            // Selection mode: the row stops being a link and becomes a checkbox, and the
+            // modifier-click that enters the mode is what the user's Cmd/Ctrl habit already
+            // does elsewhere (open in a new tab, select text) — no new gesture to learn.
+            selecting={selectionMode}
+            selected={selection.selected.has(s.sessionId)}
+            onSelect={(x, shiftKey) => {
+              setSelectionMode(true);
+              applySelection(
+                shiftKey ? { kind: "range", id: x.sessionId } : { kind: "toggle", id: x.sessionId },
+              );
+            }}
+            onSelectMode={() => {
+              setSelectionMode(true);
+              applySelection({ kind: "only", id: s.sessionId });
+            }}
           />
         );
       })}
@@ -1744,7 +1921,7 @@ export function Sidebar({
           initial containing block instead, rows past the fold would bypass this
           overflow-y-auto and stretch the **document**, so expanding "More" / a source
           folder made the whole page scroll (composer pushed up, blank space below). */}
-      <div className="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {!inCompany ? (
           <ProductNavigation items={navItems} {...(onNavigate ? { onNavigate } : {})} />
         ) : (
@@ -2075,6 +2252,27 @@ export function Sidebar({
                 )}
               </div>
             </div>
+
+            {/* Selection bar: its own row under the section header, so the header's search
+                and list-settings controls stay reachable while a selection is live (a user
+                who starts marking and then wants to narrow the list has to be able to reach
+                the search). The count is the number of rows actually marked AND still on
+                screen — the reducer prunes on every interaction, so this number and the
+                actions below it always describe one and the same set. */}
+            {selectionMode && (
+              <SelectionBar
+                count={selection.selected.size}
+                anyPinned={selectionKinds.pinned}
+                anyUnpinned={selectionKinds.unpinned}
+                anyArchived={selectionKinds.archived}
+                anyActive={selectionKinds.active}
+                onPin={() => batchPin(true)}
+                onUnpin={() => batchPin(false)}
+                onArchive={() => void batchArchive(true)}
+                onUnarchive={() => void batchArchive(false)}
+                onClear={clearSelection}
+              />
+            )}
 
             {/* Parked draft conversations (unsent new chats, newest first): pinned above both
             grouping modes — they belong to no Agent or Workspace until sent. Hidden
@@ -2634,6 +2832,120 @@ function GroupBlock({
 }
 
 /**
+ * The conversation list's batch bar: how many are marked, the four reversible things that
+ * can be done to all of them, and the way out.
+ *
+ * Only the REVERSIBLE operations are here. Delete is not, deliberately: it is the one batch
+ * whose mistake cannot be undone, and a bar that puts it next to "Pin" invites the same
+ * reflex that makes a drag-and-drop archive land on the wrong row. A user who wants four
+ * conversations gone deletes four conversations, each with its own confirmation naming its
+ * own title — the cost is four dialogs, and it buys certainty that the right one went.
+ *
+ * Every control reports what it WOULD do, not what is available: "Unpin" appears whenever
+ * the selection contains a pinned row, and unpinning a mixed selection leaves the already
+ * unpinned ones alone. Greying a control out because "not all of them are pinned" would
+ * make the mixed case — the common one — the one case you cannot do, which is backwards.
+ */
+function SelectionBar({
+  count,
+  anyPinned,
+  anyUnpinned,
+  anyArchived,
+  anyActive,
+  onPin,
+  onUnpin,
+  onArchive,
+  onUnarchive,
+  onClear,
+}: {
+  count: number;
+  anyPinned: boolean;
+  anyUnpinned: boolean;
+  anyArchived: boolean;
+  anyActive: boolean;
+  onPin: () => void;
+  onUnpin: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
+  onClear: () => void;
+}) {
+  // role=status + aria-live: the count changes as rows are marked, and that number IS the
+  // answer to "how many am I about to archive" — a screen reader user has no other way to
+  // hear it, since the checkboxes are aria-hidden inside the row buttons.
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-testid="selection-bar"
+      className="mt-1 flex items-center gap-1 rounded-md bg-gray-100 px-1.5 py-1 dark:bg-gray-800"
+    >
+      <span className="min-w-0 flex-1 truncate px-1 text-xs text-gray-600 dark:text-gray-300">
+        {S.chat.selectedConversations(count)}
+      </span>
+      <BarAction
+        label={S.chat.pinSession}
+        icon={PIN_ICON}
+        onClick={onPin}
+        show={count > 0 && anyUnpinned}
+      />
+      <BarAction
+        label={S.chat.unpinSession}
+        icon={PIN_ICON}
+        onClick={onUnpin}
+        show={count > 0 && anyPinned}
+      />
+      <BarAction
+        label={S.chat.archiveSelected}
+        icon={ARCHIVE_ICON}
+        onClick={onArchive}
+        show={count > 0 && anyActive}
+      />
+      <BarAction
+        label={S.chat.unarchiveSelected}
+        icon={UNARCHIVE_ICON}
+        onClick={onUnarchive}
+        show={count > 0 && anyArchived}
+      />
+      <button
+        type="button"
+        title={S.chat.cancelSelection}
+        aria-label={S.chat.cancelSelection}
+        onClick={onClear}
+        className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+      >
+        <Icon d={CLOSE_ICON} size={11} />
+      </button>
+    </div>
+  );
+}
+
+/** One batch-bar control: a glyph with its tooltip, the same hover treatment the header's icon controls use. Hidden entirely when it has nothing to act on. */
+function BarAction({
+  label,
+  icon,
+  onClick,
+  show,
+}: {
+  label: string;
+  icon: string;
+  onClick: () => void;
+  show: boolean;
+}) {
+  if (!show) return null;
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+    >
+      <Icon d={icon} size={ICON_SIZE.iconButton} />
+    </button>
+  );
+}
+
+/**
  * Group-header pin toggle, shared by both grouping modes: revealed on header hover (or
  * keyboard focus) while unpinned; once pinned it stays visible, doubling as the subtle
  * pinned indicator. The header row carries the `group/header` scope so the reveal only
@@ -2705,6 +3017,10 @@ function SessionRow({
   onMessaging,
   onDelete,
   onToggleArchive,
+  selecting = false,
+  selected = false,
+  onSelect,
+  onSelectMode,
 }: {
   s: SessionInfo;
   active: boolean;
@@ -2737,12 +3053,24 @@ function SessionRow({
   onMessaging: (s: SessionInfo) => void;
   onDelete: (s: SessionInfo) => void;
   onToggleArchive: (s: SessionInfo) => void;
+  /** Selection mode is on: the row's primary action marks it instead of opening it. */
+  selecting?: boolean;
+  /** This row is currently marked. */
+  selected?: boolean;
+  /** Mark / unmark the row; the second argument is the Shift key, which extends a range. */
+  onSelect?: (s: SessionInfo, shiftKey: boolean) => void;
+  /** Enter selection mode with only this row marked (the row menu's "Select"). */
+  onSelectMode?: () => void;
 }) {
   const ctx = useRowContextMenu();
   /** Run one action on this Session, closing the context menu first if it was open. */
   const run = (action: SessionRowAction) => {
     ctx.close();
     const handler: Record<SessionRowAction, (x: SessionInfo) => void> = {
+      // "Select" acts on the LIST, not on this row's Session, so it is the one entry whose
+      // handler ignores its argument — it marks this row and puts the list into selection
+      // mode, which is what the menu said it would do.
+      select: () => onSelectMode?.(),
       pin: onTogglePin,
       rename: onRename,
       // The copy affordance's feedback normally rides on the button itself (copy-button.tsx),
@@ -2809,12 +3137,41 @@ function SessionRow({
           data-session-id={s.sessionId}
           // A press-and-hold that opened the context menu must not also open the Session:
           // touch screens replay the held press as a click once the finger lifts.
-          onClick={() => {
+          onClick={(e) => {
             if (ctx.consumeLongPressClick()) return;
+            // Selection mode takes the click: the row marks instead of opening, so a
+            // multi-select never navigates away halfway through. Cmd/Ctrl-click does the
+            // same from outside the mode, which is where the habit already lives.
+            if (onSelect !== undefined && (selecting || e.metaKey || e.ctrlKey)) {
+              onSelect(s, e.shiftKey);
+              return;
+            }
             onOpen(s);
           }}
+          // In selection mode the row IS the checkbox: one button, toggled, named by its
+          // title. aria-pressed rather than role=checkbox, because a checkbox promises
+          // Space to toggle and this button's Space is the app's global "send message".
+          {...(selecting ? { "aria-pressed": selected } : {})}
           className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left"
         >
+          {/* Selection mode puts a real checkbox in front of the title rather than tinting
+              the row: a tint is invisible to a screen reader and unlabelled for everyone
+              else, while a checkbox is what a user is about to press Space on. It is
+              aria-hidden because the row button below already names the row and carries
+              aria-pressed for the marked state — two controls for one row would be one too
+              many in the tab order. */}
+          {selecting && (
+            <span
+              aria-hidden
+              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
+                selected
+                  ? "border-accent bg-[var(--accent-bg)] text-white"
+                  : "border-gray-300 dark:border-gray-600"
+              }`}
+            >
+              {selected && <CheckIcon className="h-2.5 w-2.5" />}
+            </span>
+          )}
           {agentHint !== undefined && (
             <span title={agentHint} className="flex shrink-0 items-center">
               <AgentAvatar id={s.agentId} name={agentHint} size={14} className="rounded" />
@@ -2896,15 +3253,19 @@ function SessionRow({
             group precedes the time span so the peer combinator can reach it). */}
         <div className="relative flex h-6 min-w-12 shrink-0 items-center justify-end">
           {/* No hover pill on these (a fill as wide as the date read ugly); feedback is
-              the glyph color deepening — red for delete. */}
+              the glyph color deepening — red for delete. The whole slot empties in selection
+              mode: a per-row archive that bypasses the batch bar and the count in it would
+              be two ways to archive, one of which the user cannot see. */}
           <div className="peer absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
-            <SessionRowHoverActions
-              actions={HOVER_ROW_ACTIONS}
-              state={rowState}
-              moreOpen={ctx.open}
-              onRun={run}
-              onMore={ctx.openAt}
-            />
+            {selecting ? null : (
+              <SessionRowHoverActions
+                actions={HOVER_ROW_ACTIONS}
+                state={rowState}
+                moreOpen={ctx.open}
+                onRun={run}
+                onMore={ctx.openAt}
+              />
+            )}
           </div>
           {lastActive !== "" && (
             <span

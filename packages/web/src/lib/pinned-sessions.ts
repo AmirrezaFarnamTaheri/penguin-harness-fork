@@ -85,3 +85,37 @@ export function removePinnedSession(
   next.delete(sessionId);
   return next;
 }
+
+/**
+ * Batch pin: add every id in one pass and return the INPUT set unchanged (same
+ * reference) when there was nothing to add. The sidebar's batch bar pins a whole
+ * selection at once; doing it id-by-id would write localStorage once per conversation
+ * and hand React a new set per conversation, and a 40-row selection would re-render
+ * the list 40 times to end up where one pass lands.
+ *
+ * The order ids are added in is the order they are given, so a pin set written by a
+ * batch keeps the same order a user clicking them one at a time would have produced.
+ */
+export function addPinnedSessions(
+  pinned: ReadonlySet<string>,
+  sessionIds: Iterable<string>,
+): ReadonlySet<string> {
+  const next = new Set(pinned);
+  for (const id of sessionIds) next.add(id);
+  return next.size === pinned.size ? pinned : next;
+}
+
+/**
+ * Batch unpin: the mirror of addPinnedSessions over a selection, same single-pass and
+ * same-reference-on-no-change contract. Only ever called with ids that are actually
+ * pinned, so "nothing removed" means the selection held no pins — the batch bar greys
+ * the control out in that case rather than firing a no-op.
+ */
+export function removePinnedSessions(
+  pinned: ReadonlySet<string>,
+  sessionIds: Iterable<string>,
+): ReadonlySet<string> {
+  const next = new Set(pinned);
+  for (const id of sessionIds) next.delete(id);
+  return next.size === pinned.size ? pinned : next;
+}

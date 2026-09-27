@@ -460,6 +460,8 @@ export interface HookPayload {
   hook: "stop" | "pre_tool_use";
   name: string;
   decision?: HookDecision;
+  /** The call this hook answered (pre_tool_use only): lets a reader bind the record to the tool card it describes instead of leaving it floating in the stream. */
+  toolCallId?: string;
   /** One line for people, as the hook wrote it. */
   reason?: string;
   output?: Record<string, string | number | boolean>;

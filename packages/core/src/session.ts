@@ -20,11 +20,12 @@
 import {
   abortEvent,
   buildBackgroundTaskDoneMessage,
+  hookEvent,
   mcpConnectEnd,
   sessionMeta,
   userText,
 } from "./omnimessage/index.js";
-import type { OmniMessage, SessionMetaPayload } from "./omnimessage/index.js";
+import type { HookPayload, OmniMessage, SessionMetaPayload } from "./omnimessage/index.js";
 import { imagesToScratchpadPaths } from "./internal/session-support.js";
 import { runStopHooks } from "./hooks/stop-hook.js";
 import type { HookSubagentSpawner, SessionHooks, StopHook } from "./hooks/stop-hook.js";
@@ -130,6 +131,12 @@ export interface SessionConfig {
    * hook's `subagent` answer (see hooks/stop-hook.ts). Absent = none.
    */
   hooks?: SessionHooks;
+  /**
+   * Optional event-only pre-tool-use advisor. Its result is recorded for observability;
+   * it cannot allow or deny a call and therefore cannot replace deterministic policy or
+   * the human approval callback.
+   */
+  advisoryPreToolUse?: PreToolUseHook;
   /**
    * Project sandbox command policy (`[command_policy]` of `.project_config.toml`), as a
    * SOURCE answering with the running context's policy: command policy is strict-tier —
@@ -239,6 +246,19 @@ function appendTitleText(
   return base ? `${base}\n${p.text}` : p.text;
 }
 
+/** Keep a buggy host advisor from writing a decision-shaped audit event. */
+function advisoryEventWithoutDecision(event: OmniMessage): OmniMessage {
+  const payload = event.payload as Partial<HookPayload>;
+  if (payload.type !== "hook") return event;
+  return hookEvent({
+    hook: "pre_tool_use",
+    name: payload.name ?? "jev_advisory",
+    // The call link survives sanitization: dropping it would leave the observation unbound.
+    ...(payload.toolCallId !== undefined ? { toolCallId: payload.toolCallId } : {}),
+    ...(payload.output !== undefined ? { output: payload.output } : {}),
+  });
+}
+
 export class Session {
   readonly sessionId: string;
   /** The session model's provider group (paired with `modelId` to form the model reference). */
@@ -285,6 +305,8 @@ export class Session {
   /** Stop hooks every `run` of this Session consults, and the spawner for their subagent answers (see SessionConfig.hooks). */
   private readonly stopHooks: readonly StopHook[];
   private readonly preToolUseHooks: readonly PreToolUseHook[];
+  /** Event-only advisor consulted after ordinary hooks leave a call undecided. */
+  private readonly advisoryPreToolUse: PreToolUseHook | undefined;
   private readonly userPromptHooks: readonly UserPromptHook[];
   private readonly spawnSubagent?: HookSubagentSpawner;
   private readonly commandPolicy?: CommandPolicySource;
@@ -336,6 +358,7 @@ export class Session {
     this.modelHasVision = config.modelHasVision;
     this.stopHooks = config.hooks?.stop ?? [];
     this.preToolUseHooks = config.hooks?.preToolUse ?? [];
+    this.advisoryPreToolUse = config.advisoryPreToolUse;
     this.userPromptHooks = config.hooks?.userPrompt ?? [];
     if (config.hooks?.spawnSubagent) this.spawnSubagent = config.hooks.spawnSubagent;
     if (config.commandPolicy) this.commandPolicy = config.commandPolicy;
@@ -454,29 +477,57 @@ export class Session {
     // a hook `allow` never overrides the policy — hook packages sit in agent-writable
     // state, the policy is Project-owned security config — so a policy-vetoed allow is
     // downgraded to no decision and the approval chain (policy outermost) answers.
-    if (this.preToolUseHooks.length > 0) {
+    if (this.preToolUseHooks.length > 0 || this.advisoryPreToolUse !== undefined) {
       const hooks = this.preToolUseHooks;
+      const advisoryHook = this.advisoryPreToolUse;
       const signal = opts?.signal;
       opts = {
         ...opts,
         preToolUse: async (tc) => {
           const p = tc.payload;
           const tracePath = this.trace?.currentPath?.();
-          const outcome = await runPreToolUseHooks(hooks, {
+          const permission = this.environment.toolPermission(p.name, p.arguments);
+          const input = {
             sessionId: this.sessionId,
             ...(tracePath !== undefined ? { tracePath } : {}),
             toolName: p.name,
             toolCallId: p.tool_call_id,
             argumentsJson: p.arguments,
+            ...(permission !== undefined ? { permission } : {}),
             ...(signal ? { signal } : {}),
-          });
-          if (
-            outcome.decision === "allow" &&
-            vetoForToolCall(p.name, p.arguments, this.commandPolicy?.()) !== null
-          ) {
+          };
+          const outcome = await runPreToolUseHooks(hooks, input);
+          // The project command policy is the outer boundary. Preserve the original
+          // downgrade rule first: an agent-writable hook may never turn a policy-vetoed
+          // allow into an authorization. A policy-vetoed call also never needs an advisory
+          // request.
+          const veto = vetoForToolCall(p.name, p.arguments, this.commandPolicy?.());
+          if (outcome.decision === "allow" && veto !== null) {
+            this.advisoryPreToolUse?.recordSkipped?.("policy");
             return { ...outcome, decision: null };
           }
-          return outcome;
+          if (outcome.decision !== null) {
+            // Something already decided this call. The advisor must not be consulted, and the
+            // count says so — a dashboard that cannot distinguish "decided before" from
+            // "skipped by policy" is a dashboard nobody trusts.
+            this.advisoryPreToolUse?.recordSkipped?.("decided");
+            return outcome;
+          }
+          if (advisoryHook === undefined) {
+            this.advisoryPreToolUse?.recordSkipped?.("disabled");
+            return outcome;
+          }
+          if (veto !== null) {
+            this.advisoryPreToolUse?.recordSkipped?.("policy");
+            return outcome;
+          }
+          const advisory = await runPreToolUseHooks([advisoryHook], input);
+          return {
+            events: [...outcome.events, ...advisory.events.map(advisoryEventWithoutDecision)],
+            // Deliberately discard any decision/name/reason an advisor might return:
+            // this seam is observability-only and cannot authorize or deny a call.
+            decision: null,
+          };
         },
       };
     }

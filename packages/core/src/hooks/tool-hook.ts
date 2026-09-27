@@ -18,7 +18,7 @@
  * directly. Docs: /docs/agent-loop § "Hooks".
  */
 import { hookEvent } from "../omnimessage/index.js";
-import type { PreToolUseOutcome } from "../interfaces/index.js";
+import type { PreToolUseOutcome, ToolPermission } from "../interfaces/index.js";
 import { failedAnswer } from "./answer.js";
 
 /** What a pre-tool-use hook is told: the call under decision, and where the Session's record is. */
@@ -30,6 +30,8 @@ export interface PreToolUseHookInput {
   toolCallId: string;
   /** The call's raw argument JSON, as the model wrote it. */
   argumentsJson: string;
+  /** Deterministic permission resolved by the running Environment, when known. */
+  permission?: ToolPermission;
   signal?: AbortSignal;
 }
 
@@ -47,6 +49,13 @@ export interface PreToolUseHookResult {
 export interface PreToolUseHook {
   name: string;
   run(input: PreToolUseHookInput): Promise<PreToolUseHookResult | void>;
+  /**
+   * Optional observability: this hook was NOT run, and here is why. The seam above knows the
+   * reason — a call was already decided, the command policy vetoed it, or no advisor is composed
+   * — and a hook that keeps counters needs to be told, because it is never invoked. Optional
+   * because every other hook legitimately has nothing to count.
+   */
+  recordSkipped?(reason: "disabled" | "decided" | "policy"): void;
 }
 
 /**
@@ -76,6 +85,10 @@ export async function runPreToolUseHooks(
       hookEvent({
         hook: "pre_tool_use",
         name: hook.name,
+        // Stamped on every pre-tool-use record, not just the advisory: a hook's observation is
+        // about one call, and a reader (the Web App binds it to that call's tool card) needs the
+        // link even when no decision was reached.
+        toolCallId: input.toolCallId,
         ...(result.decision !== undefined ? { decision: result.decision } : {}),
         ...(result.reason !== undefined ? { reason: result.reason } : {}),
         ...(result.output !== undefined ? { output: result.output } : {}),

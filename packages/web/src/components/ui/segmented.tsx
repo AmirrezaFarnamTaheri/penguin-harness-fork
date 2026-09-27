@@ -20,6 +20,11 @@ export function Segmented<T extends string>({
         <button
           key={opt.value}
           type="button"
+          // The selected option is otherwise conveyed by background colour alone, which a screen
+          // reader never sees. aria-pressed states the same fact in the accessibility tree, and
+          // it is the right role here: this is a small set of mutually exclusive toggles (a view
+          // filter, a theme, a language) rather than a tab widget over document panels.
+          aria-pressed={value === opt.value}
           onClick={() => onChange(opt.value)}
           className={`rounded px-1 py-1 text-xs transition-colors duration-150 ${
             value === opt.value

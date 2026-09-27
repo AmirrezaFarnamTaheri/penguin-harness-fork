@@ -62,6 +62,10 @@
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js"
     },
+    "./jev": {
+      "types": "./dist/jev/index.d.ts",
+      "import": "./dist/jev/index.js"
+    },
     "./paths": {
       "types": "./dist/state/paths.d.ts",
       "import": "./dist/state/paths.js"
@@ -101,6 +105,7 @@
     "@penguinharness/use-firecrawl": "workspace:*",
     "@penguinharness/use-spexcode": "workspace:*",
     "@prismshadow/agenthub": "^0.4.12",
+    "@typesafe-ai/sdk": "0.6.0",
     "ajv": "8.20.0",
     "arktype": "^2.2.3",
     "smol-toml": "^1.8.0",

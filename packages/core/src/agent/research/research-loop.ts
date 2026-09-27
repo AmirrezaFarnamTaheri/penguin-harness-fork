@@ -344,8 +344,24 @@ export class ResearchLoop {
     const bySource = new Map<string, SourceRecord>(
       this.sources.map((source) => [source.hit.id, source]),
     );
+    // Reserve BEFORE the work, not after. The budget charged on completion, so a run with two
+    // verifications in flight was admitted twice and only discovered the overrun once the first
+    // reported -- the same hole a spend ceiling has, in token clothing.
+    const planned = this.claims.slice(0, this.budget.maxVerifications);
+    // The work's own size, measured the way it will be charged -- not a guessed per-claim rate.
+    const reserved = this.budget.estimate(planned.map((claim) => claim.text).join(" "));
+    if (!this.budget.reserve(reserved)) {
+      // Declining is the point: the run reports what it could not afford rather than starting
+      // work it has already promised it cannot pay for.
+      this.emit(
+        "verifying",
+        `budget exhausted: ${reserved} tokens needed, ${this.budget.remainingTokens} left`,
+      );
+      this.budget.charge("verifying", { verifications: 0 });
+      return;
+    }
     const { results, summary } = this.verifier.verifyBatch(
-      this.claims.slice(0, this.budget.maxVerifications),
+      planned,
       (claim) => {
         const record = this.claimToSource.get(claim.id);
         if (!record) return undefined;
@@ -355,6 +371,9 @@ export class ResearchLoop {
     );
     this.verification = results;
     this.budget.charge("verifying", { verifications: results.length });
+    // The reservation is spent; releasing it without a charge would understate the run, so it is
+    // settled and the charge above already recorded the real count.
+    this.budget.settleReservation(reserved, {});
     this.emit("verifying", `${summary.supported} supported / ${summary.contradicted} contradicted`);
 
     // Feedback: refuted hypotheses narrow the next expansion round.

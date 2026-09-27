@@ -185,6 +185,15 @@ function refKey(provider: string, modelId: string): string {
   return `${provider}\0${modelId}`;
 }
 
+/** Session ids per grouped query. Comfortably under SQLite's bound-parameter ceiling. */
+const USAGE_ID_CHUNK = 500;
+
+function chunked<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 export class UsageService {
   constructor(
     private readonly usage: UsageRepo,
@@ -208,6 +217,82 @@ export class UsageService {
       peakDays: schedule.peakDays,
       peakHours: schedule.peakHours,
     }));
+  }
+
+  /** Per-session token totals and current cost, for read-only evidence projections. */
+  async usageForSessions(
+    projectId: string,
+    sessionIds: readonly string[],
+  ): Promise<
+    Map<
+      string,
+      {
+        inputTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        costUsd: number | null;
+        uncosted: boolean;
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        inputTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+        outputTokens: number;
+        totalTokens: number;
+        costUsd: number | null;
+        uncosted: boolean;
+      }
+    >();
+    if (sessionIds.length === 0) return result;
+    // Chunked because SQLite caps bound parameters per statement (~32 766 here) and a scoreboard
+    // is model-written: one unchunked IN list turned a runaway evaluation into a 500 instead of
+    // an answer. Merged back into the same map, so the caller cannot tell it was chunked.
+    const rates = new Map<string, TieredRates | undefined>();
+    for (const chunk of chunked(sessionIds, USAGE_ID_CHUNK)) {
+      const rows = this.usage.groupsByModel(
+        projectId,
+        "session",
+        { sessionIds: chunk },
+        this.tiers(),
+      );
+      for (const row of rows) {
+        const key = refKey(row.provider, row.modelId);
+        if (!rates.has(key)) {
+          rates.set(key, await this.lookupPricing(projectId, row.provider, row.modelId));
+        }
+        const current = result.get(row.key) ?? {
+          inputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          costUsd: 0,
+          uncosted: false,
+        };
+        current.inputTokens += row.cacheRead + row.cacheWrite;
+        current.cacheReadTokens += row.cacheRead;
+        current.cacheWriteTokens += row.cacheWrite;
+        current.outputTokens += row.output;
+        current.totalTokens += row.total;
+        const rate = rates.get(key);
+        if (rate === undefined) {
+          current.uncosted = true;
+        } else {
+          current.costUsd = (current.costUsd ?? 0) + costOf(row, rate);
+        }
+        result.set(row.key, current);
+      }
+    }
+    // No post-pass: a session with an unpriced model alongside a priced one keeps the part it can
+    // be held to and is flagged `uncosted`, which is exactly how foldBucket/foldGroups report the
+    // same situation. Nulling a genuine 0 here made "cost nothing" read as "cost unknown".
+    return result;
   }
 
   /**

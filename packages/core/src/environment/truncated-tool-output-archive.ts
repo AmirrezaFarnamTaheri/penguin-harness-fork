@@ -17,6 +17,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { redactCredentials } from "../internal/credential-redactor.js";
 import { READ_FILE_SCAN_CAP_BYTES } from "./tools/read-file.js";
 
 /**
@@ -108,6 +109,24 @@ function utf8Suffix(text: string, maxBytes: number): Buffer {
     start -= 1;
   }
   return utf8BufferSuffix(Buffer.from(text.slice(start), "utf8"), maxBytes);
+}
+
+/**
+ * Redact only at the archive boundary, after the capture has bounded its memory and disk
+ * window. A recognized credential shape is replaced before the file is persisted; if the
+ * replacement makes the text exceed the cap, the same UTF-8-safe head/tail bound is restored.
+ */
+function redactArchive(data: Buffer, fileLimitBytes: number): Buffer {
+  const redacted = Buffer.from(redactCredentials(data.toString("utf8")), "utf8");
+  if (redacted.length <= fileLimitBytes) return redacted;
+  const contentBudget = Math.max(0, fileLimitBytes - ARCHIVE_GAP_MARKER_BYTES);
+  const headBudget = Math.floor(contentBudget / 2);
+  const tailBudget = contentBudget - headBudget;
+  return Buffer.concat([
+    utf8BufferPrefix(redacted, headBudget),
+    Buffer.from(ARCHIVE_GAP_MARKER, "utf8"),
+    utf8BufferSuffix(redacted, tailBudget),
+  ]);
 }
 
 /**
@@ -352,7 +371,10 @@ export class TruncatedToolOutputArchive {
       // archive's private directory mode only to the archive directory itself.
       await mkdir(path.dirname(this.rootDir), { recursive: true });
       await mkdir(this.rootDir, { recursive: true, mode: 0o700 });
-      await writeFile(filePath, data, { flag: "wx", mode: 0o600 });
+      await writeFile(filePath, redactArchive(data, this.fileLimitBytes), {
+        flag: "wx",
+        mode: 0o600,
+      });
       return {
         status: "saved",
         path: filePath,

@@ -20,7 +20,10 @@ CLI 与服务端启动时会自动加载工作目录下的 `.env` 文件。
 | `PENGUIN_TRUST_PROXY` | 设为 `1` 信任 `x-forwarded-proto` 请求头——在终结 TLS 的反向代理（且由代理自行设置/清除该头）之后设置，使会话 Cookie 带 `Secure` 标记、热更新网络门禁识别 HTTPS | 未设置，忽略该请求头 |
 | `PENGUIN_SEED_ADMIN_PASSWORD` | 固定内置管理员的种子初始密码（自动化测试 / e2e 使用） | 未设置，种子时随机生成一个密码，哈希后即丢弃、无人见过；账号通过首次登录链接认领 |
 | `PENGUIN_LANG` | CLI 语言（`en` / `zh`），用 `penguin config lang` 设置 | `en` |
-| `PENGUIN_UPDATE_CHECK` | 设为 `off` 关闭 Web 应用的新版本检查（服务端唯一的对外网络请求） | 开启 |
+| `PENGUIN_UPDATE_CHECK` | 设为 `off` 关闭 Web 应用的新版本检查（服务端常规的对外网络请求；可选 Jev 顾问有独立开关） | 开启 |
+| `PENGUIN_JEV_API_KEY` | 显式启用服务端持有的 TypeSafe Jev 顾问；未设置时保持原有工具路径。顾问默认只发送有界的工具元数据，绝不改变授权决定 | 未设置，关闭 |
+| `PENGUIN_JEV_MODEL` | 服务端持有的 Jev 顾问可选模型 id | `jev-latest` | 计数器、排查表以及什么会跨越提供方边界，参见[运行 Jev 顾问](jev-advisor)。
+| `PENGUIN_JEV_BASE_URL` | 可选端点覆盖，用于本机上的决策模型服务。仅当主机为回环地址时接受 `http`；明文远端端点会以一行日志停用顾问 | 未设置——使用托管 API |
 | `PENGUIN_NO_LOGIN_SHELL_ENV` | 任意非空值可禁止桌面版在 macOS/Linux 图形界面启动时导入登录 shell 环境变量（见[桌面版速上手](/quickstart-desktop)） | 未设置，导入开启，且只补启动环境中缺失的变量 |
 | `PENGUIN_CLI_ENTRY` | 本安装提供给其所运行 Agent 的 CLI 入口脚本（见下文） | 由 `penguin server` / `penguin web` 与桌面版自动设置；若服务端从仓库检出启动，则回退到该检出的 `packages/cli/dist/penguin.js` |
 
@@ -181,6 +184,24 @@ enabled = false
 | `tools.toolExposureThresholdTokens` | `2048` | `auto` 启用固定网关的初始 MCP Schema 估算阈值；设为 `0` 时始终启用网关 |
 
 工具权限与审批语义见[工具与审批](/tools)。
+
+### 可选的 Jev 顾问（由宿主组合）
+
+可选的 TypeSafe AI Jev 适配器刻意**不是** Agent 配置开关。Agent 可以编辑自己的 `system_config.yaml`；把端点或凭证放在那里会让它能够把宿主持有的密钥转发到别处。只有部署显式设置 `PENGUIN_JEV_API_KEY` 时服务端才启用顾问；SDK/嵌入式宿主则通过 `createAgent({ jevAdvisor })` 传入 `JevToolAdvisor`。该顾问由 Agent 的各个 Session 与子 Agent 共享，端点、凭证、重试预算和熔断状态都由宿主掌握。
+
+启用后，每个到达未决顾问入口的拟执行工具调用会以有界元数据发送给 Jev，返回的 `choice` / `score` / `noul` 观察结果记录为 pre-tool-use Trace 事件。已经被普通 hook 决定或被项目命令策略否决的调用会跳过顾问。默认状态只包含工具名、确定性权限、参数键名/类型和 JSON 有效性。参数值只有在宿主显式选择时才会越过服务商边界；可识别的凭证形态会被清理，但内置清理器无法证明不透明值安全，因此这应被视为一次明确的数据出境决定。调用有严格的顾问截止时间，会随 Session 取消，失败时回到普通工具路径。**Jev 永不授予、拒绝或替代审批**：项目命令策略、Environment 权限和人工审批回调仍然具有权威性。不提供顾问时不会安装 hook，也不会产生事件。
+
+最小 SDK 组合如下：
+
+```ts
+import { createAgent } from "@prismshadow/penguin-core";
+import { createJevAdvisor } from "@prismshadow/penguin-core/jev";
+
+const advisor = createJevAdvisor({ apiKey: process.env.TYPESAFE_API_KEY! });
+const agent = await createAgent({ jevAdvisor: advisor });
+```
+
+服务端的 `PENGUIN_JEV_MODEL` 只改变宿主选择的模型；未设置时使用 `jev-latest`。Jev 是可观测性辅助，不是安全边界、路由预言机，也不替代现有工具网关。
 
 局部调整示例（在初始化生成的文件基础上修改）。注意本文件**不与默认值做 deep merge**：写出的字段整体生效，省略的字段才在使用处回退表中缺省值；`system_prompt` 是必填字段（缺失会拒绝加载），编辑其他字段时应保留初始化写入的完整模板：
 

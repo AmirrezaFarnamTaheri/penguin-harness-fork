@@ -91,9 +91,53 @@ describe("headerSubtitle", () => {
     ).toBe("Follow up");
   });
 
-  it("is null when the description is absent or empty (call_description off = the model never sends it)", () => {
-    expect(headerSubtitle("exec_command", '{"cmd":"ls"}')).toBeNull();
-    expect(headerSubtitle("exec_command", '{"cmd":"ls","description":""}')).toBeNull();
+  it("shows what a web search was for, and the query when it has no narration", () => {
+    // web_search's schema marks `description` REQUIRED and says in its own parameter text that it
+    // "is shown to the user while the call runs". The card did not list it, so the model was
+    // obliged to write a sentence that was thrown away — and a search has no path argument
+    // either, leaving the row a bare `web_search` with neither the narration nor the query.
+    expect(
+      headerSubtitle(
+        "web_search",
+        '{"description":"checking the release schedule","query":"node release"}',
+      ),
+    ).toBe("checking the release schedule");
+    // No description at all: the query is what the call actually DID, so the row still says it.
+    expect(headerSubtitle("web_search", '{"query":"node release schedule"}')).toBe(
+      "node release schedule",
+    );
+  });
+
+  it("falls back to the command that ran when a described tool sends no narration", () => {
+    // A blank row tells the reader nothing about what their agent just did.
+    expect(headerSubtitle("exec_command", '{"cmd":"pnpm test --filter core"}')).toBe(
+      "pnpm test --filter core",
+    );
+    // The narration still wins when both are present — it is the model's account of the call.
+    expect(headerSubtitle("exec_command", '{"cmd":"ls","description":"listing the root"}')).toBe(
+      "listing the root",
+    );
+  });
+
+  it("holds a row's subtitle back while its narration is still streaming", () => {
+    // Partial JSON must not flash half a sentence.
+    expect(headerSubtitle("web_search", '{"description":"checking the', false)).toBeNull();
+  });
+
+  it("falls back to the real command rather than showing a blank row (approval path is separate)", () => {
+    // This used to assert null, on the reasoning that a tool whose schema does not ask for a
+    // description has nothing to narrate. It does: the command is the call. A collapsed row
+    // reading only "exec_command" tells the reader nothing about what their agent just ran.
+    //
+    // Deliberately `headerSubtitle` — the COLLAPSED row — and not `previewArguments`, the
+    // approval row. Approval fidelity is a safety property and is unchanged: the approver always
+    // sees the real command, never the model's account of it.
+    expect(headerSubtitle("exec_command", '{"cmd":"ls"}')).toBe("ls");
+    // An empty description falls through to the same thing, rather than rendering nothing.
+    expect(headerSubtitle("exec_command", '{"cmd":"ls","description":""}')).toBe("ls");
+    // A tool with neither a narration nor a semantic target still has nothing to say, which is
+    // the honest outcome and is why the fallback is a per-tool table rather than a generic one.
+    expect(headerSubtitle("input_subagent", '{"subagent_id":"s-1"}')).toBeNull();
   });
 
   it("shows the shortened file path for the file tools and nothing for others", () => {

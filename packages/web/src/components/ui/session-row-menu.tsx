@@ -37,6 +37,10 @@ export const UNARCHIVE_ICON =
   "M3 8h18M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M4 8l1.5-3h13L20 8M12 17v-5m-2.5 2L12 11l2.5 3";
 export const TRASH_ICON =
   "M4 6h16M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M6 6v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6M10 10.5v6M14 10.5v6";
+
+/** Checked box (lucide square-check): the context menu's "Select", matching the mark a marked row draws. */
+export const CHECK_SQUARE_ICON =
+  "M9 11.5 11 13.5 15.5 9M4.5 5.5A1 1 0 0 1 5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13z";
 /**
  * Three-dot ellipsis, drawn as FILLED circles: the hover "more" button. Hairline-stroke
  * dots vanish at row-glyph size, so this mark renders through GlyphIcon's `filled` mode —
@@ -62,7 +66,8 @@ export const overflowMenuGlyph = (d: string) => (
 );
 
 /** One thing a Session row can do to its Session. */
-export type SessionRowAction = "pin" | "rename" | "copy" | "messaging" | "archive" | "delete";
+export type SessionRowAction =
+  "select" | "pin" | "rename" | "copy" | "messaging" | "archive" | "delete";
 
 /** Row state the labels and glyphs read (both of the toggles flip on it). */
 export interface SessionRowState {
@@ -84,11 +89,17 @@ export const HOVER_ROW_ACTIONS: readonly SessionRowAction[] = ["archive"];
  * the Session to the one that ends it: pin, rename and the messaging binding first, then
  * archive, then copying the id — the one row that changes nothing, kept between archive
  * and delete — and delete last.
+ *
+ * "select" leads, because it is the only entry that reaches the whole LIST rather than
+ * this one row, and a reader scanning the menu top-down should meet that before the
+ * per-row verbs. It is also the only keyboard route into selection mode: Cmd/Ctrl-click
+ * needs a pointer and Shift+F10 is the sole way to this menu, so without this entry the
+ * feature would be unusable without a mouse.
  */
 export function contextMenuActions(canPin: boolean): readonly SessionRowAction[] {
   return canPin
-    ? ["pin", "rename", "messaging", "archive", "copy", "delete"]
-    : ["rename", "messaging", "archive", "copy", "delete"];
+    ? ["select", "pin", "rename", "messaging", "archive", "copy", "delete"]
+    : ["select", "rename", "messaging", "archive", "copy", "delete"];
 }
 
 export interface SessionRowMenuItem {
@@ -105,6 +116,9 @@ export function sessionRowMenuItem(
   state: SessionRowState,
 ): SessionRowMenuItem {
   switch (action) {
+    case "select":
+      // A checkbox in a square, the mark the row itself draws when the row is marked.
+      return { label: S.chat.selectConversations, icon: CHECK_SQUARE_ICON, danger: false };
     case "pin":
       return {
         label: state.pinned ? S.chat.unpinSession : S.chat.pinSession,

@@ -90,6 +90,15 @@ export class ResearchBudget {
   private startedAt: number;
   private retries = 0;
   private readonly phases = new Map<ResearchPhase, PhaseSpend>();
+  /**
+   * Tokens reserved by work that has been admitted but has not reported yet.
+   *
+   * The ledger charges AFTER the fact, which is the same hole a naive spend ceiling has: a phase
+   * costs nothing until it finishes, so with two verifications in flight the budget admits both
+   * and then discovers it has overrun. Reserving at admission is what makes `remainingTokens`
+   * mean "what may I still afford" rather than "what have I already paid for".
+   */
+  private reservedTokens = 0;
 
   readonly maxPapers: number;
   readonly maxTokens: number;
@@ -186,7 +195,74 @@ export class ResearchBudget {
   }
 
   get remainingTokens(): number {
-    return Math.max(0, this.maxTokens - this.tokens);
+    // Reserved tokens count against what is left: they are committed, just not yet measured.
+    return Math.max(0, this.maxTokens - this.tokens - this.reservedTokens);
+  }
+
+  /** Tokens admitted but not yet reported. */
+  get reservedTokenCount(): number {
+    return this.reservedTokens;
+  }
+
+  /** Tokens charged so far, excluding anything still reserved. */
+  get tokensSpent(): number {
+    return this.tokens;
+  }
+
+  /**
+   * Reserves an estimate for work about to start, so a second concurrent call sees the first
+   * one's cost. Returns false — and reserves nothing — when the estimate does not fit, which is
+   * the caller's signal to decline the work rather than start it and overrun.
+   */
+  reserve(estimateTokens: number): boolean {
+    if (!Number.isFinite(estimateTokens) || estimateTokens < 0) return false;
+    if (this.tokens + this.reservedTokens + estimateTokens > this.maxTokens) return false;
+    this.reservedTokens += estimateTokens;
+    return true;
+  }
+
+  /**
+   * What a piece of text is expected to cost, measured with the SAME estimator `charge` uses.
+   *
+   * A reservation is only meaningful if it is the figure the work will actually be charged at.
+   * An invented per-unit constant is not: it is wrong by an order of magnitude on a small budget
+   * and refuses real work the ledger could easily have paid for. The caller knows what it is
+   * about to process, so it measures that.
+   */
+  estimate(text: string): number {
+    return Math.max(1, this.estimateTokens(text));
+  }
+
+  /**
+   * Converts a reservation into real spend. A reservation may be settled at most once: a phase
+   * that reports twice (a replayed event, a retry double-counting itself) must not inflate the
+   * books, and must not leave the reservation stranded.
+   */
+  settleReservation(
+    reservedTokens: number,
+    actual: {
+      tokens?: number;
+      text?: string;
+      phase?: ResearchPhase;
+    } = {},
+  ): boolean {
+    if (!Number.isFinite(reservedTokens) || reservedTokens <= 0) return false;
+    if (this.reservedTokens < reservedTokens) return false;
+    this.reservedTokens -= reservedTokens;
+    if (actual.phase !== undefined) {
+      this.charge(actual.phase, actual);
+    } else if (actual.tokens !== undefined || actual.text !== undefined) {
+      this.charge("verifying", actual);
+    }
+    return true;
+  }
+
+  /** Releases a reservation for work that never ran: declined, aborted, or skipped. */
+  releaseReservation(reservedTokens: number): boolean {
+    if (!Number.isFinite(reservedTokens) || reservedTokens <= 0) return false;
+    if (this.reservedTokens < reservedTokens) return false;
+    this.reservedTokens -= reservedTokens;
+    return true;
   }
 
   get remainingTimeNs(): number {

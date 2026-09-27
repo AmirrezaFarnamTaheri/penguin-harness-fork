@@ -2390,6 +2390,15 @@ Benchmark：
     pinSession: "置顶",
     unpinSession: "取消置顶",
     pinnedSession: "已置顶",
+    /** 批量操作栏：n = 已勾选且仍在屏幕上的行数。 */
+    selectedConversations: (n: number) => `已选 ${n} 项`,
+    /** 批量操作栏：归档 / 取消归档全部勾选的对话。 */
+    archiveSelected: "归档所选",
+    unarchiveSelected: "取消归档所选",
+    /** 批量操作栏：退出多选，丢弃勾选。 */
+    cancelSelection: "取消多选",
+    /** 行右键菜单：进入多选并勾选该行（键盘可达的入口；指针入口是 Cmd/Ctrl+点击）。 */
+    selectConversations: "多选",
     /** The hover ellipsis button that opens the row's full context menu. */
     moreActions: "更多",
     /** Sidebar group "reveal/load next page" row (display cap + server paging). */
@@ -2757,6 +2766,57 @@ Benchmark：
     openAsSession: "跳转到该会话",
     /** The child's session record no longer exists and could not be revived. */
     subagentGone: "该子会话已不存在，无法恢复",
+    /** Graph node accessibility: who spawned this child, since the edges themselves are hidden. */
+    spawnedBy: "派生自",
+    mainSession: "主会话",
+    /** Shown when the selected child is not in the displayed Task's graph (A7). */
+    selectionElsewhere: (label: string) => `正在显示更早任务中的 ${label}`,
+    backToLatest: "回到最新任务",
+    loadingChild: "该子 Agent 的对话仍在加载",
+    skillsUnavailable: "无法加载该子 Agent 的技能",
+  },
+
+  coordination: {
+    activityTitle: "协作活动",
+    conversationTab: "对话",
+    activityTab: "活动",
+    empty: "当前会话还没有可显示的协作活动",
+    jevAdvisory: "Jev",
+    advised: "已返回观察",
+    unavailable: "暂不可用",
+    choiceMatches: "符合任务接下来的需要",
+    choiceDifferent: "换个工具更合适",
+    choiceNone: "不需要调用工具",
+    choiceUnknown: "没有回答",
+    confidence: "置信度",
+    risk: "风险",
+    riskOf: (score: number) => `5 分制中的 ${score} 分`,
+    needsTool: "需要工具",
+    argumentsComplete: "参数完整",
+    approvalLikely: "预计需签核",
+    latency: "延迟",
+    tokens: "令牌",
+    model: "模型",
+    reason: "原因",
+    toolActivity: "工具",
+    toolRunning: "执行中",
+    toolDone: "已完成",
+    toolDenied: "已拒绝",
+    toolWaiting: "等待审批",
+    parentMessage: "父 Agent 消息",
+    agentFailed: "Agent 失败",
+    retried: "重新连接",
+    aborted: "已中断",
+    retrying: (attempt: number) => `正在重试（第 ${attempt} 次）`,
+    retryGaveUp: (attempt: number) => `重试 ${attempt} 次后放弃`,
+    yourMessage: "你的消息",
+    childMessage: "发给该 Agent 的输入",
+    childSession: "子会话",
+    advisoryOnly: "仅供参考；由命令策略与审批提示决定，不由它决定。",
+    rollup: (children: number, running: number, calls: number) =>
+      `${children} 个子 Agent · ${running} 个运行中 · ${calls} 次工具调用`,
+    olderRowsHidden: (count: number) => `更早的 ${count} 条记录未显示`,
+    jumpToLatest: "跳到最新",
   },
 
   files: {

@@ -62,7 +62,10 @@ import {
 } from "./trace/index.js";
 import { Session } from "./session.js";
 import { scriptPreToolUseHook, scriptStopHook, scriptUserPromptHook } from "./hooks/script-hook.js";
+import type { PreToolUseHook } from "./hooks/tool-hook.js";
 import type { HookSubagentRequest, SessionHooks } from "./hooks/stop-hook.js";
+import { createJevAdvisoryHook } from "./jev/index.js";
+import type { JevToolAdvisor } from "./jev/index.js";
 import type { SessionConfig } from "./session.js";
 import {
   createTempWorkspace,
@@ -163,6 +166,12 @@ export interface CreateAgentOptions {
    * hot push that changes the set reaches the next Session without a restart.
    */
   assembly?: AgentAssembly;
+  /**
+   * Optional host-composed Jev advisor shared by this Agent's Sessions and
+   * subagents. The host owns the credential, endpoint, deadline, and circuit;
+   * Agent State cannot enable or redirect it.
+   */
+  jevAdvisor?: JevToolAdvisor;
 }
 
 /**
@@ -299,6 +308,8 @@ interface SessionRuntime {
   openNextContext: (opts: OpenContextOptions) => Promise<OpenedContext>;
   /** The running context's command policy — follows the rotation (see SessionConfig.commandPolicy). */
   commandPolicy: () => CommandPolicyConfig | undefined;
+  /** Event-only advisor supplied by the host; absent when Jev is not configured. */
+  advisoryPreToolUse?: PreToolUseHook;
 
   createBareLLM: () => GenerativeModel;
   /** The child-session runner the run_subagent tool uses; sessionHooks' subagent spawner shares it. */
@@ -389,6 +400,7 @@ export async function createAgent(opts: CreateAgentOptions = {}): Promise<Agent>
     opts.pathPrepend,
     opts.confineSpawn,
     opts.assembly,
+    opts.jevAdvisor,
   );
 }
 
@@ -406,6 +418,8 @@ export class Agent {
     private readonly confineSpawn?: () => SpawnConfiner | null,
     /** See {@link CreateAgentOptions.assembly}; read at every Session creation. */
     private readonly assembly?: AgentAssembly,
+    /** See {@link CreateAgentOptions.jevAdvisor}; host-owned and shared with subagents. */
+    private readonly jevAdvisor?: JevToolAdvisor,
   ) {}
 
   /**
@@ -923,6 +937,7 @@ export class Agent {
       environment: rt.environment,
       trace,
       openNextContext: rt.openNextContext,
+      ...(rt.advisoryPreToolUse ? { advisoryPreToolUse: rt.advisoryPreToolUse } : {}),
 
       createBareLLM: rt.createBareLLM,
       compaction: context.compaction,
@@ -970,6 +985,9 @@ export class Agent {
     // The context the Session is running: the initial one, then whatever `openNextContext` last
     // assembled.
     let current = initial;
+    // The host owns the advisor and may share one client/circuit across every Session. With no
+    // advisor, no hook is installed and the tool path is byte-for-byte the historical path.
+    const advisoryPreToolUse = this.jevAdvisor ? createJevAdvisoryHook(this.jevAdvisor) : undefined;
     // Child-Agent runner: injected into the run_subagent tool so it doesn't need to
     // depend on Agent/Session (breaking a circular dependency). The model can
     // optionally choose agentId (omitted = call the current Agent), the child
@@ -1026,6 +1044,7 @@ export class Agent {
                 ...(parentAgent.pathPrepend ? { pathPrepend: parentAgent.pathPrepend } : {}),
                 ...(parentAgent.confineSpawn ? { confineSpawn: parentAgent.confineSpawn } : {}),
                 ...(parentAgent.assembly ? { assembly: parentAgent.assembly } : {}),
+                ...(parentAgent.jevAdvisor ? { jevAdvisor: parentAgent.jevAdvisor } : {}),
               })
             : parentAgent;
         // The child Session follows the PARENT Session, never the Project default: with the
@@ -1120,6 +1139,7 @@ export class Agent {
                 ...(parentAgent.pathPrepend ? { pathPrepend: parentAgent.pathPrepend } : {}),
                 ...(parentAgent.confineSpawn ? { confineSpawn: parentAgent.confineSpawn } : {}),
                 ...(parentAgent.assembly ? { assembly: parentAgent.assembly } : {}),
+                ...(parentAgent.jevAdvisor ? { jevAdvisor: parentAgent.jevAdvisor } : {}),
               });
         const childSession = await childAgent.resumeSession({ sessionId });
         return subagentHandleFor(childSession);
@@ -1439,6 +1459,7 @@ export class Agent {
       bootstrap,
       openNextContext,
       commandPolicy: () => current.commandPolicy,
+      ...(advisoryPreToolUse ? { advisoryPreToolUse } : {}),
 
       createBareLLM,
       subagentRunner,

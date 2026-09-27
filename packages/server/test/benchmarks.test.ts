@@ -13,16 +13,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
-import { benchmarksDir } from "@prismshadow/penguin-core";
+import { benchmarksDir, tracesDir } from "@prismshadow/penguin-core";
+import { sessionMeta, userText } from "@prismshadow/penguin-core/omnimessage";
+import { createHash } from "node:crypto";
 import type {
   BenchmarkCasesResponse,
   BenchmarkCreateRequest,
   BenchmarkCreateResponse,
+  BenchmarkEvaluationEvidenceResponse,
   BenchmarksResponse,
   ProjectCreateResponse,
   WorkspaceFilesResponse,
 } from "../src/api/types.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
+import { UsageRepo } from "../src/db/repos/usage.js";
 import type { TestApp } from "./helpers.js";
 
 const AGENT = "bench_agent";
@@ -305,6 +309,115 @@ describe("benchmarks api", () => {
     ).toBe(400);
     expect((await outsider.get(`${base}/swe-bench-v2/cases`)).status).toBe(404);
     expect((await outsider.get(filesBase)).status).toBe(404);
+  });
+
+  it("projects trace hashes and current usage evidence without rewriting the scoreboard", async () => {
+    const benchmarkId = "evidence-bench";
+    const benchDir = path.join(benchmarksDir(t.root, projectId, AGENT), benchmarkId);
+    await fs.mkdir(path.join(benchDir, "CASE-001"), { recursive: true });
+    await fs.writeFile(
+      path.join(benchDir, "benchmark_config.toml"),
+      'title = "Evidence"\nruns = 1\n',
+      "utf8",
+    );
+    const scoreboardPath = path.join(benchDir, "scoreboard.yaml");
+    const scoreboard =
+      [
+        "evaluations:",
+        '  - time: "2026-07-16T10:00:00Z"',
+        "    version: 1",
+        '    provider: "custom"',
+        '    model_id: "m1"',
+        '    thinking_level: "medium"',
+        "    score: 90",
+        "    cost: 0.09",
+        "    duration_ms: 1200",
+        "    cases:",
+        '      - case: "CASE-001"',
+        "        score: 90",
+        "        cost: 0.09",
+        "        duration_ms: 1200",
+        "        runs:",
+        "          - score: 90",
+        "            cost: 0.09",
+        "            duration_ms: 1200",
+        '            session_id: "session-evidence-1"',
+        "          - score: 90",
+        "            cost: 0.09",
+        "            duration_ms: 1200",
+        '            session_id: "session-missing-1"',
+      ].join("\n") + "\n";
+    await fs.writeFile(scoreboardPath, scoreboard, "utf8");
+
+    const traceDir = path.join(tracesDir(t.root, projectId, AGENT), "2026-07-16");
+    await fs.mkdir(traceDir, { recursive: true });
+    const tracePath = path.join(traceDir, "session-evidence-1_001.jsonl");
+    const traceText =
+      [
+        JSON.stringify(
+          sessionMeta({
+            session_id: "session-evidence-1",
+            model_id: "m1",
+            provider: "custom",
+            model_context_window: 1000,
+            system_prompt: "sp",
+            agent_state: "/tmp/agents/evidence_agent/agent_state",
+            workspace: "/tmp/workspace",
+          }),
+        ),
+        JSON.stringify(userText("run")),
+      ].join("\n") + "\n";
+    await fs.writeFile(tracePath, traceText, "utf8");
+    new UsageRepo(t.deps.db).insert({
+      ts: "2026-07-16T10:00:00.000Z",
+      date: "2026-07-16",
+      projectId,
+      agentId: AGENT,
+      sessionId: "session-evidence-1",
+      originSessionId: null,
+      provider: "custom",
+      modelId: "m1",
+      cacheRead: 2,
+      cacheWrite: 3,
+      output: 4,
+      total: 9,
+      status: "completed",
+    });
+
+    const evidenceUrl = `${base}/${benchmarkId}/evaluations/0/evidence`;
+    const before = (await (
+      await member.get(evidenceUrl)
+    ).json()) as BenchmarkEvaluationEvidenceResponse;
+    expect(before.runs.map((run) => run.state)).toEqual(["uncosted", "incomplete"]);
+    expect(before.runs[0]!.usage).toMatchObject({
+      status: "uncosted",
+      totalTokens: 9,
+    });
+    // An unpriced model reports the part that CAN be priced and says which part it cannot, the
+    // same shape foldBucket/foldGroups use. Nulling a genuine 0 here made "cost nothing" read as
+    // "cost unknown" and disagreed with every other usage surface in the app.
+    expect(before.runs[0]!.usage.costUsd).not.toBeNull();
+    expect(before.runs[0]!.trace).toMatchObject({
+      status: "verified",
+      files: [
+        {
+          path: path.relative(t.root, tracePath).split(path.sep).join("/"),
+          sha256: createHash("sha256").update(traceText).digest("hex"),
+        },
+      ],
+    });
+    expect(before.runs[1]!.trace.status).toBe("missing");
+    expect(before.runs[1]!.usage.status).toBe("missing");
+    expect(await fs.readFile(scoreboardPath, "utf8")).toBe(scoreboard);
+
+    await fs.appendFile(tracePath, "tampered\n", "utf8");
+    const after = (await (
+      await member.get(evidenceUrl)
+    ).json()) as BenchmarkEvaluationEvidenceResponse;
+    expect(after.runs[0]!.trace.files[0]!.sha256).not.toBe(
+      createHash("sha256").update(traceText).digest("hex"),
+    );
+    expect((await outsider.get(evidenceUrl)).status).toBe(404);
   });
 
   it("does not migrate or backfill legacy Scoreboard entries", async () => {

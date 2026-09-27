@@ -119,9 +119,16 @@ export class SandboxService {
           ? { maskPaths: settings.maskPaths }
           : {}),
       };
-      // ConfinedArgv also carries enforcement / denialSignatures / runnerFailureRules;
-      // the classification consumer (denial vs runner failure) lands with escalation.
-      return provider.confine(argv, policy).argv;
+      // A configured confinement policy is a strict boundary. Providers may report partial
+      // enforcement when a host ABI cannot govern every promised effect; accepting that
+      // result would silently turn a strict policy into a weaker one.
+      const confined = provider.confine(argv, policy);
+      if (confined.enforcement !== "full") {
+        throw new Error(
+          `sandbox backend returned partial enforcement for mode "${settings.mode}"; refusing to run the command.`,
+        );
+      }
+      return confined.argv;
     };
   }
 

@@ -64,6 +64,23 @@ describe("TruncatedToolOutputArchive", () => {
     expect(await readFile(saved.path, "utf8")).toContain("hello");
   });
 
+  it("redacts recognized credential shapes before the bounded archive is persisted", async () => {
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(tmp, "output"),
+      fileLimitBytes: 256,
+    });
+    const capture = archive.startCapture();
+    const secret = "sk-ant-abcdefghijklmnopqrstuvwxyz123456";
+    capture.append(`before ${secret} after`);
+    const saved = await capture.save("exec_command", "secret-call");
+    expect(saved.status).toBe("saved");
+    if (saved.status !== "saved") throw new Error("expected saved output");
+    const archived = await readFile(saved.path, "utf8");
+    expect(archived).not.toContain(secret);
+    expect(archived).toContain("<redacted>");
+    expect(Buffer.byteLength(archived, "utf8")).toBeLessThanOrEqual(256);
+  });
+
   it("keeps UTF-8-safe head and tail windows when one archive exceeds its file budget", async () => {
     const fileLimitBytes = 96;
     const archive = new TruncatedToolOutputArchive({
@@ -205,5 +222,29 @@ describe("TruncatedToolOutputArchive", () => {
       status: "failed",
       code: "ALREADY_SAVED",
     });
+  });
+
+  it("redacts a credential inside a multi-megabyte capture and stays bounded", async () => {
+    // Redaction runs on the whole captured buffer, so this is the path that a quadratic pattern
+    // turns into a hang: a capture close to the production limit of inert text. The credential
+    // sits past the first megabyte precisely because a redaction pass that stops early would
+    // miss it.
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(tmp, "output"),
+      fileLimitBytes: 4 * 1024 * 1024,
+    });
+    const capture = archive.startCapture();
+    capture.append("x".repeat(1024 * 1024));
+    capture.append(" connecting to https://admin:superSecretPass123@api.example.com/v1 ");
+    capture.append("y".repeat(1024 * 1024));
+
+    const saved = await capture.save("tool", "large-with-credential");
+    expect(saved.status).toBe("saved");
+    if (saved.status !== "saved") throw new Error("expected saved output");
+    const archived = await readFile(saved.path, "utf8");
+    expect(archived).not.toContain("superSecretPass123");
+    expect(archived).toContain("https://admin:<redacted>@api.example.com/v1");
+    // Redaction can shorten the text, never lengthen it past the budget it was bounded to.
+    expect(Buffer.byteLength(archived, "utf8")).toBeLessThanOrEqual(4 * 1024 * 1024);
   });
 });

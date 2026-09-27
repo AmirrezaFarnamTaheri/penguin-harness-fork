@@ -23,6 +23,7 @@ import {
   buildBackgroundTaskDoneMessage,
   compactionBegin,
   compactionEnd,
+  hookEvent,
   imageUrlMessage,
   mcpConnectBegin,
   mcpConnectEnd,
@@ -54,6 +55,7 @@ import {
   finalizeHistory,
   findToolCard,
   isDuplicate,
+  MAX_PENDING_ADVISORIES,
   notifyTaskIdle,
   pushMessage,
   pushMessages,
@@ -379,6 +381,265 @@ describe("approvals and events", () => {
     pushMessage(m, approvalDecision("allow", "t9"));
     pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
     expect((items(m)[0] as ToolCallItem).decision).toBe("allow");
+  });
+
+  it("binds a Jev hook observation to the tool call it describes, with no decision", () => {
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    pushMessage(
+      m,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        toolCallId: "t9",
+        output: {
+          jev_status: "advised",
+          jev_choice: "matches",
+          jev_confidence: 0.91,
+          jev_risk_score: 3,
+          jev_requires_approval: 0.2,
+          jev_latency_ms: 42,
+          jev_input_tokens: 12,
+          jev_output_tokens: 3,
+          jev_model: "jev-test",
+        },
+      }),
+    );
+    // Bound to the card, not floated as an item of its own: a pre-tool-use observation arrives
+    // BETWEEN two tool calls, so a top-level item split every Reasoning-and-Tools group.
+    expect(items(m).map((item) => item.kind)).toEqual(["tool_call"]);
+    const card = items(m)[0] as ToolCallItem;
+    expect(card.advisory).toMatchObject({
+      status: "advised",
+      choice: "matches",
+      confidence: 0.91,
+      riskScore: 3,
+      requiresApprovalProbability: 0.2,
+      latencyMs: 42,
+      inputTokens: 12,
+      outputTokens: 3,
+      model: "jev-test",
+    });
+    expect(card.advisory).not.toHaveProperty("decision");
+    // The card's own decision field is untouched by an observation.
+    expect(card.decision).toBeUndefined();
+  });
+
+  it("keeps two sessions that reuse a tool-call id apart", () => {
+    // Tool-call ids are unique per session, not globally. A nested child that happens to use
+    // "t1" must not collect the parent's observation for its own "t1" — the advisory follows the
+    // model it arrived on, and a cross-session bind would put one call's observation on another
+    // call's card, right next to that call's decision.
+    const parent = createStreamModel();
+    const child = createStreamModel();
+    pushMessage(parent, toolCall({ name: "parent_tool", arguments: "{}", toolCallId: "t1" }));
+    pushMessage(child, toolCall({ name: "child_tool", arguments: "{}", toolCallId: "t1" }));
+    pushMessage(
+      child,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        toolCallId: "t1",
+        output: { jev_status: "advised", jev_choice: "matches" },
+      }),
+    );
+    parent.subagents.set("child-session", child);
+    expect(parent.toolCards.get("t1")?.advisory).toBeUndefined();
+    expect(child.toolCards.get("t1")?.advisory).toMatchObject({ choice: "matches" });
+  });
+
+  it("lets a later observation for the same call replace the first", () => {
+    // A duplicate delivery (a replayed envelope, a reconnect) must be idempotent, not additive:
+    // one card, one observation.
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    const event = hookEvent({
+      hook: "pre_tool_use",
+      name: "jev_advisory",
+      toolCallId: "t9",
+      output: { jev_status: "advised", jev_choice: "matches", jev_confidence: 0.7 },
+    });
+    pushMessage(m, event);
+    pushMessage(m, event);
+    const advisories = items(m).filter((item) => item.kind === "tool_call" && item.advisory);
+    expect(advisories).toHaveLength(1);
+    expect(m.pendingAdvisories.size).toBe(0);
+  });
+
+  it("survives an advisory arriving after the call's output completed", () => {
+    // Output completion is the normal end of a call; a late hook event must still bind, and the
+    // card's identity and timestamp must not shift under it.
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    pushMessage(m, toolCallOutput({ toolCallId: "t9", output: "done" }));
+    const settled = items(m)[0] as ToolCallItem;
+    const stampBefore = settled.callStartedAtMs;
+    pushMessage(
+      m,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        toolCallId: "t9",
+        output: { jev_status: "advised", jev_choice: "matches" },
+      }),
+    );
+    const after = items(m)[0] as ToolCallItem;
+    expect(after).toBe(settled);
+    expect(after.advisory).toMatchObject({ choice: "matches" });
+    expect(after.callStartedAtMs).toBe(stampBefore);
+  });
+
+  it("ignores a hook event that is not an advisory, or carries no call", () => {
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    // Another hook, and an advisory with no call: both are records, not observations.
+    pushMessage(m, hookEvent({ hook: "pre_tool_use", name: "some_other_hook", output: { a: 1 } }));
+    pushMessage(
+      m,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        output: { jev_status: "advised", jev_choice: "matches" },
+      }),
+    );
+    const card = items(m)[0] as ToolCallItem;
+    expect(card.advisory).toBeUndefined();
+    // No orphan buffer left behind either: nothing is retained for a call that never arrives.
+    expect(m.pendingAdvisories.size).toBe(0);
+  });
+
+  it("rejects a malformed advisory without touching the card", () => {
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    // Each of these is a response the provider could plausibly send and the card must survive:
+    // an unknown status, a missing status, a missing choice, a non-string choice.
+    const malformed: Array<Record<string, string | number | boolean>> = [
+      { jev_status: "maybe", jev_choice: "matches" },
+      { jev_choice: "matches" },
+      { jev_status: "advised" },
+      { jev_status: "advised", jev_choice: 42 },
+    ];
+    for (const output of malformed) {
+      pushMessage(
+        m,
+        hookEvent({ hook: "pre_tool_use", name: "jev_advisory", toolCallId: "t9", output }),
+      );
+    }
+    const card = items(m)[0] as ToolCallItem;
+    expect(card.advisory).toBeUndefined();
+    // The call is unaffected by provider noise: it still renders, still decides, still runs.
+    expect(card.name).toBe("x");
+    expect(card.output).toBe("");
+  });
+
+  it("keeps an unavailable observation distinguishable from an absent one", () => {
+    const m = createStreamModel();
+    pushMessage(m, toolCall({ name: "x", arguments: "{}", toolCallId: "t9" }));
+    pushMessage(
+      m,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        toolCallId: "t9",
+        output: { jev_status: "unavailable", jev_choice: "unknown" },
+      }),
+    );
+    const card = items(m)[0] as ToolCallItem;
+    // Present but empty is not the same as missing: the UI says "unavailable", not silence.
+    expect(card.advisory).toMatchObject({ status: "unavailable", choice: "unknown" });
+    expect(card.advisory).not.toHaveProperty("confidence");
+    expect(card.advisory).not.toHaveProperty("riskScore");
+    // Nothing here decides anything, least of all an observation that carries no opinion.
+    expect(card.advisory).not.toHaveProperty("decision");
+  });
+
+  it("bounds the observations it retains for cards that never arrive", () => {
+    // The key is a tool-call id off the wire and the value is held until a card with that id
+    // turns up. Unbounded, a stream that names ids it never sends grows the map for the life of
+    // the page — a memory cost controlled entirely by the other end of the wire.
+    const m = createStreamModel();
+    for (let i = 0; i < MAX_PENDING_ADVISORIES + 50; i += 1) {
+      pushMessage(
+        m,
+        hookEvent({
+          hook: "pre_tool_use",
+          name: "jev_advisory",
+          toolCallId: `ghost-${i}`,
+          output: { jev_status: "advised", jev_choice: "matches" },
+        }),
+      );
+    }
+    expect(m.pendingAdvisories.size).toBe(MAX_PENDING_ADVISORIES);
+    // The oldest are the ones dropped, so a real burst still binds: a name seen early and
+    // announced late enough to arrive is kept, not evicted by fifty later ghosts.
+    const early = Array.from({ length: MAX_PENDING_ADVISORIES + 50 }, (_, i) => `ghost-${i}`);
+    expect(m.pendingAdvisories.has(`ghost-${early.length - 1}`)).toBe(true);
+  });
+
+  it("does not let a repeated id flush the whole buffer", () => {
+    // The map is AT capacity, so admitting a genuinely new id must cost exactly one real
+    // observation — that is what a cap means. The property worth pinning is that a stream
+    // hammering ONE id costs one eviction in total, not one per event: refreshing the
+    // insertion order before the capacity check is what makes that true.
+    const m = createStreamModel();
+    for (let i = 0; i < MAX_PENDING_ADVISORIES; i += 1) {
+      pushMessage(
+        m,
+        hookEvent({
+          hook: "pre_tool_use",
+          name: "jev_advisory",
+          toolCallId: `real-${i}`,
+          output: { jev_status: "advised", jev_choice: "matches" },
+        }),
+      );
+    }
+    const firstId = `real-0`;
+    const lastId = `real-${MAX_PENDING_ADVISORIES - 1}`;
+    for (let i = 0; i < 100; i += 1) {
+      pushMessage(
+        m,
+        hookEvent({
+          hook: "pre_tool_use",
+          name: "jev_advisory",
+          toolCallId: "noisy",
+          output: { jev_status: "advised", jev_choice: "matches" },
+        }),
+      );
+    }
+    // Exactly one real observation paid for the newcomer, not ninety-nine.
+    expect(m.pendingAdvisories.size).toBe(MAX_PENDING_ADVISORIES);
+    expect(m.pendingAdvisories.has(firstId)).toBe(false);
+    expect(m.pendingAdvisories.has(`real-1`)).toBe(true);
+    expect(m.pendingAdvisories.has(lastId)).toBe(true);
+    expect(m.pendingAdvisories.has("noisy")).toBe(true);
+  });
+
+  it("backfills an observation that arrived before its card, and drops one with no call", () => {
+    const early = createStreamModel();
+    pushMessage(
+      early,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        toolCallId: "late",
+        output: { jev_status: "advised", jev_choice: "matches" },
+      }),
+    );
+    pushMessage(early, toolCall({ name: "x", arguments: "{}", toolCallId: "late" }));
+    expect((items(early)[0] as ToolCallItem).advisory).toMatchObject({ choice: "matches" });
+    expect(early.pendingAdvisories.size).toBe(0);
+
+    const orphan = createStreamModel();
+    pushMessage(
+      orphan,
+      hookEvent({
+        hook: "pre_tool_use",
+        name: "jev_advisory",
+        output: { jev_status: "advised", jev_choice: "matches" },
+      }),
+    );
+    // No call to bind to, so no reader: dropped rather than floated into the stream.
+    expect(items(orphan)).toHaveLength(0);
   });
 
   it("a fatal request_end renders the error banner; an interim-build abort duplicate is dropped", () => {

@@ -219,6 +219,13 @@ export interface ToolCallItem {
   argStartedAtMs?: number;
   /** Total tool duration (settled when the tool_call_output complete message arrives) = the argument-generation segment + the execution segment, excluding the approval wait (see settleToolDuration). */
   durationMs?: number;
+  /**
+   * The Jev observation for THIS call, attached when its pre-tool-use hook event arrives. An
+   * advisory that lands before its card exists waits in `pendingAdvisories` and is bound when
+   * the card is created; one that never finds its call is dropped rather than floated in the
+   * stream, because an unbound observation has no reader.
+   */
+  advisory?: JevAdvisory;
 }
 
 /** A standalone sub-session card for when no run_subagent tool card can be bound. */
@@ -398,6 +405,35 @@ export interface McpConnectItem {
   aborted?: boolean;
 }
 
+/**
+ * How many advisory observations may wait for a card that has not arrived. Far above any real
+ * burst of in-flight tool calls, and the ceiling on memory a malformed or hostile stream can
+ * make this model retain.
+ */
+export const MAX_PENDING_ADVISORIES = 200;
+
+/**
+ * A bounded Jev observation bound to the tool call it describes. It lives ON the tool card, not
+ * as its own stream item: a pre-tool-use hook fires between two tool calls, so a top-level item
+ * would split every Reasoning-and-Tools group it lands in. The advisory is also not a decision —
+ * it carries no allow/deny of any kind.
+ */
+export interface JevAdvisory {
+  status: "advised" | "unavailable";
+  choice: string;
+  confidence?: number;
+  riskScore?: number;
+  needsToolProbability?: number;
+  argumentsCompleteProbability?: number;
+  requiresApprovalProbability?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  latencyMs?: number;
+  model?: string;
+  reason?: string;
+  atMs?: number;
+}
+
 export interface TaskStatsItem {
   kind: "task_stats";
   id: number;
@@ -510,6 +546,17 @@ export interface StreamModel {
   pendingDecisions: Map<string, ApprovalDecision>;
   /** Approval timestamps that arrived before their tool card (backfilled into approvalAtMs when the card is created, used to deduct the approval duration). */
   pendingDecisionTs: Map<string, number>;
+  /**
+   * Jev observations that arrived before their tool card (backfilled when the card is created).
+   * The pre-tool-use hook fires after the call is announced, so the normal order needs no
+   * buffer; a joined-mid-stream or replayed Trace can reverse it, exactly like a decision.
+   *
+   * BOUNDED, because the key is a tool-call id off the wire and the value is retained until a
+   * card with that id turns up. Unbounded, a stream that announced calls it never sends — or a
+   * malformed one naming ids that do not exist — would grow this for the life of the page. The
+   * cap is far above any real burst of in-flight calls, and the oldest is dropped first.
+   */
+  pendingAdvisories: Map<string, JevAdvisory>;
   /** Timestamp of the most recent message (used to approximate the start time when history's thinking has no fragments). */
   lastTsMs: number;
   /**
@@ -614,6 +661,7 @@ function newModel(nested: boolean, localDecisions: Set<string>): StreamModel {
     localDecisions,
     pendingDecisions: new Map(),
     pendingDecisionTs: new Map(),
+    pendingAdvisories: new Map(),
     lastTsMs: 0,
     openRequestBeginMs: null,
     openApprovalWaitMs: 0,
@@ -1567,8 +1615,56 @@ function createToolCard(
     }
   }
   model.toolCards.set(init.toolCallId, item);
+  // A Jev observation that arrived before its card: bound at creation time, same as a decision.
+  const pendingAdvisory = model.pendingAdvisories.get(init.toolCallId);
+  if (pendingAdvisory !== undefined) {
+    item.advisory = pendingAdvisory;
+    model.pendingAdvisories.delete(init.toolCallId);
+  }
   model.items.push(item);
   return item;
+}
+
+function outputNumber(
+  output: Record<string, string | number | boolean> | undefined,
+  key: string,
+): number | undefined {
+  const value = output?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function jevAdvisoryFromHook(
+  p: Extract<EventPayload, { type: "hook" }>,
+  tsMs?: number,
+): JevAdvisory | null {
+  if (p.name !== "jev_advisory" || p.output === undefined) return null;
+  const status = p.output["jev_status"];
+  const choice = p.output["jev_choice"];
+  if ((status !== "advised" && status !== "unavailable") || typeof choice !== "string") return null;
+  const advisory: JevAdvisory = {
+    status,
+    choice,
+    ...(tsMs !== undefined ? { atMs: tsMs } : {}),
+  };
+  const confidence = outputNumber(p.output, "jev_confidence");
+  const riskScore = outputNumber(p.output, "jev_risk_score");
+  const needsTool = outputNumber(p.output, "jev_needs_tool");
+  const argumentsComplete = outputNumber(p.output, "jev_arguments_complete");
+  const requiresApproval = outputNumber(p.output, "jev_requires_approval");
+  const inputTokens = outputNumber(p.output, "jev_input_tokens");
+  const outputTokens = outputNumber(p.output, "jev_output_tokens");
+  const latencyMs = outputNumber(p.output, "jev_latency_ms");
+  if (confidence !== undefined) advisory.confidence = confidence;
+  if (riskScore !== undefined) advisory.riskScore = riskScore;
+  if (needsTool !== undefined) advisory.needsToolProbability = needsTool;
+  if (argumentsComplete !== undefined) advisory.argumentsCompleteProbability = argumentsComplete;
+  if (requiresApproval !== undefined) advisory.requiresApprovalProbability = requiresApproval;
+  if (inputTokens !== undefined) advisory.inputTokens = inputTokens;
+  if (outputTokens !== undefined) advisory.outputTokens = outputTokens;
+  if (latencyMs !== undefined) advisory.latencyMs = latencyMs;
+  if (typeof p.output["jev_model"] === "string") advisory.model = p.output["jev_model"];
+  if (typeof p.output["jev_reason"] === "string") advisory.reason = p.output["jev_reason"];
+  return advisory;
 }
 
 // ---------------------------------------------------------------------------
@@ -1577,6 +1673,26 @@ function createToolCard(
 
 function handleEvent(model: StreamModel, p: EventPayload, tsMs?: number, nowMs?: number): void {
   switch (p.type) {
+    case "hook": {
+      // An observation with no call to bind to has no reader: dropped rather than floated
+      // into the stream as an item of its own.
+      const advisory = jevAdvisoryFromHook(p, tsMs);
+      if (advisory === null || p.toolCallId === undefined) return;
+      const card = model.toolCards.get(p.toolCallId);
+      if (card === undefined) {
+        // Refresh BEFORE the capacity check. Deleting first re-inserts this id at the newest
+        // position, so a stream that names ONE id repeatedly costs it nothing; checking first
+        // would let a single noisy id evict one real observation per event, which is the exact
+        // thing a cap is supposed to prevent.
+        model.pendingAdvisories.delete(p.toolCallId);
+        if (model.pendingAdvisories.size >= MAX_PENDING_ADVISORIES) {
+          const oldest = model.pendingAdvisories.keys().next().value;
+          if (oldest !== undefined) model.pendingAdvisories.delete(oldest);
+        }
+        model.pendingAdvisories.set(p.toolCallId, advisory);
+      } else card.advisory = advisory;
+      return;
+    }
     case "approval_decision": {
       const card = model.toolCards.get(p.tool_call_id);
       if (card) {

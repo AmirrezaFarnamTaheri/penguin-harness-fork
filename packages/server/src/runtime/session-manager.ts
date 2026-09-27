@@ -46,6 +46,7 @@ import type {
   BackgroundSubagentInfo,
   CompactAvailability,
   ControlEnvContext,
+  JevToolAdvisor,
   OmniMessage,
   ProxyEnvPolicy,
   SpawnConfiner,
@@ -240,6 +241,8 @@ export function createCoreSessionLoader(
     controlEnv?: (ctx: ControlEnvContext) => Record<string, string>;
     pathPrepend?: () => string[];
     confineSpawn?: () => SpawnConfiner | null;
+    /** Optional host-composed Jev advisor; absent keeps tool calls on the historical path. */
+    jevAdvisor?: JevToolAdvisor;
   } = {},
 ): SessionLoader {
   return {
@@ -252,6 +255,7 @@ export function createCoreSessionLoader(
         ...(opts.controlEnv ? { controlEnv: opts.controlEnv } : {}),
         ...(opts.pathPrepend ? { pathPrepend: opts.pathPrepend } : {}),
         ...(opts.confineSpawn ? { confineSpawn: opts.confineSpawn } : {}),
+        ...(opts.jevAdvisor ? { jevAdvisor: opts.jevAdvisor } : {}),
       });
       const located = await findLatestTraceFile(
         tracesDir(root, row.projectId, row.agentId),

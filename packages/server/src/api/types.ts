@@ -3415,6 +3415,42 @@ export interface BenchmarksResponse {
   benchmarks: BenchmarkSummary[];
 }
 
+/** Trace evidence for one benchmark run; paths are root-relative and never expose host roots. */
+export interface BenchmarkTraceEvidence {
+  status: "verified" | "missing" | "unreadable" | "too_large";
+  files: Array<{ path: string; bytes: number; sha256?: string }>;
+  provider?: string;
+  modelId?: string;
+}
+
+/** Usage evidence recomputed from the existing usage ledger, never copied from scoreboard averages. */
+export interface BenchmarkUsageEvidence {
+  status: "verified" | "missing" | "uncosted";
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number | null;
+}
+
+export type BenchmarkRunEvidenceState =
+  "complete" | "missing_trace" | "missing_usage" | "uncosted" | "incomplete";
+
+export interface BenchmarkRunEvidence {
+  run: BenchmarkRunScore;
+  trace: BenchmarkTraceEvidence;
+  usage: BenchmarkUsageEvidence;
+  state: BenchmarkRunEvidenceState;
+}
+
+export interface BenchmarkEvaluationEvidenceResponse {
+  benchmarkId: string;
+  evaluationIndex: number;
+  evaluation: BenchmarkEvaluation;
+  runs: BenchmarkRunEvidence[];
+}
+
 export type CaseMaterial = "statement" | "rubric";
 
 /** Public Benchmark Case metadata. Rubric and Gold content are never included. */

@@ -55,6 +55,7 @@ describe("HOVER_ROW_ACTIONS", () => {
 describe("contextMenuActions", () => {
   it("carries the whole set when the row can be pinned, with the id copy between archive and delete", () => {
     expect([...contextMenuActions(true)]).toEqual([
+      "select",
       "pin",
       "rename",
       "messaging",
@@ -66,12 +67,33 @@ describe("contextMenuActions", () => {
 
   it("drops only pin on rows where pinning cannot reorder anything (folder rows)", () => {
     expect([...contextMenuActions(false)]).toEqual([
+      "select",
       "rename",
       "messaging",
       "archive",
       "copy",
       "delete",
     ]);
+  });
+
+  it("leads with select — the only entry that reaches the list rather than this row", () => {
+    // It leads because it is the entry a reader scanning top-down should meet before the
+    // per-row verbs, and because it is the ONLY keyboard route into selection mode
+    // (Cmd/Ctrl-click needs a pointer). Losing it would strand keyboard users.
+    for (const canPin of [true, false]) {
+      expect(contextMenuActions(canPin)[0]).toBe("select");
+    }
+  });
+
+  it("keeps select reachable on folder rows too, where pinning is absent", () => {
+    expect(contextMenuActions(false)).toContain("select");
+  });
+
+  it("never offers delete in the hover bar, so no action is hover-only", () => {
+    for (const canPin of [true, false]) {
+      expect(HOVER_ROW_ACTIONS as readonly string[]).not.toContain("delete");
+      expect(contextMenuActions(canPin)).toContain("delete");
+    }
   });
 
   it("is a superset of the hover actions, so nothing is reachable by hover alone", () => {

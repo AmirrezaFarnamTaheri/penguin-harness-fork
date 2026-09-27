@@ -12,9 +12,11 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "@prismshadow/penguin-server/api";
 import {
+  addPinnedSessions,
   loadPinnedSessions,
   pinnedSessionsKey,
   removePinnedSession,
+  removePinnedSessions,
   savePinnedSessions,
   togglePinnedSession,
 } from "../src/lib/pinned-sessions";
@@ -164,5 +166,57 @@ describe("pinned ordering composes with the group lists", () => {
     const rows = [session("s1"), session("s2")];
     const active = pinnedFirst(partitionSessions(rows).active, (s) => s.sessionId, new Set());
     expect(active.map((s) => s.sessionId)).toEqual(["s1", "s2"]);
+  });
+});
+
+/**
+ * Batch pin/unpin: the conversation list's selection bar acts on every marked row at once.
+ * The contract these two share with the single-row helpers is the same one the sidebar
+ * depends on — one immutable pass, and the INPUT reference back when nothing changed, so
+ * a no-op batch costs no re-render of a list that can hold hundreds of rows.
+ */
+describe("batch pin / unpin", () => {
+  it("adds a whole selection in one pass, keeping the order it was given", () => {
+    const pinned = new Set(["s0"]);
+    const next = addPinnedSessions(pinned, ["s3", "s1", "s2"]);
+    expect([...next]).toEqual(["s0", "s3", "s1", "s2"]);
+    // The input is untouched, and re-adding a known id changes nothing.
+    expect([...pinned]).toEqual(["s0"]);
+    expect(addPinnedSessions(next, ["s1"])).toBe(next);
+  });
+
+  it("returns the input reference when every id was already pinned", () => {
+    const pinned = new Set(["s1", "s2"]);
+    expect(addPinnedSessions(pinned, ["s1", "s2"])).toBe(pinned);
+    expect(addPinnedSessions(pinned, [])).toBe(pinned);
+  });
+
+  it("removes a whole selection, leaving the pins it was not given", () => {
+    const pinned = new Set(["s0", "s1", "s2", "s3"]);
+    const next = removePinnedSessions(pinned, ["s1", "s3"]);
+    expect([...next]).toEqual(["s0", "s2"]);
+    expect([...pinned]).toEqual(["s0", "s1", "s2", "s3"]);
+  });
+
+  it("returns the input reference when nothing in the selection was pinned", () => {
+    const pinned = new Set(["s0"]);
+    expect(removePinnedSessions(pinned, ["s9"])).toBe(pinned);
+    expect(removePinnedSessions(pinned, [])).toBe(pinned);
+  });
+
+  it("a mixed selection unpins only the pinned half, and leaves the rows in the same order", () => {
+    // What the batch bar's "Unpin" does to a selection holding both kinds: a no-op id in
+    // the middle must neither drop an unrelated pin nor reorder the survivors.
+    const pinned = new Set(["s1", "s5", "s9"]);
+    const next = removePinnedSessions(pinned, ["s1", "s4", "s9"]);
+    expect([...next]).toEqual(["s5"]);
+  });
+
+  it("a batch round-trips through storage exactly as the single-row helpers do", () => {
+    const store = memStorage();
+    savePinnedSessions("p1", addPinnedSessions(new Set<string>(), ["a", "b", "c"]), store);
+    expect([...loadPinnedSessions("p1", store)]).toEqual(["a", "b", "c"]);
+    savePinnedSessions("p1", removePinnedSessions(new Set(["a", "b", "c"]), ["b"]), store);
+    expect([...loadPinnedSessions("p1", store)]).toEqual(["a", "c"]);
   });
 });
