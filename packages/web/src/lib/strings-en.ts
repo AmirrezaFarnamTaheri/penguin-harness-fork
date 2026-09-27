@@ -49,6 +49,11 @@ export const en: Strings = {
     expandSidebar: "Expand sidebar",
     collapseGroup: "Collapse",
     expandGroup: "Expand",
+    /** The WHOLE nav, not one group. Distinct from collapseGroup because it is a
+     *  different action on a different target, and two controls sharing one accessible
+     *  name is a defect in itself. */
+    collapseAllGroups: "Collapse all sections",
+    expandAllGroups: "Expand all sections",
     pinGroup: "Pin group",
     unpinGroup: "Unpin group",
     /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */

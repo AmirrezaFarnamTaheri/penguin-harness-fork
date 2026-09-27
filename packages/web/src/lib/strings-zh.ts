@@ -49,6 +49,10 @@ export const zh = {
     expandSidebar: "展开侧栏",
     collapseGroup: "折叠",
     expandGroup: "展开",
+    /** 折叠整个导航，而非单个分组。必须与 collapseGroup 区分：两个控件共用同一个
+     *  无障碍名称本身就是缺陷。 */
+    collapseAllGroups: "折叠全部分区",
+    expandAllGroups: "展开全部分区",
     pinGroup: "置顶分组",
     unpinGroup: "取消置顶",
     /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */

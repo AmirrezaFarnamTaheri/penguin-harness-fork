@@ -1695,7 +1695,7 @@ export function Sidebar({
             // "no Sessions yet" is not the honest answer until they land.
             <SkeletonList rows={2} />
           ) : awaitingRows ? null : (
-            <p className="px-2.5 py-1 text-xs text-gray-400 dark:text-gray-600">
+            <p className="px-2.5 py-1 text-xs text-gray-500 dark:text-gray-600">
               {S.chat.noSessions}
             </p>
           )
@@ -1838,7 +1838,7 @@ export function Sidebar({
                 <span className="min-w-0 flex-1 truncate text-left">
                   {currentProject ? projectDisplayName(currentProject) : S.common.loading}
                 </span>
-                <span className="text-gray-400">
+                <span className="text-gray-500">
                   <ChevronDown />
                 </span>
               </button>
@@ -1969,7 +1969,7 @@ export function Sidebar({
                           key={item.key}
                           role="link"
                           aria-disabled="true"
-                          className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-400 dark:text-gray-600"
+                          className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-600"
                         >
                           <span className="text-gray-300 dark:text-gray-700">
                             <Icon d={item.icon} />
@@ -2116,7 +2116,7 @@ export function Sidebar({
                       title={S.chat.searchClear}
                       aria-label={S.chat.searchClear}
                       onClick={closeSearch}
-                      className="flex h-4 w-4 shrink-0 items-center justify-center text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-300"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-300"
                     >
                       <Icon d={CLOSE_ICON} size={11} />
                     </button>
@@ -2392,7 +2392,7 @@ export function Sidebar({
             {groupMode !== "workspace" ? null : loading && sessions.length === 0 ? (
               <SkeletonList rows={5} />
             ) : orderedWorkspaceGroups.length === 0 && !searching ? (
-              <p className="px-2.5 pt-3 text-xs text-gray-400 dark:text-gray-600">
+              <p className="px-2.5 pt-3 text-xs text-gray-500 dark:text-gray-600">
                 {S.chat.noSessions}
               </p>
             ) : (
@@ -2521,7 +2521,7 @@ export function Sidebar({
                 {/* Empty only when the shared folders below are empty too (renderGroupBody's own
                 rule): "no Sessions yet" over an "Archived (3)" row would contradict it. */}
                 {timeGroups.length === 0 && !searching && timeFolders.every((f) => f === null) && (
-                  <p className="px-2.5 pt-3 text-xs text-gray-400 dark:text-gray-600">
+                  <p className="px-2.5 pt-3 text-xs text-gray-500 dark:text-gray-600">
                     {S.chat.noSessions}
                   </p>
                 )}
@@ -2550,7 +2550,7 @@ export function Sidebar({
 
             {/* Quiet no-match line: the search is live and nothing — drafts included — hit. */}
             {searching && !hasSearchMatches && (
-              <p className="px-2.5 pt-3 text-xs text-gray-400 dark:text-gray-600">
+              <p className="px-2.5 pt-3 text-xs text-gray-500 dark:text-gray-600">
                 {S.chat.searchNoMatches}
               </p>
             )}
@@ -2793,7 +2793,7 @@ function DraftRow({
             title={S.chat.deleteDraft}
             aria-label={S.chat.deleteDraft}
             onClick={onDelete}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 opacity-0 transition-all duration-150 hover:bg-gray-300/60 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-red-400"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 opacity-0 transition-all duration-150 hover:bg-gray-300/60 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-red-400"
           >
             <Icon
               d="M4 6h16M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M6 6v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6M10 10.5v6M14 10.5v6"
