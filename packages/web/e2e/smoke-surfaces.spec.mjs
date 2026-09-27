@@ -27,6 +27,10 @@ function watchErrors(page) {
     if (m.type() === "error") errors.push(`[console] ${m.text().slice(0, 200)}`);
   });
   page.on("pageerror", (e) => errors.push(`[pageerror] ${String(e).slice(0, 200)}`));
+  // A bare "Failed to load resource: 404" names no request. The URL is the whole point.
+  page.on("response", (r) => {
+    if (r.status() >= 400) errors.push(`[http ${r.status()}] ${r.url().replace(BASE, "")}`);
+  });
   return errors;
 }
 

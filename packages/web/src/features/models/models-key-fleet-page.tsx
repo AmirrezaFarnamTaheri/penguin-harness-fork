@@ -263,6 +263,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setLoading(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`, {
         signal: abortCtrl.signal,
       });
@@ -349,11 +352,14 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setActionPending(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId,
+          projectId: projectId ?? undefined,
           action,
           provider,
           keyId: item.keyId,
@@ -401,6 +407,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setActionPending(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
