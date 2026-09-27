@@ -2376,6 +2376,9 @@ export function ChatPage() {
                           items={allItems}
                           version={stream.version}
                           ctx={ctx}
+                          // Scroll memory keys on the conversation, so returning to one puts
+                          // the reader back where they were instead of at the tail.
+                          sessionId={routeSessionId ?? undefined}
                           scrollElRef={streamScrollRef}
                           // Scroll-up backfill of older history windows (tail-first
                           // loading): near-top scrolling prepends the previous window,
