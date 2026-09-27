@@ -66,6 +66,19 @@ export function bucketReason(diagnostic: string): { reason: AdvisoryReason; http
   return { reason: "unavailable" };
 }
 
+/**
+ * The non-tool-call surfaces the advisory can also observe. A closed set, and the reason
+ * is the same as for {@link AdvisoryReason}: these strings are metric KEYS, so a key space
+ * that came from data would be a cardinality explosion. Adding a surface is a deliberate
+ * edit to this list, not a runtime decision.
+ */
+export type AdvisorySurface = "turn" | "session" | "context";
+
+export const ADVISORY_SURFACES: readonly AdvisorySurface[] = ["turn", "session", "context"];
+
+/** A surface observation that was never even attempted, and why. */
+export type SurfaceDropReason = "at_capacity" | "coalesced";
+
 export interface AdvisoryActivity {
   /** Observations that produced a usable answer. */
   answered: number;
@@ -80,6 +93,16 @@ export interface AdvisoryActivity {
   readonly byReason: ReadonlyMap<AdvisoryReason, number>;
   /** Latency percentiles of answered calls; read from {@link latencyPercentiles}. */
   readonly providerHttpStatuses: ReadonlyMap<number, number>;
+  /** Surface observations (turn/session/context) that produced a usable answer. */
+  readonly answeredBySurface: ReadonlyMap<AdvisorySurface, number>;
+  /** Surface observations that did not, for any reason. */
+  readonly unavailableBySurface: ReadonlyMap<AdvisorySurface, number>;
+  /**
+   * Surface observations deliberately never attempted, by reason. `at_capacity` is the
+   * pending-map cap doing its job: the observation is dropped, never queued, so a burst
+   * of surfaces cannot turn into a burst of provider calls.
+   */
+  readonly droppedBySurface: ReadonlyMap<AdvisorySurface, SurfaceDropReason>;
 }
 
 const MAX_SAMPLES = 256;
@@ -98,6 +121,14 @@ export class AdvisoryActivityRecorder {
   private readonly byReason = new Map<AdvisoryReason, number>();
   /** Provider HTTP statuses seen, as counts. A number, never a key built from a response. */
   private readonly httpStatuses = new Map<number, number>();
+  /**
+   * Surface counters. Bounded by construction: the key space is the three-element
+   * ADVISORY_SURFACES enum (and, for drops, its two reasons), so these maps cannot grow
+   * with traffic, sessions, or anything else a caller supplies.
+   */
+  private readonly answeredSurfaces = new Map<AdvisorySurface, number>();
+  private readonly unavailableSurfaces = new Map<AdvisorySurface, number>();
+  private readonly droppedSurfaces = new Map<AdvisorySurface, SurfaceDropReason>();
 
   /** Records the outcome of one advisory attempt. */
   record(input: {
@@ -136,6 +167,26 @@ export class AdvisoryActivityRecorder {
     else this.skipped += 1;
   }
 
+  /**
+   * Records the outcome of one non-tool-call surface observation. Separate from
+   * {@link record} on purpose: those counters answer "is the advisory healthy", and
+   * mixing per-surface volume into them would make a busy fleet look like a sick one.
+   */
+  recordSurface(input: { surface: AdvisorySurface; advised: boolean }): void {
+    const table = input.advised ? this.answeredSurfaces : this.unavailableSurfaces;
+    table.set(input.surface, (table.get(input.surface) ?? 0) + 1);
+  }
+
+  /**
+   * Records a surface observation that was never attempted. The last reason for a given
+   * surface wins rather than accumulating: with a closed two-value key space, a counter per
+   * (surface, reason) pair would answer "which bound fired lately", which is the only
+   * question an operator has about a drop.
+   */
+  recordSurfaceDropped(surface: AdvisorySurface, reason: SurfaceDropReason): void {
+    this.droppedSurfaces.set(surface, reason);
+  }
+
   /** A snapshot safe to log or export: every value is a number or a word from a closed set. */
   snapshot(): AdvisoryActivity {
     const ordered = new Map<AdvisoryReason, number>();
@@ -151,6 +202,9 @@ export class AdvisoryActivityRecorder {
       skippedPolicy: this.skippedPolicy,
       byReason: ordered,
       providerHttpStatuses: new Map(this.httpStatuses),
+      answeredBySurface: new Map(this.answeredSurfaces),
+      unavailableBySurface: new Map(this.unavailableSurfaces),
+      droppedBySurface: new Map(this.droppedSurfaces),
     };
   }
 
@@ -172,5 +226,8 @@ export class AdvisoryActivityRecorder {
     this.samples = [];
     this.byReason.clear();
     this.httpStatuses.clear();
+    this.answeredSurfaces.clear();
+    this.unavailableSurfaces.clear();
+    this.droppedSurfaces.clear();
   }
 }

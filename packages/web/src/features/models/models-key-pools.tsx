@@ -20,6 +20,8 @@ import { ProviderLogo } from "../../components/ui/provider-logo";
 import { toastError, toastSuccess } from "../../components/ui/toast";
 import { formatDateTime } from "../../lib/format";
 import { formatCooldown, keyHealthLabel, type ModelKeyHealthReportDto } from "./model-keys-health";
+import { KeyNameEditor } from "./key-name-editor";
+import { keyMatchesQuery, keyNameOf, type KeyNameEntry } from "./key-fleet-types";
 import type { RowState } from "./models-page";
 import { modelLabelOf } from "./models-page";
 
@@ -39,6 +41,14 @@ export function ModelsKeyPools({
   onOpenModelDialog,
 }: ModelsKeyPoolsProps) {
   const [reports, setReports] = useState<ModelKeyHealthReportDto[] | null>(null);
+  const [keyNames, setKeyNames] = useState<KeyNameEntry[]>([]);
+  const [renamingKey, setRenamingKey] = useState<{
+    maskedKey: string;
+    provider: string;
+    modelId: string;
+    name?: string;
+    label?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
@@ -46,6 +56,15 @@ export function ModelsKeyPools({
   const [resettingAll, setResettingAll] = useState(false);
   const [resettingModel, setResettingModel] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+
+  /**
+   * Names whose key is no longer configured.
+   *
+   * The health report only lists keys that are there, so a name given to a key that was later
+   * rotated away has no tile to sit on. Dropping it silently is the one outcome that teaches
+   * the user the feature loses things, so it is listed once, at the bottom, saying so.
+   */
+  const orphanedNames = useMemo(() => keyNames.filter((entry) => entry.orphaned), [keyNames]);
 
   // Tick clock every second for live cooldown countdown
   useEffect(() => {
@@ -75,6 +94,43 @@ export function ModelsKeyPools({
   useEffect(() => {
     void loadHealth();
   }, [loadHealth]);
+
+  // A second read, for the names whose key is gone. A failure here leaves the pools exactly
+  // as they are, which is the right failure: the health report is the page, the orphan list is
+  // a footnote about it.
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .listModelKeyNames(projectId)
+      .then((res) => {
+        if (!cancelled && Array.isArray(res.keys)) setKeyNames(res.keys);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const applySavedName = (
+    target: { maskedKey: string; provider: string; modelId: string },
+    saved: { name: string; label?: string; keyId: string },
+  ) => {
+    setKeyNames((source) => [
+      ...source.filter((entry) => entry.keyId !== saved.keyId),
+      {
+        keyId: saved.keyId,
+        name: saved.name,
+        ...(saved.label === undefined ? {} : { label: saved.label }),
+        provider: target.provider,
+        modelId: target.modelId,
+        maskedKey: target.maskedKey,
+        orphaned: false,
+      },
+    ]);
+    toastSuccess(S.models.keyNameSaved(saved.name));
+    setRenamingKey(null);
+    void loadHealth();
+  };
 
   const handleResetAll = async () => {
     if (!isOwner) return;
@@ -237,8 +293,9 @@ export function ModelsKeyPools({
           const matchName = item.name.toLowerCase().includes(query);
           const matchId = item.row.modelId.toLowerCase().includes(query);
           const matchProvider = item.row.provider.toLowerCase().includes(query);
-          const matchKeys =
-            item.report?.keys.some((k) => k.maskedKey.toLowerCase().includes(query)) ?? false;
+          // A key is found by its name and its label as well as by its mask: "show me prod"
+          // is the question a named fleet exists to answer.
+          const matchKeys = item.report?.keys.some((k) => keyMatchesQuery(k, query)) ?? false;
           if (!matchName && !matchId && !matchProvider && !matchKeys) return false;
         }
         return true;
@@ -456,6 +513,21 @@ export function ModelsKeyPools({
           modelEntries.map(({ row, refKey, report, name, hasKeys, inCooldown, isEvicted }) => {
             const hasRotator = report && report.keys.length > 0;
             const modelResetting = resettingModel === refKey;
+            // A model with exactly one configured key and no health-report entry has nothing
+            // for the rotator branch to show, so the fallback tile draws from the model row —
+            // which carries the models table's own (narrowest) mask. Joining on THAT is exact;
+            // guessing by position or by pool size would put a name on the wrong key.
+            const rowMask = row.credential?.apiKeyMasked;
+            const singleName =
+              rowMask === undefined
+                ? undefined
+                : keyNames.find(
+                    (entry) =>
+                      !entry.orphaned &&
+                      entry.provider === row.provider &&
+                      entry.modelId === row.modelId &&
+                      entry.rowMask === rowMask,
+                  );
 
             return (
               <div
@@ -526,10 +598,13 @@ export function ModelsKeyPools({
                         const isEv = k.status === "evicted";
                         const remaining = Math.max(0, k.cooldownRemainingMs - (Date.now() - now));
                         const cdText = formatCooldown(remaining);
+                        const { name, isUnnamed } = keyNameOf(k, S.models.keyUnnamed);
+                        const isRenaming =
+                          renamingKey !== null && renamingKey.maskedKey === k.maskedKey;
 
                         return (
                           <div
-                            key={idx}
+                            key={k.keyId ?? `${k.maskedKey}-${idx}`}
                             className={`rounded-lg border p-3 font-mono text-xs transition-colors ${
                               isEv
                                 ? "border-red-200 dark:border-red-900/60 bg-red-50/30 dark:bg-red-950/20"
@@ -539,22 +614,78 @@ export function ModelsKeyPools({
                             }`}
                           >
                             <div className="flex items-center justify-between gap-1.5 pb-2 border-b border-gray-100 dark:border-gray-800/60">
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span
-                                  className={`h-2 w-2 rounded-full shrink-0 ${
-                                    isEv
-                                      ? "bg-red-500"
-                                      : isCd
-                                        ? "bg-amber-500 animate-pulse"
-                                        : "bg-green-500"
-                                  }`}
-                                />
-                                <span className="font-semibold text-gray-900 dark:text-gray-100">
-                                  {k.maskedKey}
-                                </span>
+                              <div className="flex min-w-0 flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <span
+                                    className={`h-2 w-2 rounded-full shrink-0 ${
+                                      isEv
+                                        ? "bg-red-500"
+                                        : isCd
+                                          ? "bg-amber-500 animate-pulse"
+                                          : "bg-green-500"
+                                    }`}
+                                  />
+                                  <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                    {k.maskedKey}
+                                  </span>
+                                </div>
+                                {isRenaming ? null : (
+                                  <div className="flex items-center gap-1.5">
+                                    {isUnnamed ? (
+                                      <span className="font-sans text-[11px] text-gray-500 italic dark:text-gray-400">
+                                        {S.models.keyUnnamed}
+                                      </span>
+                                    ) : (
+                                      <span className="font-sans text-[11px] font-medium text-gray-900 dark:text-gray-100">
+                                        {name}
+                                      </span>
+                                    )}
+                                    {isOwner && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setRenamingKey({
+                                            maskedKey: k.maskedKey,
+                                            provider: row.provider,
+                                            modelId: row.modelId,
+                                            ...(k.name === undefined ? {} : { name: k.name }),
+                                            ...(k.label === undefined ? {} : { label: k.label }),
+                                          })
+                                        }
+                                        className="font-sans text-[11px] text-blue-700 underline underline-offset-2 hover:no-underline dark:text-blue-400"
+                                      >
+                                        {isUnnamed ? S.models.keyNameAction : S.models.keyNameEdit}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                                {k.label !== undefined && k.label !== "" && (
+                                  <span className="font-sans text-[11px] text-gray-500 dark:text-gray-400">
+                                    {k.label}
+                                  </span>
+                                )}
                               </div>
                               <CopyButton text={k.maskedKey} label="Copy masked key" />
                             </div>
+
+                            {isRenaming ? (
+                              <div className="mt-2">
+                                <KeyNameEditor
+                                  projectId={projectId}
+                                  provider={row.provider}
+                                  modelId={row.modelId}
+                                  maskedKey={k.maskedKey}
+                                  {...(renamingKey?.name === undefined
+                                    ? {}
+                                    : { name: renamingKey.name })}
+                                  {...(renamingKey?.label === undefined
+                                    ? {}
+                                    : { label: renamingKey.label })}
+                                  onSaved={(saved) => applySavedName(renamingKey, saved)}
+                                  onCancel={() => setRenamingKey(null)}
+                                />
+                              </div>
+                            ) : null}
 
                             <div className="mt-2 space-y-1 text-[11px] tabular-nums">
                               <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
@@ -609,11 +740,22 @@ export function ModelsKeyPools({
                     /* Single key configured on the row */
                     <div className="rounded-lg border border-gray-200/90 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/20 p-3 font-mono text-xs max-w-sm">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-green-500" />
-                          <span className="font-semibold text-gray-900 dark:text-gray-100">
-                            {row.credential?.apiKeyMasked || "••••••••"}
-                          </span>
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">
+                              {row.credential?.apiKeyMasked || "••••••••"}
+                            </span>
+                          </div>
+                          {singleName !== undefined ? (
+                            <span className="font-sans text-[11px] font-medium text-gray-900 dark:text-gray-100">
+                              {singleName.name}
+                            </span>
+                          ) : (
+                            <span className="font-sans text-[11px] text-gray-500 italic dark:text-gray-400">
+                              {S.models.keyUnnamed}
+                            </span>
+                          )}
                         </div>
                         <Badge tone="green">{S.models.keyHealthActive}</Badge>
                       </div>
@@ -626,6 +768,20 @@ export function ModelsKeyPools({
           })
         )}
       </div>
+
+      {orphanedNames.length > 0 && (
+        <div className="rounded-lg border border-dashed border-gray-300 p-3 text-xs dark:border-gray-700">
+          <div className="font-medium text-gray-700 dark:text-gray-300">{S.models.keyOrphaned}</div>
+          <ul className="mt-1 list-inside list-disc text-gray-500 dark:text-gray-400">
+            {orphanedNames.map((entry) => (
+              <li key={entry.keyId}>
+                <span className="font-medium text-gray-700 dark:text-gray-300">{entry.name}</span>
+                {entry.label !== undefined && entry.label !== "" ? ` — ${entry.label}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

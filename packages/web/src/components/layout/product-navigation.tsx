@@ -12,6 +12,7 @@ import { S } from "../../lib/strings";
 import { ChevronDown } from "../ui/icons";
 import { Icon } from "../ui/group-list";
 import { UpdateDot } from "../ui/update-dot";
+import { NavGroupCollapse } from "./nav-collapse";
 
 export interface ProductNavItem {
   key: string;
@@ -82,90 +83,53 @@ export function ProductNavigation({
     );
   return (
     <nav aria-label={S.nav.navigation} className="space-y-0.5">
-      {/* The same SLIDE company mode's flat nav uses (sidebar.tsx): grid-template-rows
-          tweens 0fr↔1fr, the inner overflow-hidden does the clipping, a soft opacity fade
-          rides along, and the rows stay mounted for the tween but go inert at zero height so
-          a hidden row is neither Tab-focusable nor clickable. Transitions fire only on state
-          CHANGES, so a mount restoring a persisted collapsed state renders collapsed
-          instantly; reduced motion is covered globally in styles.css. */}
-      <div
-        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-          collapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
-        }`}
-      >
-        <div className="overflow-hidden" inert={collapsed}>
-          <div
-            className={`space-y-0.5 transition-opacity duration-200 ${
-              collapsed ? "opacity-0" : "opacity-100"
-            }`}
-          >
-            {PRIMARY_NAV_KEYS.map((key) => {
+      <NavGroupCollapse collapsed={collapsed} onToggle={onToggleCollapse}>
+        {PRIMARY_NAV_KEYS.map((key) => {
+          const item = items.find((item) => item.key === key);
+          return item ? row(item) : null;
+        })}
+        <div className="pt-2">
+          {NAV_TOOL_GROUPS.map((group) => {
+            const groupItems = group.keys.flatMap((key) => {
               const item = items.find((item) => item.key === key);
-              return item ? row(item) : null;
-            })}
-            <div className="pt-2">
-              {NAV_TOOL_GROUPS.map((group) => {
-                const groupItems = group.keys.flatMap((key) => {
-                  const item = items.find((item) => item.key === key);
-                  return item ? [item] : [];
-                });
-                if (!groupItems.length) return null;
-                const open = expanded[group.key];
-                const notes = groupItems
-                  .filter((item) => item.note !== null)
-                  .map((item) => `${item.label}: ${item.note}`)
-                  .join("; ");
-                const label = S.nav.toolGroups[group.key];
-                return (
-                  <div key={group.key} className="space-y-0.5">
-                    <button
-                      type="button"
-                      aria-expanded={open}
-                      aria-controls={`${id}-${group.key}`}
-                      aria-label={notes ? `${label} · ${notes}` : undefined}
-                      title={notes || undefined}
-                      onClick={() => toggle(group.key)}
-                      className={`${rowClass} ${idleClass}`}
-                    >
-                      <ChevronDown
-                        size={16}
-                        className={`shrink-0 transition-transform duration-150 ${open ? "" : "-rotate-90"}`}
-                      />
-                      <span className="min-w-0 flex-1 text-left">{label}</span>
-                      {notes && !open && (
-                        <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
-                      )}
-                    </button>
-                    <div id={`${id}-${group.key}`} className="space-y-0.5 pl-3">
-                      {/* No zero-height focusable links: closed groups render only the active destination. */}
-                      {groupItems.filter((item) => open || item.key === active).map(row)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+              return item ? [item] : [];
+            });
+            if (!groupItems.length) return null;
+            const open = expanded[group.key];
+            const notes = groupItems
+              .filter((item) => item.note !== null)
+              .map((item) => `${item.label}: ${item.note}`)
+              .join("; ");
+            const label = S.nav.toolGroups[group.key];
+            return (
+              <div key={group.key} className="space-y-0.5">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={`${id}-${group.key}`}
+                  aria-label={notes ? `${label} · ${notes}` : undefined}
+                  title={notes || undefined}
+                  onClick={() => toggle(group.key)}
+                  className={`${rowClass} ${idleClass}`}
+                >
+                  <ChevronDown
+                    size={16}
+                    className={`shrink-0 transition-transform duration-150 ${open ? "" : "-rotate-90"}`}
+                  />
+                  <span className="min-w-0 flex-1 text-left">{label}</span>
+                  {notes && !open && (
+                    <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
+                  )}
+                </button>
+                <div id={`${id}-${group.key}`} className="space-y-0.5 pl-3">
+                  {/* No zero-height focusable links: closed groups render only the active destination. */}
+                  {groupItems.filter((item) => open || item.key === active).map(row)}
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
-      {/* The whole-nav collapse toggle: a slim (h-4) nav-row-wide button under the last
-          entry, chevron up while expanded and down while collapsed, staying put as the only
-          way back. The soft resting band reads as the seam between the page nav above and the
-          Session list below. Icon-only, so tooltip + aria carry the name. The `max-md` floor
-          is the touch target the nav's own rows keep on a phone (rowClass's min-h-11) — a
-          16px strip is a fine mouse target and a poor one under a thumb. */}
-      <button
-        type="button"
-        onClick={onToggleCollapse}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-        title={collapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-        className="flex h-4 max-md:min-h-11 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-      >
-        <ChevronDown
-          size={12}
-          className={`transition-transform duration-200 ${collapsed ? "" : "rotate-180"}`}
-        />
-      </button>
+      </NavGroupCollapse>
     </nav>
   );
 }

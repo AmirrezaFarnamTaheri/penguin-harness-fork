@@ -19,6 +19,7 @@ import type { LLMInterface } from "./llm.js";
 // Concrete classes, used only for EnvironmentServices type annotations (type-only import; no runtime dependency, no circular reference).
 import type { CommandSessionManager } from "../environment/tools/command/session-manager.js";
 import type { SubagentSessionManager } from "../environment/tools/subagent/session-manager.js";
+import type { ResourcePressureProbe } from "../agent/resource/pressure-probe.js";
 import type { ApiKeyRotator } from "../llm/key-rotator.js";
 
 // ---------------------------------------------------------------------------
@@ -282,6 +283,14 @@ export interface EnvironmentServices {
   visionDescriber?: VisionDescriberService;
   /** Native web-search provider override; Environment fills its endpoint from the Agent vault/process when omitted. */
   webSearch?: WebSearchService;
+  /**
+   * Memory/disk pressure readings for the `resource_pressure` tool. Constructed and injected
+   * internally by Environment over the data root and the Workspace — the two paths that
+   * actually fill. **Optional on purpose**: its absence means the tool reports that it has no
+   * probe, which is an honest answer. The alternative — failing the read — would take the
+   * numbers away from an agent at exactly the moment it needs them.
+   */
+  resourcePressureProbe?: ResourcePressureProbe;
   /** Registry of long-running command sessions (shared by `exec_command` / `input_command`); constructed and injected internally by Environment. */
   commandSessions?: CommandSessionManager;
   /** Registry of background subagent sessions (shared by `run_subagent` / `input_subagent`); constructed and injected internally by Environment. */

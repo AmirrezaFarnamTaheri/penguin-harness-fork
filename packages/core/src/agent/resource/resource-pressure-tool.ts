@@ -148,8 +148,15 @@ function safeSlice(text: string, limit: number): string {
 }
 
 export interface ResourcePressureToolOptions {
-  /** The probe to report from. Injected so the tool and its test share one implementation. */
-  probe: ResourcePressureProbe;
+  /**
+   * The probe to report from. Injected so the tool and its test share one implementation.
+   *
+   * **Optional on purpose.** A host that cannot supply one still gets a working tool that
+   * says so, because an agent that cannot see pressure cannot reason about it — and a tool
+   * that is simply absent is indistinguishable from a feature that was never written. The
+   * absent case is stated in words rather than surfacing as a failed property read.
+   */
+  probe?: ResourcePressureProbe;
 }
 
 /**
@@ -190,16 +197,25 @@ export function createResourcePressureTool(
       if (signal?.aborted) return { stopReason: "aborted" };
 
       let text: string;
-      try {
-        const report = await options.probe.probe(refresh === true);
-        text = formatPressureReport(report);
-      } catch (err) {
-        // A monitor that throws under pressure is worse than no monitor: the agent loses the
-        // numbers precisely when it most needs them. Degrade to an explanation instead.
+      if (options.probe === undefined) {
+        // Named explicitly rather than left to fail: the catch below would otherwise turn a
+        // missing probe into "unavailable: cannot read properties of undefined", which is
+        // accurate and useless.
         text =
-          `Resource pressure is unavailable right now: ` +
-          `${err instanceof Error ? err.message : String(err)}. ` +
-          `This blocks nothing — carry on with the work you were doing.`;
+          `No resource-pressure probe is configured for this Environment, so there are no ` +
+          `readings to report. This blocks nothing — carry on with the work you were doing.`;
+      } else {
+        try {
+          const report = await options.probe.probe(refresh === true);
+          text = formatPressureReport(report);
+        } catch (err) {
+          // A monitor that throws under pressure is worse than no monitor: the agent loses the
+          // numbers precisely when it most needs them. Degrade to an explanation instead.
+          text =
+            `Resource pressure is unavailable right now: ` +
+            `${err instanceof Error ? err.message : String(err)}. ` +
+            `This blocks nothing — carry on with the work you were doing.`;
+        }
       }
       yield delta(text.length > budget ? safeSlice(text, budget) : text);
       return;

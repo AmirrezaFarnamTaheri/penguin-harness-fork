@@ -385,7 +385,9 @@ describe("native-menu suppression scope", () => {
   });
 
   it("gives the sidebar row all three openers, so the menu is not mouse-only", () => {
-    const sidebar = sourceFiles().find(([path]) => path === "components/layout/sidebar.tsx");
+    // The row lives in its own component now (components/layout/session-row.tsx); the
+    // contract is that the sidebar's row spreads the handlers and guards its own click.
+    const sidebar = sourceFiles().find(([path]) => path === "components/layout/session-row.tsx");
     expect(sidebar).toBeDefined();
     // The row spreads the hook's handlers (contextmenu + Shift+F10 + press-and-hold) and
     // guards its own click against the one a hold replays.
@@ -396,7 +398,7 @@ describe("native-menu suppression scope", () => {
   it("names the anchor's owner alongside the anchor, so the scroll rule has one to test", () => {
     // Without the wiring, scrollMovesAnchor is asked about a null owner on every scroll and
     // answers "dismiss" — the rule above would still pass while the bug was back.
-    const sidebar = sourceFiles().find(([path]) => path === "components/layout/sidebar.tsx");
+    const sidebar = sourceFiles().find(([path]) => path === "components/layout/session-row.tsx");
     expect(sidebar![1]).toContain("anchorOwner={ctx.anchorOwner}");
   });
 });

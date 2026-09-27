@@ -139,9 +139,13 @@ test("?cwd= starts the shell in the requested directory", async ({ page }) => {
 
   await run(page, WINDOWS ? "Get-Location | Select-Object -ExpandProperty Path" : "pwd");
   const expectedPath = TEST_CWD.replaceAll("\\", "\\\\");
+  // Windows paths are case-insensitive, but os.tmpdir() reports whatever casing
+  // TEMP happens to hold while Get-Location reports the on-disk casing — on this
+  // host those differ (C:\WINDOWS\TEMP vs C:\Windows\Temp), so matching the two
+  // case-sensitively fails a shell that is in exactly the right directory.
   await expect
     .poll(() => screenText(page), { timeout: 15000 })
-    .toMatch(new RegExp(`^${expectedPath}$`, "m"));
+    .toMatch(new RegExp(`^${expectedPath}$`, WINDOWS ? "im" : "m"));
 });
 
 test("?id= attaches an existing terminal with its screen (deep link)", async ({ page }) => {

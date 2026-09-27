@@ -4,8 +4,11 @@
  * POST /api/projects/:p/models/test, POST /api/projects/:p/models/detect,
  * POST /api/projects/:p/models/list, POST /api/projects/:p/models/detect-vision (the model
  * reference `(provider, modelId)` is sent as a pair in the request body, avoiding
- * URL-encoding issues). Any member can read (api_key is masked); only the owner can
- * modify, test, or detect.
+ * URL-encoding issues). GET|PUT|DELETE /api/projects/:p/models/keys, GET .../keys/health,
+ * POST .../keys/reset — the NAMED key fleet: a key a person called "prod" is identifiable
+ * across every surface that shows a key, and a name is unique per fleet (409, enforced by a
+ * unique index, not a service check). Any member can read (api_key is masked, and no read
+ * below ever returns it); only the owner can modify, test, or detect.
  */
 import { Hono } from "hono";
 import type {
@@ -24,6 +27,12 @@ import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, readJson, requireString, requireValidId } from "../validate.js";
 import { isHttpUrl } from "../../services/protocol-detect.js";
 import type { AppDeps } from "../../app.js";
+import type { ModelKeyNameDto, ModelKeyNamesService } from "../../services/model-key-names.js";
+import {
+  maskApiKey as narrowMaskApiKey,
+  type KeyHealthItem,
+  type ModelKeyHealthReport,
+} from "../../services/model-key-health.js";
 
 /**
  * Live unlock for auth-dead composers: after a models/credential update, publish
@@ -207,6 +216,50 @@ function parseModelsUpdate(body: Record<string, unknown>): ModelsUpdateRequest {
     req.groupDefaults = gd;
   }
   return req;
+}
+
+/**
+ * A health item plus what the Project calls its key. Absent when the key has no name yet.
+ *
+ * Exported because this IS the shape `GET /keys/health` answers, and a test that asserted
+ * against a narrower type would be asserting against a type the route does not use.
+ */
+export type NamedKeyHealthItem = KeyHealthItem & { keyId?: string; name?: string; label?: string };
+export type NamedKeyHealthReport = Omit<ModelKeyHealthReport, "keys"> & {
+  keys: NamedKeyHealthItem[];
+};
+
+/**
+ * Attaches each key's name to a health report, joined on the mask the report itself prints.
+ *
+ * The health report is produced by the rotator, which only ever sees keys, so the join has to
+ * happen here — on the one string both sides already agree on. Passing the report's OWN mask
+ * function (the narrow one) matters: the cockpit fleet report masks differently, and joining
+ * a health item onto a mask it never printed would attach names to the wrong keys.
+ *
+ * A key with no name keeps its shape exactly as before: no `name`, no `label`, no `keyId`
+ * added. "Unnamed" is a fact the UI states, not a field the server fills in.
+ */
+async function withKeyNames(
+  names: ModelKeyNamesService,
+  projectId: string,
+  provider: string,
+  modelId: string,
+  report: ModelKeyHealthReport,
+): Promise<NamedKeyHealthReport> {
+  const annotations = await names.annotationsForFleet(
+    projectId,
+    provider,
+    modelId,
+    narrowMaskApiKey,
+  );
+  return {
+    ...report,
+    keys: report.keys.map((key) => {
+      const hit = annotations.get(key.maskedKey);
+      return hit === undefined ? key : { ...key, ...hit };
+    }),
+  };
 }
 
 export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
@@ -399,6 +452,10 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
 
   /**
    * Health report for API keys of a configured model (members may read).
+   *
+   * Each key carries the name and label its Project gave it, so the pool view can say "prod"
+   * rather than showing three rows that differ by a suffix. The join is on the mask this
+   * report already prints, so a name is only ever attached to the key it was given to.
    */
   app.get("/keys/health", async (c) => {
     const projectId = requireValidId(c, "projectId");
@@ -431,7 +488,11 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
           deps.keyHealthService.getRotator(projectId, targetRef, creds as string | string[]);
         }
       }
-      return c.json(deps.keyHealthService.getKeyHealth(projectId, targetRef));
+      const report = deps.keyHealthService.getKeyHealth(projectId, targetRef);
+      if (provider && modelId) {
+        return c.json(await withKeyNames(deps.modelKeyNames, projectId, provider, modelId, report));
+      }
+      return c.json(report);
     }
 
     const raw = await deps.projectConfigService.readRaw(projectId);
@@ -446,11 +507,82 @@ export function modelsRoutes(deps: AppDeps): Hono<AppEnv> {
           if (creds) {
             deps.keyHealthService.getRotator(projectId, ref, creds as string | string[]);
           }
-          reports.push(deps.keyHealthService.getKeyHealth(projectId, ref));
+          reports.push(
+            await withKeyNames(
+              deps.modelKeyNames,
+              projectId,
+              rec.provider,
+              rec.model_id,
+              deps.keyHealthService.getKeyHealth(projectId, ref),
+            ),
+          );
         }
       }
     }
     return c.json({ reports });
+  });
+
+  /**
+   * Every named key of this Project (members may read — a name is an annotation, not a
+   * credential, and the same audience already reads every masked key below).
+   *
+   * This is what the cockpit fleet view joins its health report against: the report is
+   * produced by the key rotator, which knows nothing about names, and it identifies a key by
+   * the mask it prints. So each entry carries the SAME mask string that report shows —
+   * never the key, and never a wider view of it than that report already gives.
+   *
+   * A name whose key is no longer configured comes back `orphaned: true` rather than being
+   * dropped: a word the user typed disappearing with no explanation is worse than saying the
+   * key is gone.
+   */
+  app.get("/keys", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const keys: ModelKeyNameDto[] = await deps.modelKeyNames.list(projectId);
+    return c.json({ keys });
+  });
+
+  /**
+   * Names a key, or renames the one it already names (owner only — it writes).
+   *
+   * The target is named by the MASKED key the UI is showing, not by plaintext and not by a
+   * position in the pool: the server resolves the mask against the pool it holds, so the
+   * client never has to possess the key to name it. That is the whole point — the fleet is
+   * write-only at rest, and this route must not become a way to read one back.
+   *
+   * 400 when the name is missing/too long/not plain text or the mask names no key (or more
+   * than one); 409 when the name is already taken in THIS fleet. The 409 is a unique index
+   * refusing the write, not a SELECT that another writer can race.
+   */
+  app.put("/keys", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const body = await readJson(c);
+    const name = requireString(body, "name", { maxLen: 200, label: "name" });
+    if (body.label !== undefined && body.label !== null && typeof body.label !== "string") {
+      throw badRequest("label must be a string.");
+    }
+    const saved = await deps.modelKeyNames.set(projectId, {
+      provider: requireString(body, "provider", { minLen: 1, maxLen: 64 }),
+      modelId: requireString(body, "modelId", { minLen: 1, maxLen: 200 }),
+      maskedKey: requireString(body, "maskedKey", { minLen: 1, maxLen: 128 }),
+      name,
+      label: typeof body.label === "string" ? body.label : undefined,
+    });
+    return c.json(saved);
+  });
+
+  /**
+   * Forgets one key's name (owner only). The KEY is untouched: it lives in the Project's
+   * `.project_config.toml` and this route has never been near it. 404 when no such name is
+   * stored, so a repeated clear cannot report work it did not do.
+   */
+  app.delete("/keys/:keyId", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
+    const keyId = requireValidId(c, "keyId");
+    deps.modelKeyNames.clear(projectId, keyId);
+    return c.json({ ok: true, keyId });
   });
 
   /**

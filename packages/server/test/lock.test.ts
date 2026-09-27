@@ -26,6 +26,12 @@ function deadPid(): number {
 function listen(): Promise<{ port: number; close: () => Promise<void> }> {
   return new Promise((resolve) => {
     const srv = net.createServer();
+    // Drain what arrives. liveServerLock now also asks the peer which data root it serves,
+    // so it writes an HTTP request; a socket nobody reads leaves the connection half-open
+    // and the close() below never completes. A real server reads and replies — this fake
+    // only ever existed to hold a port open, and holding a port is not the same as
+    // ignoring what is sent to it.
+    srv.on("connection", (socket) => socket.resume());
     srv.listen(0, "127.0.0.1", () => {
       const port = (srv.address() as net.AddressInfo).port;
       resolve({

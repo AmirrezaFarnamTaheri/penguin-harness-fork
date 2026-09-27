@@ -4,6 +4,7 @@ import type { AdvisoryActivityRecorder } from "./activity.js";
 import type { ToolPermission } from "../interfaces/index.js";
 import type { PreToolUseHook } from "../hooks/tool-hook.js";
 import { JevClient } from "./client.js";
+import { safeDiagnostic } from "./diagnostics.js";
 import type { JevToolAdvisory, JevToolChoice } from "./types.js";
 
 /** Keep one advisory request comfortably below common model state limits. */
@@ -145,24 +146,6 @@ function validateResponse(result: JevToolResponse): void {
     probability((answer as { noul?: unknown }).noul, name);
   }
   validateUsage(result.usage);
-}
-
-function safeDiagnostic(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.name === "JevCircuitOpenError") return "circuit_open";
-    if (error.name === "JevProtocolError") return "invalid_response";
-    if (error.name === "APIUserAbortError") return "cancelled";
-    if (error.name === "APITimeoutError") return "timeout";
-    if (error.name === "APIConnectionError") return "connection_error";
-  }
-  const status =
-    error !== null && typeof error === "object"
-      ? (error as { status?: unknown }).status
-      : undefined;
-  if (typeof status === "number" && Number.isInteger(status) && status >= 400 && status <= 599) {
-    return `provider_http_${status}`;
-  }
-  return "provider_error";
 }
 
 function boundedToolName(value: string): string {

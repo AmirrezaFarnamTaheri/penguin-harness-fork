@@ -74,7 +74,9 @@ describe("revealDurationMs", () => {
 const src = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const read = (rel: string) => readFileSync(resolve(src, rel), "utf8");
 const truncated = read("components/ui/truncated.tsx");
-const sidebar = read("components/layout/sidebar.tsx");
+// The row that renders the attribute moved out of the sidebar into its own component
+// (components/layout/session-row.tsx); the contract is still "the sidebar row renders it".
+const sidebar = read("components/layout/session-row.tsx");
 /** styles.css with comments stripped and whitespace collapsed, so the assertions survive reformatting. */
 const css = read("styles.css")
   .replace(/\/\*[\s\S]*?\*\//g, "")

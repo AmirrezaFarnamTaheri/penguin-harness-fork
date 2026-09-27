@@ -135,9 +135,26 @@ export function resolveContextWindow(contextWindow: unknown): number | undefined
 export function approximateTokens(text: string): number {
   let ascii = 0;
   let wide = 0;
-  for (const ch of text) {
-    if ((ch.codePointAt(0) ?? 0) < 0x80) ascii += 1;
-    else wide += 1;
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x80) {
+      ascii += 1;
+      continue;
+    }
+    // A surrogate pair is ONE character (one code point) and therefore one token, but occupies
+    // two UTF-16 units — charged as two by `.length` and by a per-unit scan, which is how every
+    // astral-plane emoji used to be double-counted. Recognised explicitly so this unit-level
+    // iteration and the code-point iteration it replaced return identical counts; an unpaired
+    // surrogate falls through and is charged as the single wide character it is.
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        wide += 1;
+        i += 1;
+        continue;
+      }
+    }
+    wide += 1;
   }
   return Math.ceil(ascii / 4) + wide;
 }
@@ -208,7 +225,14 @@ export function effectiveMaxOutputTokens(
 ): number | undefined {
   if (configured === undefined || configured <= 0) return undefined;
   if (contextWindow === undefined) return configured;
-  const remaining = contextWindow - estimatedInputTokens - OUTPUT_SAFETY_MARGIN;
+  // A non-finite input is treated as an input that has consumed the entire window, which sends the
+  // clamp to its floor. The arithmetic is not NaN-safe on its own: `Math.max(NaN, floor)` is NaN
+  // and `Math.min(configured, NaN)` is NaN, so an unknown input would put `max_tokens: NaN` on the
+  // wire for a provider to reject. Flooring is also the right reading of "unknown" — an output cap
+  // is the one number here where guessing high costs the whole request, and the floor is the only
+  // value that cannot exceed the window no matter how wrong the guess was.
+  const input = Number.isFinite(estimatedInputTokens) ? estimatedInputTokens : Infinity;
+  const remaining = contextWindow - input - OUTPUT_SAFETY_MARGIN;
   return Math.min(configured, Math.max(remaining, MIN_OUTPUT_TOKENS));
 }
 

@@ -1,5 +1,7 @@
 import { JevClient } from "./client.js";
 import { JevToolAdvisor } from "./advisor.js";
+import { JevSurfaceAdvisor, type JevSurfaceAdvisorOptions } from "./surfaces.js";
+import type { AdvisoryActivityRecorder } from "./activity.js";
 
 /**
  * Host-composition options for the optional Jev advisor.
@@ -45,5 +47,29 @@ export function createJevAdvisor(options: CreateJevAdvisorOptions): JevToolAdvis
     ...(options.includeArguments !== undefined
       ? { includeArguments: options.includeArguments }
       : {}),
+  });
+}
+
+/**
+ * Composes the non-tool-call surface advisor. It takes the SAME {@link CreateJevAdvisorOptions}
+ * as {@link createJevAdvisor} and, given the same host credential, produces an advisor over the
+ * same client shape — so a host that already opted in gets turn/session/context observation
+ * without a second credential, a second endpoint, or a second opt-in decision.
+ *
+ * `activity` is passed separately because it is an operator counter, not a capability: a host
+ * that wants the surface observations counted but has no use for the answers still gets them
+ * fire-and-forget, and a host with no recorder behaves identically minus the counters.
+ */
+export function createJevSurfaceAdvisor(options: {
+  client: JevClient;
+  deadlineMs?: number;
+  activity?: AdvisoryActivityRecorder;
+  onObservation?: JevSurfaceAdvisorOptions["onObservation"];
+}): JevSurfaceAdvisor {
+  return new JevSurfaceAdvisor({
+    client: options.client,
+    ...(options.deadlineMs !== undefined ? { deadlineMs: options.deadlineMs } : {}),
+    ...(options.activity !== undefined ? { activity: options.activity } : {}),
+    ...(options.onObservation !== undefined ? { onObservation: options.onObservation } : {}),
   });
 }

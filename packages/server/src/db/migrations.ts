@@ -407,6 +407,42 @@ export const MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: 8,
+    name: "model-keys",
+    // Additive: one new table and one new index, no column of any existing table touched. A
+    // platform rolled back to one without key names never reads them, so the rollback survives
+    // it — with whatever names it had left in the table.
+    swapSafe: true,
+    up(db) {
+      // Frozen copy of the DDL as of the named-key-fleet feature; do not re-derive from schema.ts.
+      // IF NOT EXISTS because the declarative track may already have created it (ADOPTION).
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS model_keys (
+          project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+          key_id     TEXT NOT NULL,
+          provider   TEXT NOT NULL,
+          model_id   TEXT NOT NULL,
+          name       TEXT NOT NULL COLLATE NOCASE,
+          label      TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (project_id, key_id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_model_keys_fleet_name ON model_keys(project_id, provider, model_id, name);
+      `);
+    },
+    // LOSES every name and label: they are the whole content of the table this drops, and
+    // nothing rebuilds them — a key that was called "prod" goes back to unnamed, and the user
+    // retypes it. The keys THEMSELVES are untouched: they live in .project_config.toml and were
+    // never in this database.
+    down(db) {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_model_keys_fleet_name;
+        DROP TABLE IF EXISTS model_keys;
+      `);
+    },
+  },
 ];
 
 /** The highest version this build knows how to reach. */

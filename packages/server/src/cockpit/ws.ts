@@ -31,6 +31,7 @@ import type { AuthService } from "../auth/service.js";
 import type { ProjectService } from "../services/project-service.js";
 import type { ProjectConfigService } from "../services/project-config-service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
+import { CockpitEventLog } from "./event-log.js";
 
 const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
 const MAX_BUFFERED_AMOUNT = 64 * 1024; // 64KB backpressure guard
@@ -41,10 +42,35 @@ function safeSend(ws: WebSocket, payload: string): void {
   }
 }
 
-function broadcast(clients: Iterable<WebSocket>, payload: string): void {
-  for (const client of clients) {
+/**
+ * Serializes one event, stamps it with the next sequence number, records it for replay, and
+ * pushes it to every client.
+ *
+ * This replaces the previous bare `broadcast` at every call site, which is the point: a
+ * sequence number that some messages carry and others do not is a cursor a client cannot
+ * trust. Going through one function is what makes `seq` a property of the stream rather than
+ * of one caller's discipline. A client that was connected the whole time learns the cursor
+ * from the traffic it already receives, and a client that reconnects can name where it stopped.
+ */
+function publish(runtime: ProjectCockpitRuntime, event: Record<string, unknown>): void {
+  const seq = runtime.eventLog.publish(JSON.stringify(event));
+  const payload = JSON.stringify({ ...event, seq });
+  for (const client of runtime.clients) {
     safeSend(client, payload);
   }
+}
+
+/**
+ * The `since` cursor a reconnecting client asked for, or undefined when it did not ask.
+ * Read from the query string rather than an in-band `resume` message so the answer can be sent
+ * during the upgrade, in the same synchronous block that registers the client — see
+ * attachCockpitWebSocket for why that ordering is what makes the replay race-free.
+ */
+function parseSince(url: URL): number | undefined {
+  const raw = url.searchParams.get("since");
+  if (raw === null) return undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function resolveKeyTarget(msg: Record<string, unknown>): string {
@@ -72,6 +98,13 @@ export interface ProjectCockpitRuntime {
   keyFleet: KeyFleetMonitor;
   codeGraphWatcher: CodeGraphWatcher;
   clients: Set<WebSocket>;
+  /**
+   * Bounded replay log for this project's stream. Every envelope published to `clients` is
+   * stamped and recorded here, which is what lets a client that dropped say how far it got
+   * instead of reconnecting blind. Owned by the runtime so its lifetime matches the clients'
+   * and the reap below discards it with them.
+   */
+  eventLog: CockpitEventLog;
   idleTimer?: NodeJS.Timeout | null;
   cleanup?: () => void;
 }
@@ -452,6 +485,7 @@ export async function getOrCreateProjectRuntime(
         keyFleet,
         codeGraphWatcher,
         clients,
+        eventLog: new CockpitEventLog(),
       };
       projectRuntimes.set(runtimeKey, runtime);
 
@@ -466,42 +500,33 @@ export async function getOrCreateProjectRuntime(
       });
 
       const unsubCoordinator = coordinator.subscribe((event: SwarmEvent) => {
-        broadcast(
-          runtime.clients,
-          JSON.stringify({
-            type: "swarm_event",
-            projectId,
-            timestamp: Date.now(),
-            event: redactObject(event),
-          }),
-        );
+        publish(runtime, {
+          type: "swarm_event",
+          projectId,
+          timestamp: Date.now(),
+          event: redactObject(event),
+        });
       });
 
       const unsubKeyFleet = keyFleet.subscribe((_stats) => {
-        broadcast(
-          runtime.clients,
-          JSON.stringify({
-            type: "key_fleet_update",
-            projectId,
-            timestamp: Date.now(),
-            keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
-            reports: redactObject(keyFleet.getFleetReport()),
-            stats: keyFleet.getFleetStats(),
-          }),
-        );
+        publish(runtime, {
+          type: "key_fleet_update",
+          projectId,
+          timestamp: Date.now(),
+          keyFleet: redactObject(keyFleet.getCockpitSnapshot()),
+          reports: redactObject(keyFleet.getFleetReport()),
+          stats: keyFleet.getFleetStats(),
+        });
       });
 
       const onChange = (ev: unknown) => {
-        broadcast(
-          runtime.clients,
-          JSON.stringify({
-            type: "topology_change",
-            projectId,
-            timestamp: Date.now(),
-            event: ev,
-            stats: codeGraphWatcher.getStats(),
-          }),
-        );
+        publish(runtime, {
+          type: "topology_change",
+          projectId,
+          timestamp: Date.now(),
+          event: ev,
+          stats: codeGraphWatcher.getStats(),
+        });
       };
       codeGraphWatcher.on("change", onChange);
 
@@ -550,6 +575,7 @@ function getOrCreateProjectRuntimeSync(
     keyFleet,
     codeGraphWatcher,
     clients: new Set(),
+    eventLog: new CockpitEventLog(),
   };
   projectRuntimes.set(projectId, rt);
   if (rt.clients.size === 0) {
@@ -596,6 +622,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
     const projectId =
       url.searchParams.get("project") || url.searchParams.get("projectId") || DEFAULT_PROJECT_ID;
+    const since = parseSince(url);
 
     if (deps.projectService && authedUser) {
       try {
@@ -609,16 +636,65 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
       cancelRuntimeReap(runtime);
-      runtime.clients.add(ws);
 
-      // Send initial cockpit telemetry snapshot for this project
+      // The client is registered with the broadcast set only AFTER its backlog has been sent,
+      // and the whole block below is synchronous. That ordering is the race fix, not a style
+      // preference: if the socket were live first, a `publish` landing between registration and
+      // the backlog would deliver a NEW event to a client that has not yet been sent the OLDER
+      // events it missed, and the client's applied order would be inverted. Synchronous send,
+      // then register: every later event is newer than everything sent so far, always.
+      if (since !== undefined) {
+        const replay = runtime.eventLog.since(since);
+        if (replay.gap) {
+          // The cursor fell out of the bounded window. Say so explicitly and resync from
+          // state: a client told "you are behind" plus a fresh snapshot is honest, where a
+          // silently truncated replay would look identical to being up to date.
+          safeSend(
+            ws,
+            JSON.stringify({
+              type: "cockpit_stream_gap",
+              projectId,
+              missed: replay.missed,
+              cursor: replay.cursor,
+              reason: "outside_replay_window",
+              timestamp: Date.now(),
+            }),
+          );
+        } else {
+          for (const entry of replay.entries) {
+            // The retained bytes already carry their own `seq`, so they are forwarded
+            // verbatim rather than re-stamped: re-serializing would risk a client applying
+            // an event under a sequence number different from the one its gap was measured in.
+            safeSend(ws, entry.payload);
+          }
+          safeSend(
+            ws,
+            JSON.stringify({
+              type: "cockpit_resume",
+              projectId,
+              replayed: replay.entries.length,
+              missed: replay.missed,
+              cursor: replay.cursor,
+              timestamp: Date.now(),
+            }),
+          );
+        }
+      }
+
+      // Sent on EVERY connect, including a clean resume. After a resumed backlog this snapshot
+      // is redundant state, but it is cheap, it is the same payload the REST path serves, and
+      // it means a resumed client is reconciled to server truth by construction rather than by
+      // the client correctly having applied every replayed delta — which is the difference
+      // between "usually converges" and "is guaranteed to be current".
       const snapshot = buildCockpitSnapshot(
         runtime.coordinator,
         runtime.keyFleet,
         runtime.codeGraphWatcher,
         projectId,
       );
-      safeSend(ws, JSON.stringify(snapshot));
+      safeSend(ws, JSON.stringify({ ...snapshot, seq: runtime.eventLog.cursor }));
+
+      runtime.clients.add(ws);
 
       ws.on("message", async (raw: Buffer | string) => {
         try {
@@ -784,15 +860,13 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 return;
               }
               const directive = runtime.coordinator.dispatchDirective(from, to, trimmed);
-              broadcast(
-                runtime.clients,
-                JSON.stringify({
-                  type: "directive_dispatched",
-                  directive: redactObject(directive),
-                  mailbox: runtime.coordinator.getMailboxSummaries(),
-                  timestamp: Date.now(),
-                }),
-              );
+              publish(runtime, {
+                type: "directive_dispatched",
+                projectId,
+                directive: redactObject(directive),
+                mailbox: runtime.coordinator.getMailboxSummaries(),
+                timestamp: Date.now(),
+              });
             } else if (trimmed.length > 8192) {
               safeSend(
                 ws,
@@ -869,38 +943,32 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
               })
               .then((res: unknown) => {
                 if ((res as { status?: string })?.status !== "settled") {
-                  broadcast(
-                    runtime.clients,
-                    JSON.stringify({
-                      type: "swarm_task_error",
-                      taskId,
-                      error: `Swarm task ended with status: ${(res as { status?: string })?.status ?? "unknown"}`,
-                      result: redactObject(res),
-                      timestamp: Date.now(),
-                    }),
-                  );
-                  return;
-                }
-                broadcast(
-                  runtime.clients,
-                  JSON.stringify({
-                    type: "swarm_task_settled",
+                  publish(runtime, {
+                    type: "swarm_task_error",
+                    projectId,
                     taskId,
+                    error: `Swarm task ended with status: ${(res as { status?: string })?.status ?? "unknown"}`,
                     result: redactObject(res),
                     timestamp: Date.now(),
-                  }),
-                );
+                  });
+                  return;
+                }
+                publish(runtime, {
+                  type: "swarm_task_settled",
+                  projectId,
+                  taskId,
+                  result: redactObject(res),
+                  timestamp: Date.now(),
+                });
               })
               .catch((err: unknown) => {
-                broadcast(
-                  runtime.clients,
-                  JSON.stringify({
-                    type: "swarm_task_error",
-                    taskId,
-                    error: err instanceof Error ? err.message : String(err),
-                    timestamp: Date.now(),
-                  }),
-                );
+                publish(runtime, {
+                  type: "swarm_task_error",
+                  projectId,
+                  taskId,
+                  error: err instanceof Error ? err.message : String(err),
+                  timestamp: Date.now(),
+                });
               });
           }
         } catch {

@@ -162,6 +162,20 @@ export class SwarmCoordinator {
   private loopOptions: LoopDetectorOptions;
   private readonly maxPendingTasks: number;
   private pendingTaskCount = 0;
+  /**
+   * In-flight step handlers of the running task, so an interruption reaches the work that is
+   * actually awaiting rather than only the deliberation loop that is about to call it. Held
+   * across awaits (a handler can run for its whole step timeout), hence the membership set
+   * rather than a single controller.
+   */
+  private activeStepControllers = new Set<AbortController>();
+  /**
+   * Why the running task must stop, or null while it may continue. Set by an external abort()
+   * and by the watchdog reaching a terminal state. One field for both so the loop has a single
+   * condition to honour — see the comment at the loop for why the watchdog's verdict has to be
+   * latched here rather than only reported.
+   */
+  private interruption: string | null = null;
 
   constructor(options?: {
     quorumPolicy?: Partial<QuorumPolicy>;
@@ -339,6 +353,83 @@ export class SwarmCoordinator {
     return this.watchdog.checkHealth();
   }
 
+  /**
+   * Records progress and latches the watchdog's verdict when it has reached one.
+   *
+   * The latch is the whole point. `TaskWatchdog.heartbeat` deliberately only *reports* a
+   * terminal state — it never aborts by itself, so a host that merely polls cannot wedge a run.
+   * That contract is right for the kernel and wrong for a caller that then throws the answer
+   * away: `totalTimeoutMs` and `maxStepCount` were configured but never acted on, so a task ran
+   * to its round cap (round cap × steps × step timeout) no matter what budget it was given. The
+   * verdict is latched into `interruption` here, where the loop actually reads it, and the
+   * in-flight handlers are aborted so a step already awaiting stops too.
+   */
+  private noteProgress(action: string): void {
+    const status = this.watchdog.heartbeat({ action });
+    if (
+      status.state !== "timed_out" &&
+      status.state !== "max_steps_exceeded" &&
+      status.state !== "aborted" &&
+      status.state !== "stalled"
+    ) {
+      return;
+    }
+    if (this.interruption !== null) return;
+    this.interruption = status.abortReason ?? `Swarm task ${status.state}`;
+    this.record(`Task interrupted after '${action}': ${this.interruption}`);
+    this.abortActiveSteps();
+  }
+
+  /**
+   * Aborts every step handler this task currently awaits.
+   *
+   * A handler that respects its signal stops here. One that ignores it still cannot hold the
+   * loop past its own step deadline, and `runWithDeadline` removes the controller from the set
+   * in its `finally`, so a later abort() only ever reaches work that is still in flight.
+   */
+  private abortActiveSteps(): void {
+    for (const controller of this.activeStepControllers) {
+      try {
+        controller.abort();
+      } catch {
+        // Already aborted — the desired end state.
+      }
+    }
+  }
+
+  /**
+   * Stops the running task: latches the reason so the deliberation loop exits at its next
+   * boundary, and aborts every in-flight step handler so a handler currently awaiting — rather
+   * than one about to be called — is interrupted too. Idempotent, and a no-op when idle.
+   *
+   * This is the only way a host can stop a swarm it did not start in-process: `runTask` owns its
+   * own step timeouts but nothing else ends it early, so deleting the Session (or unmounting the
+   * view) that spawned one had no way to reach the work and the task ran to its round cap.
+   * Returns whether a task was actually running, so a caller can tell a real stop from a no-op.
+   */
+  public abort(reason: string): boolean {
+    if (this.activeTaskId === null) return false;
+    if (this.interruption === null) {
+      this.interruption = reason;
+      this.record(`Task interrupted: ${reason}`);
+    }
+    this.watchdog.abort(reason);
+    this.abortActiveSteps();
+    return true;
+  }
+
+  /**
+   * Appends one timestamped line to the current task's log.
+   *
+   * A method rather than the closure inside runTask because the interruption has to be recorded
+   * from `noteProgress`/`abort` too, and the caller is handed `result.log` as the run's narrative:
+   * a run that stopped without saying why in that log is the "it just ended" case this whole
+   * mechanism exists to replace.
+   */
+  private record(message: string): void {
+    this.logMessages.push(`[${new Date().toISOString()}] ${message}`);
+  }
+
   public getReplayView(): ReplayView {
     return this.ledger.replay(0);
   }
@@ -398,14 +489,14 @@ export class SwarmCoordinator {
     const taskId = task.id ?? `task-${randomUUID().slice(0, 8)}`;
     this.activeTaskId = taskId;
     this.logMessages = [];
+    // Cleared at entry, not left to the finally: a coordinator is reusable, and a latch left
+    // over from a previous task would stop this one before its first step.
+    this.interruption = null;
     this.loopDetector = new LoopDetector(this.loopOptions);
     const safetyFindings: ShellSafetyAssessment[] = [];
     const collectedArtifacts: SwarmArtifact[] = [];
 
-    const log = (msg: string) => {
-      const line = `[${new Date().toISOString()}] ${msg}`;
-      this.logMessages.push(line);
-    };
+    const log = (msg: string): void => this.record(msg);
 
     log(`Starting Swarm task '${taskId}': ${task.goal}`);
     this.watchdog.start();
@@ -431,6 +522,7 @@ export class SwarmCoordinator {
     ): Promise<T> => {
       const stepController = new AbortController();
       stepAbortControllers.push(stepController);
+      this.activeStepControllers.add(stepController);
       const promise = factory(stepController.signal);
 
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -462,6 +554,7 @@ export class SwarmCoordinator {
         throw deadlineError;
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
+        this.activeStepControllers.delete(stepController);
       }
     };
 
@@ -472,7 +565,7 @@ export class SwarmCoordinator {
       const orchestrator = this.agents.get("orchestrator")!;
       orchestrator.status = "active";
       orchestrator.currentTask = task.goal;
-      this.watchdog.heartbeat({ action: "orchestrator_plan" });
+      this.noteProgress("orchestrator_plan");
 
       this.ledger.append(
         "text",
@@ -520,7 +613,9 @@ export class SwarmCoordinator {
       let settled = false;
       let refuted = false;
 
-      while (currentRound < maxRounds && !settled && !refuted) {
+      // `interruption` is the loop's stop condition for BOTH external abort() and a terminal
+      // watchdog verdict, so a task cannot outlive the budget it was given (see noteProgress).
+      while (currentRound < maxRounds && !settled && !refuted && this.interruption === null) {
         currentRound++;
         log(`Deliberation round ${currentRound}/${maxRounds}`);
 
@@ -550,7 +645,7 @@ export class SwarmCoordinator {
         const coder = this.agents.get("coder")!;
         coder.status = "active";
         coder.currentTask = `Coding round ${currentRound}`;
-        this.watchdog.heartbeat({ action: `coder_round_${currentRound}` });
+        this.noteProgress(`coder_round_${currentRound}`);
 
         const coderPoll = this.mailbox.pollAndLease<{ goal: string; steps: string[] }>(
           "coder",
@@ -672,7 +767,7 @@ export class SwarmCoordinator {
         const reviewer = this.agents.get("reviewer")!;
         reviewer.status = "active";
         reviewer.currentTask = `Reviewing round ${currentRound}`;
-        this.watchdog.heartbeat({ action: `reviewer_round_${currentRound}` });
+        this.noteProgress(`reviewer_round_${currentRound}`);
 
         const revPoll = this.mailbox.pollAndLease<{ round: number; artifacts: SwarmArtifact[] }>(
           "reviewer",
@@ -749,19 +844,36 @@ export class SwarmCoordinator {
 
       // Finalize status
       let finalStatus: SwarmExecutionResult["status"] = "settled";
-      if (refuted) finalStatus = "refuted";
+      // An interruption outranks every other verdict: the task stopped because it was told to
+      // or because its budget ran out, not because deliberation reached a conclusion. Reporting
+      // "max_rounds_exceeded" for a task that actually timed out on round 1 would report the
+      // round cap as the cause and hide a budget that is not being enforced.
+      if (this.interruption !== null) finalStatus = "timed_out";
+      else if (refuted) finalStatus = "refuted";
       else if (!settled && currentRound >= maxRounds) finalStatus = "max_rounds_exceeded";
 
-      const terminalOutcome = settled
-        ? `Consensus settled across ${currentRound} round(s)`
-        : `Execution concluded with status: ${finalStatus}`;
+      const terminalOutcome =
+        this.interruption !== null
+          ? `Execution interrupted: ${this.interruption}`
+          : settled
+            ? `Consensus settled across ${currentRound} round(s)`
+            : `Execution concluded with status: ${finalStatus}`;
 
-      this.ledger.append("turn_done", terminalOutcome, settled ? "completed" : "failed");
+      this.ledger.append(
+        "turn_done",
+        terminalOutcome,
+        settled && this.interruption === null ? "completed" : "interrupted",
+      );
       turnClosed = true;
-      this.emit(settled ? "task_completed" : "task_failed", taskId, "orchestrator", {
-        status: finalStatus,
-        rounds: currentRound,
-      });
+      this.emit(
+        settled && this.interruption === null ? "task_completed" : "task_failed",
+        taskId,
+        "orchestrator",
+        {
+          status: finalStatus,
+          rounds: currentRound,
+        },
+      );
 
       return {
         taskId,
@@ -798,6 +910,9 @@ export class SwarmCoordinator {
     } finally {
       // Interrupt any handler still running after the task decided its outcome.
       for (const controller of stepAbortControllers) controller.abort();
+      // The step set is the task's; leaving it populated would let a later abort() reach
+      // controllers this task already finished with.
+      this.activeStepControllers.clear();
       if (!turnClosed && this.ledger.getActiveTurnId() !== null) {
         this.ledger.append("turn_done", "Task interrupted or aborted", "interrupted");
       }

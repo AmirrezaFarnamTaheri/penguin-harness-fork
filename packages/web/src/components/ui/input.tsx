@@ -138,20 +138,32 @@ export const panelSearchClass =
   `${searchSharedClass} rounded-md border border-gray-200 transition-colors ` +
   "focus:border-gray-400 dark:border-gray-700 dark:focus:border-gray-500";
 
-export function Input({
-  label,
-  hint,
-  info,
-  infoLabel,
-  error,
-  invalid,
-  required,
-  size = "sm",
-  className,
-  autoComplete,
-  id,
-  ...rest
-}: InputProps) {
+/**
+ * Forwards its ref to the underlying `<input>`.
+ *
+ * A function component cannot receive `ref` as an ordinary prop — React reserves
+ * it — so a caller passing one got neither a type error at the call site in JS nor a
+ * working handle: the ref simply never attached, and the focus/scroll/measurement it
+ * was for silently did nothing. `Textarea` below already does this; `Input` now
+ * matches it rather than leaving the two halves of one form primitive asymmetric.
+ */
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  {
+    label,
+    hint,
+    info,
+    infoLabel,
+    error,
+    invalid,
+    required,
+    size = "sm",
+    className,
+    autoComplete,
+    id,
+    ...rest
+  },
+  ref,
+) {
   const bad = Boolean(error) || Boolean(invalid);
   const errorId = useId();
   // The info layout moves the label out of the wrapping <label> and associates it by htmlFor
@@ -173,6 +185,7 @@ export function Input({
       controlId={controlId}
     >
       <input
+        ref={ref}
         id={info !== undefined ? controlId : id}
         className={`${baseClass} ${sizeClass[size]} ${bad ? errorClass : ""} ${className ?? ""}`}
         aria-invalid={bad ? true : undefined}
@@ -185,7 +198,7 @@ export function Input({
       />
     </Field>
   );
-}
+});
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;

@@ -1282,6 +1282,24 @@ export const en: Strings = {
     keysInCooldown: (n: number) => `${n} key(s) in 429 cooldown`,
     keysEvicted: (n: number) => `${n} key(s) evicted (401)`,
     totalKeysConfigured: "Total Keys Configured",
+    keyNameLabel: "Name",
+    keyNameHint: "The name you use to tell this key apart — unique within this model's pool.",
+    keyNamePlaceholder: "e.g. prod",
+    keyLabelLabel: "Label",
+    keyLabelPlaceholder: "e.g. shared team pool, do not rotate",
+    keyNameSave: "Save name",
+    keyNameCancel: "Cancel",
+    keyNameAction: "Name this key",
+    keyNameEdit: "Rename",
+    keyNameClear: "Clear name",
+    keyUnnamed: "Unnamed",
+    keyUnnamedHint: "No name yet — name it to tell it apart from the other keys.",
+    keyNameColumn: "Name",
+    keyNameSaved: (name: string): string => `Key named "${name}"`,
+    keyNameCleared: (name: string): string => `Cleared the name "${name}"`,
+    keyNameRequired: "A key needs a name before it can be saved.",
+    keyOrphaned: "This key is no longer configured; its name has nothing to attach to.",
+    keyActionFailed: (name: string, action: string): string => `${action} failed for ${name}`,
     healthyPoolsRatio: "Healthy Ratio",
   },
 
@@ -1792,6 +1810,41 @@ export const en: Strings = {
           'Installed skills\' metadata lines (one "- name — description" line per skill; empty when none)',
         ],
       ] as ReadonlyArray<readonly [string, string]>,
+    },
+    /**
+     * The /skills page (features/skills/skills-page.tsx). Its copy is about the LIBRARY, so
+     * every string here either names what the listing response actually contains, or states
+     * plainly that it does not contain it — `bodyMissing` is the load-bearing one: it is the
+     * only honest substitute for a panel that used to assemble a "SKILL.md" out of the skill's
+     * own name and description.
+     */
+    hub: {
+      title: "Skills Hub",
+      subtitle:
+        "Every skill in the built-in plugin library, searchable by name, plugin or category.",
+      /** The list's own length — the only skill count this page can honestly state. */
+      loadedCount: (n: number): string => (n === 1 ? "1 skill" : `${n} skills`),
+      refresh: "Refresh",
+      searchPlaceholder: "Search skills by name, plugin, or category…",
+      searchLabel: "Search skills",
+      allCategories: "All",
+      noSkills: "The plugin library has no skills.",
+      noMatches: "No skills match this search.",
+      selectHint: "Select a skill to read its instructions.",
+      shippedBy: (plugin: string): string => `Ships in plugin ${plugin}.`,
+      invocationTitle: "Invocation",
+      copyInvocation: "Copy slash command",
+      /**
+       * Why the command above may not run yet. A skill is addressable as `/name` only on an
+       * Agent that has it installed; the library listing is not an install, so the page states
+       * the precondition instead of handing out a command that would resolve to nothing.
+       */
+      invocationNeedsInstall:
+        "A skill is addressable by this command on an Agent that has it installed — install its plugin on an Agent from the plugin library first.",
+      bodyTitle: "Instruction Body (SKILL.md)",
+      /** The plugin's file listing holds no SKILL.md for this skill; nothing is shown in its place. */
+      bodyMissing: (plugin: string, skill: string): string =>
+        `The plugin ${plugin} ships no SKILL.md for ${skill}, so there are no instructions to show.`,
     },
   },
 
@@ -4190,6 +4243,10 @@ Scenarios:
       ticket_session_failed: "The ticket session could not be started.",
       handbook_file_not_found: "That document no longer exists.",
       handbook_index_required: "The handbook index (README.md) cannot be deleted.",
+      key_name_taken:
+        "Another key in this model's pool already has that name. Pick a different one.",
+      key_mask_ambiguous:
+        "That masked key matches more than one key in this pool, so it does not name one. Use the exact mask shown for the key you mean.",
     },
   },
 

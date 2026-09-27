@@ -15,7 +15,7 @@
  * bounded head/tail windows with an explicit gap marker.
  */
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactCredentials } from "../internal/credential-redactor.js";
 import { READ_FILE_SCAN_CAP_BYTES } from "./tools/read-file.js";
@@ -29,6 +29,41 @@ export const TRUNCATED_TOOL_OUTPUT_FILE_LIMIT_BYTES = READ_FILE_SCAN_CAP_BYTES -
 const ARCHIVE_GAP_MARKER = "\n[archive middle truncated]\n";
 const ARCHIVE_GAP_MARKER_BYTES = Buffer.byteLength(ARCHIVE_GAP_MARKER);
 
+/**
+ * Hex characters in a recall id. Twelve is what `rtk recall` prints and is short enough to quote
+ * in a note without costing real tokens; 48 bits of a SHA-256 makes an accidental collision
+ * within the store's own entry bound (see `RECALL_LIMITS`) not a practical concern.
+ */
+const RECALL_ID_HEX_LENGTH = 12;
+
+/** Suffix of a stored recall entry, distinct from the truncation archive's `.log` files. */
+const RECALL_FILE_EXTENSION = ".out";
+
+/** How many evictions the drop log keeps. Bounded, like everything else here. */
+const RECALL_DROPPED_LOG_LIMIT = 32;
+
+/**
+ * Default bounds on the recall store.
+ *
+ * A recall entry exists so the model can recover text a summary dropped. That is worth little if
+ * the entry itself has been evicted, so the defaults are generous relative to what one Session
+ * produces (tens of compressed results, not hundreds) and still small on disk. The byte bound
+ * is the one that matters on a shared machine: entries are full tool outputs, so an unbounded
+ * count bound alone would still allow hundreds of megabytes.
+ */
+const RECALL_LIMITS: RecallLimits = {
+  maxEntries: 200,
+  maxTotalBytes: 64 * 1024 * 1024,
+  maxEntryAgeMs: 30 * 24 * 60 * 60 * 1000,
+};
+
+function countLines(data: Buffer): number {
+  if (data.length === 0) return 0;
+  let newlines = 0;
+  for (const byte of data) if (byte === 0x0a) newlines += 1;
+  return data[data.length - 1] === 0x0a ? newlines : newlines + 1;
+}
+
 export type TruncatedToolOutputArchiveSaveResult =
   | {
       status: "saved";
@@ -41,6 +76,48 @@ interface TruncatedToolOutputArchiveOptions {
   rootDir: string;
   /** Test-only override; production and public SDK composition use the fixed default. */
   fileLimitBytes?: number;
+  /** Test-only overrides for the recall store's bounds; production uses RECALL_LIMITS. */
+  recallLimits?: Partial<RecallLimits>;
+  /** Test-only clock, so age-bound eviction can be exercised without waiting a month. */
+  now?: () => number;
+}
+
+/** The three bounds the recall store is held to, and the two knobs that override them in tests. */
+export interface RecallLimits {
+  maxEntries: number;
+  maxTotalBytes: number;
+  maxEntryAgeMs: number;
+}
+
+/** Why an entry left the store — reported so a vanished recall id is explainable. */
+export type RecallDropReason = "expired" | "count" | "bytes";
+
+interface RecallEntry {
+  id: string;
+  path: string;
+  bytes: number;
+  lines: number;
+  createdAt: number;
+  uses: number;
+}
+
+export type RecallSaveResult =
+  | { status: "saved"; id: string; path: string; bytes: number; reused: boolean }
+  | { status: "failed"; code: string };
+
+export type RecallResult =
+  | { status: "ok"; id: string; path: string; text: string }
+  | { status: "missing"; id: string }
+  | { status: "dropped"; id: string };
+
+/** Observable state of the recall store: its size, its bounds, and what it has evicted. */
+export interface RecallStats {
+  entries: number;
+  bytes: number;
+  maxEntries: number;
+  maxTotalBytes: number;
+  maxEntryAgeMs: number;
+  dropped: { id: string; reason: RecallDropReason; at: number }[];
 }
 
 /**
@@ -229,6 +306,34 @@ export class TruncatedToolOutputCapture {
     return this.owner.commit(toolName, toolCallId, data, this.archiveTruncated);
   }
 
+  /**
+   * The exact text this capture holds, or null once it has promoted to bounded head/tail windows.
+   *
+   * This is what makes the capture reusable as a *compression* buffer rather than only a
+   * last-resort archive: a caller that needs the whole text (to classify it, or to store it for
+   * recall) gets it here, and a capture that already gave up on holding everything says so
+   * instead of returning a lossy string that looks complete.
+   */
+  text(): string | null {
+    if (this.settled || this.archiveTruncated) return null;
+    return this.exactChunks.map((chunk) => chunk.toString("utf8")).join("");
+  }
+
+  /**
+   * The rolling tail this capture kept after promoting to head/tail windows; "" before promotion.
+   * Exposed so a caller that has to fall back to truncation can re-bound the *whole* tool text to
+   * its own (much smaller) visible budget, instead of shipping a window sized by this file's
+   * 8 MiB archive limit.
+   */
+  tailText(): string {
+    return this.serializedTail().toString("utf8");
+  }
+
+  /** The retained head this capture kept after promoting; "" before promotion. */
+  headText(): string {
+    return this.head.toString("utf8");
+  }
+
   /** Discards an unfinished in-memory capture without writing a file. */
   cancel(): void {
     if (this.settled) return;
@@ -340,6 +445,12 @@ export class TruncatedToolOutputCapture {
 export class TruncatedToolOutputArchive {
   private readonly rootDir: string;
   private readonly fileLimitBytes: number;
+  /** Recall entries live in their own subdirectory so eviction can only unlink this store's files. */
+  private readonly recallRootDir: string;
+  private readonly recallIndex = new Map<string, RecallEntry>();
+  private readonly recallDropped: { id: string; reason: RecallDropReason; at: number }[] = [];
+  private readonly recallLimits: RecallLimits;
+  private readonly now: () => number;
 
   constructor(opts: TruncatedToolOutputArchiveOptions) {
     // The explicit gap marker is part of every bounded head/tail archive, so even internal
@@ -349,6 +460,9 @@ export class TruncatedToolOutputArchive {
       opts.fileLimitBytes ?? TRUNCATED_TOOL_OUTPUT_FILE_LIMIT_BYTES,
     );
     this.rootDir = opts.rootDir;
+    this.recallRootDir = path.join(opts.rootDir, "recall");
+    this.recallLimits = { ...RECALL_LIMITS, ...opts.recallLimits };
+    this.now = opts.now ?? Date.now;
   }
 
   /** Starts one independently bounded capture; the directory remains lazy until save(). */
@@ -388,5 +502,171 @@ export class TruncatedToolOutputArchive {
       );
       return { status: "failed", code };
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Recall store
+  //
+  // A compressed tool result is only defensible if the model can get the truth back. That is the
+  // one idea worth taking wholesale from `rtk`'s `rtk recall <id>`: whenever output is
+  // compressed, the *full* unfiltered text is kept and the result carries a short id. The model
+  // gets a summary and a way to get the original on demand, so compression is lossless in
+  // principle rather than data-destroying.
+  //
+  // It is built on the archive above rather than beside it: same Session scratchpad, same
+  // credential redaction, same private file modes, same removal by the host's Session-deletion
+  // path. What it adds is what the truncation path never needed — a content-addressed id, a
+  // registry, and hard bounds.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Stores `text` as a recallable entry and returns the id the model can quote.
+   *
+   * The id is content-addressed (sha256 of the tool name and the text, first 12 hex chars), so
+   * running the same command twice in one Session costs one entry, not two. Writes land in a
+   * `recall/` subdirectory so eviction can only ever unlink files this store created — the
+   * truncation archive's own files, written by `commit`, are never touched by it.
+   */
+  async saveRecallEntry(toolName: string, text: string): Promise<RecallSaveResult> {
+    const key = createHash("sha256").update(toolName).update("\0").update(text).digest("hex");
+    const id = key.slice(0, RECALL_ID_HEX_LENGTH);
+    const data = Buffer.from(text, "utf8");
+    const existing = this.recallIndex.get(id);
+    if (existing !== undefined) {
+      // Already stored (identical content under the same tool): reuse the entry, do not rewrite
+      // it or reset its age, so a repeated command cannot keep a stale entry alive forever.
+      existing.uses += 1;
+      return { status: "saved", id, path: existing.path, bytes: existing.bytes, reused: true };
+    }
+
+    const filePath = path.join(this.recallRootDir, `${id}${RECALL_FILE_EXTENSION}`);
+    const redacted = redactArchive(data, this.fileLimitBytes);
+    try {
+      await mkdir(this.recallRootDir, { recursive: true, mode: 0o700 });
+      await writeFile(filePath, redacted, { flag: "wx", mode: 0o600 });
+    } catch (err) {
+      const rawCode = (err as { code?: unknown }).code;
+      if (rawCode === "EEXIST") {
+        // Another call stored the same content between the index check and the write.
+        this.recallIndex.set(id, {
+          id,
+          path: filePath,
+          bytes: redacted.length,
+          lines: countLines(redacted),
+          createdAt: this.now(),
+          uses: 1,
+        });
+        await this.enforceRecallBounds();
+        return { status: "saved", id, path: filePath, bytes: redacted.length, reused: true };
+      }
+      const code = typeof rawCode === "string" ? rawCode : "UNKNOWN";
+      process.stderr.write(`[penguin] tool "${toolName}" recall entry write failed (${code}).\n`);
+      return { status: "failed", code };
+    }
+
+    this.recallIndex.set(id, {
+      id,
+      path: filePath,
+      bytes: redacted.length,
+      lines: countLines(redacted),
+      createdAt: this.now(),
+      uses: 1,
+    });
+    await this.enforceRecallBounds();
+    return { status: "saved", id, path: filePath, bytes: redacted.length, reused: false };
+  }
+
+  /**
+   * Returns the stored text for a recall id, byte for byte as it was written.
+   *
+   * "As it was written" is the precise claim: entries are credential-redacted at rest, so a
+   * recalled output matches the compressed result except where a recognised secret shape was
+   * replaced by `<redacted>`. That difference is deliberate — the same redaction the truncation
+   * archive has always applied — and it is the only reason recall is not a literal identity.
+   */
+  async recall(id: string): Promise<RecallResult> {
+    const wanted = id.trim().toLowerCase();
+    const entry = this.recallIndex.get(wanted);
+    if (entry === undefined) {
+      // The drop log is a bounded ring, so this scan is bounded too. Reporting "dropped" rather
+      // than "missing" is the difference between "it aged out" and "it was never stored".
+      return this.recallDropped.some((entry) => entry.id === wanted)
+        ? { status: "dropped", id: wanted }
+        : { status: "missing", id: wanted };
+    }
+    try {
+      const data = await readFile(entry.path);
+      entry.uses += 1;
+      return { status: "ok", id: entry.id, path: entry.path, text: data.toString("utf8") };
+    } catch {
+      // The file went away underneath us (host cleanup, external removal). Forget the entry
+      // rather than leaving a registry that points at nothing.
+      this.recallIndex.delete(entry.id);
+      return { status: "missing", id: entry.id };
+    }
+  }
+
+  /** One-line description of a stored entry for the model-visible note. */
+  recallDescriptor(id: string): { path: string; lines: number; bytes: number } | null {
+    const entry = this.recallIndex.get(id);
+    if (entry === undefined) return null;
+    return { path: entry.path, lines: entry.lines, bytes: entry.bytes };
+  }
+
+  /**
+   * Bounds and drop log for the recall store, for diagnostics and for the tests that prove the
+   * store cannot grow without limit. `dropped` is a bounded ring of the most recent evictions;
+   * an entry evicted by the size or count bound is reported with the reason it was evicted.
+   */
+  recallStats(): RecallStats {
+    let bytes = 0;
+    for (const entry of this.recallIndex.values()) bytes += entry.bytes;
+    return {
+      entries: this.recallIndex.size,
+      bytes,
+      maxEntries: this.recallLimits.maxEntries,
+      maxTotalBytes: this.recallLimits.maxTotalBytes,
+      maxEntryAgeMs: this.recallLimits.maxEntryAgeMs,
+      dropped: [...this.recallDropped],
+    };
+  }
+
+  /**
+   * Enforces the three bounds, oldest first. Runs after every insert, so the store is bounded at
+   * all times rather than only when somebody remembers to sweep it.
+   */
+  private async enforceRecallBounds(): Promise<void> {
+    const now = this.now();
+    const ordered = [...this.recallIndex.values()].sort((a, b) => a.createdAt - b.createdAt);
+    const doomed: { entry: RecallEntry; reason: RecallDropReason }[] = [];
+    let bytes = 0;
+    for (let i = 0; i < ordered.length; i += 1) {
+      const entry = ordered[i]!;
+      bytes += entry.bytes;
+      const isOldest = i === 0;
+      if (now - entry.createdAt > this.recallLimits.maxEntryAgeMs) {
+        doomed.push({ entry, reason: "expired" });
+        continue;
+      }
+      // Running totals decide evictions: an entry is dropped only if what is already kept
+      // exceeds a bound, so a single large entry cannot be evicted by the age rule's neighbour.
+      if (this.recallIndex.size - doomed.length > this.recallLimits.maxEntries && isOldest) {
+        doomed.push({ entry, reason: "count" });
+        continue;
+      }
+      if (bytes > this.recallLimits.maxTotalBytes && isOldest) {
+        doomed.push({ entry, reason: "bytes" });
+        continue;
+      }
+    }
+    for (const { entry, reason } of doomed) {
+      this.recallIndex.delete(entry.id);
+      this.recallDropped.push({ id: entry.id, reason, at: now });
+      await unlink(entry.path).catch(() => {
+        // The index entry is already gone, so an unlink failure leaves at most one orphan file
+        // that the host's Session-deletion path still removes. Nothing here should throw.
+      });
+    }
+    while (this.recallDropped.length > RECALL_DROPPED_LOG_LIMIT) this.recallDropped.shift();
   }
 }

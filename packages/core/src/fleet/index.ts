@@ -11,6 +11,10 @@
  *    derivation, loopback redirect receiver, refresh with rotation.
  *  - {@link CredentialRotationTracker} / {@link CredentialRefreshScheduler} — rate-limit
  *    tracking, exponential backoff with jitter, health scoring, scheduled refreshes.
+ *  - {@link ProviderGateway} — the convergence target for the four credential pools the
+ *    codebase carries: a typed failure vocabulary, per-credential cooldown/disable state and
+ *    round-robin selection. Lands in shadow mode first; its doc comment has the boundary it
+ *    must never cross and the procedure for eventually flipping.
  *  - {@link CliWrapperRegistry} — declarative manifest → safe `argv` → spawned process,
  *    with no shell in the path and secret redaction built in.
  *  - {@link ProviderPreset} catalog — 300 real providers distilled from 1,519 toolkits.
@@ -101,6 +105,33 @@ export {
   type SelectCredentialRequest,
   type SelectionMode,
 } from "./credential-rotation.js";
+
+export {
+  DEFAULT_BACKOFF_OPTIONS,
+  FAILURE_KIND,
+  LEGACY_ACTION,
+  ProviderGateway,
+  RECOVERY,
+  backoffMs,
+  classifyFailure,
+  collectFailure,
+  observeFailure,
+  type BackoffOptions,
+  type CredentialState,
+  type ExhaustionReason,
+  type FailureClassification,
+  type GatewayCredentialHealth,
+  type LegacyAction,
+  type ObserveFailureInput,
+  type ProviderFailure,
+  type ProviderGatewayOptions,
+  type RecoveryAction,
+  type SelectionResult,
+  type ShadowOptions,
+  type ShadowRecord,
+  type ShadowSink,
+  type SkippedCredential,
+} from "./provider-gateway.js";
 
 export {
   ARG_TYPES,

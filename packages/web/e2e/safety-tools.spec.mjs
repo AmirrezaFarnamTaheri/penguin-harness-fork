@@ -66,7 +66,13 @@ test("demo key mutations and rotation update visibly; demo probes send no provid
     if (request.url().includes("/keys/probe")) probes.push(request.url());
   });
   await page.getByRole("button", { name: "Demo Mode", exact: true }).click();
-  const row = page.getByText("sk-proj-...8a1c", { exact: true }).locator("../../..");
+  // Scoped by the card's own testid plus this key's masked name, not by counting
+  // "../.." up from the name: adding the key-name line nested the masked key two
+  // levels deeper, and a positional climb silently stopped reaching the actions
+  // while the card itself still rendered perfectly.
+  const row = page
+    .getByTestId("key-health-card")
+    .filter({ has: page.getByText("sk-proj-...8a1c", { exact: true }) });
   await row.getByRole("button", { name: "Pause for 60 seconds" }).click();
   await expect(row.getByText(/Cooldown \(/)).toBeVisible();
   await row.getByRole("button", { name: "Make available" }).click();

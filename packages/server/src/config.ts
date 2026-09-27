@@ -27,6 +27,17 @@ export interface ServerConfig {
    * than the browser's (dev serves the SPA on a different port; see resolvePreviewTarget).
    */
   port: number;
+  /**
+   * When THIS process's listener came up (ISO 8601); absent until it has. Set in
+   * index.ts's onListening beside the real `port` above, and read by the instance-identity
+   * route so a peer can be told apart from a record of a predecessor that has since died.
+   * Optional rather than `string | null` because absence already means what null would: no
+   * listener yet, and the published `port` is still the requested one. It is the process
+   * start time rather than the boot time because the meaningful instant is the one the
+   * discovery record carries — a caller comparing two answers is asking which server is
+   * serving now, not which node started first.
+   */
+  startedAt?: string;
   /** SQLite database path; ":memory:" for test injection. */
   dbPath: string;
   /** Frontend static assets directory; whether it's enabled is decided by checking existence when the app is assembled. */

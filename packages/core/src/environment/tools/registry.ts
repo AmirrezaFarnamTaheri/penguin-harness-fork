@@ -23,6 +23,7 @@ import { EXEC_COMMAND_NAME, createExecCommandTool } from "./exec-command.js";
 import { INPUT_COMMAND_NAME, createInputCommandTool } from "./input-command.js";
 import { SUBAGENT_NAME, createSubagentTool } from "./run-subagent.js";
 import { INPUT_SUBAGENT_NAME, createInputSubagentTool } from "./input-subagent.js";
+import { createResourcePressureTool, RESOURCE_PRESSURE_NAME } from "../../agent/resource/index.js";
 import { WEB_SEARCH_NAME, createWebSearchTool } from "./web-search.js";
 import { ENVIRONMENT_INFO_NAME, createEnvironmentInfoTool } from "./environment-info.js";
 
@@ -43,6 +44,13 @@ export const BUILTIN_TOOL_FACTORIES: Record<string, BuiltinToolFactory> = {
   [EDIT_FILE_NAME]: createEditFileTool,
   [WRITE_FILE_NAME]: createWriteFileTool,
   [WEB_SEARCH_NAME]: (definition, services) => createWebSearchTool(definition, services?.webSearch),
+  // Reports memory and per-path disk pressure. It OBSERVES — there is no path from a reading
+  // to a refusal anywhere in it — so it is offered like any other read-only tool. Without an
+  // injected probe it still builds and explains that it has none, because an agent that
+  // cannot see pressure cannot decide about it and a monitor that dies under load takes the
+  // numbers away exactly when they are wanted.
+  [RESOURCE_PRESSURE_NAME]: (definition, services) =>
+    createResourcePressureTool(definition, { probe: services?.resourcePressureProbe }),
   [EXEC_COMMAND_NAME]: createExecCommandTool,
   [INPUT_COMMAND_NAME]: createInputCommandTool,
   [SUBAGENT_NAME]: createSubagentTool,

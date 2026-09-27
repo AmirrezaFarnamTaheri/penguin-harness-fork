@@ -133,6 +133,21 @@ CREATE TABLE IF NOT EXISTS messaging_bindings ( -- Session ↔ messaging-channel
   PRIMARY KEY (session_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_messaging_by_account ON messaging_bindings(channel, account_id);  -- serves the enable guard's by-account lookup; deliberately NOT unique, unlike its predecessor idx_messaging_account (dropped on open) which made an account exclusive to one Session forever
+CREATE TABLE IF NOT EXISTS model_keys (        -- USER-SET NAMES for the API keys of a Project's model key pools (services/model-key-names.ts). The key MATERIAL stays write-only in .project_config.toml and is never stored here: key_id is a domain-separated SHA-256 prefix of it, which is what binds a name to one specific key without keeping the key.
+  project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+  key_id     TEXT NOT NULL,                   -- 'k_' + 12 hex of sha256("penguin/model-key/v1" ‖ project_id ‖ provider ‖ model_id ‖ api_key); the one handle a caller may hold for a key. Deterministic, so the same key under the same fleet always lands on the same row, and different per fleet, so an id never names two keys.
+  provider   TEXT NOT NULL,
+  model_id   TEXT NOT NULL,
+  name       TEXT NOT NULL COLLATE NOCASE,  -- the identifier a human uses; required, and unique WITHIN THIS FLEET — same name on a different model is a different key and is allowed. NOCASE so "Prod" and "prod" cannot both sit in one fleet, which would be the very ambiguity this removes; the stored spelling is still the user's own.
+  label      TEXT,                            -- optional free text for context a name cannot carry; NULL = none
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, key_id)
+);
+-- The uniqueness rule, in the database rather than in a service check: the 409 a duplicate name
+-- earns is this index refusing the write, not a SELECT that another writer can race. Scoped by
+-- fleet, so "prod" on one model and "prod" on another are two different keys.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_model_keys_fleet_name ON model_keys(project_id, provider, model_id, name);
 CREATE TABLE IF NOT EXISTS ui_prefs (
   user_id    TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
   prefs_json TEXT NOT NULL                    -- {theme?, lastProjectId?, ...} free-form JSON

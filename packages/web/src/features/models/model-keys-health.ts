@@ -7,6 +7,15 @@ export type KeyHealthStatus = "healthy" | "cooldown" | "evicted";
 
 export interface KeyHealthItemDto {
   maskedKey: string;
+  /**
+   * The name this Project gave the key, and the handle to rename it by. Both are absent for a
+   * key that has never been named — the pool view says so in words rather than showing a
+   * placeholder, and the server never invents one.
+   */
+  keyId?: string;
+  name?: string;
+  /** Optional free text for context the name cannot carry. */
+  label?: string;
   status: KeyHealthStatus;
   isFailed: boolean;
   cooldownRemainingMs: number;

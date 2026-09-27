@@ -67,8 +67,14 @@ export type { Opaque, Slot } from "./markers.js";
 export { Interface } from "./markers.js";
 export { dataExtends } from "./data.js";
 export type { TypeTable } from "./data.js";
-export { AcpConnection } from "./acp.js";
+export { AcpConnection, AcpConnectionClosedError, AcpTransportError } from "./acp.js";
 export type {
+  AcpConnectionOptions,
+  AcpConnectionState,
+  AcpConnectionStats,
+  AcpDiagnostic,
+  AcpDiagnosticCode,
+  AcpSendLine,
   JsonRpcRequest,
   JsonRpcNotification,
   JsonRpcResponse,

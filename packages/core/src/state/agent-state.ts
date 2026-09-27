@@ -645,10 +645,41 @@ export async function listInstalledHooks(
   return hooks.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * The text one installed skill contributes to the `{{SKILLS}}` section: the shorter of
+ * `short_description` and `description`.
+ *
+ * A skill that ships `short_description` has an author-written one-liner written for exactly
+ * this job — it is what the Web App already shows in preference to the full description
+ * (packages/web/src/features/chat/skill-use.ts, `shortDescription || description`). This
+ * function was the one consumer that ignored it and always emitted the full description, so an
+ * installed corpus paid for the long form on every single request while the short form sat
+ * parsed and unused.
+ *
+ * "Shorter of the two" rather than "short if present" is deliberate: `short_description` is
+ * authored, not derived, and 1 skill in a 507-skill corpus (`rust-no-std`) ships a short form
+ * one character LONGER than its full description. Taking the minimum makes this change incapable
+ * of enlarging the index for any skill, at any corpus size, in either direction.
+ *
+ * No cap is applied to the number of rows: the section is assembled when a Session opens
+ * (Agent.assembleContext), before any user message exists, so there is nothing to rank
+ * relevance against — a cap here would be alphabetical, which would make skills permanently
+ * undiscoverable rather than cheaper. The full corpus stays listed.
+ */
 export function skillMetadataSection(skills: SkillMetadata[]): string {
-  return skills
-    .map((s) => (s.description ? `- \`${s.name}\` — ${s.description}` : `- \`${s.name}\``))
-    .join("\n");
+  return skills.map(skillIndexLine).join("\n");
+}
+
+function skillIndexLine(skill: SkillMetadata): string {
+  const candidates = [skill.shortDescription, skill.description].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  if (candidates.length === 0) return `- \`${skill.name}\``;
+  let text = candidates[0]!;
+  for (const candidate of candidates.slice(1)) {
+    if (candidate.length < text.length) text = candidate;
+  }
+  return `- \`${skill.name}\` — ${text}`;
 }
 
 export async function listScheduleNames(

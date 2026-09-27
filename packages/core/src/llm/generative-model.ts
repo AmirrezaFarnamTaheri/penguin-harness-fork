@@ -79,6 +79,8 @@ import {
   resolveContextWindow,
 } from "./context-limits.js";
 import { RATE_LIMIT_MESSAGE_PATTERNS } from "./quota-parser.js";
+import { collectFailure, observeFailure } from "../fleet/provider-gateway.js";
+import type { LegacyAction } from "../fleet/provider-gateway.js";
 
 // ---------------------------------------------------------------------------
 // Pure conversion function: OmniMessage[] → a single UniMessage (unit-testable, no network)
@@ -248,6 +250,49 @@ export function mergeOmniToUniMessage(messages: OmniMessage[]): UniMessage {
 // ---------------------------------------------------------------------------
 
 /**
+ * Normalizes ONE provider token-count field to a non-negative safe integer.
+ *
+ * A provider number is a claim about what will be billed, so it is only passed on when it could
+ * plausibly be one: `null`/`undefined` (the field was never reported) and non-positive or
+ * non-finite values (a miscounted, truncated, or corrupted figure) all become 0 — the same
+ * result a provider that omits the field entirely produces, which is the shape consumers already
+ * handle. Without this a single `NaN` field reaches `max_tokens` on the wire and, worse, poisons
+ * the session total forever: `addTokenCounts` is a plain sum, so one NaN request makes every
+ * later session total NaN.
+ *
+ * Deliberately NOT a clamp to something plausible-looking. A garbage figure is unknown, and the
+ * only honest move for an unknown is to report nothing for it; inventing a magnitude would be a
+ * number no one can trace. The request's *input* is protected separately, by
+ * {@link GenerativeModel}'s prefix floor, which is a provable lower bound rather than a guess.
+ */
+function sanitizedTokenField(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(Math.floor(value), Number.MAX_SAFE_INTEGER);
+}
+
+/**
+ * Whether a provider usage object carried at least one field this module had to reject.
+ *
+ * Kept separate from {@link usageToTokenCounts} so the conversion stays a pure function of its
+ * input while the caller can still *see* that the number it is about to record came from a
+ * provider that reported nothing usable. An unusable report is logged once, by the request that
+ * hit it — silence here would be indistinguishable from a genuinely free request.
+ */
+export function usageIsUnusable(usage: UsageMetadata | null | undefined): boolean {
+  if (usage == null || typeof usage !== "object") return true;
+  const reported = [
+    usage.cached_tokens,
+    usage.prompt_tokens,
+    usage.thoughts_tokens,
+    usage.response_tokens,
+  ].filter((field) => field !== null && field !== undefined);
+  if (reported.length === 0) return false; // A provider that reports no usage at all is normal.
+  return reported.every(
+    (field) => typeof field !== "number" || !Number.isFinite(field) || field <= 0,
+  );
+}
+
+/**
  * Converts AgentHub `UsageMetadata` into PenguinHarness `TokenCounts`.
  *
  * Conversion rules (AgentHub UsageMetadata → OmniMessage TokenCounts, null treated as 0):
@@ -257,12 +302,22 @@ export function mergeOmniToUniMessage(messages: OmniMessage[]): UniMessage {
  *   - `total      = cache_read + cache_write + output`.
  * That is, `input = cache_read + cache_write = cached_tokens + prompt_tokens`,
  * and `total = input + output` (consistent with SKILL.md's input/output accounting).
+ *
+ * The cache split is not a guess about the vendor's convention: AgentHub's registry documents
+ * `prompt_tokens` as **non-cached** input and prices it separately from `cached_tokens`, so the
+ * two are disjoint buckets and summing them is the input, not a double count. Were `prompt_tokens`
+ * ever to become inclusive, this would become the double count — `usageIsUnusable` will not catch
+ * that, since both shapes are individually valid, so the invariant rests on that documented field
+ * meaning rather than on validation here.
+ *
+ * Every field passes {@link sanitizedTokenField}, so the result is always finite, non-negative,
+ * and safe to sum into a session total regardless of what the provider sent.
  */
 export function usageToTokenCounts(usage: UsageMetadata): TokenCounts {
-  const cached = usage.cached_tokens ?? 0;
-  const prompt = usage.prompt_tokens ?? 0;
-  const thoughts = usage.thoughts_tokens ?? 0;
-  const response = usage.response_tokens ?? 0;
+  const cached = sanitizedTokenField(usage?.cached_tokens);
+  const prompt = sanitizedTokenField(usage?.prompt_tokens);
+  const thoughts = sanitizedTokenField(usage?.thoughts_tokens);
+  const response = sanitizedTokenField(usage?.response_tokens);
   const cacheRead = cached;
   const cacheWrite = prompt;
   const output = thoughts + response;
@@ -336,6 +391,23 @@ export class EventTranslator {
   private finishReason: FinishReason | null = null;
   /** Token usage for this request (a snapshot from the most recent usage report). */
   private requestTokens: TokenCounts = emptyTokenCounts();
+  /**
+   * Whether the most recent usage report was one this module had to reject rather than convert.
+   *
+   * Kept on the translator because the translator is where the raw report arrives; `GenerativeModel`
+   * reads it at `finish` to decide whether the input anchor it is about to record is a measurement
+   * or a fallback, and to say so on stderr. A request that never received a usage object at all
+   * leaves this `false` — that is normal, not a fault.
+   */
+  private lastUsageUnusable = false;
+
+  /**
+   * Whether the last usage report this translator saw was unusable (see
+   * {@link usageIsUnusable}), so the recorded token counts are not a provider measurement.
+   */
+  get lastUsageWasUnusable(): boolean {
+    return this.lastUsageUnusable;
+  }
 
   /** Consumes one UniEvent, yielding 0..n streaming OmniMessages. */
   *pushEvent(event: UniEvent): Generator<OmniMessage> {
@@ -667,6 +739,7 @@ export class EventTranslator {
   }
 
   private usageOnce(usage: UsageMetadata): TokenCounts {
+    this.lastUsageUnusable = usageIsUnusable(usage);
     return usageToTokenCounts(usage);
   }
 
@@ -1042,11 +1115,10 @@ export class GenerativeModel implements LLMInterface {
   private readonly baseInputTokens: number;
   /**
    * The current context's size: the most recent completed request's real
-   * `token_usage.request.total` once one exists (a measured total always includes the
-   * prefix, so it can only refine the seed upward from real data; providers stripping
-   * historical thinking only make it an overestimate, the safe direction), the
-   * `baseInputTokens` seed before that, plus the replayed-history estimate after
-   * `setHistory`. The next request's input is this figure plus the newly appended
+   * `token_usage.request.total` once one exists, floored at the fixed prefix (see
+   * {@link GenerativeModel.anchorFor} — the floor is what keeps that measurement usable when a
+   * provider reports nothing), the `baseInputTokens` seed before that, plus the replayed-history
+   * estimate after `setHistory`. The next request's input is this figure plus the newly appended
    * messages.
    */
   private lastRequestTotal: number;
@@ -1091,6 +1163,26 @@ export class GenerativeModel implements LLMInterface {
   rotateKey(): boolean {
     if (!this.keyRotator) return false;
     return this.keyRotator.nextKey() !== undefined;
+  }
+
+  /**
+   * **SHADOW MODE — reports only, decides nothing.**
+   *
+   * Runs the new typed failure vocabulary (`fleet/provider-gateway.ts`) against the error at
+   * the moment the existing chain has decided what to do, and logs the two verdicts side by
+   * side. The branch it sits in still decides, the rotator is still `ApiKeyRotator`, and no
+   * outcome is affected: this release is about *measuring* whether the classification
+   * boundary agrees, so that a later flip is a reviewed act rather than a leap of faith. See
+   * the flip procedure in `provider-gateway.ts` for what to do with the log once it exists.
+   *
+   * Two things are deliberately absent from the record. It carries the provider's base URL
+   * rather than `activeKey`, because that is the secret and this is a log line — passing the
+   * key to make the line prettier would put a live credential in everyone's log aggregator.
+   * And it carries no counter, because an invented metric outlives the experiment that
+   * justified it.
+   */
+  private shadowClassify(error: unknown, legacy: LegacyAction): void {
+    observeFailure({ failure: collectFailure(error), legacy, provider: this.config.baseUrl });
   }
 
   /**
@@ -1152,6 +1244,29 @@ export class GenerativeModel implements LLMInterface {
       cfg = { ...cfg, max_tokens: maxTokens };
     }
     return cfg;
+  }
+
+  /**
+   * The input-size anchor for the next request, from a completed request's reported usage.
+   *
+   * A measured total already includes the fixed prefix, so it normally refines the seed upward
+   * from real data (providers that strip historical thinking from the replay only make it an
+   * overestimate, the safe direction). The floor exists because that reasoning has one hole: a
+   * provider can report a total of **zero** — an all-null usage object, or a field this module had
+   * to reject — and zero is not a measurement of a request that provably carried the system prompt
+   * and the tool schemas. Anchoring on it would shrink the next request's estimated input towards
+   * nothing, inflating its `max_tokens`, and the result is a non-retryable 400 from a provider that
+   * has simply never reported usage before. The prefix is a lower bound we can state as fact, so
+   * the floor uses that rather than a guess at what the missing number was.
+   *
+   * A reported total *above* the floor is believed as-is, including a session-cumulative report
+   * from a provider that mislabels its semantics: that errs by over-estimating the input, which
+   * shrinks the output cap — wasted capacity, never a rejected request. Detecting the mislabel
+   * would need a real tokenizer to tell an inflated number from a large context, and an
+   * approximate counter cannot do that without becoming the thing it is approximating.
+   */
+  private anchorFor(requestTokens: TokenCounts): number {
+    return Math.max(requestTokens.total, this.baseInputTokens);
   }
 
   /**
@@ -1403,6 +1518,7 @@ export class GenerativeModel implements LLMInterface {
         // An SDK may label every 403 as an authentication/permission exception even when
         // the parsed provider body says the account exhausted quota. Explicit quota evidence
         // takes precedence; otherwise the auth path below remains terminal for a dead key.
+        this.shadowClassify(error, "cool_down");
         this.keyRotator?.recordFailure(activeKey, "rate_limit");
         outcome = {
           status: "retryable",
@@ -1411,6 +1527,7 @@ export class GenerativeModel implements LLMInterface {
         };
       } else if (isAuthenticationError(error)) {
         if (this.keyRotator && activeKey) {
+          this.shadowClassify(error, "evict");
           this.keyRotator.recordFailure(activeKey, "auth");
           if (this.keyRotator.hasWorkingKeys()) {
             outcome = {
@@ -1443,6 +1560,7 @@ export class GenerativeModel implements LLMInterface {
       } else if (isFatalProviderRejection(error)) {
         // A definitive provider 4xx rejection (408/429 excluded): the identical request
         // fails identically on every retry, so stop now with the provider's own message.
+        this.shadowClassify(error, "none");
         outcome = { status: "fatal", errorCode: "rejected", errorMessage: describeError(error) };
       } else if ((error as { name?: string })?.name === "AbortError") {
         outcome = { status: "aborted" }; // Fallback: an unexpected abort (neither timeout nor user)
@@ -1451,6 +1569,7 @@ export class GenerativeModel implements LLMInterface {
         // retries on the engine's ladder. The detail rides on the outcome so observability
         // (request_end -> the Cost center's errors panel) shows the real reason behind a
         // retried request.
+        this.shadowClassify(error, "observe");
         this.keyRotator?.recordFailure(activeKey, "other");
         outcome = { status: "retryable", errorCode: "network", errorMessage: describeError(error) };
       }
@@ -1488,7 +1607,17 @@ export class GenerativeModel implements LLMInterface {
     // The provider-measured context size, feeding the next request's output-cap clamp
     // (see effectiveMaxTokens). Only a completed request updates it: an interrupted or
     // failed attempt was never committed, so the context did not grow.
-    this.lastRequestTotal = requestTokens.total;
+    this.lastRequestTotal = this.anchorFor(requestTokens);
+    if (translator.lastUsageWasUnusable) {
+      // The provider reported a usage object it could not fill in, so the total just recorded is
+      // not a measurement. Say so once, at the request that hit it: the anchor fell back to the
+      // prefix floor, which is a lower bound rather than a count, and a reader seeing a clamped
+      // output cap later has no other way to tell that from a genuinely small context.
+      process.stderr.write(
+        `[penguin] provider reported unusable token usage for ${this.config.modelId}; ` +
+          `input anchored to the system-prompt+tools floor (${this.baseInputTokens} tokens) instead\n`,
+      );
+    }
     this.committedHistory = client.getHistory();
     this.keyRotator?.recordSuccess(activeKey);
     // The session series is not this object's business (its lifetime is one model context):

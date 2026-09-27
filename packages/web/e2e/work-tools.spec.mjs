@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { readdir, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 let script, css;
 test.beforeAll(async () => {
   const result = await build({
@@ -23,6 +24,23 @@ test.beforeAll(async () => {
 });
 const json = (route, body, status = 200) =>
   route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+
+/**
+ * PANEL_KINDS, read from the source so a panel added or folded away moves this
+ * expectation with it. Throws rather than returning an empty list, so a reshape
+ * of the declaration fails loudly instead of asserting that an empty fan is right.
+ */
+function panelKinds() {
+  const src = readFileSync(
+    fileURLToPath(new URL("../src/features/dock/dock-state.ts", import.meta.url)),
+    "utf8",
+  );
+  const block = src.match(/PANEL_KINDS: readonly PanelKind\[\] = \[([\s\S]*?)\]/);
+  if (!block) throw new Error("could not find the PANEL_KINDS declaration in dock-state.ts");
+  const kinds = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  if (kinds.length === 0) throw new Error("PANEL_KINDS parsed as empty");
+  return kinds;
+}
 async function boot(page, options = {}) {
   const errors = [],
     requests = [];
@@ -297,7 +315,23 @@ test("dock launcher lists every panel, scrolls on mobile, and opens a panel", as
   await page.getByTestId("dock-launcher-ball").click();
   const menu = page.getByTestId("dock-launcher-fan");
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("button")).toHaveCount(17);
+  // Derived from the source rather than hardcoded: 15bbdd78f folded topology,
+  // guardian, consensus and keyFleet into the unified cockpit, taking
+  // PANEL_KINDS from 16 to 12, and the 17 written here went stale silently.
+  // Per-panel assertions are what the test name actually claims, and they fail
+  // with the panel's name instead of a bare count.
+  const kinds = panelKinds();
+  for (const kind of kinds) {
+    await expect(
+      menu.getByTestId(`dock-launcher-open-${kind}`),
+      `panel ${kind} missing from the fan`,
+    ).toHaveCount(1);
+  }
+  await expect(menu.getByTestId("dock-launcher-hide")).toHaveCount(1);
+  // The terminal entry only appears when the server reports terminal support, so
+  // it is counted from the DOM — the total still catches an unexpected extra.
+  const terminal = await menu.getByTestId("dock-launcher-open-terminal").count();
+  await expect(menu.getByRole("button")).toHaveCount(kinds.length + 1 + terminal);
   const bounds = await menu.boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.y).toBeGreaterThanOrEqual(0);

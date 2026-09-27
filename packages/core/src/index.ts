@@ -138,7 +138,12 @@ export type { ScavengedToolCall } from "./llm/tool-call-repair.js";
 // tightened by the entry's pinned per-model cap. Exported so a host running its own one-off
 // requests on a Project's model sizes them the way the SDK sizes its own.
 export { Agent, createAgent, metaMaxTokens } from "./agent.js";
-export type { JevToolAdvisor } from "./jev/index.js";
+export type {
+  JevSurfaceAdvisor,
+  JevSurfaceAdvisorOptions,
+  JevSurfaceFacts,
+  JevToolAdvisor,
+} from "./jev/index.js";
 export type {
   ControlEnvContext,
   CreateAgentOptions,

@@ -61,6 +61,16 @@ function dropCompanyModeTables(db: DatabaseSync): void {
 }
 
 /**
+ * The key-name table migration 8 adds (its index goes with the table). A fixture stamped
+ * below 8 is a database from before key names existed, so it must not carry the table just
+ * because SCHEMA_SQL declares the current shape — same treatment as the queues above, and
+ * the reason a fixture that skipped it would fail every `rollbackTo` below that version.
+ */
+function dropModelKeys(db: DatabaseSync): void {
+  db.exec("DROP TABLE IF EXISTS model_keys");
+}
+
+/**
  * The v0.2.4 schema, as a frozen excerpt: today's declaration minus exactly what 0.2.4
  * lacked, plus the one table it had that today's declaration dropped. Derived from
  * SCHEMA_SQL, not by hand-copying 15 tables that would fork from reality.
@@ -105,8 +115,9 @@ function open5(): DatabaseSync {
   const db = new sqlite.DatabaseSync(":memory:");
   db.exec(SCHEMA_SQL);
   db.exec(PRE_CHANNEL_CHAT_DDL);
-  // SCHEMA_SQL declares the CURRENT shape; migration 7's queue came after 5.
+  // SCHEMA_SQL declares the CURRENT shape; migrations 7 and 8 came after 5.
   db.exec("DROP TABLE IF EXISTS org_desk_notices");
+  dropModelKeys(db);
   db.exec("PRAGMA user_version = 5");
   return db;
 }
@@ -116,6 +127,7 @@ function open6(): DatabaseSync {
   const db = new sqlite.DatabaseSync(":memory:");
   db.exec(SCHEMA_SQL);
   db.exec("DROP TABLE IF EXISTS org_desk_notices");
+  dropModelKeys(db);
   db.exec("PRAGMA user_version = 6");
   return db;
 }
@@ -129,6 +141,8 @@ function open029(): DatabaseSync {
   // SCHEMA_SQL declares the CURRENT shape, and a 0.2.9 database has no machines tables —
   // migration 4 is what adds them. Without this the fixture is a database no release made.
   db.exec("DROP TABLE machine_project; DROP TABLE machines; DROP TABLE machine;");
+  // Nor the key-name table, which migrations after this one add.
+  dropModelKeys(db);
   db.exec("PRAGMA user_version = 2");
   return db;
 }

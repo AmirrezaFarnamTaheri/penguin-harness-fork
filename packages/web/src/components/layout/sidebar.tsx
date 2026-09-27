@@ -34,8 +34,8 @@
  * there's no longer a separate "quick / advanced" pair of new-chat dialogs.
  * Color scheme is white/gray-based: active state uses a solid gray fill, running status uses a small color dot, no large blocks of color.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent as ReactDragEvent, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { NavLink, useLocation, useMatch, useNavigate } from "react-router";
 import type {
   SessionCategory,
@@ -46,7 +46,6 @@ import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { formatRelativeShort } from "../../lib/format";
 import { sessionBackgroundTasks, sessionRowActivity } from "../../lib/session-activity";
-import type { SessionActivity } from "../../lib/session-activity";
 import { forgetSession, noteSessionSeen, useSessionSeen } from "../../lib/session-seen";
 import { apiErrorText } from "../../lib/api-error";
 import { useAuth } from "../../state/auth";
@@ -127,7 +126,6 @@ import {
   saveGroupOrder,
 } from "../../lib/group-order";
 import { Dropdown, menuItemClass } from "../ui/dropdown";
-import { useRowContextMenu } from "../ui/context-menu";
 import {
   ARCHIVE_ICON,
   HOVER_ROW_ACTIONS,
@@ -142,9 +140,8 @@ import {
   overflowMenuGlyph,
   overflowMenuRowClass,
 } from "../ui/session-row-menu";
-import type { SessionRowAction } from "../ui/session-row-menu";
 import { AgentAvatar } from "../ui/agent-avatar";
-import { CheckIcon, ChevronDown, GEAR_ICON, MESSAGING_RELAY_ICON, NAV_ICONS } from "../ui/icons";
+import { ChevronDown, GEAR_ICON, NAV_ICONS } from "../ui/icons";
 import {
   FOLDER_ICON,
   FOLDER_OPEN_ICON,
@@ -160,9 +157,7 @@ import {
   storeGroupMode,
 } from "../ui/group-list";
 import type { GroupMode } from "../ui/group-list";
-import { toastError, toastInfo, toastSuccess } from "../ui/toast";
-import { writeClipboard } from "../ui/copy-button";
-import { Truncated } from "../ui/truncated";
+import { toastError, toastInfo } from "../ui/toast";
 import { Badge } from "../ui/badge";
 import {
   BackgroundTasksMark,
@@ -189,11 +184,18 @@ import type { DraftSessionEntry } from "../../features/chat/draft-sessions";
 import { CreateProjectDialog, ProjectSettingsDialog } from "./project-dialogs";
 import { UserMenu } from "./user-menu";
 import { ProductNavigation } from "./product-navigation";
+import { NavGroupCollapse } from "./nav-collapse";
+import { DraftRow } from "./draft-row";
+import { GroupBlock } from "./group-block";
+import { GroupOverflowMenu } from "./group-overflow-menu";
+import { GroupPinButton } from "./group-pin-button";
+import { MenuRadioRow } from "./menu-radio-row";
+import { CLOSE_ICON, SelectionBar } from "./selection-bar";
+import { SessionRow } from "./session-row";
 import { navNoteFor, useUpdateBadges } from "../../lib/use-update-badges";
 import { pendingScheduleSessions } from "../../features/schedules/schedule-panel-state";
 import { useAgentSchedules } from "../../features/schedules/schedule-store";
 import { ICON_SIZE } from "../../lib/icon-scale";
-import { toneInk } from "../../lib/tone";
 import { Segmented } from "../ui/segmented";
 import { useCompany } from "../../state/company";
 import { NoOrganizationsSidebar, OrgSwitcher } from "../../features/company/org-switcher";
@@ -211,25 +213,11 @@ import type { WorkMode } from "../../features/company/company-nav";
 /** New-chat pencil (the pinned "New chat" button and the collapsed rail share it). */
 export const NEW_CHAT_ICON = "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z";
 
-/** The workspace group's overflow-menu trigger: three FILLED dots (the stroke version read too faint at this size). */
-function EllipsisGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="19" cy="12" r="2" />
-    </svg>
-  );
-}
-
 /** Magnifier (lucide search), the section header's search toggle. */
 const SEARCH_ICON = "M21 21l-4.35-4.35M17 11a6 6 0 1 1-12 0 6 6 0 0 1 12 0z";
 
 /** Horizontal sliders (lucide sliders-horizontal), the section header's list-settings menu. */
 const SLIDERS_ICON = "M21 5h-7M10 5H3M21 12h-9M8 12H3M21 19h-5M12 19H3M14 2v6M8 9v6M16 16v6";
-
-/** Close cross (the expanded search field's clear button). */
-const CLOSE_ICON = "M18 6L6 18M6 6l12 12";
 
 /**
  * Private drag payload type of a manual session reorder. Deliberately NOT `text/plain`:
@@ -335,19 +323,6 @@ const DRAFTS_GROUP_KEY = "\0drafts";
 
 /** Standing "no Session is scheduled", so the first render has something to hold before any answer. */
 const NO_SCHEDULED_SESSIONS: ReadonlySet<string> = new Set();
-
-/**
- * Session status glyph: a turning hourglass while the Session is busy, a green dot once it has
- * finished with a reply the user has not seen, and nothing once that reply has been read — or
- * if the Session never ran at all. See sessionActivity.
- */
-function StatusGlyph({ activity }: { activity: SessionActivity }) {
-  // Reserve the glyph's box even when there is no glyph: the row is a flex line whose title
-  // truncates into whatever space is left, so letting the slot collapse would re-flow the title
-  // of every never-run row (and again the moment its first run starts).
-  if (activity === null) return <span aria-hidden="true" className="block h-3 w-3 shrink-0" />;
-  return <SessionActivityIcon activity={activity} />;
-}
 
 export function Sidebar({
   onNavigate,
@@ -688,12 +663,23 @@ export function Sidebar({
     saveGroupSet(pinStoreKey, next);
   };
 
-  /** Pin / unpin one conversation (row menu; same toggle-and-persist convention). */
-  const toggleSessionPin = (sessionId: string) => {
-    const next = togglePinnedSession(pinnedSessions, sessionId);
-    setPinnedSessions(next);
-    savePinnedSessions(currentProjectId, next);
-  };
+  /**
+   * Pin / unpin one conversation (row menu; same toggle-and-persist convention).
+   *
+   * Memoised on `pinnedSessions` for the row's sake, not for its own: this is the ONE
+   * handler a SessionRow holds that reads changing state, and the row's comparator
+   * deliberately does not compare handlers (session-row.tsx). A stale copy would compute
+   * the next pin set from the pins as they stood before the last one, and writing that back
+   * would silently drop a pin the user had just set on a different row.
+   */
+  const toggleSessionPin = useCallback(
+    (sessionId: string) => {
+      const next = togglePinnedSession(pinnedSessions, sessionId);
+      setPinnedSessions(next);
+      savePinnedSessions(currentProjectId, next);
+    },
+    [pinnedSessions, currentProjectId],
+  );
 
   /** Switch the row sort mode (store-then-set convention). Leaving manual KEEPS the stored order — toggling back restores it. */
   const setSortMode = (mode: SessionSortMode) => {
@@ -1051,19 +1037,29 @@ export function Sidebar({
     pendingLoads,
   ]);
 
-  /** Archive / unarchive: persists immediately and updates in place (fails silently; the next list refresh self-corrects). */
-  const toggleArchive = async (s: SessionInfo) => {
-    // Archiving the currently open chat: expand the "archived" folder so it doesn't silently vanish from the sidebar with no way back.
-    if (!s.archived && s.sessionId === activeSessionId) {
-      setOpenFolders((prev) => new Set(prev).add(folderKey(sessionGroupKey(s), "archived")));
-    }
-    try {
-      const res = await api.patchSession(s.sessionId, { archived: !s.archived });
-      replace(res.session);
-    } catch {
-      /* Ignore: non-critical operation */
-    }
-  };
+  /**
+   * Archive / unarchive: persists immediately and updates in place (fails silently; the next list refresh self-corrects).
+   *
+   * Memoised for the row's sake (session-row.tsx compares no handlers): the two values read
+   * here decide only WHICH folder an archived open chat expands into, and both are in the
+   * deps, so the copy a row holds is never older than the mode and the open Session it was
+   * built for.
+   */
+  const toggleArchive = useCallback(
+    async (s: SessionInfo) => {
+      // Archiving the currently open chat: expand the "archived" folder so it doesn't silently vanish from the sidebar with no way back.
+      if (!s.archived && s.sessionId === activeSessionId) {
+        setOpenFolders((prev) => new Set(prev).add(folderKey(sessionGroupKey(s), "archived")));
+      }
+      try {
+        const res = await api.patchSession(s.sessionId, { archived: !s.archived });
+        replace(res.session);
+      } catch {
+        /* Ignore: non-critical operation */
+      }
+    },
+    [activeSessionId, groupMode],
+  );
 
   /**
    * Batch pin / unpin over the marked rows, one pass and one storage write.
@@ -1335,10 +1331,10 @@ export function Sidebar({
       .filter((id) => id !== "");
   };
 
-  /** Apply one selection action against the rows currently on screen. */
-  const applySelection = (action: SelectionAction) => {
+  /** Apply one selection action against the rows currently on screen. Stable by construction: a setter and a ref read. */
+  const applySelection = useCallback((action: SelectionAction) => {
     setSelection((prev) => reduceSelection(prev, action, visibleSessionIds()));
-  };
+  }, []);
 
   /** Leave selection mode: the marks and the anchor go, the rows go back to being links. */
   const clearSelection = () => {
@@ -1405,6 +1401,62 @@ export function Sidebar({
     if (list === null) return;
     setSelection((prev) => pruneSelection(prev, visibleSessionIds()));
   });
+
+  /**
+   * The row handlers, hoisted out of `renderRows` and memoised.
+   *
+   * A SessionRow is memoised and its comparator deliberately compares no handlers
+   * (session-row.tsx) — which is only sound because every handler below is the SAME function
+   * from one render to the next, so "not compared" can never mean "stale". Five of the six
+   * are setters and cost nothing to hold; the two that read state (the pin toggle, the
+   * archive) are memoised on exactly what they read.
+   */
+  const onTogglePinRow = useCallback(
+    (x: SessionInfo) => toggleSessionPin(x.sessionId),
+    [toggleSessionPin],
+  );
+  const onRenameRow = useCallback((x: SessionInfo) => {
+    setRenameError(null);
+    setRenameText(x.title ?? "");
+    setRenamingSession(x);
+  }, []);
+  const onMessagingRow = useCallback((x: SessionInfo) => setMessagingSession(x), []);
+  const onDeleteRow = useCallback((x: SessionInfo) => setDeletingSession(x), []);
+  const onToggleArchiveRow = useCallback(
+    (x: SessionInfo) => void toggleArchive(x),
+    [toggleArchive],
+  );
+  const onSelectRow = useCallback(
+    (x: SessionInfo, shiftKey: boolean) => {
+      setSelectionMode(true);
+      applySelection(
+        shiftKey ? { kind: "range", id: x.sessionId } : { kind: "toggle", id: x.sessionId },
+      );
+    },
+    [applySelection],
+  );
+  /**
+   * The one handler that cannot be hoisted: "Select" acts on a single row, so it closes over
+   * that row's id. Cached per Session id instead of rebuilt per render, which is the same
+   * closure for a given row on every render — `applySelection` and `setSelectionMode` are
+   * both stable, so a cached entry can never hold a value the fresh one would not.
+   */
+  const selectModeHandlers = useMemo(() => {
+    const cache = new Map<string, () => void>();
+    return {
+      get: (sessionId: string) => {
+        let handler = cache.get(sessionId);
+        if (handler === undefined) {
+          handler = () => {
+            setSelectionMode(true);
+            applySelection({ kind: "only", id: sessionId });
+          };
+          cache.set(sessionId, handler);
+        }
+        return handler;
+      },
+    };
+  }, [applySelection]);
 
   /** Session rows shared by both modes; withAgentHint adds a small Agent avatar per row (workspace mode, where the group no longer names the Agent). */
   const renderRows = (
@@ -1506,30 +1558,18 @@ export function Sidebar({
             {...(withAgentHint ? { agentHint: agentNameById.get(s.agentId) ?? s.agentId } : {})}
             {...drag}
             onOpen={openSession}
-            onTogglePin={(x) => toggleSessionPin(x.sessionId)}
-            onRename={(x) => {
-              setRenameError(null);
-              setRenameText(x.title ?? "");
-              setRenamingSession(x);
-            }}
-            onMessaging={(x) => setMessagingSession(x)}
-            onDelete={(x) => setDeletingSession(x)}
-            onToggleArchive={(x) => void toggleArchive(x)}
+            onTogglePin={onTogglePinRow}
+            onRename={onRenameRow}
+            onMessaging={onMessagingRow}
+            onDelete={onDeleteRow}
+            onToggleArchive={onToggleArchiveRow}
             // Selection mode: the row stops being a link and becomes a checkbox, and the
             // modifier-click that enters the mode is what the user's Cmd/Ctrl habit already
             // does elsewhere (open in a new tab, select text) — no new gesture to learn.
             selecting={selectionMode}
             selected={selection.selected.has(s.sessionId)}
-            onSelect={(x, shiftKey) => {
-              setSelectionMode(true);
-              applySelection(
-                shiftKey ? { kind: "range", id: x.sessionId } : { kind: "toggle", id: x.sessionId },
-              );
-            }}
-            onSelectMode={() => {
-              setSelectionMode(true);
-              applySelection({ kind: "only", id: s.sessionId });
-            }}
+            onSelect={onSelectRow}
+            onSelectMode={selectModeHandlers.get(s.sessionId)}
           />
         );
       })}
@@ -1932,113 +1972,66 @@ export function Sidebar({
           />
         ) : (
           <nav aria-label={S.nav.navigation} className="space-y-0.5">
-            {/* Expand/collapse SLIDE: grid-template-rows tweens between 0fr and 1fr with the
-              inner overflow-hidden clipping the rows (the skills/models-page convention) —
-              the moving clip edge reveals/hides the entries while the toggle button and the
-              Session list below glide up/down with it; a subtle opacity fade rides along,
-              both 200ms, moving as one with the chevron flip below. The rows stay mounted
-              for the tween but go inert while collapsed (zero-height rows must not stay
-              Tab-focusable or clickable). Transitions fire only on state CHANGES, so a mount
-              restoring a persisted collapsed state renders collapsed instantly — only user
-              toggles animate; reduced motion is covered by the global
-              prefers-reduced-motion override in styles.css. */}
-            <div
-              className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-                navCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"
-              }`}
-            >
-              <div className="overflow-hidden" inert={navCollapsed}>
-                <div
-                  className={`space-y-0.5 transition-opacity duration-200 ${
-                    navCollapsed ? "opacity-0" : "opacity-100"
-                  }`}
-                >
-                  {navItems.map((item) => {
-                    /* Four nav entries sit on a badge trail — Agents (an outdated kernel, fixed on
+            <NavGroupCollapse collapsed={navCollapsed} onToggle={toggleNavGroup}>
+              {navItems.map((item) => {
+                /* Four nav entries sit on a badge trail — Agents (an outdated kernel, fixed on
                      the Agent settings page two clicks down), Skills, Models and the Cost Center
                      (each cleared on the page itself). The dot is anchored to the row, not to the
                      label text (where it would float over whatever follows the word): at the
                      row's right edge, on the same inset as its horizontal padding, and vertically
                      centred on the row rather than on the line of text. */
-                    const note = item.note;
-                    if (item.to === null) {
-                      /* Nowhere to go: the row keeps its place and its glyph, muted, with no
+                const note = item.note;
+                if (item.to === null) {
+                  /* Nowhere to go: the row keeps its place and its glyph, muted, with no
                        hover fill and nothing to click or tab to. */
-                      return (
-                        <span
-                          key={item.key}
-                          role="link"
-                          aria-disabled="true"
-                          className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-600"
-                        >
-                          <span className="text-gray-300 dark:text-gray-700">
-                            <Icon d={item.icon} />
-                          </span>
-                          {item.label}
-                        </span>
-                      );
-                    }
-                    return (
-                      <NavLink
-                        key={item.key}
-                        to={item.to}
-                        onClick={() => onNavigate?.()}
-                        {...(note !== null
-                          ? {
-                              // The row's own label is visible, so the tooltip only adds what
-                              // the dot means; the accessible name keeps that label as its
-                              // prefix. (The collapsed rail's icon-only twin has no visible
-                              // label, so its tooltip carries both.)
-                              title: note,
-                              "aria-label": `${item.label} · ${note}`,
-                            }
-                          : {})}
-                        className={({ isActive }) =>
-                          `relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-150 ${
-                            isActive
-                              ? "bg-gray-200/70 font-medium text-gray-900 dark:bg-gray-800 dark:text-gray-100"
-                              : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200"
-                          }`
+                  return (
+                    <span
+                      key={item.key}
+                      role="link"
+                      aria-disabled="true"
+                      className="relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-gray-500 dark:text-gray-600"
+                    >
+                      <span className="text-gray-300 dark:text-gray-700">
+                        <Icon d={item.icon} />
+                      </span>
+                      {item.label}
+                    </span>
+                  );
+                }
+                return (
+                  <NavLink
+                    key={item.key}
+                    to={item.to}
+                    onClick={() => onNavigate?.()}
+                    {...(note !== null
+                      ? {
+                          // The row's own label is visible, so the tooltip only adds what
+                          // the dot means; the accessible name keeps that label as its
+                          // prefix. (The collapsed rail's icon-only twin has no visible
+                          // label, so its tooltip carries both.)
+                          title: note,
+                          "aria-label": `${item.label} · ${note}`,
                         }
-                      >
-                        <span className="text-gray-500 dark:text-gray-400">
-                          <Icon d={item.icon} />
-                        </span>
-                        {item.label}
-                        {note !== null && (
-                          <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
-                        )}
-                      </NavLink>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            {/* Collapse toggle of the page-nav group (Agents → Benchmark): a slim (h-4)
-              nav-row-wide button directly under the group's last entry — a centered chevron
-              pointing UP while expanded (click to collapse) and DOWN while collapsed (the
-              button stays as the only way back, right under the new-chat boundary once the
-              entries are hidden). The soft resting band is deliberate — the sidebar's one
-              exception to flat-at-rest: it makes the strip read as the seam between the
-              page nav above and the Session list below (the ruled separator it replaces
-              was rejected as a line under the button); hover deepens it a step further so
-              it stays clearly interactive. Icon-only, so tooltip + aria carry the name
-              (GroupHeader's collapse/expand wording), and `max-md:min-h-11` is the touch
-              target the nav rows keep on a phone — a 16px strip is a fine mouse target and
-              a poor one under a thumb. ProductNavigation's twin carries the same floor. */}
-            <button
-              type="button"
-              onClick={toggleNavGroup}
-              aria-expanded={!navCollapsed}
-              aria-label={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-              title={navCollapsed ? S.nav.expandGroup : S.nav.collapseGroup}
-              className="flex h-4 max-md:min-h-11 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-            >
-              <ChevronDown
-                size={12}
-                className={`transition-transform duration-200 ${navCollapsed ? "" : "rotate-180"}`}
-              />
-            </button>
+                      : {})}
+                    className={({ isActive }) =>
+                      `relative flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors duration-150 ${
+                        isActive
+                          ? "bg-gray-200/70 font-medium text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+                          : "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200"
+                      }`
+                    }
+                  >
+                    <span className="text-gray-500 dark:text-gray-400">
+                      <Icon d={item.icon} />
+                    </span>
+                    {item.label}
+                    {note !== null && (
+                      <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
+                    )}
+                  </NavLink>
+                );
+              })}
+            </NavGroupCollapse>
           </nav>
         )}
 
@@ -2745,658 +2738,5 @@ export function Sidebar({
         </p>
       </ConfirmModal>
     </div>
-  );
-}
-
-/** Single parked-draft row: first line of the unsent text + hover delete (opening resumes the draft at `/chat/<draft-id>`). */
-function DraftRow({
-  entry,
-  active,
-  onOpen,
-  onDelete,
-}: {
-  entry: DraftSessionEntry;
-  active: boolean;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const title = draftSessionTitle(entry) || S.chat.draftUntitled;
-  return (
-    <li>
-      <div
-        // Same truncated-title scroll reveal as the session rows (#309).
-        data-title-reveal
-        className={`group flex items-center rounded-md pr-1 transition-colors duration-150 ${
-          active
-            ? "bg-gray-200/70 dark:bg-gray-800"
-            : "hover:bg-gray-200/50 dark:hover:bg-gray-800/70"
-        }`}
-      >
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left"
-        >
-          <Truncated
-            scrollReveal
-            text={title}
-            className={`min-w-0 flex-1 text-sm ${
-              active
-                ? "font-medium text-gray-900 dark:text-gray-100"
-                : "text-gray-700 dark:text-gray-300"
-            }`}
-          />
-        </button>
-        <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            title={S.chat.deleteDraft}
-            aria-label={S.chat.deleteDraft}
-            onClick={onDelete}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 opacity-0 transition-all duration-150 hover:bg-gray-300/60 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-gray-700 dark:hover:text-red-400"
-          >
-            <Icon
-              d="M4 6h16M9 6V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V6M6 6v13a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6M10 10.5v6M14 10.5v6"
-              size={14}
-            />
-          </button>
-        </div>
-      </div>
-    </li>
-  );
-}
-
-/**
- * One group's block — its header and body — carrying the manual group order's drop
- * indicator: a thin accent line in the gap the drop would land in, drawn against the
- * WHOLE group rather than its header, so "below" reads as "after this group and its
- * conversations" instead of "between the header and its own first row".
- *
- * The line is absolutely positioned and `inset-x-1` (matching the header's `px-1`), so
- * it consumes no layout width and cannot push the header's up-to-three action buttons
- * out of a narrow drawer.
- */
-function GroupBlock({
-  dropEdge,
-  children,
-}: {
-  /** Which edge of this group a drop would land on while a group drag hovers it. */
-  dropEdge: "above" | "below" | null;
-  children: ReactNode;
-}) {
-  return (
-    <div className="relative pt-2.5">
-      {dropEdge !== null && (
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-[var(--accent-bg)] ${
-            dropEdge === "above" ? "top-1" : "-bottom-1"
-          }`}
-        />
-      )}
-      {children}
-    </div>
-  );
-}
-
-/**
- * The conversation list's batch bar: how many are marked, the four reversible things that
- * can be done to all of them, and the way out.
- *
- * Only the REVERSIBLE operations are here. Delete is not, deliberately: it is the one batch
- * whose mistake cannot be undone, and a bar that puts it next to "Pin" invites the same
- * reflex that makes a drag-and-drop archive land on the wrong row. A user who wants four
- * conversations gone deletes four conversations, each with its own confirmation naming its
- * own title — the cost is four dialogs, and it buys certainty that the right one went.
- *
- * Every control reports what it WOULD do, not what is available: "Unpin" appears whenever
- * the selection contains a pinned row, and unpinning a mixed selection leaves the already
- * unpinned ones alone. Greying a control out because "not all of them are pinned" would
- * make the mixed case — the common one — the one case you cannot do, which is backwards.
- */
-function SelectionBar({
-  count,
-  anyPinned,
-  anyUnpinned,
-  anyArchived,
-  anyActive,
-  onPin,
-  onUnpin,
-  onArchive,
-  onUnarchive,
-  onClear,
-}: {
-  count: number;
-  anyPinned: boolean;
-  anyUnpinned: boolean;
-  anyArchived: boolean;
-  anyActive: boolean;
-  onPin: () => void;
-  onUnpin: () => void;
-  onArchive: () => void;
-  onUnarchive: () => void;
-  onClear: () => void;
-}) {
-  // role=status + aria-live: the count changes as rows are marked, and that number IS the
-  // answer to "how many am I about to archive" — a screen reader user has no other way to
-  // hear it, since the checkboxes are aria-hidden inside the row buttons.
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      data-testid="selection-bar"
-      className="mt-1 flex items-center gap-1 rounded-md bg-gray-100 px-1.5 py-1 dark:bg-gray-800"
-    >
-      <span className="min-w-0 flex-1 truncate px-1 text-xs text-gray-600 dark:text-gray-300">
-        {S.chat.selectedConversations(count)}
-      </span>
-      <BarAction
-        label={S.chat.pinSession}
-        icon={PIN_ICON}
-        onClick={onPin}
-        show={count > 0 && anyUnpinned}
-      />
-      <BarAction
-        label={S.chat.unpinSession}
-        icon={PIN_ICON}
-        onClick={onUnpin}
-        show={count > 0 && anyPinned}
-      />
-      <BarAction
-        label={S.chat.archiveSelected}
-        icon={ARCHIVE_ICON}
-        onClick={onArchive}
-        show={count > 0 && anyActive}
-      />
-      <BarAction
-        label={S.chat.unarchiveSelected}
-        icon={UNARCHIVE_ICON}
-        onClick={onUnarchive}
-        show={count > 0 && anyArchived}
-      />
-      <button
-        type="button"
-        title={S.chat.cancelSelection}
-        aria-label={S.chat.cancelSelection}
-        onClick={onClear}
-        className="flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-      >
-        <Icon d={CLOSE_ICON} size={11} />
-      </button>
-    </div>
-  );
-}
-
-/** One batch-bar control: a glyph with its tooltip, the same hover treatment the header's icon controls use. Hidden entirely when it has nothing to act on. */
-function BarAction({
-  label,
-  icon,
-  onClick,
-  show,
-}: {
-  label: string;
-  icon: string;
-  onClick: () => void;
-  show: boolean;
-}) {
-  if (!show) return null;
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-    >
-      <Icon d={icon} size={ICON_SIZE.iconButton} />
-    </button>
-  );
-}
-
-/**
- * Group-header pin toggle, shared by both grouping modes: revealed on header hover (or
- * keyboard focus) while unpinned; once pinned it stays visible, doubling as the subtle
- * pinned indicator. The header row carries the `group/header` scope so the reveal only
- * reacts to its own row, not to the session rows' plain `group` scope.
- * The accessible name stays STATIC and aria-pressed alone carries the state (the toggle
- * pattern the grouping-mode buttons use) — a name that swaps Pin/Unpin alongside
- * aria-pressed reads as "Unpin group, pressed", saying the state twice in conflicting
- * ways. The title tooltip may still swap: it is presentation for pointer users and does
- * not feed the accessible name while aria-label is present.
- */
-function GroupPinButton({ pinned, onToggle }: { pinned: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      title={pinned ? S.nav.unpinGroup : S.nav.pinGroup}
-      aria-label={S.nav.pinGroup}
-      aria-pressed={pinned}
-      onClick={onToggle}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200 ${
-        pinned
-          ? "text-gray-500 dark:text-gray-400"
-          : "text-gray-400 opacity-0 focus-visible:opacity-100 group-hover/header:opacity-100 dark:text-gray-500"
-      }`}
-    >
-      <Icon d={PIN_ICON} size={ICON_SIZE.groupHeaderAction} />
-    </button>
-  );
-}
-
-/**
- * Single Session row: title + pinned indicator + status dot/approval badge, and one
- * trailing slot that swaps its content — at rest it shows the compact last-active time,
- * on row hover — or on either of them taking focus — it shows archive and delete as
- * direct icon buttons.
- * That pair is the affordance every release up to v0.2.2 shipped (as icon buttons in
- * exactly this slot), restored here: the 0.3 line had replaced it with an ellipsis
- * dropdown carrying pin / rename / archive / delete, which cost two clicks for the two
- * actions people actually reach for.
- *
- * The rest of the set did not disappear — **right-clicking the row** opens all four as a
- * context menu at the pointer (useRowContextMenu; also Shift+F10 from the keyboard and
- * press-and-hold on touch, since neither hover nor a secondary click exists there). Both
- * panels go through the Dropdown body portal so the sidebar scroller can't clip them, and
- * both read their action set from session-row-menu.tsx.
- *
- * A truncated title scrolls its tail into view while the row is hovered or
- * keyboard-focused (#309; Truncated's scrollReveal + data-title-reveal).
- */
-function SessionRow({
-  s,
-  active,
-  activity,
-  background,
-  scheduled,
-  pinned,
-  canPin = false,
-  lastActive,
-  agentHint,
-  draggable = false,
-  dropEdge = null,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  onOpen,
-  onTogglePin,
-  onRename,
-  onMessaging,
-  onDelete,
-  onToggleArchive,
-  selecting = false,
-  selected = false,
-  onSelect,
-  onSelectMode,
-}: {
-  s: SessionInfo;
-  active: boolean;
-  /** Busy / settled-read / settled-unread / never-ran, already resolved by sessionRowActivity. */
-  activity: SessionActivity;
-  /** Background tasks the Session still owns (sessionBackgroundTasks); 0 draws no mark. */
-  background: number;
-  /** A scheduled task still to fire is bound to this Session (pendingScheduleSessions); false draws no mark. */
-  scheduled: boolean;
-  /** Row is pinned (bubbled to its group's top; small pin glyph on the title). */
-  pinned: boolean;
-  /** Whether pinning can actually reorder this row — active-list rows only; folder rows hide the action (see renderRows). */
-  canPin?: boolean;
-  /** Preformatted compact last-active time ("" hides the slot's resting text). */
-  lastActive: string;
-  /** Agent display name; when set (workspace mode) a small avatar keeps the Agent context visible on the row. */
-  agentHint?: string;
-  /** Manual sort: the row can be drag-reordered (the sidebar wires the handlers below). */
-  draggable?: boolean;
-  /** Drop indicator edge while another row hovers over this one (a thin accent line above/below). */
-  dropEdge?: "above" | "below" | null;
-  onDragStart?: (e: ReactDragEvent) => void;
-  onDragEnd?: () => void;
-  onDragOver?: (e: ReactDragEvent) => void;
-  onDragLeave?: () => void;
-  onDrop?: (e: ReactDragEvent) => void;
-  onOpen: (s: SessionInfo) => void;
-  onTogglePin: (s: SessionInfo) => void;
-  onRename: (s: SessionInfo) => void;
-  onMessaging: (s: SessionInfo) => void;
-  onDelete: (s: SessionInfo) => void;
-  onToggleArchive: (s: SessionInfo) => void;
-  /** Selection mode is on: the row's primary action marks it instead of opening it. */
-  selecting?: boolean;
-  /** This row is currently marked. */
-  selected?: boolean;
-  /** Mark / unmark the row; the second argument is the Shift key, which extends a range. */
-  onSelect?: (s: SessionInfo, shiftKey: boolean) => void;
-  /** Enter selection mode with only this row marked (the row menu's "Select"). */
-  onSelectMode?: () => void;
-}) {
-  const ctx = useRowContextMenu();
-  /** Run one action on this Session, closing the context menu first if it was open. */
-  const run = (action: SessionRowAction) => {
-    ctx.close();
-    const handler: Record<SessionRowAction, (x: SessionInfo) => void> = {
-      // "Select" acts on the LIST, not on this row's Session, so it is the one entry whose
-      // handler ignores its argument — it marks this row and puts the list into selection
-      // mode, which is what the menu said it would do.
-      select: () => onSelectMode?.(),
-      pin: onTogglePin,
-      rename: onRename,
-      // The copy affordance's feedback normally rides on the button itself (copy-button.tsx),
-      // which a menu row cannot do: the row acts and the panel closes under it. A toast is
-      // the confirmation that survives that, and it says the same word.
-      copy: (x) => {
-        writeClipboard(x.sessionId);
-        toastSuccess(S.common.copied);
-      },
-      messaging: onMessaging,
-      archive: onToggleArchive,
-      delete: onDelete,
-    };
-    handler[action](s);
-  };
-  /**
-   * Menu items hand focus back to the row before acting: the panel unmounts under the
-   * user, and the context menu is the only keyboard route to pin and rename, so a
-   * Shift+F10 → Enter user would otherwise be dropped onto <body> and lose their place in
-   * the list. Actions that open a dialog (rename, delete) take focus from there as usual.
-   */
-  const runFromMenu = (action: SessionRowAction) => {
-    ctx.returnFocus()?.focus();
-    run(action);
-  };
-  const rowState = { archived: s.archived, pinned };
-  return (
-    <li
-      className="relative"
-      {...(draggable
-        ? { draggable: true, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop }
-        : {})}
-    >
-      {/* Manual-drag drop indicator: a thin accent line on the edge the drop would land on (both themes read it against the row gap). */}
-      {dropEdge !== null && (
-        <div
-          aria-hidden
-          className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-[var(--accent-bg)] ${
-            dropEdge === "above" ? "-top-px" : "-bottom-px"
-          }`}
-        />
-      )}
-      <div
-        // data-title-reveal: hovering the row / keyboard-focusing its button scrolls a
-        // truncated title's tail into view (the Truncated below; styles.css #309 rules).
-        data-title-reveal
-        ref={ctx.rowRef}
-        // Right-click / Shift+F10 / press-and-hold open the row's context menu. The
-        // native menu is suppressed inside this handler only — the rest of the app keeps
-        // the browser's own. select-none keeps a held press from raising the text
-        // selection callout on touch instead of the menu.
-        {...ctx.rowProps}
-        className={`group flex select-none items-center rounded-md pr-1 transition-colors duration-150 ${
-          draggable ? "cursor-grab " : ""
-        }${
-          active
-            ? "bg-gray-200/70 dark:bg-gray-800"
-            : "hover:bg-gray-200/50 dark:hover:bg-gray-800/70"
-        }`}
-      >
-        <button
-          type="button"
-          data-testid="session-row"
-          data-session-id={s.sessionId}
-          // A press-and-hold that opened the context menu must not also open the Session:
-          // touch screens replay the held press as a click once the finger lifts.
-          onClick={(e) => {
-            if (ctx.consumeLongPressClick()) return;
-            // Selection mode takes the click: the row marks instead of opening, so a
-            // multi-select never navigates away halfway through. Cmd/Ctrl-click does the
-            // same from outside the mode, which is where the habit already lives.
-            if (onSelect !== undefined && (selecting || e.metaKey || e.ctrlKey)) {
-              onSelect(s, e.shiftKey);
-              return;
-            }
-            onOpen(s);
-          }}
-          // In selection mode the row IS the checkbox: one button, toggled, named by its
-          // title. aria-pressed rather than role=checkbox, because a checkbox promises
-          // Space to toggle and this button's Space is the app's global "send message".
-          {...(selecting ? { "aria-pressed": selected } : {})}
-          className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-left"
-        >
-          {/* Selection mode puts a real checkbox in front of the title rather than tinting
-              the row: a tint is invisible to a screen reader and unlabelled for everyone
-              else, while a checkbox is what a user is about to press Space on. It is
-              aria-hidden because the row button below already names the row and carries
-              aria-pressed for the marked state — two controls for one row would be one too
-              many in the tab order. */}
-          {selecting && (
-            <span
-              aria-hidden
-              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                selected
-                  ? "border-accent bg-[var(--accent-bg)] text-white"
-                  : "border-gray-300 dark:border-gray-600"
-              }`}
-            >
-              {selected && <CheckIcon className="h-2.5 w-2.5" />}
-            </span>
-          )}
-          {agentHint !== undefined && (
-            <span title={agentHint} className="flex shrink-0 items-center">
-              <AgentAvatar id={s.agentId} name={agentHint} size={14} className="rounded" />
-              {/* The avatar is aria-hidden and title only serves pointer users: expose the Agent name to keyboard/screen-reader users as visually hidden text inside the row button. */}
-              <span className="sr-only">{agentHint}</span>
-            </span>
-          )}
-          {/* Truncated titles reveal their full text on row hover / keyboard focus by
-              scrolling the tail into view (#309; scrollReveal, no-op when the title fits).
-              The conditional `title` stays as the pointer-hover fallback under
-              prefers-reduced-motion — not as a touch path: mobile browsers do not surface
-              `title` on long-press. Touch reaches the full text by opening the Session. */}
-          <Truncated
-            scrollReveal
-            text={s.title ?? S.chat.defaultSessionTitle}
-            className={`min-w-0 flex-1 text-sm ${
-              active
-                ? "font-medium text-gray-900 dark:text-gray-100"
-                : s.archived
-                  ? "text-gray-400 dark:text-gray-500"
-                  : "text-gray-700 dark:text-gray-300"
-            }`}
-          />
-          {/* Four marks for the row's STANDING arrangements, all in one dim cluster and all in
-              the `muted` ink: how the row is filed (pinned), where it can be reached from
-              (messaging relay), whether it runs on its own (a scheduled task) and whether it
-              owns work that outlives the turn (background tasks). None of them is live work, so
-              none competes with the status glyph that follows; each names itself in a tooltip
-              and in sr text, which is what lets them recede this far. */}
-          {/* Pinned indicator: a dim pin after the title (unpin lives in the row menu). */}
-          {pinned && canPin && (
-            <span title={S.chat.pinnedSession} className={`shrink-0 ${toneInk.muted}`}>
-              <Icon d={PIN_ICON} size={ICON_SIZE.rowMark} />
-              <span className="sr-only">{S.chat.pinnedSession}</span>
-            </span>
-          )}
-          {/* Enabled-messaging indicator: one glyph for every channel, the channel named in
-              the tooltip and sr text (saved-but-disabled configs stay off the row; the binding
-              dialog lives in the row menu). */}
-          {s.messagingChannel !== undefined && (
-            <span
-              title={S.messaging.enabledIndicator[s.messagingChannel]}
-              className={`shrink-0 ${toneInk.muted}`}
-            >
-              <Icon d={MESSAGING_RELAY_ICON} size={ICON_SIZE.rowMark} />
-              <span className="sr-only">{S.messaging.enabledIndicator[s.messagingChannel]}</span>
-            </span>
-          )}
-          {/* Scheduled-task indicator: the row says this conversation will run on its own, and
-              the schedules panel says how often and what. A paused task, or one past its end
-              time, draws nothing — nothing more will fire from it, and a mark would be noise. */}
-          {scheduled && <ScheduleMark size={ICON_SIZE.rowMark} />}
-          {/* Background work the conversation owns while sitting idle: parked, not running,
-              so it reads as an arrangement rather than as a turn in progress. The mark leaves
-              with the last task (live via session_background). */}
-          {background > 0 && (
-            <BackgroundTasksMark
-              label={S.chat.backgroundTasks(background)}
-              size={ICON_SIZE.rowMark}
-            />
-          )}
-          {/* No per-row source tag: subagent / scheduled Sessions live in their own labelled, collapsed folders, so a badge on the title would just repeat the folder. */}
-          <StatusGlyph activity={activity} />
-          {s.pendingApprovalCount > 0 && (
-            <span title={S.chat.pendingApprovals(s.pendingApprovalCount)}>
-              <Badge tone="amber">{s.pendingApprovalCount}</Badge>
-            </span>
-          )}
-        </button>
-        {/* Trailing swap slot: resting last-active time / hover-focus archive + delete.
-            The buttons form a CONSTANT-width group anchored at the slot's right edge —
-            NOT a whole-slot overlay: the slot's width rides the time string (2m ago vs
-            31m ago), and slot-centered glyphs landed at a different x per row, so the
-            icons never formed a vertical column (the user saw them shift with the time's
-            character count). Right-anchored, every row's icons share one x. min-w-12
-            reserves the pair's own width, so on a row with no time they still don't
-            overhang the title. The swap stays a pure opacity handoff: the time hides on
-            row hover (group-hover) and while a button holds focus (peer-focus-within; the
-            group precedes the time span so the peer combinator can reach it). */}
-        <div className="relative flex h-6 min-w-12 shrink-0 items-center justify-end">
-          {/* No hover pill on these (a fill as wide as the date read ugly); feedback is
-              the glyph color deepening — red for delete. The whole slot empties in selection
-              mode: a per-row archive that bypasses the batch bar and the count in it would
-              be two ways to archive, one of which the user cannot see. */}
-          <div className="peer absolute right-0 top-1/2 flex -translate-y-1/2 items-center">
-            {selecting ? null : (
-              <SessionRowHoverActions
-                actions={HOVER_ROW_ACTIONS}
-                state={rowState}
-                moreOpen={ctx.open}
-                onRun={run}
-                onMore={ctx.openAt}
-              />
-            )}
-          </div>
-          {lastActive !== "" && (
-            <span
-              aria-hidden
-              className="pointer-events-none px-1 text-[11px] text-gray-400 transition-opacity duration-150 group-hover:opacity-0 peer-focus-within:opacity-0 dark:text-gray-500"
-            >
-              {lastActive}
-            </span>
-          )}
-        </div>
-        {/* The full set, one right-click away (also Shift+F10 / press-and-hold — see
-            useRowContextMenu). `contents` keeps this wrapper out of the row's flex
-            layout: it renders no box of its own, the panel is portaled, and the anchor
-            is the viewport point the gesture landed on rather than this element. */}
-        <Dropdown
-          open={ctx.open}
-          setOpen={ctx.setOpen}
-          portal={{ direction: "down", align: "left" }}
-          anchorRect={ctx.anchor}
-          anchorOwner={ctx.anchorOwner}
-          returnFocus={ctx.returnFocus}
-          className="contents"
-          menuClass="w-36"
-          button={null}
-        >
-          <SessionRowMenuRows
-            actions={contextMenuActions(canPin)}
-            state={rowState}
-            onRun={runFromMenu}
-          />
-        </Dropdown>
-      </div>
-    </li>
-  );
-}
-
-/**
- * Registry-backed workspace group's overflow (… to the right of the header's "+"):
- * Rename workspace / Delete workspace in the session-row menu's compact style. Sits among the
- * header's action buttons — outside the header's collapse toggle, so opening it never
- * expands/collapses the group. Body-portaled like every menu inside the scroller.
- */
-function GroupOverflowMenu({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
-  const [open, setOpen] = useState(false);
-  /** Close first, then act (the rename modal opens on top; the delete is immediate). */
-  const item = (fn: () => void) => () => {
-    setOpen(false);
-    fn();
-  };
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      portal={{ direction: "down", align: "right" }}
-      menuClass="w-32"
-      className="shrink-0"
-      button={
-        /* No hover pill on this trigger (user: color, not background, should carry the
-           hover hint) — feedback is the glyph deepening in light / brightening in dark,
-           the session-row ellipsis treatment. Geometry: the same h-7 w-7 square as the
-           sibling "+" and the LAST action in the header, flush at GroupHeader's px-1
-           inset — which equals the session rows' pr-1, so with the row trigger's 16px
-           glyph the dot columns line up with the rows' trailing slot below. */
-        <button
-          type="button"
-          title={S.chat.workspaceMenu}
-          aria-label={S.chat.workspaceMenu}
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          className="flex h-7 w-7 shrink-0 items-center justify-center text-gray-500 transition-colors duration-150 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100"
-        >
-          <EllipsisGlyph size={16} />
-        </button>
-      }
-    >
-      <button type="button" className={overflowMenuRowClass} onClick={item(onRename)}>
-        {overflowMenuGlyph(PENCIL_ICON)}
-        {S.chat.renameWorkspace}
-      </button>
-      <button type="button" className={overflowMenuDangerClass} onClick={item(onDelete)}>
-        <span className="shrink-0">
-          <Icon d={TRASH_ICON} size={13} />
-        </span>
-        {S.chat.deleteWorkspace}
-      </button>
-    </Dropdown>
-  );
-}
-
-/**
- * List-settings menu option: leading glyph + label, with a checkmark marking the active
- * choice (reference-style radio row; aria-pressed carries the state). Same type scale and
- * leading-glyph column as the session/workspace overflow menus (font matches Session
- * more options), so the two menus read as one family.
- *
- * The glyph is decorative — it names the option's subject (a folder for Workspace
- * grouping, a clock for recency) beside a label that is never dropped, so the row's
- * accessible name stays the label alone.
- */
-function MenuRadioRow({
-  icon,
-  label,
-  checked,
-  onSelect,
-}: {
-  icon: string;
-  label: string;
-  checked: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      onClick={onSelect}
-      className={`${overflowMenuRowClass} justify-between`}
-    >
-      <span className="flex min-w-0 items-center gap-2">
-        {overflowMenuGlyph(icon)}
-        <span className="truncate">{label}</span>
-      </span>
-      {checked && <CheckIcon className="shrink-0 text-gray-500 dark:text-gray-400" />}
-    </button>
   );
 }

@@ -1270,6 +1270,24 @@ export const zh = {
     keysInCooldown: (n: number) => `${n} 个 Key 处于 429 冷却`,
     keysEvicted: (n: number) => `${n} 个 Key 已失效 (401)`,
     totalKeysConfigured: "已配置 Key 总数",
+    keyNameLabel: "名称",
+    keyNameHint: "用来区分这把 Key 的名称——在同一模型的 Key 池内唯一。",
+    keyNamePlaceholder: "例如：prod",
+    keyLabelLabel: "备注",
+    keyLabelPlaceholder: "例如：团队共享池，勿轮换",
+    keyNameSave: "保存名称",
+    keyNameCancel: "取消",
+    keyNameAction: "为该 Key 命名",
+    keyNameEdit: "重命名",
+    keyNameClear: "清除名称",
+    keyUnnamed: "未命名",
+    keyUnnamedHint: "尚未命名——起个名字，才能和其他 Key 区分开。",
+    keyNameColumn: "名称",
+    keyNameSaved: (name: string): string => `已将 Key 命名为「${name}」`,
+    keyNameCleared: (name: string): string => `已清除名称「${name}」`,
+    keyNameRequired: "保存前必须为该 Key 起一个名称。",
+    keyOrphaned: "该 Key 已不在配置中，其名称没有可对应的对象。",
+    keyActionFailed: (name: string, action: string): string => `对 ${name} 执行${action}失败`,
     healthyPoolsRatio: "健康 Key 占比",
   },
 
@@ -1760,6 +1778,37 @@ export const zh = {
       promptPlaceholders: [
         ["{{SKILL_METADATA}}", "已安装技能的元数据行（每技能一行「- 名称 — 描述」；无技能时为空）"],
       ] as ReadonlyArray<readonly [string, string]>,
+    },
+    /**
+     * /skills 页面（features/skills/skills-page.tsx）。文案描述的是插件库本身：这里每一句
+     * 要么说明列表接口真实返回了什么，要么直说它没有返回——`bodyMissing` 是关键的一句，它是
+     * 那个用技能名称和描述拼出「SKILL.md」的面板唯一诚实的替代。
+     */
+    hub: {
+      title: "技能中心",
+      subtitle: "内置插件库中的全部技能，可按名称、插件或分类搜索。",
+      /** 列表自身的长度——本页唯一能如实说明的技能数量。 */
+      loadedCount: (n: number): string => `${n} 个技能`,
+      refresh: "刷新",
+      searchPlaceholder: "按名称、插件或分类搜索技能…",
+      searchLabel: "搜索技能",
+      allCategories: "全部",
+      noSkills: "插件库中没有技能。",
+      noMatches: "没有匹配的技能。",
+      selectHint: "选择一个技能以查看它的指令正文。",
+      shippedBy: (plugin: string): string => `由插件 ${plugin} 提供。`,
+      invocationTitle: "调用方式",
+      copyInvocation: "复制斜杠命令",
+      /**
+       * 说明上面的命令为何可能还跑不通：只有已安装该技能的 Agent 才能用 `/名称` 寻址它，
+       * 而插件库列表并不等于安装，因此这里说明前提，而不是给出一条无处可解析的命令。
+       */
+      invocationNeedsInstall:
+        "只有在已安装该技能的 Agent 上才能用这条命令寻址它——请先在插件库中把它的插件安装到某个 Agent。",
+      bodyTitle: "指令正文（SKILL.md）",
+      /** 插件的文件清单里没有该技能的 SKILL.md，此处不显示任何替代文本。 */
+      bodyMissing: (plugin: string, skill: string): string =>
+        `插件 ${plugin} 未提供 ${skill} 的 SKILL.md，因此没有可显示的指令正文。`,
     },
   },
 
@@ -4106,6 +4155,9 @@ Benchmark：
       ticket_session_failed: "无法发起工单会话。",
       handbook_file_not_found: "该文档已不存在。",
       handbook_index_required: "手册索引（README.md）不能删除。",
+      key_name_taken: "该模型的 Key 池中已有同名 Key，请换一个名称。",
+      key_mask_ambiguous:
+        "该掩码在本 Key 池中匹配到多把 Key，无法确定是哪一把。请使用界面上显示的完整掩码。",
     },
   },
 

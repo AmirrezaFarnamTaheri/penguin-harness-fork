@@ -251,3 +251,77 @@ describe("skillMetadataSection / assembleSystemPrompt injection", () => {
     expect(empty).not.toContain(SKILL_METADATA_PLACEHOLDER);
   });
 });
+
+describe("skill index cost (Q1: skills must not pad every request)", () => {
+  const corpus = (count: number, over: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      name: `skill-${i}`,
+      // A long-form description with a matching author-written short_description, the shape
+      // the shipped corpus actually has.
+      description: `Long form ${i}. ${"detail ".repeat(over)}`,
+      shortDescription: `Short form ${i}.`,
+      version: "1.0.0",
+    }));
+
+  it("carries no skill body for a 200-skill corpus — only the index line", () => {
+    const section = skillMetadataSection(corpus(200, 40));
+    // Every skill is discoverable: 200 rows.
+    expect(section.split("\n")).toHaveLength(200);
+    // No body ever leaks in: the long form is what a body-less-but-verbose description would
+    // drag in, and none of it is present.
+    expect(section).not.toContain("detail detail");
+    for (const skill of corpus(200, 40)) {
+      expect(section).toContain(`- \`${skill.name}\` — ${skill.shortDescription}`);
+    }
+  });
+
+  it("prefers the shorter form, so the index shrinks by the short/long gap", () => {
+    const skills = corpus(1, 40);
+    const before = skillMetadataSection([{ ...skills[0]!, shortDescription: undefined }]);
+    const after = skillMetadataSection(skills);
+    expect(after).toBe("- `skill-0` — Short form 0.");
+    expect(after.length).toBeLessThan(before.length);
+  });
+
+  it("is never longer than the full-description form it replaces, even when short is longer", () => {
+    // `rust-no-std` in the real corpus: short_description 84 chars, description 83.
+    const skill = {
+      name: "x",
+      description: "D".repeat(83),
+      shortDescription: "S".repeat(84),
+      version: "",
+    };
+    const legacy = skillMetadataSection([{ ...skill, shortDescription: undefined }]);
+    expect(skillMetadataSection([skill]).length).toBeLessThanOrEqual(legacy.length);
+  });
+
+  it("falls back to the full description when a skill ships no short form", () => {
+    expect(
+      skillMetadataSection([{ name: "a", description: "Only the long form.", version: "" }]),
+    ).toBe("- `a` — Only the long form.");
+  });
+
+  it("uses the short form for a skill whose description is empty but short form is not", () => {
+    expect(
+      skillMetadataSection([
+        { name: "a", description: "", shortDescription: "Has one.", version: "" },
+      ]),
+    ).toBe("- `a` — Has one.");
+  });
+
+  it("emits a bare name when a skill has neither form", () => {
+    expect(
+      skillMetadataSection([
+        { name: "a", description: "", version: "" },
+        { name: "b", description: "   ", shortDescription: "  ", version: "" },
+      ]),
+    ).toBe("- `a`\n- `b`");
+  });
+
+  it("does not cap the corpus: every installed skill stays listed", () => {
+    // 507 is the measured size of a real installed corpus. A cap here would be alphabetical
+    // (the section is assembled at Session open, before any user message to rank against) and
+    // would make skills undiscoverable, so no cap is applied and this asserts that.
+    expect(skillMetadataSection(corpus(507, 0)).split("\n")).toHaveLength(507);
+  });
+});

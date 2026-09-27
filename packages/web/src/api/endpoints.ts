@@ -411,6 +411,49 @@ export const getModelApiKey = (projectId: string, provider: string, modelId: str
     `/api/projects/${encodeURIComponent(projectId)}/models/key?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`,
   );
 
+/**
+ * Every name this Project has given its API keys — annotations only, never a key.
+ *
+ * The cockpit fleet view joins this onto its health report by `maskedKey`, which is the
+ * string that report already shows, so no read here is a way to obtain a secret.
+ */
+export const listModelKeyNames = (projectId: string) =>
+  apiFetchJson<{
+    keys: import("../features/models/key-fleet-types").KeyNameEntry[];
+  }>(`/api/projects/${encodeURIComponent(projectId)}/models/keys`);
+
+/**
+ * Names a key, or renames the one it already names.
+ *
+ * The target is the masked key, never the plaintext: the fleet is write-only at rest and this
+ * call must not become a way to name a key by handing its secret back to the server. A name
+ * already taken in the same fleet answers 409 (`key_name_taken`).
+ */
+export const putModelKeyName = (
+  projectId: string,
+  body: {
+    provider: string;
+    modelId: string;
+    maskedKey: string;
+    name: string;
+    label?: string;
+  },
+) =>
+  apiFetchJson<import("../features/models/key-fleet-types").KeyNameEntry>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/keys`,
+    { method: "PUT", body },
+  );
+
+/**
+ * Forgets a key's name. The key itself is untouched — it lives in the Project config, and
+ * this call has never been near it. 404 when no such name is stored.
+ */
+export const deleteModelKeyName = (projectId: string, keyId: string) =>
+  apiFetchJson<{ ok: boolean; keyId: string }>(
+    `/api/projects/${encodeURIComponent(projectId)}/models/keys/${encodeURIComponent(keyId)}`,
+    { method: "DELETE" },
+  );
+
 /** Configures group-level defaults for base_url and image_base_url with optional bulk propagation. */
 export const putModelGroupDefaults = (
   projectId: string,

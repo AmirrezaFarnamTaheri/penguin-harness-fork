@@ -214,9 +214,11 @@ describe("SessionActivityIcon", () => {
       expect(markup).toMatch(/(width="12"|width:12px)/);
       expect(markup).toMatch(/(height="12"|height:12px)/);
     }
-    // The empty state's placeholder, read from the sidebar itself so it cannot drift apart.
+    // The empty state's placeholder, read from the row component that renders it
+    // (StatusGlyph moved out of the sidebar into components/layout/session-row.tsx) so it
+    // cannot drift apart.
     const sidebar = readFileSync(
-      fileURLToPath(new URL("../src/components/layout/sidebar.tsx", import.meta.url)),
+      fileURLToPath(new URL("../src/components/layout/session-row.tsx", import.meta.url)),
       "utf8",
     );
     expect(sidebar).toMatch(/activity === null.*\n?.*className="block h-3 w-3 shrink-0"/);

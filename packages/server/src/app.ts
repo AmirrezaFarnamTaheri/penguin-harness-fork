@@ -50,6 +50,7 @@ import { MachinesRepo } from "./db/repos/machines.js";
 import { migrate } from "./db/migrations.js";
 import { ErrorsRepo } from "./db/repos/errors.js";
 import { MessagingBindingsRepo } from "./db/repos/messaging-bindings.js";
+import { ModelKeysRepo } from "./db/repos/model-keys.js";
 import { SchedulesRepo } from "./db/repos/schedules.js";
 import { OrgCacheRepo } from "./db/repos/organizations.js";
 import { ServerSettingsRepo } from "./db/repos/server-settings.js";
@@ -71,6 +72,7 @@ import { ensureInstallId } from "./install-id.js";
 import { handleError, HttpError, errorBody } from "./http/errors.js";
 import { attributedProjectId } from "./http/attribution.js";
 import { authRoutes } from "./http/routes/auth.js";
+import { instanceRoutes } from "./http/routes/instance.js";
 import { installRoutes } from "./http/routes/install.js";
 import { ChannelHub } from "./runtime/channel.js";
 import { ErrorRecorder } from "./runtime/error-recorder.js";
@@ -161,6 +163,7 @@ import { auditRoutes } from "./http/routes/audit.js";
 import { wikiRoutes } from "./http/routes/wiki.js";
 import { pipelineRoutes, personaRoutes } from "./http/routes/pipelines.js";
 import { ModelKeyHealthService } from "./services/model-key-health.js";
+import { ModelKeyNamesService } from "./services/model-key-names.js";
 import { modelOAuthCallbackRoutes, modelOAuthRoutes } from "./http/routes/model-oauth.js";
 import { chatDefaultsRoutes } from "./http/routes/chat-defaults.js";
 import { commandPolicyRoutes } from "./http/routes/command-policy.js";
@@ -206,6 +209,8 @@ export interface AppDeps {
   projectConfigService: ProjectConfigService;
   /** In-memory API key health tracking and rotation registry. */
   keyHealthService: ModelKeyHealthService;
+  /** The names and labels a Project has given its API keys (annotations only — no key material). */
+  modelKeyNames: ModelKeyNamesService;
   /** In-flight provider key-minting flows (PKCE verifiers live here and nowhere else). */
   modelOAuth: ModelOAuthService;
   agentService: AgentService;
@@ -535,6 +540,11 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
 
   // Public routes (no login required).
   app.route("/api/auth", authRoutes(deps));
+  // Instance identity: which data root is this server serving? Public because the caller is
+  // by definition not yet sure whether it may talk to this server (see the route's header),
+  // and runtime-owned because discovery cannot depend on a route a hot push could withdraw
+  // from under a client that predates the push — which is exactly the client that asks.
+  app.route("/api/instance", instanceRoutes(deps));
   // Desktop shutdown authenticates with the shell's Bearer token, not the cookie
   // session, so it mounts outside authMiddleware (and only in desktop mode).
   if (deps.desktop) {
@@ -993,6 +1003,7 @@ export function buildAppDeps(
       projectConfigService.setGroupApiKey(projectId, provider, apiKey),
   });
   const keyHealthService = new ModelKeyHealthService();
+  const modelKeyNames = new ModelKeyNamesService(new ModelKeysRepo(db), projectConfigService);
   const agentConfigService = new AgentConfigService(config.root);
   const snapshots = new SnapshotService(config.root);
   const agentService = new AgentService(config.root, agentsRepo, agentConfigService, snapshots);
@@ -1265,6 +1276,7 @@ export function buildAppDeps(
     projectService,
     projectConfigService,
     keyHealthService,
+    modelKeyNames,
     modelOAuth,
     agentService,
     agentConfigService,
