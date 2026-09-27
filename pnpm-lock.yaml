@@ -187,6 +187,9 @@ importers:
       '@prismshadow/agenthub':
         specifier: ^0.4.12
         version: 0.4.12(supports-color@10.2.2)(ws@8.21.0)(zod@4.4.3)
+      '@typesafe-ai/sdk':
+        specifier: 0.6.0
+        version: 0.6.0
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -2107,6 +2110,10 @@ packages:
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
+  '@typesafe-ai/sdk@0.6.0':
+    resolution: {integrity: sha512-IddX+Q0XM+VagOUZFeP7wZjaO4SHMdvnh2zEBdrZZnXedWI3BNK1lKhMx3ayrkFWvVLbVcUHJy6AVZlY+e6Jaw==}
+    engines: {node: '>=20'}
 
   '@ungap/structured-clone@1.3.2':
     resolution: {integrity: sha512-5jsZFwgR5rTdKwidH9Qmat75RKwqfpKlWWB1frDkljN127mwqBu8K0PYo7/hFpF03IEJpfVPpCQDY/eDx3iHvA==}
@@ -6283,6 +6290,8 @@ snapshots:
   '@types/ws@8.18.1':
     dependencies:
       '@types/node': 24.13.3
+
+  '@typesafe-ai/sdk@0.6.0': {}
 
   '@ungap/structured-clone@1.3.2': {}
 
