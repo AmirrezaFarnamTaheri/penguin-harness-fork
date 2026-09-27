@@ -22,3 +22,7 @@ export * from "./code-graph-watcher.js";
 export * from "./sandbox-runner.js";
 export * from "./repeat-tool-guard.js";
 export * from "./swarm-coordinator.js";
+// Barrel-style modules: these two are directories with their own `index.ts`,
+// re-exported the same way `src/index.ts` re-exports `./omnimessage/index.js`.
+export * from "./sharing/index.js";
+export * from "./resource/index.js";
