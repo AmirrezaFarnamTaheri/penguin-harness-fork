@@ -34,7 +34,7 @@ export function Citation({
           className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-gray-300 bg-gray-50 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors cursor-pointer ${className}`}
         >
           {index !== undefined && (
-            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white shrink-0">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-brand-500 text-[9px] font-bold text-white shrink-0">
               {index}
             </span>
           )}
@@ -50,7 +50,7 @@ export function Citation({
         className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-gray-300 bg-gray-50 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors cursor-pointer ${className}`}
       >
         {index !== undefined && (
-          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-blue-500 text-[9px] font-bold text-white shrink-0">
+          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-brand-500 text-[9px] font-bold text-white shrink-0">
             {index}
           </span>
         )}
@@ -60,13 +60,17 @@ export function Citation({
   }
 
   return (
+    // Elevation by BORDER, not by shadow. This card carried both (`border` + `shadow-xs`
+    // + `transition-shadow hover:shadow-md`), which was the single place in the codebase
+    // where the rule the whole system is built on — "border OR shadow, not both" — broke.
+    // It also animated `shadow`, a paint-only property the rule exists to avoid spending.
     <div
-      className={`group relative flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-2.5 text-xs shadow-xs transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900/90 ${className}`}
+      className={`group relative flex flex-col justify-between rounded-lg border border-gray-200 bg-white p-2.5 text-xs dark:border-gray-800 dark:bg-gray-900/90 ${className}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 overflow-hidden">
           {index !== undefined && (
-            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white shrink-0">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-500 text-[10px] font-bold text-white shrink-0">
               {index}
             </span>
           )}
@@ -76,10 +80,11 @@ export function Citation({
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="hover:underline flex items-center gap-1 text-blue-600 dark:text-blue-400"
+                className="hover:underline flex items-center gap-1 text-brand-600 dark:text-brand-400"
               >
                 <span className="truncate">{title}</span>
                 <svg
+                  aria-hidden
                   className="w-3 h-3 shrink-0"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -112,7 +117,13 @@ export function Citation({
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-0.5 rounded cursor-pointer"
             title="Dismiss source"
           >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              aria-hidden
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

@@ -424,8 +424,13 @@ export function AppRouter() {
                   </RouteContent>
                 }
               />
-              {/* Admin-only server-side (403 otherwise); the sidebar hides the row for
-              everyone else, so a member only ever reaches this by typing the URL. */}
+              {/* Not admin-only, and deliberately so: any member of the Project reads their
+                  own spend, and the route enforces exactly that (`requireProjectAccess` on
+                  the projectId). The genuinely cross-tenant part — error rows with no Project
+                  context — is admin-gated inside the handler. An earlier comment here claimed
+                  the whole route was "admin-only server-side (403 otherwise)", which was false
+                  in both halves and the most dangerous kind of debt: a reader checking whether
+                  a spend route was safe would have believed it needed no look at all. */}
               <Route
                 path="/usage"
                 element={

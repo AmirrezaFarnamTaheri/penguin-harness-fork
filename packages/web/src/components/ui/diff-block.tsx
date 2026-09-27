@@ -96,6 +96,7 @@ export function DiffBlock({
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 bg-gray-100/70 dark:border-gray-800 dark:bg-gray-800/60 font-sans">
         <div className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300">
           <svg
+            aria-hidden
             className="w-3.5 h-3.5 text-gray-400"
             fill="none"
             viewBox="0 0 24 24"

@@ -9,6 +9,15 @@
 import { useState, useMemo } from "react";
 import { Drawer } from "../../components/ui/drawer";
 import { CopyButton } from "../../components/ui/copy-button";
+import { GlyphIcon } from "../../components/ui/glyph-icon";
+import { ICON_SIZE } from "../../lib/icon-scale";
+
+/** Moon and sun, as paths in the same thin-line family as the drawer's other glyphs. The
+ *  theme toggle used emoji here, which was the only *control* emoji in the whole chat
+ *  feature; `GlyphIcon` is the convention 64 files in `components/ui` already follow. */
+const MOON_ICON = "M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z";
+const SUN_ICON =
+  "M12 6.5v-2M12 19.5v-2M6.5 12h-2M19.5 12h-2M8 8 6.6 6.6M17.4 17.4 16 16M8 16l-1.4 1.4M17.4 6.6 16 8M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z";
 
 export interface ArtifactPreviewDrawerProps {
   open: boolean;
@@ -168,7 +177,10 @@ ${content}
               className="rounded p-1 text-gray-500 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               title={`Switch to ${previewTheme === "light" ? "dark" : "light"} mode`}
             >
-              {previewTheme === "light" ? "🌙" : "☀️"}
+              <GlyphIcon
+                d={previewTheme === "light" ? MOON_ICON : SUN_ICON}
+                size={ICON_SIZE.inlineGlyph}
+              />
             </button>
 
             <button
@@ -196,7 +208,7 @@ ${content}
         {/* Viewport Frame */}
         <div className="flex flex-1 items-center justify-center overflow-auto bg-gray-100 p-4 dark:bg-gray-950">
           <div
-            className={`h-full transition-all duration-200 ${VIEWPORTS[viewport].width} overflow-hidden rounded-md border border-gray-300 bg-white shadow-md dark:border-gray-800 dark:bg-gray-900`}
+            className={`h-full transition-[width] duration-200 ${VIEWPORTS[viewport].width} overflow-hidden rounded-md border border-gray-300 bg-white shadow-md dark:border-gray-800 dark:bg-gray-900`}
           >
             <iframe
               srcDoc={sandboxedHtml}

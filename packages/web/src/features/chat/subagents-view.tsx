@@ -379,7 +379,7 @@ export function SubagentsView({
                   data-testid="subagent-resume"
                   disabled={resuming}
                   onClick={() => void handleResume()}
-                  className="flex h-6 items-center gap-1 rounded px-1.5 text-xs text-blue-600 transition-colors duration-150 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+                  className="flex h-6 items-center gap-1 rounded px-1.5 text-xs text-brand-600 transition-colors duration-150 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
                 >
                   <GlyphIcon d="M8 5v14l11-7z" size={10} />
                   <span>{S.chat.resumeSubagent}</span>
