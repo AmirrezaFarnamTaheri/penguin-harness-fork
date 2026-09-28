@@ -202,3 +202,46 @@ test("batch archive files every marked conversation, and the batch is reversible
   ).json();
   expect(restored.sessions.every((s) => s.archived === false)).toBe(true);
 });
+
+test("batch archive reports a partial failure and keeps the failed row selected for retry", async ({
+  page,
+}) => {
+  const { projectId, ids } = await seed(page, "seluser_partial", 3);
+  await page.goto(`${BASE}/chat/${ids[0]}`);
+  const rows = page.getByTestId("session-row");
+  await expect(rows).toHaveCount(3);
+  const failedId = await rows.nth(1).getAttribute("data-session-id");
+  expect(failedId).not.toBeNull();
+  let failOnce = true;
+  await page.route(`**/api/sessions/${failedId}`, async (route) => {
+    if (route.request().method() === "PATCH" && failOnce) {
+      failOnce = false;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: "{}",
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await rows.nth(1).click({ modifiers: ["ControlOrMeta"] });
+  await rows.nth(2).click({ modifiers: ["ControlOrMeta"] });
+  const bar = page.getByTestId("selection-bar");
+  await bar.getByRole("button", { name: "归档所选" }).click();
+  await expect(page.getByRole("alert")).toContainText("1 个归档失败");
+  await expect(bar).toContainText("已选 1 项");
+  await expect(page.locator(`[data-session-id="${failedId}"]`)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  await bar.getByRole("button", { name: "归档所选" }).click();
+  await expect(bar).toHaveCount(0);
+  const listed = await (
+    await page.request.get(
+      `${BASE}/api/projects/${projectId}/agents/default_agent/sessions?limit=50`,
+    )
+  ).json();
+  expect(listed.sessions.filter((s) => s.archived).length).toBe(2);
+});

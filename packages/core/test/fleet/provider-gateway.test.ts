@@ -231,6 +231,63 @@ describe("ProviderGateway.health transitions", () => {
     expect(gateway.health("key-a", env.state.now).cooldownRemainingMs).toBe(1500);
   });
 
+  it("retains the retry streak when a cooldown lapses and ignores unattributable failures for backoff", () => {
+    const env = fixedEnv();
+    const gateway = new ProviderGateway(env.options);
+    gateway.register(["key-a"]);
+    gateway.recordFailure("key-a", classifyFailure({ status: 429 }), env.state.now);
+    env.advance(1501);
+    expect(gateway.health("key-a", env.state.now).consecutiveFailures).toBe(1);
+
+    gateway.recordFailure("key-a", classifyFailure({}), env.state.now);
+    expect(gateway.health("key-a", env.state.now).consecutiveFailures).toBe(1);
+    expect(gateway.health("key-a", env.state.now).failureCount).toBe(2);
+
+    const secondThrottle = gateway.recordFailure(
+      "key-a",
+      classifyFailure({ status: 429 }),
+      env.state.now,
+    );
+    expect(secondThrottle.consecutiveFailures).toBe(2);
+    expect(secondThrottle.cooldownRemainingMs).toBe(3000);
+  });
+
+  it("does not let an older concurrent result overwrite a newer result", () => {
+    const env = fixedEnv();
+    const gateway = new ProviderGateway(env.options);
+    gateway.register(["key-a"]);
+    const older = gateway.select(env.state.now);
+    const newer = gateway.select(env.state.now);
+    if (older.status !== "selected" || newer.status !== "selected") {
+      throw new Error("expected selections");
+    }
+
+    gateway.recordSuccess("key-a", env.state.now, newer.attempt);
+    gateway.recordFailure("key-a", classifyFailure({ status: 401 }), env.state.now, older.attempt);
+    expect(gateway.health("key-a", env.state.now)).toMatchObject({
+      state: "healthy",
+      successCount: 1,
+      failureCount: 0,
+    });
+  });
+
+  it("does not apply an outstanding attempt receipt after credential re-registration", () => {
+    const env = fixedEnv();
+    const gateway = new ProviderGateway(env.options);
+    gateway.register(["key-a"]);
+    const old = gateway.select(env.state.now);
+    if (old.status !== "selected") throw new Error("expected selection");
+    gateway.unregister(["key-a"]);
+    gateway.register(["key-a"]);
+    const current = gateway.select(env.state.now);
+    if (current.status !== "selected") throw new Error("expected selection");
+
+    gateway.recordSuccess("key-a", env.state.now, old.attempt);
+    expect(gateway.health("key-a", env.state.now).successCount).toBe(0);
+    gateway.recordSuccess("key-a", env.state.now, current.attempt);
+    expect(gateway.health("key-a", env.state.now).successCount).toBe(1);
+  });
+
   it("honours Retry-After in preference to the computed backoff", () => {
     const env = fixedEnv();
     const gateway = new ProviderGateway(env.options);

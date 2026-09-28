@@ -187,11 +187,21 @@ describe("IdleResourceRegistry — only reconstructable things are let go", () =
 
   it("terminates a process once a guard vouches for it", async () => {
     const h = harness();
-    const rec = recorder({ terminatesOwnedProcess: true });
+    const rec = recorder({ terminatesOwnedProcess: true, ownedProcessIds: () => [4321] });
     h.registry.register(rec.resource, new OwnedProcessGuard([4321]));
     h.advance(10_000);
     const result = await h.registry.sweep();
     expect(rec.releases()).toBe(1);
+  });
+
+  it("rejects an ownership guard that does not own the resource's declared pid", async () => {
+    const h = harness();
+    const rec = recorder({ terminatesOwnedProcess: true, ownedProcessIds: () => [9999] });
+    h.registry.register(rec.resource, new OwnedProcessGuard([4321]));
+    h.advance(10_000);
+    const result = await h.registry.sweep();
+    expect(rec.releases()).toBe(0);
+    expect(result.outcomes[0]?.outcome).toBe("skipped-unowned-process");
   });
 });
 
@@ -236,6 +246,33 @@ describe("IdleResourceRegistry — release is reversible", () => {
     await h.registry.sweep();
     expect(rec.releases()).toBe(1);
     expect(rec.restores()).toBe(0);
+  });
+
+  it("does not overlap two concurrent sweeps for one resource", async () => {
+    const h = harness();
+    let release!: () => void;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => (started = resolve));
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let calls = 0;
+    const rec = recorder({
+      release: async () => {
+        calls += 1;
+        started();
+        await gate;
+        return { released: true };
+      },
+    });
+    h.registry.register(rec.resource);
+    h.advance(10_000);
+
+    const first = h.registry.sweep();
+    await entered;
+    const second = await h.registry.sweep();
+    release();
+    await first;
+    expect(calls).toBe(1);
+    expect(second.outcomes[0]?.outcome).toBe("skipped-busy");
   });
 
   it("restoreAll rebuilds every registered resource for an explicit wake", async () => {
@@ -313,6 +350,35 @@ describe("IdleResourceRegistry — bounds", () => {
     expect(h.registry.unregister("a")).toBe(true);
     expect(h.registry.has("a")).toBe(false);
     expect(h.registry.unregister("a")).toBe(false);
+  });
+
+  it("does not carry an old release's cooldown onto a replacement with the same id", async () => {
+    const h = harness();
+    let started!: () => void;
+    let finish!: (value: { released: boolean }) => void;
+    const releaseStarted = new Promise<void>((resolve) => (started = resolve));
+    const releasePending = new Promise<{ released: boolean }>((resolve) => (finish = resolve));
+    const old = recorder({
+      id: "shared-id",
+      release: () => {
+        started();
+        return releasePending;
+      },
+    });
+    h.registry.register(old.resource);
+    h.advance(1_000);
+    const oldSweep = h.registry.sweep();
+    await releaseStarted;
+
+    expect(h.registry.unregister("shared-id")).toBe(true);
+    const replacement = recorder({ id: "shared-id" });
+    expect(h.registry.register(replacement.resource)).toBe(true);
+    finish({ released: true });
+    await oldSweep;
+
+    const newSweep = await h.registry.sweep();
+    expect(newSweep.releasedCount).toBe(1);
+    expect(replacement.releases()).toBe(1);
   });
 });
 

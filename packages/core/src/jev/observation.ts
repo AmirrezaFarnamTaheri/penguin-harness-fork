@@ -48,7 +48,7 @@
  * was copied verbatim, and neither author is placed on a code path they did not consent to.
  */
 
-import type { AdvisoryReason, AdvisorySurface } from "./activity.js";
+import { bucketReason, type AdvisoryReason, type AdvisorySurface } from "./activity.js";
 import type { JevToolAdvisory } from "./types.js";
 
 /**
@@ -217,7 +217,7 @@ export function observationFromAdvisory(
     grade: gradeAdvisory(advisory),
     riskScore: nonNegativeNumber(advisory.riskScore),
     confidence: nonNegativeNumber(advisory.confidence),
-    reason: (advisory.reason as AdvisoryReason | undefined) ?? null,
+    reason: advisory.reason == null ? null : bucketReason(advisory.reason).reason,
     inputTokens: nonNegativeNumber(advisory.inputTokens),
     outputTokens: nonNegativeNumber(advisory.outputTokens),
     latencyMs: nonNegativeNumber(advisory.latencyMs) ?? 0,

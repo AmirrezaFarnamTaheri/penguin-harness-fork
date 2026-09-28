@@ -332,6 +332,13 @@ describe("AcpConnection", () => {
     expect(conn.getState()).toBe("open");
   });
 
+  it("contains valid JSON values that are not JSON-RPC objects", async () => {
+    const conn = new AcpConnection(async () => {}, 5_000);
+    await expect(conn.handleChunk('null\n1\n[]\n"text"\n')).resolves.toBeUndefined();
+    expect(conn.getStats().malformedFrames).toBe(4);
+    expect(conn.getState()).toBe("open");
+  });
+
   it("surfaces a handler's own SyntaxError instead of blaming the peer", async () => {
     const conn = new AcpConnection(async () => {}, 5_000);
     conn.onNotification("boom", () => {
@@ -390,6 +397,66 @@ describe("AcpConnection", () => {
       "b",
       "c",
     ]);
+  });
+
+  it("does not move queued writes onto a replacement transport", async () => {
+    let releaseFirst!: () => void;
+    let startedFirst!: () => void;
+    const firstStarted = new Promise<void>((resolve) => {
+      startedFirst = resolve;
+    });
+    const firstWrite = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const oldWrites: string[] = [];
+    const newWrites: string[] = [];
+    const conn = new AcpConnection(async (line) => {
+      oldWrites.push(line);
+      startedFirst();
+      await firstWrite;
+    });
+
+    const first = conn.sendNotification("first");
+    await firstStarted;
+    const queued = conn.sendNotification("queued");
+    conn.reattachTransport(async (line) => {
+      newWrites.push(line);
+    });
+    releaseFirst();
+    await Promise.all([first, queued]);
+    await conn.sendNotification("new-generation");
+
+    expect(oldWrites.map((line) => (JSON.parse(line) as JsonRpcNotification).method)).toEqual([
+      "first",
+    ]);
+    expect(newWrites.map((line) => (JSON.parse(line) as JsonRpcNotification).method)).toEqual([
+      "new-generation",
+    ]);
+    expect(conn.getState()).toBe("open");
+  });
+
+  it("does not let a retired transport's late rejection fail its replacement", async () => {
+    let rejectFirst!: (error: Error) => void;
+    const firstWrite = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    let started!: () => void;
+    const wasStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const conn = new AcpConnection(async () => {
+      started();
+      await firstWrite;
+    });
+    const old = conn.sendNotification("old");
+    await wasStarted;
+    conn.reattachTransport(async () => undefined);
+    rejectFirst(new Error("old transport failed late"));
+    await old;
+
+    expect(conn.getState()).toBe("open");
+    await expect(conn.sendNotification("new-request")).resolves.toBeUndefined();
+    expect(conn.getState()).toBe("open");
   });
 
   it("makes a failed notification write observable without rejecting", async () => {

@@ -56,6 +56,11 @@ describe("image dimensions", () => {
     expect(imageDimensions(png(1920, 1080))).toEqual({ width: 1920, height: 1080 });
     expect(imageDimensions(gif(640, 480))).toEqual({ width: 640, height: 480 });
     expect(imageDimensions(jpeg(800, 600))).toEqual({ width: 800, height: 600 });
+    const repeatedFill = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00]),
+      jpeg(800, 600).subarray(8),
+    ]);
+    expect(imageDimensions(repeatedFill)).toEqual({ width: 800, height: 600 });
     expect(imageDimensions(webpVp8x(1024, 768))).toEqual({ width: 1024, height: 768 });
     expect(pixelCount({ width: 1920, height: 1080 })).toBe(1920 * 1080);
   });
@@ -112,5 +117,11 @@ describe("decode-bomb guard", () => {
   it("leaves the decision open for an unreadable header rather than guessing", () => {
     // Unknown is not small, but it is also not proof of a bomb: the byte cap already applies.
     expect(checkImagePixelCount(Buffer.from("not an image"))).toBeNull();
+    expect(checkImagePixelCount(Buffer.from("not a png"), "image/png")).toContain(
+      "dimensions could not be verified",
+    );
+    expect(checkImagePixelCount(Buffer.from("not a png"), "IMAGE/PNG; charset=binary")).toContain(
+      "dimensions could not be verified",
+    );
   });
 });

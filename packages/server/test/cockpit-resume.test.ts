@@ -18,7 +18,7 @@ import {
 } from "../src/cockpit/ws.js";
 import {
   COCKPIT_EVENT_LOG_CAP,
-  COCKPIT_EVENT_LOG_MAX_CHARS,
+  COCKPIT_EVENT_LOG_MAX_BYTES,
   CockpitEventLog,
 } from "../src/cockpit/event-log.js";
 
@@ -31,6 +31,13 @@ describe("CockpitEventLog: a bounded, monotonic cursor", () => {
     expect(log.cursor).toBe(2);
   });
 
+  it("changes generation when the log is reset", () => {
+    const log = new CockpitEventLog();
+    const first = log.generation;
+    log.reset();
+    expect(log.generation).not.toBe(first);
+  });
+
   it("replays exactly what a client between cursors missed, in order", () => {
     const log = new CockpitEventLog();
     for (const body of ["a", "b", "c", "d"]) log.publish(body);
@@ -39,6 +46,14 @@ describe("CockpitEventLog: a bounded, monotonic cursor", () => {
     expect(replay.missed).toBe(2);
     expect(replay.cursor).toBe(4);
     expect(replay.entries.map((e) => e.payload)).toEqual(["c", "d"]);
+  });
+
+  it("retains the exact stamped envelope that live subscribers receive", () => {
+    const log = new CockpitEventLog();
+    const entry = log.publishStamped((seq) => JSON.stringify({ type: "event", seq }));
+    expect(entry.seq).toBe(1);
+    expect(JSON.parse(entry.payload)).toEqual({ type: "event", seq: 1 });
+    expect(log.since(0).entries).toEqual([entry]);
   });
 
   it("reports nothing missed for a client that is current", () => {
@@ -66,8 +81,20 @@ describe("CockpitEventLog: a bounded, monotonic cursor", () => {
     const log = new CockpitEventLog();
     const big = "x".repeat(64 * 1024);
     for (let i = 0; i < 20; i += 1) log.publish(big);
-    expect(log.retainedChars).toBeLessThanOrEqual(COCKPIT_EVENT_LOG_MAX_CHARS);
+    expect(log.retainedBytes).toBeLessThanOrEqual(COCKPIT_EVENT_LOG_MAX_BYTES);
     expect(log.size).toBeLessThan(20);
+  });
+
+  it("measures UTF-8 storage bytes when payloads contain multibyte characters", () => {
+    const log = new CockpitEventLog();
+    const payload = "😀".repeat(40_000);
+    log.publish(payload);
+    log.publish(payload);
+    log.publish(payload);
+    log.publish(payload);
+    expect(log.retainedBytes).toBeLessThanOrEqual(COCKPIT_EVENT_LOG_MAX_BYTES);
+    expect(log.retainedBytes).toBeGreaterThan(log.retainedChars);
+    expect(log.size).toBe(3);
   });
 
   it("refuses to retain an envelope larger than the whole budget", () => {
@@ -75,7 +102,7 @@ describe("CockpitEventLog: a bounded, monotonic cursor", () => {
     // caller always broadcasts) but not retained. A client needing it is told it fell out.
     const log = new CockpitEventLog();
     log.publish("small");
-    log.publish("y".repeat(COCKPIT_EVENT_LOG_MAX_CHARS + 1));
+    log.publish("y".repeat(COCKPIT_EVENT_LOG_MAX_BYTES + 1));
     expect(log.size).toBe(1);
     expect(log.since(1).entries).toEqual([]);
   });
@@ -90,12 +117,12 @@ describe("CockpitEventLog: a bounded, monotonic cursor", () => {
     }
   });
 
-  it("does not replay the whole window to a client whose cursor is ahead of this server", () => {
-    // A server that restarted has a lower cursor than a surviving client's. Replaying from 0
-    // would be worse than useless; "you are current" is the accurate answer.
+  it("reports a gap for a client whose cursor is ahead of this server", () => {
+    // A restarted server has a new log generation. Its lower cursor cannot prove that
+    // the client has seen the events in this generation.
     const log = new CockpitEventLog();
     log.publish("a");
-    expect(log.since(9999)).toMatchObject({ gap: false, missed: 0, entries: [] });
+    expect(log.since(9999)).toMatchObject({ gap: true, missed: null, entries: [] });
   });
 });
 
@@ -196,7 +223,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     await waitFor(() => runtime.eventLog.cursor > 0, "a published event");
 
     const resumed = collect(
-      `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=${init.seq}`,
+      `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=${init.seq}&generation=${init.generation}`,
     );
     await waitFor(() => resumed.messages.some((m) => m.type === "cockpit_resume"), "resume ack");
     const ack = resumed.messages.find((m) => m.type === "cockpit_resume")!;
@@ -222,7 +249,9 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
       runtime.eventLog.publish(JSON.stringify({ type: "noise", i }));
     }
 
-    const client = collect(`ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=1`);
+    const client = collect(
+      `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=1&generation=${runtime.eventLog.generation}`,
+    );
     await waitFor(() => client.messages.some((m) => m.type === "cockpit_init"), "init");
     const gap = client.messages.find((m) => m.type === "cockpit_stream_gap");
     expect(gap).toBeDefined();
@@ -232,6 +261,23 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     const order = client.messages.map((m) => m.type);
     expect(order.indexOf("cockpit_init")).toBeGreaterThan(order.indexOf("cockpit_stream_gap"));
     // And no partial replay masquerades as a complete one.
+    expect(client.messages.some((m) => m.type === "cockpit_resume")).toBe(false);
+    client.stop();
+  });
+
+  it("reports a gap when a cursor belongs to a previous stream generation", async () => {
+    const runtime = await getOrCreateProjectRuntime(project);
+    runtime.eventLog.publish(JSON.stringify({ type: "before_restart" }));
+    const client = collect(
+      `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=1&generation=previous-process`,
+    );
+    await waitFor(() => client.messages.some((m) => m.type === "cockpit_init"), "init");
+    const gap = client.messages.find((m) => m.type === "cockpit_stream_gap");
+    expect(gap).toMatchObject({
+      reason: "stream_generation_changed",
+      missed: null,
+      generation: runtime.eventLog.generation,
+    });
     expect(client.messages.some((m) => m.type === "cockpit_resume")).toBe(false);
     client.stop();
   });

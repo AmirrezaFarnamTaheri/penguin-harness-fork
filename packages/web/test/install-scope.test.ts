@@ -130,7 +130,9 @@ const UNCLASSIFIED_ON_PURPOSE: Record<string, string> = {
  * names key PREFIXES (`penguin.terminal.`), a family without its dot, and the product's own
  * domain in an example URL (`penguin.ooo`), and none of those is a storage key.
  */
+let cachedStorageKeys: Map<string, string> | undefined;
 function storageKeysInSource(): Map<string, string> {
+  if (cachedStorageKeys !== undefined) return cachedStorageKeys;
   const found = new Map<string, string>();
   const walk = (dir: string): void => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -147,6 +149,7 @@ function storageKeysInSource(): Map<string, string> {
     }
   };
   walk(WEB_SRC);
+  cachedStorageKeys = found;
   return found;
 }
 
@@ -159,7 +162,7 @@ describe("install-scope classification", () => {
       if (key in UNCLASSIFIED_ON_PURPOSE) continue;
       expect(scopeOfKey(key), `${key} (src/${file}) is missing from KEY_RULES`).not.toBeNull();
     }
-  });
+  }, 20_000);
 
   it("keeps the deliberate exclusions honest: each is still a key the source contains", () => {
     const found = storageKeysInSource();

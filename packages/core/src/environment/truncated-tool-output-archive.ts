@@ -98,6 +98,7 @@ interface RecallEntry {
   bytes: number;
   lines: number;
   createdAt: number;
+  order: number;
   uses: number;
 }
 
@@ -448,6 +449,7 @@ export class TruncatedToolOutputArchive {
   /** Recall entries live in their own subdirectory so eviction can only unlink this store's files. */
   private readonly recallRootDir: string;
   private readonly recallIndex = new Map<string, RecallEntry>();
+  private recallSequence = 0;
   private readonly recallDropped: { id: string; reason: RecallDropReason; at: number }[] = [];
   private readonly recallLimits: RecallLimits;
   private readonly now: () => number;
@@ -554,6 +556,7 @@ export class TruncatedToolOutputArchive {
           bytes: redacted.length,
           lines: countLines(redacted),
           createdAt: this.now(),
+          order: ++this.recallSequence,
           uses: 1,
         });
         await this.enforceRecallBounds();
@@ -570,6 +573,7 @@ export class TruncatedToolOutputArchive {
       bytes: redacted.length,
       lines: countLines(redacted),
       createdAt: this.now(),
+      order: ++this.recallSequence,
       uses: 1,
     });
     await this.enforceRecallBounds();
@@ -637,27 +641,30 @@ export class TruncatedToolOutputArchive {
    */
   private async enforceRecallBounds(): Promise<void> {
     const now = this.now();
-    const ordered = [...this.recallIndex.values()].sort((a, b) => a.createdAt - b.createdAt);
+    // Keep the newest eligible entries. Walking oldest-first while checking the *current*
+    // total made the byte check depend on whether an over-limit entry happened to be index 0,
+    // so later entries could push the archive arbitrarily past its advertised cap.
+    const ordered = [...this.recallIndex.values()].sort(
+      (a, b) => b.createdAt - a.createdAt || b.order - a.order,
+    );
     const doomed: { entry: RecallEntry; reason: RecallDropReason }[] = [];
-    let bytes = 0;
-    for (let i = 0; i < ordered.length; i += 1) {
-      const entry = ordered[i]!;
-      bytes += entry.bytes;
-      const isOldest = i === 0;
+    let retainedBytes = 0;
+    let retainedCount = 0;
+    for (const entry of ordered) {
       if (now - entry.createdAt > this.recallLimits.maxEntryAgeMs) {
         doomed.push({ entry, reason: "expired" });
         continue;
       }
-      // Running totals decide evictions: an entry is dropped only if what is already kept
-      // exceeds a bound, so a single large entry cannot be evicted by the age rule's neighbour.
-      if (this.recallIndex.size - doomed.length > this.recallLimits.maxEntries && isOldest) {
+      if (retainedCount >= this.recallLimits.maxEntries) {
         doomed.push({ entry, reason: "count" });
         continue;
       }
-      if (bytes > this.recallLimits.maxTotalBytes && isOldest) {
+      if (retainedBytes + entry.bytes > this.recallLimits.maxTotalBytes) {
         doomed.push({ entry, reason: "bytes" });
         continue;
       }
+      retainedCount += 1;
+      retainedBytes += entry.bytes;
     }
     for (const { entry, reason } of doomed) {
       this.recallIndex.delete(entry.id);

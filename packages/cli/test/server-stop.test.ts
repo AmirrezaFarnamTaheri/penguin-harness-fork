@@ -4,25 +4,23 @@
  * platform — against a real lock file, so no server has to exist to be stopped.
  */
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stop } from "../src/commands/server-stop.js";
 import type { StopEffects } from "../src/commands/server-stop.js";
+import { startIdentityServer } from "./instance-server.js";
 
 /** A lock the liveness probe accepts: this process's pid, and a port that answers. */
 async function liveRoot(): Promise<{ root: string; port: number; close: () => void }> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-stop-"));
-  const server = net.createServer();
-  const port = await new Promise<number>((resolve) =>
-    server.listen(0, "127.0.0.1", () => resolve((server.address() as net.AddressInfo).port)),
-  );
+  const server = await startIdentityServer(root);
+  const { port } = server;
   fs.writeFileSync(
     path.join(root, "server.lock"),
     JSON.stringify({ pid: process.pid, port, startedAt: "2026-09-01T00:00:00.000Z" }),
   );
-  return { root, port, close: () => server.close() };
+  return { root, port, close: () => void server.close() };
 }
 
 /** An error the way process.kill raises one. */

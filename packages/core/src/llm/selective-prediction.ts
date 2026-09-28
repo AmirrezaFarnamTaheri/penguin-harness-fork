@@ -27,6 +27,8 @@ export interface ScoredDecision {
   readonly correct: boolean;
   /** Stable identity, so a caller can say WHICH items were answered. */
   readonly id: string;
+  /** Optional ground-truth label used by the per-label audit. */
+  readonly label?: string;
 }
 
 export interface SelectiveOptions {
@@ -39,8 +41,8 @@ export interface SelectiveOptions {
 }
 
 export interface SelectiveVerdict {
-  /** Confidence at or above which an item is answered. 0 when nothing qualifies. */
-  readonly threshold: number;
+  /** Confidence at or above which an item is answered; null when the answer set is empty. */
+  readonly threshold: number | null;
   /** How many items the threshold answers. */
   readonly coverage: number;
   /** How many items exist in total. */
@@ -51,6 +53,8 @@ export interface SelectiveVerdict {
   readonly unknown: number;
   /** True when the ranking could not meet the error budget and had to answer anyway. */
   readonly overBudget: boolean;
+  /** False only when the confidence floor leaves too few eligible items to honor minAccepted. */
+  readonly minAcceptedMet: boolean;
   /** Per-label accuracy of the answered set, for the labels that occurred. */
   readonly perLabel: ReadonlyMap<string, { answered: number; correct: number }>;
 }
@@ -66,32 +70,46 @@ const DEFAULT_CONFIDENCE_FLOOR = 0.5;
  */
 export interface RiskCoverageCurve {
   readonly order: ReadonlyArray<ScoredDecision>;
-  /** Indexed by rank: running error rate of the prefix of that length. */
+  /** Indexed by complete confidence group: running error rate at that group boundary. */
   readonly risk: readonly number[];
-  /** Indexed by rank: the coverage (fraction) of the prefix. */
+  /** Indexed by complete confidence group: the coverage (fraction) at that boundary. */
   readonly coverage: readonly number[];
-  /** Indexed by rank: the threshold that would select exactly that prefix. */
+  /** Indexed by complete confidence group: applying this threshold selects the whole prefix. */
   readonly thresholds: readonly number[];
+  /** Number of decisions selected at each confidence-group boundary. */
+  readonly acceptedCounts: readonly number[];
 }
 
 export function riskCoverageCurve(decisions: readonly ScoredDecision[]): RiskCoverageCurve {
+  for (const decision of decisions) {
+    if (
+      !Number.isFinite(decision.confidence) ||
+      decision.confidence < 0 ||
+      decision.confidence > 1
+    ) {
+      throw new RangeError(`confidence for '${decision.id}' must be between 0 and 1`);
+    }
+  }
   const order = [...decisions].sort(
-    (a, b) => b.confidence - a.confidence || (a.id < b.id ? -1 : 1),
+    (a, b) => b.confidence - a.confidence || a.id.localeCompare(b.id),
   );
   const risk: number[] = [];
   const coverage: number[] = [];
   const thresholds: number[] = [];
+  const acceptedCounts: number[] = [];
   let correct = 0;
   order.forEach((decision, index) => {
     if (decision.correct) correct += 1;
     const kept = index + 1;
+    if (kept < order.length && order[kept]!.confidence === decision.confidence) return;
     risk.push(1 - correct / kept);
     coverage.push(kept / order.length);
-    // The threshold that selects this prefix is the LOWEST confidence in it: answering one item
-    // fewer must not be needed to get here, and answering the whole prefix requires every member.
+    // Equal-confidence items are atomic: a scalar `confidence >= threshold` rule cannot split
+    // them, so a public threshold must only describe a complete tie group.
     thresholds.push(decision.confidence);
+    acceptedCounts.push(kept);
   });
-  return { order, risk, coverage, thresholds };
+  return { order, risk, coverage, thresholds, acceptedCounts };
 }
 
 /**
@@ -108,51 +126,79 @@ export function selectThreshold(
 ): SelectiveVerdict {
   const minAccepted = options.minAccepted ?? DEFAULT_MIN_ACCEPTED;
   const floor = options.confidenceFloor ?? DEFAULT_CONFIDENCE_FLOOR;
+  if (!Number.isFinite(options.errorBudget) || options.errorBudget < 0 || options.errorBudget > 1) {
+    throw new RangeError("errorBudget must be between 0 and 1");
+  }
+  if (!Number.isSafeInteger(minAccepted) || minAccepted < 0) {
+    throw new RangeError("minAccepted must be a non-negative safe integer");
+  }
+  if (!Number.isFinite(floor) || floor < 0 || floor > 1) {
+    throw new RangeError("confidenceFloor must be between 0 and 1");
+  }
+  for (const decision of decisions) {
+    if (
+      !Number.isFinite(decision.confidence) ||
+      decision.confidence < 0 ||
+      decision.confidence > 1
+    ) {
+      throw new RangeError(`confidence for '${decision.id}' must be between 0 and 1`);
+    }
+  }
   const total = decisions.length;
-  const unknown = decisions.filter((decision) => decision.confidence < floor).length;
+  const eligible = decisions.filter((decision) => decision.confidence >= floor);
+  const unknown = total - eligible.length;
   const perLabel = new Map<string, { answered: number; correct: number }>();
-  if (total === 0) {
+  if (total === 0 || eligible.length === 0) {
     return {
-      threshold: 0,
+      threshold: null,
       coverage: 0,
-      total: 0,
+      total,
       errorRate: 0,
-      unknown: 0,
+      unknown,
       overBudget: false,
+      minAcceptedMet: minAccepted === 0,
       perLabel,
     };
   }
 
-  const curve = riskCoverageCurve(decisions);
-  let chosen = 0;
+  const curve = riskCoverageCurve(eligible);
+  let chosenGroup = -1;
   for (let index = curve.risk.length - 1; index >= 0; index -= 1) {
     if (curve.risk[index]! <= options.errorBudget) {
-      chosen = index + 1;
+      chosenGroup = index;
       break;
     }
   }
 
-  // Nothing fits the budget. Answer the best item anyway and say so, rather than answering
-  // nothing and hiding the fact that the data cannot support the promise at all.
-  const overBudget = chosen === 0;
-  if (overBudget) chosen = Math.min(minAccepted, total);
+  const minEligible = Math.min(minAccepted, eligible.length);
+  if (chosenGroup < 0 && minEligible > 0) {
+    chosenGroup = curve.acceptedCounts.findIndex((count) => count >= minEligible);
+  } else if (chosenGroup >= 0 && curve.acceptedCounts[chosenGroup]! < minEligible) {
+    chosenGroup = curve.acceptedCounts.findIndex((count) => count >= minEligible);
+  }
+  if (chosenGroup < 0 && minEligible > 0) chosenGroup = curve.acceptedCounts.length - 1;
+  const chosen = chosenGroup < 0 ? 0 : curve.acceptedCounts[chosenGroup]!;
+  const minAcceptedMet = chosen >= minAccepted;
+  const overBudget = chosenGroup >= 0 && curve.risk[chosenGroup]! > options.errorBudget;
 
   const answered = curve.order.slice(0, chosen);
   for (const decision of answered) {
-    const entry = perLabel.get(decision.id) ?? { answered: 0, correct: 0 };
+    if (decision.label === undefined) continue;
+    const entry = perLabel.get(decision.label) ?? { answered: 0, correct: 0 };
     entry.answered += 1;
     if (decision.correct) entry.correct += 1;
-    perLabel.set(decision.id, entry);
+    perLabel.set(decision.label, entry);
   }
 
   const wrong = answered.filter((decision) => !decision.correct).length;
   return {
-    threshold: chosen === 0 ? 0 : curve.thresholds[chosen - 1]!,
+    threshold: chosen === 0 ? null : curve.thresholds[chosenGroup]!,
     coverage: answered.length / total,
     total,
     errorRate: answered.length === 0 ? 0 : wrong / answered.length,
     unknown,
     overBudget,
+    minAcceptedMet,
     perLabel,
   };
 }
@@ -218,8 +264,13 @@ export function describeSelective(
   const verdict = selectThreshold(decisions, options);
   if (verdict.total === 0) return null;
   const pct = (value: number): string => `${Math.round(value * 100)}%`;
-  const summary = verdict.overBudget
-    ? `No confidence threshold meets a ${pct(options.errorBudget)} error budget; the single most confident item is answered anyway.`
-    : `Answering the top ${pct(verdict.coverage)} of items carries at most ${pct(options.errorBudget)} error (measured ${pct(verdict.errorRate)}). ${verdict.unknown} item${verdict.unknown === 1 ? "" : "s"} are below the confidence floor.`;
+  const summary =
+    verdict.threshold === null
+      ? `No items meet the ${pct(options.confidenceFloor ?? DEFAULT_CONFIDENCE_FLOOR)} confidence floor; no answer is returned.`
+      : !verdict.minAcceptedMet
+        ? `The confidence floor leaves ${verdict.total - verdict.unknown} eligible items, fewer than the requested minimum of ${options.minAccepted ?? DEFAULT_MIN_ACCEPTED}; ${pct(verdict.coverage)} of all items are answered.`
+        : verdict.overBudget
+          ? `No confidence threshold meets a ${pct(options.errorBudget)} error budget; the required minimum is answered with a measured ${pct(verdict.errorRate)} error rate.`
+          : `Answering the top ${pct(verdict.coverage)} of items carries at most ${pct(options.errorBudget)} error (measured ${pct(verdict.errorRate)}). ${verdict.unknown} item${verdict.unknown === 1 ? " is" : "s are"} below the confidence floor.`;
   return { summary, verdict };
 }

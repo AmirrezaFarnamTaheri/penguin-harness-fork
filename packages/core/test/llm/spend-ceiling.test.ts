@@ -15,6 +15,11 @@ describe("SpendCeiling", () => {
   it("rejects a nonsensical configuration rather than silently allowing everything", () => {
     expect(() => new SpendCeiling({ limitUsd: 0, reserveUsd: 1 })).toThrow(/limitUsd/);
     expect(() => new SpendCeiling({ limitUsd: 1, reserveUsd: 0 })).toThrow(/reserveUsd/);
+    expect(() => new SpendCeiling({ limitUsd: Infinity, reserveUsd: 1 })).toThrow(/limitUsd/);
+    expect(() => new SpendCeiling({ limitUsd: 1, reserveUsd: NaN })).toThrow(/reserveUsd/);
+    expect(() => new SpendCeiling({ limitUsd: 1, reserveUsd: 2 })).toThrow(/reserveUsd/);
+    expect(() => ceiling({ reservationTtlMs: 0 })).toThrow(/reservationTtlMs/);
+    expect(() => ceiling({ maxReservations: 1.5 })).toThrow(/maxReservations/);
   });
 
   it("counts in-flight calls against the limit, which is the whole point", () => {
@@ -79,9 +84,12 @@ describe("SpendCeiling", () => {
     const snapshot = c.snapshot();
     expect(snapshot.inFlight).toBe(0);
     expect(snapshot.reclaimed).toBe(1);
-    // Reclaiming frees the room rather than blocking forever — a leaked reservation must not
-    // be able to wedge an agent out of calling anything at all.
-    expect(c.admit().allowed).toBe(true);
+    // Reclamation frees the in-flight slot but charges its estimate; this must not silently
+    // turn an unresolved provider call into free capacity.
+    expect(snapshot.spentUsd).toBeCloseTo(0.3, 6);
+    expect(c.admit().allowed).toBe(true); // 0.3 committed + 0.3 reserved still fits under 1.0.
+    expect(c.settle(stuck.reservationId, 0.8)).toBe(true);
+    expect(c.snapshot().spentUsd).toBeCloseTo(0.8, 6); // late usage replaces the estimate.
   });
 
   it("evicts the oldest reservation rather than refusing once the map is full", () => {
@@ -106,5 +114,14 @@ describe("SpendCeiling", () => {
     expect(snapshot.availableUsd).toBeCloseTo(0.04, 6);
     expect(snapshot.limitUsd).toBe(0.1);
     expect(snapshot.inFlight).toBe(1);
+  });
+
+  it("records actual spend above an estimate and refuses further work", () => {
+    const c = ceiling({ limitUsd: 1, reserveUsd: 0.3 });
+    const call = c.admit();
+    if (!call.allowed) throw new Error("expected an admission");
+    expect(c.settle(call.reservationId, 1.2)).toBe(true);
+    expect(c.snapshot().spentUsd).toBeCloseTo(1.2, 6);
+    expect(c.admit().allowed).toBe(false);
   });
 });

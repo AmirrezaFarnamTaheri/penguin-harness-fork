@@ -141,7 +141,15 @@ test("a quota-403 retries with a live countdown; 'retry now' skips the wait and 
   expect(retries.length).toBe(2);
   for (const retry of retries)
     expect(retry.payload.error_message).toContain("insufficient_user_quota");
-  expect(retries.map((retry) => retry.payload.retry_in_ms)).toEqual([2000, 4000]);
+  const plannedDelays = retries.map((retry) => retry.payload.retry_in_ms);
+  // The engine adds deterministic per-session jitter to its exponential ladder so a fleet
+  // that fails together does not reconnect in lockstep. Assert the 2s/4s ladder with its
+  // documented 0–50% jitter range instead of pinning one session's seed.
+  expect(plannedDelays[0]).toBeGreaterThanOrEqual(2000);
+  expect(plannedDelays[0]).toBeLessThanOrEqual(3000);
+  expect(plannedDelays[1]).toBeGreaterThanOrEqual(4000);
+  expect(plannedDelays[1]).toBeLessThanOrEqual(6000);
+  expect(plannedDelays[1]).toBeGreaterThan(plannedDelays[0]);
   expect(msgs.messages.some((m) => m.payload.type === "abort")).toBe(false);
 });
 

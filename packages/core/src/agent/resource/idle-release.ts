@@ -52,6 +52,7 @@ export type ReleasableKind = "mcp-connection" | "file-index" | "browser-session"
 /** Why a registered resource was not released, or what happened to it. */
 export type ReleaseOutcomeKind =
   | "released"
+  | "restored"
   | "skipped-busy"
   | "skipped-agent-active"
   | "skipped-not-reconstructable"
@@ -86,6 +87,8 @@ export interface ReleasableResource {
    * will act on such a resource — see safety rule 3.
    */
   readonly terminatesOwnedProcess: boolean;
+  /** Current PIDs this resource may terminate; required when termination is enabled. */
+  ownedProcessIds?(): Iterable<number>;
   /** One line naming what would be given up, for the agent-facing report. */
   describe(): string;
   /** The resource's own view of whether anything is mid-use right now. */
@@ -167,6 +170,8 @@ export class IdleResourceRegistry {
   private historyLog: ReleaseOutcome[] = [];
   /** Process-terminating resources are keyed by id here once a guard has vouched for them. */
   private readonly guards = new Map<string, OwnedProcessGuard>();
+  /** Prevents concurrent teardown/restore calls for one resource. */
+  private readonly inFlight = new Set<string>();
 
   constructor(options: IdleResourceRegistryOptions) {
     this.idle = options.idle;
@@ -216,8 +221,18 @@ export class IdleResourceRegistry {
   evaluate(resource: ReleasableResource, now = this.now()): ReleaseOutcomeKind {
     if (!this.idle.isIdle(this.minIdleMs, now)) return "skipped-agent-active";
     if (!resource.reconstructable) return "skipped-not-reconstructable";
-    if (resource.terminatesOwnedProcess && !this.guards.get(resource.id)) {
-      return "skipped-unowned-process";
+    if (this.inFlight.has(resource.id)) return "skipped-busy";
+    if (resource.terminatesOwnedProcess) {
+      const guard = this.guards.get(resource.id);
+      let pids: number[];
+      try {
+        pids = [...(resource.ownedProcessIds?.() ?? [])];
+      } catch {
+        return "skipped-unowned-process";
+      }
+      if (guard === undefined || pids.length === 0 || pids.some((pid) => !guard.owns(pid))) {
+        return "skipped-unowned-process";
+      }
     }
     const last = this.lastReleaseAt.get(resource.id);
     if (last !== undefined && now - last < this.cooldownMs) return "skipped-cooldown";
@@ -244,7 +259,9 @@ export class IdleResourceRegistry {
     }
     const outcomes: ReleaseOutcome[] = [];
     let released = 0;
-    for (const resource of this.resources.values()) {
+    // Snapshot registration generations. A resource added while an async release is pending
+    // belongs to the next sweep, never this one.
+    for (const resource of [...this.resources.values()]) {
       if (released >= this.maxReleasesPerSweep) {
         outcomes.push(this.record(resource, "skipped-capacity", now));
         continue;
@@ -254,10 +271,15 @@ export class IdleResourceRegistry {
         outcomes.push(this.record(resource, verdict, now));
         continue;
       }
+      this.inFlight.add(resource.id);
       try {
         const result = await resource.release(now);
         if (result.released) {
-          this.lastReleaseAt.set(resource.id, now);
+          // An unregister/re-register with the same id during the await creates a different
+          // resource generation. Do not carry the old resource's cooldown onto the replacement.
+          if (this.resources.get(resource.id) === resource) {
+            this.lastReleaseAt.set(resource.id, now);
+          }
           released++;
           outcomes.push(this.record(resource, "released", now, result.detail));
         } else {
@@ -273,6 +295,8 @@ export class IdleResourceRegistry {
             err instanceof Error ? err.message : undefined,
           ),
         );
+      } finally {
+        this.inFlight.delete(resource.id);
       }
     }
     return { at: now, agentActive: false, outcomes, releasedCount: released };
@@ -285,14 +309,17 @@ export class IdleResourceRegistry {
    */
   async restore(id: string, now = this.now()): Promise<boolean> {
     const resource = this.resources.get(id);
-    if (!resource) return false;
+    if (!resource || this.inFlight.has(id)) return false;
+    this.inFlight.add(id);
     try {
       await resource.restore(now);
-      this.record(resource, "released", now, "restored");
+      this.record(resource, "restored", now);
       return true;
     } catch (err) {
       this.record(resource, "restore-failed", now, err instanceof Error ? err.message : undefined);
       return false;
+    } finally {
+      this.inFlight.delete(id);
     }
   }
 

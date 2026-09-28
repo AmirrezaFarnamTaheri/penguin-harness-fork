@@ -154,6 +154,7 @@ describe("instance identity", () => {
     const peer = await startPeer(root, { rootId: rootFingerprint(root) });
     live.push({ proc: peer.proc, root });
     expect(await liveServerLock(root)).toEqual(readServerLock(root));
+    expect(await liveServerLock(root, { requireIdentity: true })).toEqual(readServerLock(root));
   });
 
   it("refuses a peer that answers for a different root, even with a live pid and port", async () => {
@@ -175,6 +176,16 @@ describe("instance identity", () => {
     // strand every client on the root during the one window where two builds coexist.
     expect(await probeInstanceIdentity(peer.port)).toBeNull();
     expect(await liveServerLock(root)).toEqual(readServerLock(root));
+    expect(await liveServerLock(root, { requireIdentity: true })).toBeNull();
+  });
+
+  it("rejects a lock whose live pid and live port belong to different processes", async () => {
+    const root = await tempRoot();
+    const peer = await startPeer(root, { rootId: rootFingerprint(root) });
+    live.push({ proc: peer.proc, root });
+    const lock = readServerLock(root)!;
+    fs.writeFileSync(serverLockPath(root), JSON.stringify({ ...lock, pid: process.pid }));
+    expect(await liveServerLock(root, { requireIdentity: true })).toBeNull();
   });
 
   it("recovers when the peer dies: the record goes stale and a fresh server takes the root", async () => {

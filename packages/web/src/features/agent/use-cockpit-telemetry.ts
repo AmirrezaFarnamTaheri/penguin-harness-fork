@@ -158,6 +158,25 @@ export function applyStreamMessage(progress: StreamProgress, msg: unknown): Stre
     : isSeq(record.cursor)
       ? record.cursor
       : progress.cursor;
+  const isSnapshotOrControl =
+    record.type === "cockpit_init" ||
+    record.type === "cockpit_resume" ||
+    record.type === "cockpit_stream_gap";
+  if (
+    !isSnapshotOrControl &&
+    progress.cursor !== null &&
+    isSeq(record.seq) &&
+    record.seq > progress.cursor + 1 &&
+    progress.streamState !== "behind"
+  ) {
+    // Preserve the last contiguous cursor. The hook closes this socket and reconnects from
+    // here so the server can replay the missing stretch instead of advancing past the hole.
+    return {
+      streamState: "behind",
+      missedEvents: record.seq - progress.cursor - 1,
+      cursor: progress.cursor,
+    };
+  }
   if (record.type === "cockpit_stream_gap") {
     return {
       streamState: "behind",
@@ -172,7 +191,11 @@ export function applyStreamMessage(progress: StreamProgress, msg: unknown): Stre
     return { streamState: "live", missedEvents: 0, cursor };
   }
   if (record.type === "cockpit_init") {
-    return { streamState: "live", missedEvents: 0, cursor };
+    // A snapshot repairs current state, but it cannot recreate alerts or handoffs built
+    // from events that fell out of the replay window. The server sends this after a gap.
+    return progress.streamState === "behind"
+      ? { ...progress, cursor }
+      : { streamState: "live", missedEvents: 0, cursor };
   }
   // Referential stability when nothing moved, so the caller can skip a render on the many
   // unsequenced frames a stream produces.
@@ -389,6 +412,7 @@ export function useCockpitTelemetry(
     // state would re-render the cockpit on every swarm event purely to keep a value that only
     // the reconnect URL and the reducer below read.
     let progress: StreamProgress = { streamState: "connecting", missedEvents: 0, cursor: null };
+    let streamGeneration: string | null = null;
     // Backoff attempt counter, reset on a successful open, and this hook instance's own salt.
     // Together they are what keeps a fleet of clients that dropped at the same instant from
     // reconnecting at the same instant — see reconnectDelayMs.
@@ -448,7 +472,10 @@ export function useCockpitTelemetry(
         // cursor: the first connection must take a full snapshot, and asking the server to
         // answer "what did I miss" about a stream it has not shown this client yet is a
         // question with no right answer.
-        const resume = progress.cursor === null ? "" : `&since=${progress.cursor}`;
+        const resume =
+          progress.cursor === null
+            ? ""
+            : `&since=${progress.cursor}${streamGeneration === null ? "" : `&generation=${encodeURIComponent(streamGeneration)}`}`;
         const ws = new WebSocket(
           `${protocol}//${window.location.host}/api/cockpit/stream?project=${encodeURIComponent(projectId!)}${resume}`,
         );
@@ -467,9 +494,28 @@ export function useCockpitTelemetry(
           try {
             const msg = JSON.parse(event.data);
             if (msg.projectId && msg.projectId !== projectId) return;
+            if (
+              (msg.type === "cockpit_init" ||
+                msg.type === "cockpit_resume" ||
+                msg.type === "cockpit_stream_gap") &&
+              typeof msg.generation === "string"
+            ) {
+              streamGeneration = msg.generation;
+            }
             // One reducer, applied to every message, so the cursor can never go stale because
             // a new message type was added to the stream without updating a branch here.
-            const next = applyStreamMessage(progress, msg);
+            const previousProgress = progress;
+            const next = applyStreamMessage(previousProgress, msg);
+            const detectedSequenceGap =
+              previousProgress.streamState !== "behind" &&
+              next.streamState === "behind" &&
+              previousProgress.cursor !== null &&
+              typeof msg?.seq === "number" &&
+              Number.isSafeInteger(msg.seq) &&
+              msg.seq > previousProgress.cursor + 1 &&
+              msg.type !== "cockpit_init" &&
+              msg.type !== "cockpit_resume" &&
+              msg.type !== "cockpit_stream_gap";
             if (next !== progress) {
               progress = next;
               update({
@@ -477,6 +523,12 @@ export function useCockpitTelemetry(
                 missedEvents: next.missedEvents,
                 cursor: next.cursor,
               });
+            }
+            if (detectedSequenceGap) {
+              // A silently dropped live frame is repairable while it remains in the replay
+              // window. Disconnect now; staying open would continue past the missing cursor.
+              ws.close();
+              return;
             }
             if (msg.type === "cockpit_init" && msg.data) {
               snapshotRevision++;

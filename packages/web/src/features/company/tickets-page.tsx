@@ -244,7 +244,7 @@ export function TicketsPage() {
           aria-label={t.title}
           className="absolute inset-0 z-0 cursor-grab rounded-md focus-visible:outline-3 focus-visible:outline-offset-2"
         />
-        <div className="relative z-10 flex items-start gap-1.5">
+        <div className="pointer-events-none relative z-10 flex items-start gap-1.5">
           <span className="line-clamp-2 min-w-0 flex-1 text-[13px] font-medium leading-snug text-gray-900 dark:text-gray-100">
             {t.title}
           </span>
@@ -255,7 +255,7 @@ export function TicketsPage() {
             </span>
           )}
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+        <div className="pointer-events-none mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
           <PriorityBadge priority={t.priority} />
           {t.due !== undefined && (
             <span
@@ -270,7 +270,7 @@ export function TicketsPage() {
           {t.parent !== undefined && (
             <button
               type="button"
-              className="inline-flex min-w-0 max-w-full items-center gap-0.5 text-gray-500 hover:text-gray-800 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
+              className="pointer-events-auto inline-flex min-w-0 max-w-full items-center gap-0.5 text-gray-500 hover:text-gray-800 hover:underline dark:text-gray-400 dark:hover:text-gray-200"
               title={`${S.company.tickets.parent} ${t.parent}`}
               onClick={(e) => {
                 e.stopPropagation();
@@ -290,7 +290,7 @@ export function TicketsPage() {
             </span>
           )}
         </div>
-        <div className="mt-2 flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+        <div className="pointer-events-none mt-2 flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
           {ownerId !== null ? (
             <span
               className="inline-flex min-w-0 items-center gap-1"

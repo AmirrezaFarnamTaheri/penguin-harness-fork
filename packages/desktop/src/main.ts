@@ -302,7 +302,7 @@ async function boot(): Promise<void> {
   if (!app.isPackaged) {
     process.stdout.write(`[shell] dev instance '${app.name}' on data root ${dataRoot}\n`);
   }
-  const existing = await liveServerLock(dataRoot);
+  const existing = await liveServerLock(dataRoot, { requireIdentity: true });
   if (existing !== null) {
     // Attach mode: the one-shot token only works against a server this shell spawned,
     // so the window goes through the normal login page of the existing instance.

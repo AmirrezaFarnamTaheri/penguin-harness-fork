@@ -129,7 +129,7 @@ export const RECOVERY = {
   CoolDownUntilReset: "cool_down_until_reset",
   /** Park permanently. Only {@link ProviderGateway.revive} brings a credential back. */
   Disable: "disable",
-  /** Count it, change nothing else. Reserved for genuinely unclassifiable failures. */
+  /** Count it for observability without changing the credential failure streak. */
   Observe: "observe",
   /** The failure is not this credential's fault. Do not count it, do not park it. */
   Ignore: "ignore",
@@ -368,6 +368,10 @@ interface CredentialState_ {
   kind?: FailureKind;
   retryAt?: number;
   consecutiveFailures: number;
+  /** Highest selection outcome applied; ignores a late result from an older concurrent call. */
+  lastSettledAttemptSequence: number;
+  /** Prevents an outstanding receipt from a removed credential mutating a later re-registration. */
+  generation: number;
   successCount: number;
   failureCount: number;
   lastUsedAt?: number;
@@ -395,12 +399,20 @@ export interface SkippedCredential {
   readonly cooldownRemainingMs?: number;
 }
 
+/** Per-request receipt returned by select; pass it back when recording the async result. */
+export interface CredentialSelectionAttempt {
+  readonly credentialId: string;
+  readonly sequence: number;
+  readonly generation: number;
+}
+
 export type ExhaustionReason = "no_credentials" | "all_disabled" | "all_cooling";
 
 export type SelectionResult =
   | {
       readonly status: "selected";
       readonly credentialId: string;
+      readonly attempt: CredentialSelectionAttempt;
       readonly skipped: readonly SkippedCredential[];
     }
   | {
@@ -429,6 +441,9 @@ export class ProviderGateway {
   private cursor = -1;
   private readonly options: Required<BackoffOptions> & { random: () => number };
   private readonly clock: () => number;
+  private attemptSequence = 0;
+  private credentialGenerationSequence = 0;
+  private readonly issuedAttempts = new WeakMap<CredentialSelectionAttempt, string>();
 
   constructor(options: ProviderGatewayOptions = {}) {
     this.options = {
@@ -460,6 +475,8 @@ export class ProviderGateway {
         this.credentials.set(id, {
           state: "healthy",
           consecutiveFailures: 0,
+          lastSettledAttemptSequence: 0,
+          generation: ++this.credentialGenerationSequence,
           successCount: 0,
           failureCount: 0,
         });
@@ -536,7 +553,13 @@ export class ProviderGateway {
       this.cursor = chosenIndex;
       const entry = this.credentials.get(id)!;
       entry.lastUsedAt = now;
-      return { status: "selected", credentialId: id, skipped };
+      const attempt = Object.freeze({
+        credentialId: id,
+        sequence: ++this.attemptSequence,
+        generation: entry.generation,
+      });
+      this.issuedAttempts.set(attempt, id);
+      return { status: "selected", credentialId: id, attempt, skipped };
     }
 
     const retryAt = coolingRetryAts.length > 0 ? Math.min(...coolingRetryAts) : undefined;
@@ -555,12 +578,19 @@ export class ProviderGateway {
    * 09:00 and served cleanly all day is still backing off like a repeat offender at 17:00, and
    * its first genuine 429 of the evening gets a minute-long penalty it has not earned.
    */
-  recordSuccess(credentialId: string, now: number = this.clock()): void {
+  recordSuccess(
+    credentialId: string,
+    now: number = this.clock(),
+    attempt?: CredentialSelectionAttempt,
+  ): void {
     const entry = this.credentials.get(credentialId);
     if (entry === undefined) return;
+    const sequence = this.claimOutcome(entry, credentialId, attempt);
+    if (sequence === undefined) return;
     entry.successCount++;
     entry.lastSuccessAt = now;
     entry.lastUsedAt = now;
+    entry.lastSettledAttemptSequence = sequence;
     entry.consecutiveFailures = 0;
     if (entry.state === "cooling") {
       entry.state = "healthy";
@@ -583,6 +613,7 @@ export class ProviderGateway {
     credentialId: string,
     classification: FailureClassification,
     now: number = this.clock(),
+    attempt?: CredentialSelectionAttempt,
   ): GatewayCredentialHealth {
     const entry = this.credentials.get(credentialId);
     if (entry === undefined) {
@@ -591,6 +622,9 @@ export class ProviderGateway {
       // longer know about.
       return unknownHealth(credentialId, now);
     }
+    const sequence = this.claimOutcome(entry, credentialId, attempt);
+    if (sequence === undefined) return this.health(credentialId, now);
+    entry.lastSettledAttemptSequence = sequence;
 
     switch (classification.recovery) {
       case RECOVERY.Disable: {
@@ -625,7 +659,8 @@ export class ProviderGateway {
         break;
       }
       case RECOVERY.Observe: {
-        entry.consecutiveFailures++;
+        // The event is useful to count, but it is not evidence that this credential should
+        // receive a longer cooldown next time.
         entry.failureCount++;
         entry.lastFailureAt = now;
         break;
@@ -695,9 +730,9 @@ export class ProviderGateway {
    * Settles a cooling credential whose window has passed, and reports the epoch-ms it is due
    * back at. Returns `undefined` once the credential is usable again.
    *
-   * The streak resets here rather than on the next success, so a credential that sat idle
-   * through its own cooldown resumes at the floor instead of serving a penalty it earned
-   * before the last call it made. Every reader of a credential's state goes through this, so
+   * The cooldown lapses here, but the failure streak is retained until a success. Repeated
+   * throttling separated by the wait still needs increasing backoff. Every reader of a
+   * credential's state goes through this, so
    * "cooling" always means "cooling *right now*" — there is no second, stale answer.
    */
   private settleIfLapsed(entry: CredentialState_, now: number): number | undefined {
@@ -706,9 +741,27 @@ export class ProviderGateway {
     if (retryAt > now) return retryAt;
     entry.state = "healthy";
     entry.retryAt = undefined;
-    entry.consecutiveFailures = 0;
     entry.lastRetryAfterMs = undefined;
     return undefined;
+  }
+
+  /** Applies outcomes in completion order, not response arrival order, when receipts are used. */
+  private claimOutcome(
+    entry: CredentialState_,
+    credentialId: string,
+    attempt?: CredentialSelectionAttempt,
+  ): number | undefined {
+    if (attempt === undefined) return ++this.attemptSequence; // compatibility for old callers
+    if (
+      attempt.credentialId !== credentialId ||
+      attempt.generation !== entry.generation ||
+      this.issuedAttempts.get(attempt) !== credentialId
+    ) {
+      return undefined;
+    }
+    this.issuedAttempts.delete(attempt);
+    if (attempt.sequence <= entry.lastSettledAttemptSequence) return undefined;
+    return attempt.sequence;
   }
 
   private jitteredBackoff(consecutiveFailures: number): number {

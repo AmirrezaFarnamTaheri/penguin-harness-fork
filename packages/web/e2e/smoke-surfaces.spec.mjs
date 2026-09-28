@@ -184,7 +184,7 @@ test("calendar: month is a real table and the hour grid is one tab stop", async 
     const tabbable = await cells.evaluateAll(
       (els) => els.filter((e) => e.querySelector('[tabindex="0"]') !== null).length,
     );
-    expect(tabbable, "the hour grid has more than one tab stop").toBeLessThanOrEqual(1);
+    expect(tabbable, "the hour grid must have exactly one roving tab stop").toBe(1);
   }
 
   await shot(page, "calendar-month");
@@ -209,13 +209,10 @@ test("org chart: the kebab keeps a 24px target at minimum zoom", async ({ page }
     waitUntil: "domcontentloaded",
   });
   await shot(page, "org-chart");
-  const kebab = page.getByRole("button").filter({ hasNot: page.locator("svg[aria-hidden]") });
-  const anyButton = page.locator("button").first();
-  if (await anyButton.count()) {
-    // 40px box at 0.6 zoom = 24px; the pre-fix target was 24px at 0.6 = 14.4px.
-    const box = await anyButton.boundingBox();
-    if (box) expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
-  }
-  void kebab;
+  const kebab = page.locator('button[aria-haspopup="menu"]').first();
+  await expect(kebab, "the organization node's actual overflow control").toBeVisible();
+  const box = await kebab.boundingBox();
+  expect(box, "the node menu control must have a measurable hit target").not.toBeNull();
+  if (box) expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
   expect(errors, `console/page errors: ${errors.join(" | ")}`).toEqual([]);
 });

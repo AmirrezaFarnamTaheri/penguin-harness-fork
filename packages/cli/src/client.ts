@@ -138,7 +138,7 @@ export async function autoStartServer(
 
   const deadline = Date.now() + (opts.timeoutMs ?? 20_000);
   for (;;) {
-    const lock = await liveServerLock(root);
+    const lock = await liveServerLock(root, { requireIdentity: true });
     if (lock !== null) return { port: lock.port, logPath };
     // Exit 3 = "another server owns this root" — the race's loser; keep polling for the
     // winner's lock. Any other exit is a startup failure: point at the log.
@@ -165,7 +165,7 @@ export async function resolveConnection(
     }
     return { baseUrl: url.origin, root, autoStarted: false, loopback };
   }
-  const lock = await liveServerLock(root);
+  const lock = await liveServerLock(root, { requireIdentity: true });
   if (lock !== null) {
     return { baseUrl: `http://localhost:${lock.port}`, root, autoStarted: false, loopback: true };
   }

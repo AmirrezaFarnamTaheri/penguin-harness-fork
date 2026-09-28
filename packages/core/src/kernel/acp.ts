@@ -313,8 +313,14 @@ export class AcpConnection {
    * In-flight requests are rejected here, loudly and all at once, rather than left to
    * time out 30s later against a transport that is already gone.
    */
-  private failTransport(error: unknown): Error {
+  private failTransport(error: unknown, generation = this.generation): Error {
     const normalized = this.normalizeError(error);
+    // A rejected write from a retired transport is not evidence about the replacement.
+    // The caller that enqueued it still receives a failure, but the current connection
+    // must not be poisoned by an obsolete socket's late rejection.
+    if (generation !== this.generation) {
+      return new AcpTransportError(normalized.message, generation, { cause: normalized });
+    }
     if (this.state === "closed") {
       // Disposed connections are terminal; a write that was already in flight when
       // dispose landed settles afterwards, and it must not resurrect a failure state or
@@ -359,13 +365,24 @@ export class AcpConnection {
     if (this.state === "closed") return Promise.reject(new AcpConnectionClosedError());
     if (this.failure) return Promise.reject(this.failure);
 
+    // Bind the write to the transport generation that accepted the caller's operation.
+    // Reading this.sendLine inside the queued closure would let an old request migrate to a
+    // replacement peer after it had already been rejected by reattachTransport().
+    const generation = this.generation;
+    const sendLine = this.sendLine;
     const line = `${JSON.stringify(message)}\n`;
     const run = this.writeTail.then(async () => {
+      if (generation !== this.generation) {
+        throw new AcpTransportError(
+          "ACP write cancelled because its transport was replaced",
+          generation,
+        );
+      }
       if (this.state === "closed") throw new AcpConnectionClosedError();
       if (this.failure) throw this.failure;
       this.framesSent += 1;
       this.bytesSent += utf8Length(line);
-      await this.sendLine(line);
+      await sendLine(line);
     });
 
     // The tail swallows its own rejection. Without that, one failed write would leave the
@@ -377,7 +394,7 @@ export class AcpConnection {
       () => undefined,
     );
     return run.catch((error: unknown) => {
-      throw this.failTransport(error);
+      throw this.failTransport(error, generation);
     });
   }
 
@@ -671,7 +688,11 @@ export class AcpConnection {
     this.framesReceived += 1;
     let message: JsonRpcMessage;
     try {
-      message = JSON.parse(line) as JsonRpcMessage;
+      const decoded: unknown = JSON.parse(line);
+      if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
+        throw new TypeError("ACP JSON-RPC frame must be an object");
+      }
+      message = decoded as JsonRpcMessage;
     } catch (error) {
       this.malformedFrames += 1;
       this.diagnose("malformed-frame", this.normalizeError(error).message, {

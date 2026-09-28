@@ -230,6 +230,23 @@ describe("registry: staleness, which is the point", () => {
     expect(executions).toBe(2);
   });
 
+  it("does not hand a waiter a result for a tree changed during the owner's run", async () => {
+    const registry = new OperationShareRegistry();
+    const gate = deferred<OperationOutcome<string>>();
+    const owner = registry.run(SPEC(), deps(), () => gate.promise);
+    await inFlight(registry);
+    const waiter = registry.run(SPEC(), deps(), async () => outcome("fresh"));
+    await oneWaiter(registry);
+    await writeSource("export const a = 2;\n");
+    gate.resolve(outcome("stale"));
+
+    const [first, second] = await Promise.all([owner, waiter]);
+    expect(first.stored).toBe(false);
+    expect(second.outcome).toBe("RAN");
+    expect(second.value).toBe("fresh");
+    expect(registry.stats().counters.joinedStaleNotInherited).toBe(1);
+  });
+
   it("runs rather than reuses when the tree moved after the first run finished", async () => {
     const registry = new OperationShareRegistry();
     let executions = 0;
@@ -514,6 +531,13 @@ describe("registry: failures are not successes", () => {
 });
 
 describe("registry: bounds", () => {
+  it("retains nothing when the entry limit is zero", async () => {
+    const registry = new OperationShareRegistry({ limits: { maxEntries: 0 } });
+    const result = await registry.run(SPEC(), deps(), async () => outcome("answer"));
+    expect(result.stored).toBe(false);
+    expect(registry.stats().live.entries).toBe(0);
+  });
+
   it("holds the entry-count bound and reports what it dropped to hold it", async () => {
     const registry = new OperationShareRegistry({ limits: { maxEntries: 2 } });
     const run = (name: string) =>
@@ -545,6 +569,30 @@ describe("registry: bounds", () => {
     expect(stats.live.bytes).toBeLessThanOrEqual(300);
     expect(stats.live.entries).toBeLessThanOrEqual(3);
     expect(stats.counters.evictions.lru).toBeGreaterThan(0);
+  });
+
+  it("accounts for the new byte size when a concurrent run replaces a cached answer", async () => {
+    const registry = new OperationShareRegistry({
+      limits: { maxTotalBytes: 100, maxEntryBytes: 100 },
+    });
+    await registry.run({ ...SPEC(), argv: ["vitest", "run", "other"] }, deps(), async () =>
+      outcome("other", 50),
+    );
+    const firstGate = deferred<OperationOutcome<string>>();
+    const secondGate = deferred<OperationOutcome<string>>();
+    const first = registry.run(SPEC(), deps(), () => firstGate.promise);
+    await inFlight(registry);
+    const second = registry.run(SPEC(), deps(), () => secondGate.promise, { waitMs: 0 });
+    await waitFor(registry, "two runs in flight", (live) => live.inFlightRuns === 2);
+    firstGate.resolve(outcome("first", 30));
+    await first;
+    secondGate.resolve(outcome("second", 80));
+    await second;
+
+    expect(registry.stats().live.bytes).toBe(80);
+    expect(registry.stats().live.entries).toBe(1);
+    const reused = await registry.run(SPEC(), deps(), async () => outcome("unexpected"));
+    expect(reused.value).toBe("second");
   });
 
   it("never retains a single result larger than the per-entry bound", async () => {
@@ -611,6 +659,23 @@ describe("registry: bounds", () => {
     expect(registry.stats().live.entries).toBe(0);
     expect(registry.stats().counters.invalidations).toEqual({ calls: 1, entries: 1 });
     expect((await run()).outcome).toBe("RAN");
+  });
+
+  it("prevents an active run and its waiter from crossing an invalidation", async () => {
+    const registry = new OperationShareRegistry();
+    const gate = deferred<OperationOutcome<string>>();
+    const owner = registry.run(SPEC(), deps(), () => gate.promise);
+    await inFlight(registry);
+    const waiter = registry.run(SPEC(), deps(), async () => outcome("new configuration"));
+    await oneWaiter(registry);
+    registry.invalidateAll();
+    gate.resolve(outcome("old configuration"));
+
+    const [first, second] = await Promise.all([owner, waiter]);
+    expect(first.stored).toBe(false);
+    expect(second.outcome).toBe("RAN");
+    expect(second.value).toBe("new configuration");
+    expect(registry.stats().counters.discardedInvalidatedDuringRun).toBe(1);
   });
 });
 

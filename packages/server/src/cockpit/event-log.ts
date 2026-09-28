@@ -20,6 +20,8 @@
  * shows a stale tree and calls it live".
  */
 
+import { randomUUID } from "node:crypto";
+
 /** Maximum envelopes retained per project, across all clients of that project. */
 export const COCKPIT_EVENT_LOG_CAP = 512;
 
@@ -31,7 +33,9 @@ export const COCKPIT_EVENT_LOG_CAP = 512;
  * budget exists so a project with thousands of tiny updates still cannot hold thousands of
  * entries.
  */
-export const COCKPIT_EVENT_LOG_MAX_CHARS = 512 * 1024;
+export const COCKPIT_EVENT_LOG_MAX_BYTES = 512 * 1024;
+/** @deprecated The cap is measured in UTF-8 bytes; use COCKPIT_EVENT_LOG_MAX_BYTES. */
+export const COCKPIT_EVENT_LOG_MAX_CHARS = COCKPIT_EVENT_LOG_MAX_BYTES;
 
 /** One retained envelope: its sequence number and the exact bytes that were broadcast. */
 export interface CockpitLogEntry {
@@ -63,14 +67,21 @@ export interface CockpitReplay {
 }
 
 export class CockpitEventLog {
+  /** Distinguishes cursors from a previous process or reaped runtime. */
+  private currentGeneration = randomUUID();
   /** Sequence of the next envelope to be published. Starts at 1 so 0 can mean "never seen any". */
   private nextSeq = 1;
   private entries: CockpitLogEntry[] = [];
   private chars = 0;
+  private bytes = 0;
 
   /** The most recently published sequence number; 0 before anything has been published. */
   get cursor(): number {
     return this.nextSeq - 1;
+  }
+
+  get generation(): string {
+    return this.currentGeneration;
   }
 
   /** Retained envelope count. Exposed for the bound assertions in the tests. */
@@ -81,6 +92,11 @@ export class CockpitEventLog {
   /** Retained serialized characters. Exposed for the bound assertions in the tests. */
   get retainedChars(): number {
     return this.chars;
+  }
+
+  /** Retained payload size measured in UTF-8 bytes, the unit used by the memory bound. */
+  get retainedBytes(): number {
+    return this.bytes;
   }
 
   /**
@@ -95,22 +111,37 @@ export class CockpitEventLog {
    */
   publish(payload: string): number {
     const seq = this.nextSeq++;
-    if (payload.length <= COCKPIT_EVENT_LOG_MAX_CHARS) {
+    this.retain(seq, payload);
+    return seq;
+  }
+
+  /** Builds and retains the exact stamped envelope that live clients will receive. */
+  publishStamped(makePayload: (seq: number) => string): CockpitLogEntry {
+    const seq = this.nextSeq++;
+    const payload = makePayload(seq);
+    this.retain(seq, payload);
+    return { seq, payload };
+  }
+
+  private retain(seq: number, payload: string): void {
+    const payloadBytes = Buffer.byteLength(payload, "utf8");
+    if (payloadBytes <= COCKPIT_EVENT_LOG_MAX_BYTES) {
       this.entries.push({ seq, payload });
       this.chars += payload.length;
+      this.bytes += payloadBytes;
       // Evict from the oldest until both bounds hold. `while`, not `if`: a single large
       // envelope added to an already-full log can need several evictions to get back under
       // the byte budget.
       while (
         this.entries.length > COCKPIT_EVENT_LOG_CAP ||
-        this.chars > COCKPIT_EVENT_LOG_MAX_CHARS
+        this.bytes > COCKPIT_EVENT_LOG_MAX_BYTES
       ) {
         const dropped = this.entries.shift();
         if (dropped === undefined) break;
         this.chars -= dropped.payload.length;
+        this.bytes -= Buffer.byteLength(dropped.payload, "utf8");
       }
     }
-    return seq;
   }
 
   /**
@@ -127,9 +158,12 @@ export class CockpitEventLog {
     if (typeof clientSeq !== "number" || !Number.isSafeInteger(clientSeq) || clientSeq < 0) {
       return { entries: [], gap: true, missed: null, cursor };
     }
-    if (clientSeq >= cursor) {
-      // Caught up, or ahead of us (a stale server behind a newer cursor): nothing to replay.
-      // Not a gap — the client has at least everything this log holds.
+    if (clientSeq > cursor) {
+      // The cursor belongs to another log generation (or was guessed). A fresh snapshot is
+      // required; treating it as current would hide every event until this log catches up.
+      return { entries: [], gap: true, missed: null, cursor };
+    }
+    if (clientSeq === cursor) {
       return { entries: [], gap: false, missed: 0, cursor };
     }
     const oldest = this.entries[0]?.seq;
@@ -149,8 +183,10 @@ export class CockpitEventLog {
 
   /** Drops everything and restarts the sequence. Used by the runtime reap and by tests. */
   reset(): void {
+    this.currentGeneration = randomUUID();
     this.nextSeq = 1;
     this.entries = [];
     this.chars = 0;
+    this.bytes = 0;
   }
 }

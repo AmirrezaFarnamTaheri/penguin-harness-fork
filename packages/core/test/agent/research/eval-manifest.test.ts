@@ -3,6 +3,8 @@ import {
   auditEvalRun,
   buildEvalRunManifest,
   hashValue,
+  type AuditInput,
+  type EvalRunManifest,
 } from "../../../src/agent/research/eval-manifest.js";
 
 const COMMIT = "a".repeat(40);
@@ -24,6 +26,20 @@ function manifest(overrides: Partial<Parameters<typeof buildEvalRunManifest>[0]>
   });
 }
 
+function auditRun(m: EvalRunManifest, rows = ROWS, overrides: Partial<AuditInput> = {}) {
+  return auditEvalRun({
+    manifest: m,
+    rows,
+    dataset: DATASET,
+    scorer: SCORER,
+    modelRevision: m.modelRevision,
+    reporting: m.reporting,
+    cwd: process.cwd(),
+    reparse: (row) => ({ outcome: row.outcome, numericScore: row.numericScore }),
+    ...overrides,
+  });
+}
+
 describe("eval run manifest", () => {
   it("hashes equal values equally regardless of key order", () => {
     expect(hashValue({ a: 1, b: [2, { d: 4, c: 3 }] })).toBe(
@@ -41,16 +57,14 @@ describe("eval run manifest", () => {
 
   it("certifies a run whose every input is unchanged", () => {
     const m = manifest();
-    const audit = auditEvalRun({ manifest: m, rows: ROWS, dataset: DATASET, scorer: SCORER });
+    const audit = auditRun(m);
     expect(audit.problems).toEqual([]);
     expect(audit.ok).toBe(true);
   });
 
   it("names each drifted input separately rather than reporting that something changed", () => {
     const m = manifest();
-    const audit = auditEvalRun({
-      manifest: m,
-      rows: [...ROWS, { caseId: "c3", outcome: "pass", numericScore: 1 }],
+    const audit = auditRun(m, [...ROWS, { caseId: "c3", outcome: "pass", numericScore: 1 }], {
       dataset: { cases: ["c1", "c2", "c3"] },
       scorer: { version: 2, gates: ["coverage"] },
     });
@@ -70,7 +84,7 @@ describe("eval run manifest", () => {
       modelRevision: COMMIT,
       reporting: "pass-fail",
     });
-    const audit = auditEvalRun({ manifest: m, rows: crashed });
+    const audit = auditRun(m, crashed);
     expect(audit.ok).toBe(false);
     expect(audit.problems.join(" ")).toContain("c1 did not complete");
   });
@@ -84,15 +98,13 @@ describe("eval run manifest", () => {
       modelRevision: COMMIT,
       reporting: "pass-fail",
     });
-    const audit = auditEvalRun({ manifest: m, rows: duped });
+    const audit = auditRun(m, duped);
     expect(audit.problems.join(" ")).toContain("duplicate case id: c1");
   });
 
   it("catches a recorded score the raw response no longer reproduces", () => {
     const m = manifest();
-    const audit = auditEvalRun({
-      manifest: m,
-      rows: ROWS,
+    const audit = auditRun(m, ROWS, {
       // The scorer was edited so that c2 now passes, but the recorded output was never
       // regenerated. c1 is unchanged, so the mismatch is c2's alone.
       reparse: (row) => (row.caseId === "c2" ? { outcome: "pass", numericScore: 0.95 } : null),
@@ -106,8 +118,28 @@ describe("eval run manifest", () => {
   it("catches a score that moved under an unchanged case id", () => {
     const m = manifest();
     const moved = [{ ...ROWS[0]!, numericScore: 0.95 }, ROWS[1]!];
-    const audit = auditEvalRun({ manifest: m, rows: moved });
+    const audit = auditRun(m, moved);
     expect(audit.problems.join(" ")).toContain("scored rows changed");
+  });
+
+  it("requires the current model, reporting mode, and a successful reparse of every row", () => {
+    const m = manifest();
+    const audit = auditRun(m, ROWS, {
+      modelRevision: "b".repeat(40),
+      reporting: "five-star",
+      reparse: () => null,
+    });
+    expect(audit.problems.join(" ")).toContain("model revision changed");
+    expect(audit.problems.join(" ")).toContain("reporting mode changed");
+    expect(
+      audit.problems.filter((problem) => problem.includes("could not be re-derived")),
+    ).toHaveLength(2);
+  });
+
+  it("compares the repository revision being audited with the current checkout", () => {
+    const m = { ...manifest(), repoCommit: "b".repeat(40) };
+    const audit = auditRun(m);
+    expect(audit.problems.join(" ")).toContain("repository revision changed");
   });
 
   it("reads the repository revision from git rather than trusting the caller", () => {

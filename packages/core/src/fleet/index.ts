@@ -118,6 +118,7 @@ export {
   observeFailure,
   type BackoffOptions,
   type CredentialState,
+  type CredentialSelectionAttempt,
   type ExhaustionReason,
   type FailureClassification,
   type GatewayCredentialHealth,

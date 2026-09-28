@@ -128,7 +128,10 @@ ${content}
     // `noopener` so the opened document cannot reach back through `window.opener`. The
     // wrapper already sandboxes its iframe, but the outer document is same-origin with us
     // and this is the one reference between the two, so it is worth severing.
-    const opened = window.open(url, "_blank", "noopener");
+    const opened = window.open(url, "_blank");
+    // Ask for the window handle first so a genuinely blocked popup can be distinguished from
+    // a successful open. Then sever the opener synchronously before the new page can use it.
+    if (opened !== null) opened.opener = null;
     // The blob must outlive the navigation that consumes it, so it cannot be revoked on the
     // next line. Releasing it on a timer bounds the cost to one blob per press; the previous
     // code never released it at all, so every preview opened in a new tab pinned its Blob for

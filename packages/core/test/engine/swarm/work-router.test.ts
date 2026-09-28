@@ -670,6 +670,8 @@ describe("bounded state", () => {
     }
     expect(router.stats().eventsRetained).toBe(3);
     expect(router.recentDecisions(100)).toHaveLength(3);
+    expect(router.recentDecisions(0)).toEqual([]);
+    expect(router.recentEvents(0)).toEqual([]);
   });
 
   it("sweeps stale jobs as a side effect of routing, without a timer", () => {

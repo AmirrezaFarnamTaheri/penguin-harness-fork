@@ -2,8 +2,9 @@
  * Spend-ceiling accounting: the paths where a real cost can go unrecorded, and the one input that
  * used to disable the whole budget.
  *
- * The class's contract is `spent + reserved <= limit` at every moment, and the harder half is that
- * nothing real escapes `spentUsd` afterwards. These cover the ways it did.
+ * The class admits against expected spend plus reservations, then records actual provider spend
+ * exactly when it is known. A response can exceed its estimate; those cases must remain visible
+ * and prevent any later admission. These cover the ways accounting used to be lost.
  */
 import { describe, expect, it } from "vitest";
 import { SpendCeiling } from "../../src/llm/spend-ceiling.js";
@@ -68,10 +69,13 @@ describe("reservation identity", () => {
       return r.allowed ? r.reservationId : null;
     });
     expect(c.snapshot().inFlight).toBe(3);
-    // r0 was evicted, so its id is free again and the total is 3 reservations, not 4.
+    // r0's in-flight slot is freed, but its estimate is charged conservatively.
     expect(c.snapshot().reservedUsd).toBe(3);
+    expect(c.snapshot().spentUsd).toBe(1);
     expect(c.snapshot().reclaimed).toBe(1);
-    expect(c.settle(ids[0]!, 1)).toBe(false);
+    expect(c.settle(ids[0]!, 2)).toBe(true);
+    expect(c.snapshot().spentUsd).toBe(2);
+    expect(c.settle(ids[0]!, 2)).toBe(false);
   });
 });
 
@@ -139,6 +143,7 @@ describe("expiry under a moving clock", () => {
     expect(c.snapshot().inFlight).toBe(1);
     expect(c.snapshot().reclaimed).toBe(1);
     expect(c.snapshot().reservedUsd).toBe(1);
+    expect(c.snapshot().spentUsd).toBe(1);
   });
 
   it("does not expire on a backwards clock step, and self-heals when time returns", () => {
@@ -160,6 +165,7 @@ describe("expiry under a moving clock", () => {
     t = 10_100; // and forward again past the TTL
     expect(c.snapshot().inFlight).toBe(0);
     expect(c.snapshot().reservedUsd).toBe(0);
+    expect(c.snapshot().spentUsd).toBe(1);
   });
 
   it("cannot wedge permanently: the reservation cap evicts regardless of age", () => {
@@ -178,6 +184,7 @@ describe("expiry under a moving clock", () => {
     const third = c.admit("c");
     expect(third.allowed).toBe(true);
     expect(c.snapshot().inFlight).toBe(2);
+    expect(c.snapshot().spentUsd).toBe(1);
   });
 });
 

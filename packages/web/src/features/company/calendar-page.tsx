@@ -577,9 +577,8 @@ export function CalendarPage() {
             else if (e.key === "ArrowRight") step(1, 0);
             else if (e.key === "ArrowLeft") step(-1, 0);
             // Home / End walk the row; with Control, the first and last cell of the whole grid.
-            else if (e.key === "Home") step(e.ctrlKey ? -dayIndex : 0, e.ctrlKey ? -h : 0);
-            else if (e.key === "End")
-              step(e.ctrlKey ? days.length - 1 - dayIndex : 0, e.ctrlKey ? 23 - h : 0);
+            else if (e.key === "Home") step(e.ctrlKey ? -dayIndex : 0, -h);
+            else if (e.key === "End") step(e.ctrlKey ? days.length - 1 - dayIndex : 0, 23 - h);
           }}
         />
         {isToday && at.getHours() === h && (

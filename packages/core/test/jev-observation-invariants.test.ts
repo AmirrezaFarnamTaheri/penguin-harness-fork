@@ -307,4 +307,14 @@ describe("the journal does the job it exists for", () => {
       }),
     );
   });
+
+  it("buckets an untrusted reason before exporting it into the closed journal", () => {
+    const projected = observationFromAdvisory(
+      advised({ status: "unavailable", reason: "https://example.invalid/?token=secret" }),
+      { seq: 10, atMs: 12 },
+    );
+    expect(projected.reason).toBe("unavailable");
+    expect(JSON.stringify(projected)).not.toContain("example.invalid");
+    expect(ADVISORY_REASONS).toContain(projected.reason);
+  });
 });

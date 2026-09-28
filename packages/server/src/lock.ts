@@ -118,12 +118,11 @@ export async function isServerLockAlive(lock: ServerLock): Promise<boolean> {
  * (instance-identity.ts) and a peer that answers for a DIFFERENT root makes this record
  * stale.
  *
- * Strictly additive, and that asymmetry is the whole design. A peer that does not answer
- * at all — a build predating the route, a stranger that is not speaking HTTP, a server
- * bound to an interface this probe cannot reach — leaves the pid+port verdict exactly as it
- * was. So the check can only ever turn "alive" into "stale" on a positive, verified
- * wrong-root answer, and an upgrade overlap (the case `ensureSoleInstance` already guards
- * against from the other side) keeps working instead of bricking every client on the root.
+ * Startup coordination accepts an older peer that does not answer the identity route, so
+ * an upgrade overlap cannot start a second writer. Credential-bearing clients pass
+ * `requireIdentity: true`: a non-answering or unrelated port must never receive their
+ * token or password. A peer that answers must also echo the lock's pid and port, so two
+ * unrelated processes cannot satisfy the two liveness checks independently.
  *
  * HOW THIS MEETS THE CLAIM. It does not touch it, and it must not: the BEGIN IMMEDIATE
  * claim in `acquireServerInstanceClaim` remains the only thing that decides who OWNS a
@@ -135,12 +134,22 @@ export async function isServerLockAlive(lock: ServerLock): Promise<boolean> {
  * for the fraction of a second between a server publishing its record and this probe
  * running, and in that window the safe reading is the one the claim settles.
  */
-export async function liveServerLock(root: string): Promise<ServerLock | null> {
+export async function liveServerLock(
+  root: string,
+  options: { requireIdentity?: boolean } = {},
+): Promise<ServerLock | null> {
   const lock = readServerLock(root);
   if (!lock) return null;
   if (!(await isServerLockAlive(lock))) return null;
   const identity = await probeInstanceIdentity(lock.port);
-  if (identity !== null && identity.rootId !== rootFingerprint(root)) return null;
+  if (identity === null) return options.requireIdentity ? null : lock;
+  if (
+    identity.rootId !== rootFingerprint(root) ||
+    identity.pid !== lock.pid ||
+    identity.port !== lock.port
+  ) {
+    return null;
+  }
   return lock;
 }
 

@@ -2470,6 +2470,7 @@ Scenarios:
       run_subagent: "subagent",
       input_subagent: "communicate",
       environment_info: "environment",
+      resource_pressure: "resources",
     } as Record<string, string>,
     workRunning: "Running",
     workDone: "Done",
@@ -2505,6 +2506,8 @@ Scenarios:
     /** Batch bar: archive / unarchive every marked conversation. */
     archiveSelected: "Archive selected",
     unarchiveSelected: "Unarchive selected",
+    batchArchiveFailed: (failed: number, total: number, archived: boolean) =>
+      `${failed} of ${total} conversations could not be ${archived ? "archived" : "unarchived"}. Failed conversations remain selected for retry.`,
     /** Batch bar: leave selection mode, dropping the marks. */
     cancelSelection: "Cancel selection",
     /** Row context menu: enter selection mode with this row marked (the keyboard-reachable route; Cmd/Ctrl-click is the pointer one). */

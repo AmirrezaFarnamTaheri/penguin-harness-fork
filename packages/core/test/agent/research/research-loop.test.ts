@@ -254,6 +254,7 @@ describe("ResearchLoop", () => {
     );
     expect(result.budget.exhausted).toHaveLength(0);
     expect(result.budget.paperBudgetUsed).toBeLessThanOrEqual(1);
+    expect(result.budget.phases.get("verifying")?.tokens).toBeGreaterThan(0);
 
     expect(events.length).toBeGreaterThan(0);
     expect(events[0]!.state).toBe("planning");

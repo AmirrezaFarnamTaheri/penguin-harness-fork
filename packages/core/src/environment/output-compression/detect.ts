@@ -22,9 +22,6 @@ import { INPUT_COMMAND_NAME } from "../tools/input-command.js";
 import { READ_FILE_NAME } from "../tools/read-file.js";
 import type { OutputKind } from "./strategies.js";
 
-/** Shell operators that end one simple command and begin the next. */
-const SEGMENT_SPLIT = /\|\||&&|;|\||\n|\r/;
-
 /** Leading words that are not the command: variable assignments, `env`, privilege wrappers. */
 const LEADING_NOISE = new Set(["env", "sudo", "doas", "command", "exec", "nohup", "time", "nice"]);
 
@@ -87,23 +84,80 @@ const LINTERS = new Set([
 /** Programs whose output is a log tail, where repeated lines are the norm rather than a bug. */
 const LOG_READERS = new Set(["cat", "tail", "bat"]);
 
-/** Splitting a shell line into its simple-command segments, each as an array of words. */
+/** Splits shell operators and whitespace only outside quotes, retaining quoted arguments. */
 function commandWords(command: string): string[][] {
-  return command
-    .split(SEGMENT_SPLIT)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment !== "")
-    .map((segment): string[] => {
-      const words = segment.split(/\s+/).filter((word) => !ASSIGNMENT.test(word));
-      while (words.length > 0 && LEADING_NOISE.has(words[0]!.toLowerCase())) words.shift();
-      return words;
-    })
-    .filter((words) => words.length > 0);
+  const commands: string[][] = [];
+  let words: string[] = [];
+  let word = "";
+  let quote: "'" | '"' | null = null;
+  const pushWord = (): void => {
+    if (word !== "") words.push(word);
+    word = "";
+  };
+  const pushCommand = (): void => {
+    pushWord();
+    const normalized = words.filter((item) => !ASSIGNMENT.test(item));
+    while (normalized.length > 0 && LEADING_NOISE.has(normalized[0]!.toLowerCase())) {
+      normalized.shift();
+    }
+    if (normalized.length > 0) commands.push(normalized);
+    words = [];
+  };
+
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i]!;
+    if (quote !== null) {
+      if (char === quote) {
+        quote = null;
+        continue;
+      }
+      // Inside double quotes (and outside quotes), consume escapes only for shell syntax. Keeping
+      // other backslashes preserves Windows paths such as C:\logs\app.log.
+      if (char === "\\" && quote === '"' && /["\\|&;\s]/.test(command[i + 1] ?? "")) {
+        word += command[++i]!;
+        continue;
+      }
+      word += char;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "\\" && /[|&;\s'"\\]/.test(command[i + 1] ?? "")) {
+      word += command[++i]!;
+      continue;
+    }
+    if (char === "`" && i + 1 < command.length) {
+      // PowerShell's escape character is a backtick rather than a backslash.
+      word += command[++i]!;
+      continue;
+    }
+    if ((char === "&" && command[i + 1] === "&") || (char === "|" && command[i + 1] === "|")) {
+      pushCommand();
+      i += 1;
+      continue;
+    }
+    if (char === ";" || char === "|" || char === "\n" || char === "\r") {
+      pushCommand();
+      continue;
+    }
+    if (/\s/.test(char)) {
+      pushWord();
+      continue;
+    }
+    word += char;
+  }
+  if (quote !== null) return []; // A malformed shell quote is not reliable classification input.
+  pushCommand();
+  return commands;
 }
 
 /** The program's own name, with a `.exe` suffix and any directory stripped. */
 function programOf(word: string): string {
-  const base = word.slice(word.lastIndexOf("/") + 1).replace(/\.(exe|cmd|bat|ps1)$/i, "");
+  const base = word
+    .slice(Math.max(word.lastIndexOf("/"), word.lastIndexOf("\\")) + 1)
+    .replace(/\.(exe|cmd|bat|ps1)$/i, "");
   return base.toLowerCase();
 }
 

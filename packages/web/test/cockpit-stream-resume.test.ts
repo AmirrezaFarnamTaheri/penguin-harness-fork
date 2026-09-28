@@ -113,6 +113,10 @@ describe("stream progress: a resumed connection reconciles, and a lossy one says
     // sequenced event). Adopting it is what stops the next reconnect from asking for the
     // same unreachable window and gapping again forever.
     expect(gapped.cursor).toBe(910);
+    // The real server sends a snapshot immediately after the gap. It repairs the tree,
+    // but cannot restore the missing delta-built history or clear the warning.
+    const snapshot = applyStreamMessage(gapped, { type: "cockpit_init", seq: 910 });
+    expect(snapshot).toEqual({ streamState: "behind", missedEvents: 900, cursor: 910 });
     const resumed = applyStreamMessage(gapped, { type: "cockpit_resume", cursor: 1200 });
     expect(resumed.streamState).toBe("live");
     expect(resumed.cursor).toBe(1200);
@@ -144,6 +148,15 @@ describe("stream progress: a resumed connection reconciles, and a lossy one says
     expect(delta.cursor).toBe(4);
     expect(delta.streamState).toBe("live");
     expect(delta.missedEvents).toBe(0);
+  });
+
+  it("marks a non-contiguous live delta behind and preserves the last repairable cursor", () => {
+    const start = applyStreamMessage(START, { type: "cockpit_init", seq: 100 });
+    expect(applyStreamMessage(start, { type: "swarm_event", seq: 102 })).toEqual({
+      streamState: "behind",
+      missedEvents: 1,
+      cursor: 100,
+    });
   });
 
   it("ignores a malformed or missing sequence rather than moving the cursor to garbage", () => {

@@ -49,6 +49,8 @@ export interface McpReleasableOptions {
    * would be guessing. The caller resolves the config at assembly time and already has it.
    */
   serverCount: number;
+  /** Current child PIDs that closing an idle connection could terminate. */
+  ownedProcessIds?(): Iterable<number>;
   /**
    * Idle age a connection must reach before it counts as releasable. Passed straight to
    * `closeIdleConnections`, so this adapter does not invent a second idleness rule — the
@@ -85,6 +87,7 @@ export function createMcpConnectionReleasable(options: McpReleasableOptions): Re
     // A stdio MCP server is a child process this process spawned, so giving it up does
     // terminate a process — which is exactly why the registry demands a guard for it.
     terminatesOwnedProcess: true,
+    ownedProcessIds: options.ownedProcessIds,
     describe: () =>
       options.description ??
       `MCP server connections (${liveConnectionCount()} live of ${options.serverCount} configured; idle ones respawn on next use)`,

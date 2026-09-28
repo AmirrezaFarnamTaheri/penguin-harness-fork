@@ -144,6 +144,10 @@ describe("classification: pass-through by default", () => {
       ["tsc --noEmit", "lint"],
       ["tail -200 app.log", "log-dedup"],
       ["cat build.log", "log-dedup"],
+      ['cat "C:\\Program Files\\logs\\build.log"', "log-dedup"],
+      ['echo "pnpm test && git status"', null],
+      ["echo 'git log | cat app.log'", null],
+      ['git log --pretty="%s | %an" && echo "literal && text"', "git-log"],
     ];
     for (const [cmd, expected] of cases) {
       expect(classifyToolOutput("exec_command", { cmd }), cmd).toBe(expected);
@@ -579,6 +583,27 @@ describe("the recall store", () => {
     const stats = archive.recallStats();
     expect(stats.entries).toBe(1);
     expect(stats.dropped.length).toBeLessThanOrEqual(32);
+  });
+
+  it("enforces the aggregate byte limit and keeps the newest fitting entry", async () => {
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(tmp, "output"),
+      recallLimits: { maxEntries: 20, maxTotalBytes: 1_000, maxEntryAgeMs: 60_000 },
+    });
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const saved = await archive.saveRecallEntry("exec_command", `${index}:${"x".repeat(699)}`);
+      if (saved.status !== "saved") throw new Error("expected a saved entry");
+      ids.push(saved.id);
+    }
+
+    const stats = archive.recallStats();
+    expect(stats.bytes).toBeLessThanOrEqual(1_000);
+    expect(stats.entries).toBe(1);
+    expect(stats.dropped.filter((entry) => entry.reason === "bytes").length).toBe(2);
+    expect((await archive.recall(ids[0]!)).status).toBe("dropped");
+    expect((await archive.recall(ids[1]!)).status).toBe("dropped");
+    expect((await archive.recall(ids[2]!)).status).toBe("ok");
   });
 
   it("reports an unknown id as missing rather than inventing content", async () => {

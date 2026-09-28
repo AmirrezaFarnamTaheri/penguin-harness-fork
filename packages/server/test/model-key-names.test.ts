@@ -125,6 +125,27 @@ describe("named key fleets", () => {
     expect(listed.keys[0]!.maskedKey).toBe(fleetMask(KEY_A));
   });
 
+  it("keeps names on the right key when two health masks collide", async () => {
+    const first = "sk-collision-alpha-1234";
+    const second = "sk-collision-bravo-1234";
+    const put = await api.put(`/api/projects/${projectId}/models`, {
+      defaultModel: { provider: "deepseek", modelId: "deepseek-chat" },
+      models: [{ provider: "deepseek", modelId: "deepseek-chat", apiKey: `${first}, ${second}` }],
+    });
+    expect(put.status).toBe(200);
+
+    const before = await health();
+    expect(before.keys.map((key) => key.maskedKey)).toEqual(["sk-...1234", "sk-...1234#2"]);
+    expect((await name(before.keys[0]!.maskedKey, "first")).status).toBe(200);
+    expect((await name(before.keys[1]!.maskedKey, "second")).status).toBe(200);
+
+    const after = await health();
+    expect(after.keys.map((key) => key.name)).toEqual(["first", "second"]);
+    expect(after.keys[0]!.keyId).not.toBe(after.keys[1]!.keyId);
+    expect(JSON.stringify(after)).not.toContain(first);
+    expect(JSON.stringify(after)).not.toContain(second);
+  });
+
   it("the same key under a different model is a different key, with its own name", async () => {
     const other = await api.get(
       `/api/projects/${projectId}/models/keys/health?provider=deepseek&modelId=deepseek-v4`,

@@ -44,7 +44,7 @@ import {
 } from "../db/repos/model-keys.js";
 import { badRequest, notFound } from "../http/validate.js";
 import { HttpError } from "../http/errors.js";
-import { maskApiKey as narrowMaskApiKey } from "./model-key-health.js";
+import { disambiguateKeyMasks, maskApiKey as narrowMaskApiKey } from "./model-key-health.js";
 import { maskApiKey as rowMaskApiKey } from "./project-config-service.js";
 import type { ProjectConfigService } from "./project-config-service.js";
 
@@ -184,8 +184,9 @@ export class ModelKeyNamesService {
     }) as Record<string, unknown> | undefined;
     if (entry === undefined) return [];
     const keys = parseApiKeys((entry.api_keys ?? entry.api_key) as string | string[] | undefined);
+    const narrowMasks = disambiguateKeyMasks(keys, narrowMaskApiKey);
     const used = new Set<string>();
-    return keys.map((key) => {
+    return keys.map((key, index) => {
       const base = fleetMaskApiKey(key);
       let masked = base;
       for (let suffix = 2; used.has(masked); suffix++) masked = `${base}#${suffix}`;
@@ -194,7 +195,7 @@ export class ModelKeyNamesService {
         keyId: keyIdFor(projectId, fleet.provider, fleet.modelId, key),
         key,
         fleetMask: masked,
-        narrowMask: narrowMaskApiKey(key),
+        narrowMask: narrowMasks[index]!,
         rowMask: rowMaskApiKey(key),
       };
     });
@@ -367,10 +368,14 @@ export class ModelKeyNamesService {
     const rows = this.repo.listByProject(projectId);
     const byKeyId = new Map(rows.map((r) => [r.keyId, r] as const));
     const out = new Map<string, KeyAnnotation>();
-    for (const p of pool) {
+    const masks = disambiguateKeyMasks(
+      pool.map((p) => p.key),
+      mask,
+    );
+    for (const [index, p] of pool.entries()) {
       const row = byKeyId.get(p.keyId);
       if (row === undefined) continue;
-      out.set(mask(p.key), {
+      out.set(masks[index]!, {
         keyId: row.keyId,
         name: row.name,
         ...(row.label !== undefined ? { label: row.label } : {}),

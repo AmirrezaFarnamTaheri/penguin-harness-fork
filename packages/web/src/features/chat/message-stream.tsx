@@ -349,11 +349,20 @@ export function MessageStream({
     if (sessionId === undefined) return;
     const previous = restoredForRef.current;
     if (previous === sessionId) return; // already seated in this conversation
+    cancelReturn();
+    lastTopRef.current = null;
     if (previous !== null) scrollMemory.remember(previous, el?.scrollTop ?? 0, follow.stick);
     restoredForRef.current = sessionId;
 
     const remembered = scrollMemory.recall(sessionId);
-    if (el === null || remembered === undefined || remembered.following) return;
+    if (remembered === undefined || remembered.following) {
+      follow.resume();
+      if (el !== null) stickToBottom(el, follow);
+      syncJump();
+      return;
+    }
+    follow.pause();
+    if (el === null) return;
     // The transcript may not have painted yet on a cold open; a restore into a zero-height
     // container is silently discarded by the browser. The commit layout effect above re-snaps
     // on the first growth, and a not-yet-known height is treated as "stay at the top" rather
@@ -365,6 +374,7 @@ export function MessageStream({
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
     });
+    syncJump();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 

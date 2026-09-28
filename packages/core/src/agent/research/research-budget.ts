@@ -39,6 +39,12 @@ export interface ResearchBudgetOptions {
   readonly estimateTokens?: (text: string) => number;
 }
 
+/** Opaque identity for one admitted unit of work. Pass it back exactly once to settle/release. */
+export interface ResearchReservation {
+  readonly id: number;
+  readonly tokens: number;
+}
+
 export interface PhaseSpend {
   readonly phase: ResearchPhase;
   readonly papers: number;
@@ -108,6 +114,8 @@ export class ResearchBudget {
    * mean "what may I still afford" rather than "what have I already paid for".
    */
   private reservedTokens = 0;
+  private nextReservationId = 1;
+  private readonly reservations = new Map<ResearchReservation, number>();
   /**
    * Charges refused because their token figure was not a usable count (negative, `NaN`, or
    * infinite). Counted rather than swallowed: a refused charge leaves the books unchanged, so
@@ -270,11 +278,13 @@ export class ResearchBudget {
    * one's cost. Returns false — and reserves nothing — when the estimate does not fit, which is
    * the caller's signal to decline the work rather than start it and overrun.
    */
-  reserve(estimateTokens: number): boolean {
-    if (!Number.isFinite(estimateTokens) || estimateTokens < 0) return false;
-    if (this.tokens + this.reservedTokens + estimateTokens > this.maxTokens) return false;
+  reserve(estimateTokens: number): ResearchReservation | null {
+    if (!Number.isFinite(estimateTokens) || estimateTokens < 0) return null;
+    if (this.tokens + this.reservedTokens + estimateTokens > this.maxTokens) return null;
     this.reservedTokens += estimateTokens;
-    return true;
+    const reservation = Object.freeze({ id: this.nextReservationId++, tokens: estimateTokens });
+    this.reservations.set(reservation, estimateTokens);
+    return reservation;
   }
 
   /**
@@ -295,15 +305,16 @@ export class ResearchBudget {
    * books, and must not leave the reservation stranded.
    */
   settleReservation(
-    reservedTokens: number,
+    reservation: ResearchReservation,
     actual: {
       tokens?: number;
       text?: string;
       phase?: ResearchPhase;
     } = {},
   ): boolean {
-    if (!Number.isFinite(reservedTokens) || reservedTokens <= 0) return false;
-    if (this.reservedTokens < reservedTokens) return false;
+    const reservedTokens = this.reservations.get(reservation);
+    if (reservedTokens === undefined) return false;
+    this.reservations.delete(reservation);
     this.reservedTokens -= reservedTokens;
     if (actual.phase !== undefined) {
       this.charge(actual.phase, actual);
@@ -314,9 +325,10 @@ export class ResearchBudget {
   }
 
   /** Releases a reservation for work that never ran: declined, aborted, or skipped. */
-  releaseReservation(reservedTokens: number): boolean {
-    if (!Number.isFinite(reservedTokens) || reservedTokens <= 0) return false;
-    if (this.reservedTokens < reservedTokens) return false;
+  releaseReservation(reservation: ResearchReservation): boolean {
+    const reservedTokens = this.reservations.get(reservation);
+    if (reservedTokens === undefined) return false;
+    this.reservations.delete(reservation);
     this.reservedTokens -= reservedTokens;
     return true;
   }
@@ -370,6 +382,7 @@ export class ResearchBudget {
   reset(): void {
     this.abandonedTokens += this.reservedTokens;
     this.reservedTokens = 0;
+    this.reservations.clear();
     this.tokens = 0;
     this.papers = 0;
     this.verifications = 0;
@@ -403,7 +416,7 @@ export class ResearchBudget {
   }
 
   get maxAttempts(): number {
-    return this.maxRetries;
+    return this.maxRetries + 1;
   }
 }
 

@@ -112,10 +112,15 @@ export interface AuditInput {
   /** The rows as they are being reported now. */
   rows: readonly EvalScoredRow[];
   /** The scorer's own output, re-derived for one row from its raw response. */
-  reparse?: (row: EvalScoredRow) => Pick<EvalScoredRow, "outcome" | "numericScore"> | null;
+  reparse: (row: EvalScoredRow) => Pick<EvalScoredRow, "outcome" | "numericScore"> | null;
   /** The dataset and scorer as they are now, for the drift checks. */
-  dataset?: unknown;
-  scorer?: unknown;
+  dataset: unknown;
+  scorer: unknown;
+  /** Current pinned model revision and reporting mode. */
+  modelRevision: string;
+  reporting: string;
+  /** Working directory to read the current checkout from; defaults to the process root. */
+  cwd?: string;
 }
 
 /**
@@ -137,23 +142,30 @@ export function auditEvalRun(input: AuditInput): EvalAuditResult {
   for (const row of rows) {
     if (ids.has(row.caseId)) problems.push(`duplicate case id: ${row.caseId}`);
     ids.add(row.caseId);
+    if (!Number.isFinite(row.numericScore)) {
+      problems.push(`case ${row.caseId} has a non-finite score`);
+    }
     // No partial credit: a case that could not be scored is not a pass, however the tally counts it.
     if (row.error !== undefined) {
       problems.push(`case ${row.caseId} did not complete: ${row.error}`);
     }
   }
 
-  if (input.dataset !== undefined) {
-    const now = hashValue(input.dataset);
-    if (now !== manifest.datasetSha256) {
-      problems.push(`dataset changed: manifest ${manifest.datasetSha256}, now ${now}`);
-    }
+  const datasetNow = hashValue(input.dataset);
+  if (datasetNow !== manifest.datasetSha256) {
+    problems.push(`dataset changed: manifest ${manifest.datasetSha256}, now ${datasetNow}`);
   }
-  if (input.scorer !== undefined) {
-    const now = hashValue(input.scorer);
-    if (now !== manifest.scorerSha256) {
-      problems.push(`scorer changed: manifest ${manifest.scorerSha256}, now ${now}`);
-    }
+  const scorerNow = hashValue(input.scorer);
+  if (scorerNow !== manifest.scorerSha256) {
+    problems.push(`scorer changed: manifest ${manifest.scorerSha256}, now ${scorerNow}`);
+  }
+  if (input.reporting !== manifest.reporting) {
+    problems.push(`reporting mode changed: manifest ${manifest.reporting}, now ${input.reporting}`);
+  }
+  if (!COMMIT_ID.test(input.modelRevision) || input.modelRevision !== manifest.modelRevision) {
+    problems.push(
+      `model revision changed or is unpinned: manifest ${manifest.modelRevision}, now ${input.modelRevision}`,
+    );
   }
 
   // The scored rows themselves, not merely their ids: a score that moved with an unchanged
@@ -165,15 +177,22 @@ export function auditEvalRun(input: AuditInput): EvalAuditResult {
 
   // Re-derive the score from the raw response where the caller can. Catches a scorer whose
   // code was edited but whose recorded output was not regenerated.
-  if (input.reparse !== undefined) {
-    for (const row of rows) {
+  for (const row of rows) {
+    try {
       const derived = input.reparse(row);
-      if (derived === null) continue;
+      if (derived === null) {
+        problems.push(`case ${row.caseId} could not be re-derived from its raw response`);
+        continue;
+      }
       if (derived.outcome !== row.outcome || derived.numericScore !== row.numericScore) {
         problems.push(
           `case ${row.caseId} does not re-derive: recorded ${row.outcome}/${row.numericScore}, replay ${derived.outcome}/${derived.numericScore}`,
         );
       }
+    } catch (error) {
+      problems.push(
+        `case ${row.caseId} could not be re-derived: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -182,6 +201,14 @@ export function auditEvalRun(input: AuditInput): EvalAuditResult {
   }
   if (manifest.repoCommit !== null && !COMMIT_ID.test(manifest.repoCommit)) {
     problems.push(`repository revision is not a commit id: ${manifest.repoCommit}`);
+  }
+  const currentRepoCommit = readCheckout(input.cwd ?? process.cwd()).commit;
+  if (manifest.repoCommit === null || currentRepoCommit === null) {
+    problems.push("repository revision could not be verified in the current checkout");
+  } else if (currentRepoCommit !== manifest.repoCommit) {
+    problems.push(
+      `repository revision changed: manifest ${manifest.repoCommit}, now ${currentRepoCommit}`,
+    );
   }
 
   return { ok: problems.length === 0, problems };

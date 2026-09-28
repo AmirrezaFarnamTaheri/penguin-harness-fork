@@ -113,6 +113,8 @@ const OVERSIZE_MESSAGE = (size: number): string =>
 
 const OVERPIXEL_MESSAGE = (width: number, height: number): string =>
   `Image too large to decode: ${width} x ${height} (${Math.round(pixelCount({ width, height }) / 1_000_000)} megapixels) exceeds the ${Math.round(MAX_IMAGE_PIXELS / 1_000_000)} megapixel limit. Shrink or resample it first.`;
+const UNKNOWN_DIMENSIONS_MESSAGE =
+  "Image dimensions could not be verified; refusing to pass an image with an unreadable header to a decoder.";
 
 /**
  * The decode-bomb guard, run on every image that already passed the byte and mime checks.
@@ -120,9 +122,17 @@ const OVERPIXEL_MESSAGE = (width: number, height: number): string =>
  * could not be read — an unreadable header is not evidence of a small image, but it is also not
  * proof of a bomb, and the byte cap still applies to it.
  */
-export function checkImagePixelCount(bytes: Buffer): string | null {
+export function checkImagePixelCount(bytes: Buffer, mime?: string): string | null {
   const dimensions = imageDimensions(bytes);
-  if (dimensions === null) return null;
+  const normalizedMime = mime?.split(";", 1)[0]?.trim().toLowerCase();
+  // A supported MIME reaches this boundary only after the caller's type check. Unknown size
+  // cannot be treated as small: the downstream decoder is exactly where a decompression bomb
+  // would allocate its pixels.
+  if (dimensions === null) {
+    return normalizedMime !== undefined && SUPPORTED_MIMES.has(normalizedMime)
+      ? UNKNOWN_DIMENSIONS_MESSAGE
+      : null;
+  }
   if (pixelCount(dimensions) <= MAX_IMAGE_PIXELS) return null;
   return OVERPIXEL_MESSAGE(dimensions.width, dimensions.height);
 }
@@ -244,7 +254,7 @@ export async function loadImage(
   // Last, because it is the only check that needs the bytes AND an accepted type: a file that
   // is not an image we support has no frame header to read, and reading one anyway would refuse
   // files for the wrong reason.
-  const overPixels = checkImagePixelCount(bytes);
+  const overPixels = checkImagePixelCount(bytes, mime);
   if (overPixels !== null) {
     return { ok: false, reason: "failed", message: overPixels };
   }

@@ -4,7 +4,6 @@
  * reference resolution (full id / unique fragment / ambiguity).
  */
 import fs from "node:fs";
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -21,6 +20,7 @@ import {
 } from "../src/client.js";
 import { getMessages } from "../src/i18n.js";
 import { FakeServer } from "./fake-server.js";
+import { startIdentityServer } from "./instance-server.js";
 
 const t = getMessages("en");
 
@@ -79,10 +79,9 @@ describe("connection resolution", () => {
   it("a live server.lock on the data root resolves to http://localhost:<port>", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-cli-lock-"));
     process.env.PENGUIN_HOME = root;
-    // Liveness needs a real pid AND an accepting port: use this process and a real listener.
-    const listener = net.createServer();
-    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
-    const port = (listener.address() as net.AddressInfo).port;
+    // Credential-bearing discovery requires the process to identify the data root too.
+    const listener = await startIdentityServer(root);
+    const { port } = listener;
     fs.writeFileSync(
       path.join(root, "server.lock"),
       `${JSON.stringify({ pid: process.pid, port, startedAt: "now" })}\n`,
@@ -92,7 +91,7 @@ describe("connection resolution", () => {
       expect(conn.baseUrl).toBe(`http://localhost:${port}`);
       expect(conn.autoStarted).toBe(false);
     } finally {
-      listener.close();
+      await listener.close();
       fs.rmSync(root, { recursive: true, force: true });
     }
   });

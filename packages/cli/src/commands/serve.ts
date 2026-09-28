@@ -113,7 +113,7 @@ export function cliEntryFor(argv1: string | undefined): string | null {
  * DIFFERENT root is untouched. See @prismshadow/penguin-server/lock.
  */
 async function existingInstanceUrl(): Promise<string | null> {
-  const lock = await liveServerLock(resolveRoot());
+  const lock = await liveServerLock(resolveRoot(), { requireIdentity: true });
   return lock === null ? null : `http://localhost:${lock.port}/`;
 }
 

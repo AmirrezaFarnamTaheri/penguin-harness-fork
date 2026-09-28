@@ -457,6 +457,7 @@ export function Sidebar({
    */
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [selectionMode, setSelectionMode] = useState(false);
+  const batchArchiveBusy = useRef(false);
   /** The scroll area, so the selection can ask the DOM which rows are on screen and in what order. */
   const listRef = useRef<HTMLDivElement | null>(null);
   /** Row sort mode ("recent" default / "manual" drag order; the choice persists across sessions like the grouping mode). */
@@ -1090,8 +1091,10 @@ export function Sidebar({
    * the other thirty-nine — the succeeded ones are replaced in the store as they land.
    */
   const batchArchive = async (archived: boolean) => {
+    if (batchArchiveBusy.current) return;
     const ids = selectedIds();
     if (ids.length === 0) return;
+    batchArchiveBusy.current = true;
     // Same courtesy the single-row path extends: the conversation that is open right now
     // must not silently vanish behind a closed folder with no way back.
     if (archived && activeSessionId !== null && ids.includes(activeSessionId)) {
@@ -1100,14 +1103,32 @@ export function Sidebar({
         setOpenFolders((prev) => new Set(prev).add(folderKey(sessionGroupKey(open), "archived")));
       }
     }
-    const results = await Promise.allSettled(
-      ids.map((id) => api.patchSession(id, { archived }).then((res) => res.session)),
-    );
-    for (const result of results) if (result.status === "fulfilled") replace(result.value);
-    // A row archived away is no longer in its group's active list, so the mark would be
-    // pruned by the next interaction anyway; clearing now keeps the bar from reporting a
-    // count the user can no longer see, and returns the rows to being links.
-    clearSelection();
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.patchSession(id, { archived }).then((res) => res.session)),
+      );
+      const succeeded = new Set<string>();
+      for (const [index, result] of results.entries()) {
+        if (result.status !== "fulfilled") continue;
+        replace(result.value);
+        const id = ids[index];
+        if (id !== undefined) succeeded.add(id);
+      }
+      const failed = ids.length - succeeded.size;
+      if (failed > 0) {
+        // Keep failed rows marked for retry, including any new marks made while requests ran.
+        setSelection((prev) => ({
+          selected: new Set([...prev.selected].filter((id) => !succeeded.has(id))),
+          anchor: null,
+        }));
+        toastError(S.chat.batchArchiveFailed(failed, ids.length, archived));
+      } else {
+        // Successful rows may have moved into a different folder; return them to links.
+        clearSelection();
+      }
+    } finally {
+      batchArchiveBusy.current = false;
+    }
   };
 
   const confirmRename = async () => {

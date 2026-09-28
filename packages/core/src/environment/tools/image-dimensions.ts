@@ -69,12 +69,20 @@ function gifDimensions(buf: Buffer): ImageDimensions | null {
 function jpegDimensions(buf: Buffer): ImageDimensions | null {
   if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
   let at = 2;
-  while (at + 4 <= buf.length) {
+  while (at < buf.length) {
     if (buf[at] !== 0xff) {
       at += 1; // Resynchronise: a stray fill byte between segments is legal.
       continue;
     }
-    const marker = buf[at + 1]!;
+    // JPEG allows any number of 0xff fill bytes before the marker code. Read the final
+    // marker byte, not the first fill byte, or the next fill byte is misread as a segment
+    // length and the frame dimensions can be skipped.
+    while (at < buf.length && buf[at] === 0xff) at += 1;
+    if (at >= buf.length) return null;
+    const markerAt = at;
+    const marker = buf[markerAt]!;
+    at += 1;
+    if (marker === 0x00) continue; // stuffed 0xff in entropy data
     // Standalone markers carry no length: SOI, EOI, TEM, and RSTn.
     if (
       marker === 0xd8 ||
@@ -82,10 +90,9 @@ function jpegDimensions(buf: Buffer): ImageDimensions | null {
       marker === 0x01 ||
       (marker >= 0xd0 && marker <= 0xd7)
     ) {
-      at += 2;
       continue;
     }
-    const length = u16be(buf, at + 2);
+    const length = u16be(buf, markerAt + 1);
     if (length === null || length < 2) return null;
     const isFrame =
       marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
@@ -93,9 +100,9 @@ function jpegDimensions(buf: Buffer): ImageDimensions | null {
       // A frame header is: precision(1) height(2) width(2) — after the marker's own length.
       // JPEG stores HEIGHT before width in the frame header — the reverse of the order the
       // fields are read, which is exactly the kind of swap a header parser gets wrong.
-      return dimensions(u16be(buf, at + 7), u16be(buf, at + 5));
+      return dimensions(u16be(buf, markerAt + 6), u16be(buf, markerAt + 4));
     }
-    at += 2 + length;
+    at = markerAt + 1 + length;
   }
   return null;
 }

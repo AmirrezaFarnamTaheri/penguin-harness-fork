@@ -67,7 +67,8 @@ describe("reservations are part of what is affordable", () => {
     const b = budget({ maxTokens: 100 });
     expect(b.canSpendTokens(100)).toBe(true);
 
-    expect(b.reserve(100)).toBe(true); // everything is now committed
+    const reservation = b.reserve(100);
+    expect(reservation).not.toBeNull(); // everything is now committed
     expect(b.remainingTokens).toBe(0);
     expect(b.canSpendTokens(1)).toBe(false);
     expect(b.canSpendTokens(100)).toBe(false);
@@ -75,9 +76,9 @@ describe("reservations are part of what is affordable", () => {
 
   it("lets a settled reservation hand its cost back to the ledger", () => {
     const b = budget({ maxTokens: 100 });
-    b.reserve(100);
+    const reservation = b.reserve(100)!;
     expect(b.canSpendTokens(1)).toBe(false);
-    expect(b.settleReservation(100, { tokens: 20 })).toBe(true);
+    expect(b.settleReservation(reservation, { tokens: 20 })).toBe(true);
     expect(b.canSpendTokens(80)).toBe(true);
   });
 
@@ -100,9 +101,9 @@ describe("reservations are part of what is affordable", () => {
 
   it("settles a reservation at most once", () => {
     const b = budget({ maxTokens: 100 });
-    b.reserve(50);
-    expect(b.settleReservation(50, { tokens: 10 })).toBe(true);
-    expect(b.settleReservation(50, { tokens: 10 })).toBe(false);
+    const reservation = b.reserve(50)!;
+    expect(b.settleReservation(reservation, { tokens: 10 })).toBe(true);
+    expect(b.settleReservation(reservation, { tokens: 10 })).toBe(false);
     expect(b.tokensSpent).toBe(10);
   });
 });
@@ -113,7 +114,7 @@ describe("a task boundary with calls still in flight", () => {
     // a budget the previous one had already promised away, and when the in-flight call settled it
     // would charge the NEW task's books — task A's spend landing in task B's totals.
     const b = budget({ maxTokens: 1_000 });
-    b.reserve(300);
+    const reservation = b.reserve(300)!;
     b.charge("fetching", { tokens: 50 });
     expect(b.tokensSpent).toBe(50);
     expect(b.reservedTokenCount).toBe(300);
@@ -131,9 +132,9 @@ describe("a task boundary with calls still in flight", () => {
   it("does not double-charge when an abandoned reservation's owner settles late", () => {
     // The reservation was already charged at reset, so the late settle must not charge again.
     const b = budget({ maxTokens: 1_000 });
-    b.reserve(300);
+    const reservation = b.reserve(300)!;
     b.reset();
-    expect(b.settleReservation(300, { tokens: 280 })).toBe(false);
+    expect(b.settleReservation(reservation, { tokens: 280 })).toBe(false);
     expect(b.tokensSpent).toBe(0);
   });
 

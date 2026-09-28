@@ -6,24 +6,25 @@
  * can pass the check four times before the first of them reports anything. A budget that is
  * checked but not enforced this way is a number in a settings page, not a ceiling.
  *
- * So an admitted call RESERVES its cost before it starts, and the reservation is replaced by
- * the actual figure when usage lands. The invariant, which is the whole point:
+ * So an admitted call RESERVES its expected cost before it starts, and the reservation is replaced by
+ * the actual figure when usage lands. This is an admission guard, not a hard provider-side cap:
+ * a request that costs more than its estimate can still push actual spend past the limit.
  *
- *     spent + reserved never exceeds the limit, at any moment, for any interleaving.
+ *     expected spend + live reservations never exceeds the limit at admission time.
  *
  * Two properties that a "just track the total" version gets wrong, both handled here:
  * - settle and cancel are one-shot per call. A usage event delivered twice (a replayed Trace, a
  *   reconnect) releases the reservation once and adds the real cost once; the second delivery
  *   is counted and refused rather than silently doubling the spend or leaking a reservation.
  * - a call that never resolves — the process restarted, the connection dropped, the agent was
- *   aborted — must not hold its reservation forever. The oldest reservations are reclaimed past
- *   a TTL, which is the one way this can under-count, and under-counting is the safe direction:
- *   a reclaimed slot admits one more call than the reservation would have.
+ *   aborted — must not hold a concurrency slot forever. The reserved estimate is conservatively
+ *   charged at TTL/cap reclamation. A bounded tombstone lets a later settlement replace that
+ *   estimate with the actual amount.
  */
 export interface SpendCeilingOptions {
-  /** Total spend this ceiling allows, in USD. Must be positive. */
+  /** Total spend this admission guard allows, in USD. Must be finite and positive. */
   limitUsd: number;
-  /** What one call is assumed to cost while in flight. Must be positive. */
+  /** What one call is assumed to cost while in flight. Must be finite, positive, and <= limitUsd. */
   reserveUsd: number;
   /** Injected clock; the TTL below is measured with it. */
   now?: () => number;
@@ -51,7 +52,7 @@ export interface SpendSnapshot {
   /** What a new call could reserve right now (0 when the ceiling is reached). */
   readonly availableUsd: number;
   readonly inFlight: number;
-  /** Reservations dropped because nothing settled them. */
+  /** Expired/evicted reservations whose estimate was conservatively charged. */
   readonly reclaimed: number;
   /**
    * Settlements charged at their reserved amount because the reported cost was not a usable
@@ -73,6 +74,8 @@ const DEFAULT_MAX_RESERVATIONS = 1000;
 export class SpendCeiling {
   private spentUsd = 0;
   private reservations = new Map<string, Reservation>();
+  /** Expired reservations whose estimate is already charged, retained for late reconciliation. */
+  private reclaimedReservations = new Map<string, Reservation>();
   /**
    * Sum of every live reservation, maintained incrementally.
    *
@@ -92,11 +95,24 @@ export class SpendCeiling {
   private readonly maxReservations: number;
 
   constructor(private readonly options: SpendCeilingOptions) {
-    if (!(options.limitUsd > 0)) throw new Error("limitUsd must be positive");
-    if (!(options.reserveUsd > 0)) throw new Error("reserveUsd must be positive");
+    if (!Number.isFinite(options.limitUsd) || !(options.limitUsd > 0)) {
+      throw new Error("limitUsd must be finite and positive");
+    }
+    if (!Number.isFinite(options.reserveUsd) || !(options.reserveUsd > 0)) {
+      throw new Error("reserveUsd must be finite and positive");
+    }
+    if (options.reserveUsd > options.limitUsd) {
+      throw new Error("reserveUsd must not exceed limitUsd");
+    }
     this.now = options.now ?? Date.now;
     this.reservationTtlMs = options.reservationTtlMs ?? DEFAULT_TTL_MS;
     this.maxReservations = options.maxReservations ?? DEFAULT_MAX_RESERVATIONS;
+    if (!Number.isFinite(this.reservationTtlMs) || this.reservationTtlMs <= 0) {
+      throw new Error("reservationTtlMs must be finite and positive");
+    }
+    if (!Number.isSafeInteger(this.maxReservations) || this.maxReservations <= 0) {
+      throw new Error("maxReservations must be a positive safe integer");
+    }
   }
 
   /**
@@ -107,11 +123,9 @@ export class SpendCeiling {
   admit(idHint?: string): AdmitResult {
     this.reclaimExpired();
     if (this.reservations.size >= this.maxReservations) {
-      // The oldest reservation is dropped rather than refusing: refusing here would mean an
-      // agent that leaked reservations could never call anything again, which is a worse failure
-      // than slightly loose accounting.
+      // Keep memory bounded and release the in-flight slot, but retain the estimate as spend.
       const oldest = this.reservations.keys().next().value;
-      if (oldest !== undefined && this.dropReservation(oldest)) this.reclaimedCount += 1;
+      if (oldest !== undefined) this.reclaim(oldest);
     }
     if (this.spentUsd + this.reservedTotalUsd + this.options.reserveUsd > this.options.limitUsd) {
       return {
@@ -144,10 +158,14 @@ export class SpendCeiling {
   /** The hinted id, or the next free suffixed form of it when that id is already reserved. */
   private uniqueId(idHint?: string): string {
     const base = idHint ?? `reservation-${this.sequence}`;
-    if (!this.reservations.has(base)) return base;
+    if (!this.hasReservation(base)) return base;
     let n = 2;
-    while (this.reservations.has(`${base}#${n}`)) n += 1;
+    while (this.hasReservation(`${base}#${n}`)) n += 1;
     return `${base}#${n}`;
+  }
+
+  private hasReservation(id: string): boolean {
+    return this.reservations.has(id) || this.reclaimedReservations.has(id);
   }
 
   /** Removes one reservation and keeps the running reserved total in step. */
@@ -174,15 +192,20 @@ export class SpendCeiling {
    * {@link SpendSnapshot.uncertainSettlements} records that it was not a measurement.
    */
   settle(reservationId: string, actualUsd: number): boolean {
-    const reservation = this.reservations.get(reservationId);
+    const active = this.reservations.get(reservationId);
+    const wasReclaimed = active === undefined;
+    const reservation = active ?? this.reclaimedReservations.get(reservationId);
     if (reservation === undefined) return false;
-    this.dropReservation(reservationId);
+    if (wasReclaimed) this.reclaimedReservations.delete(reservationId);
+    else this.dropReservation(reservationId);
     if (typeof actualUsd !== "number" || !Number.isFinite(actualUsd)) {
       this.uncertainSettlements += 1;
-      this.spentUsd += reservation.amountUsd;
+      if (!wasReclaimed) this.spentUsd += reservation.amountUsd;
       return true;
     }
-    this.spentUsd += Math.max(0, actualUsd);
+    const actual = Math.max(0, actualUsd);
+    if (wasReclaimed) this.spentUsd += actual - reservation.amountUsd;
+    else this.spentUsd += actual;
     return true;
   }
 
@@ -205,8 +228,8 @@ export class SpendCeiling {
   }
 
   /**
-   * Drops reservations nothing has settled. Under-counting is the safe direction here: a freed
-   * slot admits one more call, it never suppresses one.
+   * Releases a stale in-flight slot while conservatively charging its estimate. A bounded
+   * tombstone allows a late usage record to reconcile estimate to actual rather than losing it.
    *
    * A clock that jumps backwards (an NTP step, a suspended laptop) makes `now - startedMs`
    * negative, which compares as "not yet expired" — so nothing expires and reservations are held
@@ -214,15 +237,27 @@ export class SpendCeiling {
    * ceiling permanently: the `maxReservations` bound in `admit` evicts the oldest regardless of
    * age, so a stalled clock costs throughput rather than correctness. No clamp is applied here
    * because a backwards step is indistinguishable from a reservation taken microseconds ago, and
-   * treating the latter as expired would under-count real in-flight work.
+   * expiring the latter early would charge expected spend before its TTL.
    */
   private reclaimExpired(): void {
     const now = this.now();
     for (const [id, reservation] of this.reservations) {
       if (now - reservation.startedMs >= this.reservationTtlMs) {
-        this.dropReservation(id);
-        this.reclaimedCount += 1;
+        this.reclaim(id);
       }
+    }
+  }
+
+  private reclaim(id: string): void {
+    const reservation = this.reservations.get(id);
+    if (reservation === undefined || !this.dropReservation(id)) return;
+    this.spentUsd += reservation.amountUsd;
+    this.reclaimedReservations.set(id, reservation);
+    this.reclaimedCount += 1;
+    while (this.reclaimedReservations.size > this.maxReservations) {
+      const oldestReclaimed = this.reclaimedReservations.keys().next().value;
+      if (oldestReclaimed === undefined) break;
+      this.reclaimedReservations.delete(oldestReclaimed);
     }
   }
 }

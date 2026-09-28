@@ -39,6 +39,21 @@ export function maskApiKey(key: string): string {
   return `${prefix}...${suffix}`;
 }
 
+/** Preserve each key's order while making otherwise identical display masks addressable. */
+export function disambiguateKeyMasks(
+  keys: readonly string[],
+  mask: (key: string) => string,
+): string[] {
+  const used = new Set<string>();
+  return keys.map((key) => {
+    const base = mask(key);
+    let display = base;
+    for (let suffix = 2; used.has(display); suffix++) display = `${base}#${suffix}`;
+    used.add(display);
+    return display;
+  });
+}
+
 export class ModelKeyHealthService {
   /**
    * Normalizes a model reference string or object (provider/modelId) into a canonical key scoped by projectId.
@@ -91,11 +106,15 @@ export class ModelKeyHealthService {
     const rotator = KeyRotatorRegistry.get(scope);
     const now = Date.now();
     const statuses = rotator.getStatus();
+    const displayMasks = disambiguateKeyMasks(
+      statuses.map((status) => status.key),
+      maskApiKey,
+    );
     let healthyCount = 0;
     let cooldownCount = 0;
     let evictedCount = 0;
 
-    const items: KeyHealthItem[] = statuses.map((s: KeyStatus) => {
+    const items: KeyHealthItem[] = statuses.map((s: KeyStatus, index) => {
       let status: KeyHealth = "healthy";
       let cooldownRemainingMs = 0;
 
@@ -111,7 +130,7 @@ export class ModelKeyHealthService {
       }
 
       return {
-        maskedKey: maskApiKey(s.key),
+        maskedKey: displayMasks[index]!,
         status,
         isFailed: s.isFailed,
         cooldownRemainingMs,

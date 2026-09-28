@@ -362,7 +362,7 @@ export class JevSurfaceAdvisor {
    * wait on — or be broken by — a provider.
    */
   notify(input: JevSurfaceFacts & { key: string; signal?: AbortSignal }): void {
-    const key = `${input.surface} ${input.key}`;
+    const key = `${input.surface}\0${input.key}`;
     if (this.pending.has(key)) {
       this.activity?.recordSurfaceDropped(input.surface, "coalesced");
       return;

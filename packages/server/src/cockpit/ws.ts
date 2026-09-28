@@ -53,10 +53,9 @@ function safeSend(ws: WebSocket, payload: string): void {
  * from the traffic it already receives, and a client that reconnects can name where it stopped.
  */
 function publish(runtime: ProjectCockpitRuntime, event: Record<string, unknown>): void {
-  const seq = runtime.eventLog.publish(JSON.stringify(event));
-  const payload = JSON.stringify({ ...event, seq });
+  const entry = runtime.eventLog.publishStamped((seq) => JSON.stringify({ ...event, seq }));
   for (const client of runtime.clients) {
-    safeSend(client, payload);
+    safeSend(client, entry.payload);
   }
 }
 
@@ -623,6 +622,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const projectId =
       url.searchParams.get("project") || url.searchParams.get("projectId") || DEFAULT_PROJECT_ID;
     const since = parseSince(url);
+    const requestedGeneration = url.searchParams.get("generation");
 
     if (deps.projectService && authedUser) {
       try {
@@ -644,7 +644,10 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       // events it missed, and the client's applied order would be inverted. Synchronous send,
       // then register: every later event is newer than everything sent so far, always.
       if (since !== undefined) {
-        const replay = runtime.eventLog.since(since);
+        const sameGeneration = requestedGeneration === runtime.eventLog.generation;
+        const replay = sameGeneration
+          ? runtime.eventLog.since(since)
+          : { entries: [], gap: true, missed: null, cursor: runtime.eventLog.cursor };
         if (replay.gap) {
           // The cursor fell out of the bounded window. Say so explicitly and resync from
           // state: a client told "you are behind" plus a fresh snapshot is honest, where a
@@ -654,9 +657,10 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             JSON.stringify({
               type: "cockpit_stream_gap",
               projectId,
+              generation: runtime.eventLog.generation,
               missed: replay.missed,
               cursor: replay.cursor,
-              reason: "outside_replay_window",
+              reason: sameGeneration ? "outside_replay_window" : "stream_generation_changed",
               timestamp: Date.now(),
             }),
           );
@@ -672,6 +676,7 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
             JSON.stringify({
               type: "cockpit_resume",
               projectId,
+              generation: runtime.eventLog.generation,
               replayed: replay.entries.length,
               missed: replay.missed,
               cursor: replay.cursor,
@@ -692,7 +697,14 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
         runtime.codeGraphWatcher,
         projectId,
       );
-      safeSend(ws, JSON.stringify({ ...snapshot, seq: runtime.eventLog.cursor }));
+      safeSend(
+        ws,
+        JSON.stringify({
+          ...snapshot,
+          seq: runtime.eventLog.cursor,
+          generation: runtime.eventLog.generation,
+        }),
+      );
 
       runtime.clients.add(ws);
 

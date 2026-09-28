@@ -151,8 +151,12 @@ interface Counters {
   waitTimedOut: number;
   /** Reached a settled in-flight run that failed, and ran the work itself instead. */
   joinedFailureNotInherited: number;
+  /** A joined run failed its post-run freshness check, so the caller ran its own work. */
+  joinedStaleNotInherited: number;
   /** A result whose tree moved while it ran, so it was discarded instead of retained. */
   discardedTreeMovedDuringRun: number;
+  /** The registry was invalidated while a run was active, so its answer was not cached. */
+  discardedInvalidatedDuringRun: number;
   /** A failure that was run and deliberately not retained, because `shareFailures` is off. */
   failuresNotRetained: number;
   /** A run the caller asked not to have retained (`cacheResult: false`). */
@@ -209,7 +213,13 @@ export interface ShareStats {
 }
 
 type FlightResult<T> =
-  | { readonly status: "ok"; readonly outcome: OperationOutcome<T>; readonly durationMs: number }
+  | {
+      readonly status: "ok";
+      readonly outcome: OperationOutcome<T>;
+      readonly durationMs: number;
+      readonly fresh: boolean;
+      readonly generation: number;
+    }
   | { readonly status: "error"; readonly error: unknown; readonly durationMs: number };
 
 interface Flight {
@@ -287,6 +297,7 @@ export class OperationShareRegistry {
   private readonly completed = new Map<string, CompletedEntry>();
   private readonly flights = new Map<string, Flight[]>();
   private completedBytes = 0;
+  private invalidationGeneration = 0;
   private counters: Counters = {
     calls: 0,
     ran: 0,
@@ -297,7 +308,9 @@ export class OperationShareRegistry {
     concurrencyCapHit: 0,
     waitTimedOut: 0,
     joinedFailureNotInherited: 0,
+    joinedStaleNotInherited: 0,
     discardedTreeMovedDuringRun: 0,
+    discardedInvalidatedDuringRun: 0,
     failuresNotRetained: 0,
     notRetainedByCaller: 0,
     errors: 0,
@@ -409,7 +422,12 @@ export class OperationShareRegistry {
           this.counters.waitTimedOut += 1;
         } else {
           const result = settled.value;
-          if (result.status === "ok" && (!result.outcome.failed || this.shareFailures)) {
+          if (
+            result.status === "ok" &&
+            result.fresh &&
+            result.generation === this.invalidationGeneration &&
+            (!result.outcome.failed || this.shareFailures)
+          ) {
             this.counters.joined += 1;
             this.counters.byProgram[decision.program] =
               (this.counters.byProgram[decision.program] ?? 0) + 1;
@@ -428,7 +446,14 @@ export class OperationShareRegistry {
               stored: true,
             };
           }
-          this.counters.joinedFailureNotInherited += 1;
+          if (
+            result.status === "ok" &&
+            (!result.fresh || result.generation !== this.invalidationGeneration)
+          ) {
+            this.counters.joinedStaleNotInherited += 1;
+          } else {
+            this.counters.joinedFailureNotInherited += 1;
+          }
         }
       }
     }
@@ -502,10 +527,33 @@ export class OperationShareRegistry {
   }): Promise<SharedRun<T>> {
     const { key, program, dependencies, execute, fingerprintHex, flights } = options;
     const startedAt = this.now();
+    const generation = this.invalidationGeneration;
     const runOnce = async (): Promise<FlightResult<T>> => {
       try {
         const outcome = await execute();
-        return { status: "ok", outcome, durationMs: this.now() - startedAt };
+        const durationMs = this.now() - startedAt;
+        // A waiter must not see the result until the owner's freshness proof is complete.
+        // Otherwise it can inherit a verdict for a tree that changed during execution.
+        let fingerprintFresh = false;
+        try {
+          const after = await fingerprintOperation(dependencies);
+          this.counters.fingerprints += 1;
+          fingerprintFresh = after.ok && after.hex === fingerprintHex;
+          if (after.ok && after.hex !== fingerprintHex) {
+            this.counters.discardedTreeMovedDuringRun += 1;
+          }
+        } catch {
+          this.counters.fingerprints += 1;
+        }
+        const sameGeneration = generation === this.invalidationGeneration;
+        if (!sameGeneration) this.counters.discardedInvalidatedDuringRun += 1;
+        return {
+          status: "ok",
+          outcome,
+          durationMs,
+          fresh: fingerprintFresh && sameGeneration,
+          generation,
+        };
       } catch (error) {
         return { status: "error", error, durationMs: this.now() - startedAt };
       }
@@ -542,24 +590,17 @@ export class OperationShareRegistry {
 
     this.counters.ran += 1;
     const outcome = settled.outcome;
-    // The post-run re-read. Keying catches "the tree changed before the second caller asked";
-    // this catches "the tree changed while the run was happening", which no amount of keying can
-    // see from the outside.
-    const after = await fingerprintOperation(dependencies);
-    this.counters.fingerprints += 1;
-    let stored = false;
-    if (after.ok && after.hex !== fingerprintHex) {
-      this.counters.discardedTreeMovedDuringRun += 1;
-    } else {
-      stored = this.retain({
-        key,
-        program,
-        outcome,
-        durationMs: settled.durationMs,
-        now: this.now(),
-        enabled: options.retain,
-      });
-    }
+    const stored =
+      settled.fresh && generation === this.invalidationGeneration
+        ? this.retain({
+            key,
+            program,
+            outcome,
+            durationMs: settled.durationMs,
+            now: this.now(),
+            enabled: options.retain,
+          })
+        : false;
     return {
       outcome: "RAN",
       value: outcome.value,
@@ -609,6 +650,7 @@ export class OperationShareRegistry {
       this.counters.failuresNotRetained += 1;
       return false;
     }
+    if (this.limits.maxEntries <= 0) return false;
     if (outcome.bytes > this.limits.maxEntryBytes || outcome.bytes > this.limits.maxTotalBytes) {
       this.counters.evictions.count += 1;
       this.counters.evictions.oversize += 1;
@@ -619,14 +661,8 @@ export class OperationShareRegistry {
 
     const existing = this.completed.get(key);
     if (existing !== undefined) {
+      this.completed.delete(key);
       this.completedBytes -= existing.bytes;
-      existing.value = outcome.value;
-      existing.failed = failed;
-      existing.durationMs = durationMs;
-      existing.lastUsedAt = now;
-      existing.hits += 1;
-      this.completedBytes += existing.bytes;
-      return true;
     }
 
     while (
@@ -638,9 +674,9 @@ export class OperationShareRegistry {
     this.completed.set(key, {
       key,
       program,
-      createdAt: now,
+      createdAt: existing?.createdAt ?? now,
       lastUsedAt: now,
-      hits: 0,
+      hits: existing === undefined ? 0 : existing.hits + 1,
       bytes: outcome.bytes,
       durationMs,
       value: outcome.value,
@@ -694,6 +730,7 @@ export class OperationShareRegistry {
    * that run's result, and cancelling it would convert a shared answer into a hung agent.
    */
   invalidateAll(): number {
+    this.invalidationGeneration += 1;
     const dropped = this.completed.size;
     this.completed.clear();
     this.completedBytes = 0;
@@ -727,6 +764,7 @@ export class OperationShareRegistry {
 
   /** Clears retained results, in-flight registrations and counters. */
   reset(): void {
+    this.invalidationGeneration += 1;
     this.completed.clear();
     this.flights.clear();
     this.completedBytes = 0;
@@ -740,7 +778,9 @@ export class OperationShareRegistry {
       concurrencyCapHit: 0,
       waitTimedOut: 0,
       joinedFailureNotInherited: 0,
+      joinedStaleNotInherited: 0,
       discardedTreeMovedDuringRun: 0,
+      discardedInvalidatedDuringRun: 0,
       failuresNotRetained: 0,
       notRetainedByCaller: 0,
       errors: 0,

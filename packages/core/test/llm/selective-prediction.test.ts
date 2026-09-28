@@ -8,10 +8,11 @@ import {
   type ScoredDecision,
 } from "../../src/llm/selective-prediction.js";
 
-const d = (id: string, confidence: number, correct: boolean): ScoredDecision => ({
+const d = (id: string, confidence: number, correct: boolean, label?: string): ScoredDecision => ({
   id,
   confidence,
   correct,
+  ...(label === undefined ? {} : { label }),
 });
 
 describe("risk-coverage curve", () => {
@@ -31,6 +32,8 @@ describe("risk-coverage curve", () => {
     const first = riskCoverageCurve([d("x", 0.5, true), d("y", 0.5, false)]);
     const second = riskCoverageCurve([d("y", 0.5, false), d("x", 0.5, true)]);
     expect(first.order.map((o) => o.id)).toEqual(second.order.map((o) => o.id));
+    expect(first.acceptedCounts).toEqual([2]);
+    expect(first.thresholds).toEqual([0.5]);
   });
 });
 
@@ -54,6 +57,7 @@ describe("selective threshold", () => {
   it("answers nothing rather than a set that fails the budget, and says so", () => {
     const verdict = selectThreshold([d("a", 0.2, false), d("b", 0.1, false)], {
       errorBudget: 0.05,
+      confidenceFloor: 0,
     });
     expect(verdict.overBudget).toBe(true);
     // The single most confident item is still answered rather than abstaining from everything —
@@ -68,19 +72,55 @@ describe("selective threshold", () => {
       confidenceFloor: 0.5,
     });
     expect(verdict.unknown).toBe(1);
+    expect(verdict.coverage).toBe(0.5);
+    expect(verdict.threshold).toBe(0.95);
+  });
+
+  it("does not let a smaller valid prefix violate minAccepted", () => {
+    const verdict = selectThreshold([d("a", 0.9, true), d("b", 0.8, false), d("c", 0.7, false)], {
+      errorBudget: 0,
+      minAccepted: 2,
+    });
+    expect(verdict.coverage).toBeCloseTo(2 / 3, 6);
+    expect(verdict.threshold).toBe(0.8);
+    expect(verdict.overBudget).toBe(true);
+    expect(verdict.minAcceptedMet).toBe(true);
+  });
+
+  it("does not report a scalar threshold that splits equal-confidence decisions", () => {
+    const decisions = [d("a", 0.9, true), d("b", 0.8, true), d("c", 0.8, false)];
+    const verdict = selectThreshold(decisions, { errorBudget: 0.34 });
+    const selected = decisions.filter(
+      (decision) => decision.confidence >= verdict.threshold!,
+    ).length;
+    expect(verdict.coverage * verdict.total).toBe(selected);
+    expect(verdict.threshold).toBe(0.8);
+  });
+
+  it("reports per-label metrics only when labels are supplied", () => {
+    const verdict = selectThreshold([d("one", 0.9, true, "read"), d("two", 0.85, false, "write")], {
+      errorBudget: 0.5,
+    });
+    expect(verdict.perLabel.get("read")).toEqual({ answered: 1, correct: 1 });
+    expect(verdict.perLabel.get("write")).toEqual({ answered: 1, correct: 0 });
+    expect(verdict.perLabel.has("one")).toBe(false);
   });
 
   it("handles an empty input without inventing a threshold", () => {
     const verdict = selectThreshold([], { errorBudget: 0.1 });
     expect(verdict.total).toBe(0);
-    expect(verdict.threshold).toBe(0);
+    expect(verdict.threshold).toBeNull();
     expect(verdict.coverage).toBe(0);
     expect(describeSelective([], { errorBudget: 0.1 })).toBeNull();
   });
 
-  it("groups the answered set by id so a caller can say which items it owns", () => {
+  it("groups the answered set by actual label rather than item id", () => {
     const verdict = selectThreshold(
-      [d("tool_read", 0.9, true), d("tool_read", 0.85, true), d("tool_write", 0.6, false)],
+      [
+        d("read-1", 0.9, true, "tool_read"),
+        d("read-2", 0.85, true, "tool_read"),
+        d("write-1", 0.6, false, "tool_write"),
+      ],
       { errorBudget: 0.1 },
     );
     expect(verdict.perLabel.get("tool_read")).toEqual({ answered: 2, correct: 2 });

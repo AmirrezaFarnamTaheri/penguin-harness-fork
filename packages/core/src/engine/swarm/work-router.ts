@@ -661,6 +661,7 @@ export class WorkRouter {
   /** Most recent decisions, newest first. Bounded by `retainDecisions`. */
   public recentDecisions(limit = 10): RouteDecision[] {
     const bounded = Math.max(0, Math.floor(limit));
+    if (bounded === 0) return [];
     return this.events
       .filter((event) => event.kind === "decision")
       .slice(-bounded)
@@ -671,10 +672,9 @@ export class WorkRouter {
 
   /** The full bounded history, newest first, decisions and closures alike. */
   public recentEvents(limit = 10): RouterEvent[] {
-    return this.events
-      .slice(-Math.max(0, Math.floor(limit)))
-      .reverse()
-      .map(copyEvent);
+    const bounded = Math.max(0, Math.floor(limit));
+    if (bounded === 0) return [];
+    return this.events.slice(-bounded).reverse().map(copyEvent);
   }
 
   /**

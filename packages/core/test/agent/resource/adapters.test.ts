@@ -84,6 +84,7 @@ describe("createMcpConnectionReleasable", () => {
       provider: fake.provider,
       serverCount: 1,
       idleMs: 60_000,
+      ownedProcessIds: () => [1234],
     });
     h.registry.register(releasable, ownedProcessGuard([1234]));
 
@@ -104,6 +105,7 @@ describe("createMcpConnectionReleasable", () => {
       id: "mcp",
       provider: fake.provider,
       serverCount: 1,
+      ownedProcessIds: () => [1234],
       // Shorter than the sweep's 10s advance, so the provider's own lastUsedAt filter
       // agrees the connection is idle rather than the adapter overriding it.
       idleMs: 1000,
