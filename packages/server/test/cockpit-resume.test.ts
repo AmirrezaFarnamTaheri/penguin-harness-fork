@@ -217,8 +217,9 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     // Publish through the same path the coordinator uses, by running a simulated task.
     const runner = collect(`ws://127.0.0.1:${port}/ws/cockpit?project=${project}`);
     await waitFor(() => runner.messages.some((m) => m.type === "cockpit_init"), "runner init");
-    runner.stop();
-    await runner.closed;
+    // Keep the runtime alive while the reconnecting client's cursor is served. If every
+    // client disconnects, the runtime is eligible for cleanup and its replay generation may
+    // legitimately end before this test reconnects.
     await runtime.coordinator.runTask({ id: "t1", goal: "warm", maxRounds: 1, simulate: true });
     await waitFor(() => runtime.eventLog.cursor > 0, "a published event");
 
@@ -250,6 +251,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     );
     expect(replayed.length).toBeGreaterThan(0);
     resumed.stop();
+    runner.stop();
   });
 
   it("answers a cursor outside the bounded window with a gap and a fresh snapshot", async () => {
