@@ -79,7 +79,7 @@ function NewChannelButton({
         title={label}
         aria-label={label}
         onClick={() => setOpen(true)}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
       >
         <PlusIcon size={ICON_SIZE.groupHeaderAction} />
       </button>
@@ -136,7 +136,7 @@ function ChannelRow({
           }`
         }
       >
-        <span className="shrink-0 text-gray-400 dark:text-gray-500">
+        <span className="shrink-0 text-gray-500 dark:text-gray-500">
           <Icon d={channelGlyph(channel.channelId)} size={ICON_SIZE.rowLead} />
         </span>
         <Truncated text={label} className="min-w-0 flex-1" />
@@ -174,7 +174,7 @@ function GroupTitle({ label, count }: { label: string; count: number }) {
   return (
     <p className="flex items-center gap-1.5 px-2.5 pb-0.5 pt-2.5 text-[11px] font-medium text-gray-500 dark:text-gray-400">
       <span className="min-w-0 truncate">{label}</span>
-      <span className="tabular-nums text-gray-400 dark:text-gray-500">{count}</span>
+      <span className="tabular-nums text-gray-500 dark:text-gray-500">{count}</span>
     </p>
   );
 }
@@ -227,7 +227,7 @@ export function ChannelSidebar({
       {/* The list's header, at the height and density of the development list's own, with
           "New channel" as its trailing action. */}
       <div className="mt-3 flex items-center justify-between gap-2 px-1 pt-2">
-        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+        <span className="px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
           {S.company.channels.listTitle}
         </span>
         <NewChannelButton
@@ -277,7 +277,7 @@ export function ChannelSidebar({
             groups.mine.length === 0 &&
             groups.others.length === 0 &&
             groups.archived.length === 0 && (
-              <p className="px-2.5 pt-2 text-xs text-gray-400 dark:text-gray-600">
+              <p className="px-2.5 pt-2 text-xs text-gray-500 dark:text-gray-600">
                 {S.company.channels.noChannels}
               </p>
             )}

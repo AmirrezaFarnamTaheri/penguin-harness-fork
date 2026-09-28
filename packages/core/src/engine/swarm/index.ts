@@ -26,9 +26,11 @@ export {
 export {
   RoleAllocator,
   STANDARD_SWARM_ROLES,
+  type AgentAvailability,
   type AgentProfile,
   type RoleAllocation,
   type RoleAllocatorOptions,
+  type RoleAssignment,
   type RoleDefinition,
   type ScoredPair,
   type SwarmRoleId,
@@ -83,3 +85,24 @@ export {
   type GroundingVerdict,
   type SwarmClaim,
 } from "./grounding-agent.js";
+
+export {
+  WorkRouter,
+  isRoutableClass,
+  isWorkClass,
+  workClassForRole,
+  workRequestFromSubtask,
+  type AllocationSource,
+  type InFlightJob,
+  type RouteDecision,
+  type RouteOutcome,
+  type RouteReport,
+  type RouteReportRecord,
+  type RouteResult,
+  type RouterEvent,
+  type RoutingSkip,
+  type WorkClass,
+  type WorkRequest,
+  type WorkRouterOptions,
+  type WorkScope,
+} from "./work-router.js";

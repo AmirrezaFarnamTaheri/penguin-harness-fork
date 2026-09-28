@@ -15,7 +15,12 @@
  */
 import fs from "node:fs/promises";
 import { agentsDir, createAgent, isSessionMeta } from "@prismshadow/penguin-core";
-import type { ControlEnvContext, ProxyEnvPolicy, SpawnConfiner } from "@prismshadow/penguin-core";
+import type {
+  ControlEnvContext,
+  JevToolAdvisor,
+  ProxyEnvPolicy,
+  SpawnConfiner,
+} from "@prismshadow/penguin-core";
 import type {
   ApprovalMode,
   MessagingChannel,
@@ -84,6 +89,8 @@ export interface SessionServiceDeps {
   messagingChannel?: (sessionId: string) => MessagingChannel | null;
   /** Spawn-confinement getter (see app.ts): claimed from the platform's registered resource, forwarded into core beside proxyEnv. */
   confineSpawn?: () => SpawnConfiner | null;
+  /** Optional host-composed Jev advisor; absent keeps new Sessions on the historical path. */
+  jevAdvisor?: JevToolAdvisor;
   /**
    * Company mode: the organization owning a Session (a desk session, or a session
    * contributing to a ticket), for `SessionInfo.orgId` — development mode's list hides
@@ -397,6 +404,7 @@ export class SessionService {
       ...(this.deps.controlEnv ? { controlEnv: this.deps.controlEnv } : {}),
       ...(this.deps.pathPrepend ? { pathPrepend: this.deps.pathPrepend } : {}),
       ...(this.deps.confineSpawn ? { confineSpawn: this.deps.confineSpawn } : {}),
+      ...(this.deps.jevAdvisor ? { jevAdvisor: this.deps.jevAdvisor } : {}),
     });
     let session;
     try {

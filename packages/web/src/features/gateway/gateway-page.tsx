@@ -12,6 +12,7 @@ import { useDocumentTitle } from "../../lib/use-document-title";
 import { S } from "../../lib/strings";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
+import { Input } from "../../components/ui/input";
 import { Modal } from "../../components/ui/modal";
 import { toastSuccess, toastError } from "../../components/ui/toast";
 import { SpendFlowCard } from "../hud/spend-flow-card";
@@ -34,6 +35,24 @@ interface PricingEntry {
   cacheReadPerMillion?: number;
 }
 
+/**
+ * A quota percentage the page is allowed to draw a meter for.
+ *
+ * The gateway reports one only when the provider actually sent it, so `null` — and a
+ * key that never arrived at all — both mean "not reported", and neither means zero.
+ * A non-finite number is folded into the same case deliberately: it would render as
+ * `NaN%` stretched across the whole track, which is a measurement of nothing wearing
+ * a measurement's clothes. Zero, by contrast, is a real answer and passes through.
+ */
+function reportedPct(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Whether the server sent a cache-read price, as opposed to our not having one. */
+function reportedPrice(value: number | undefined | null): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export function GatewayPage() {
   useDocumentTitle(S.nav.gateway ?? "Gateway & Quotas");
   const { currentProject } = useProject();
@@ -53,6 +72,13 @@ export function GatewayPage() {
   const [newComboTargets, setNewComboTargets] = useState(
     "anthropic:claude-3-7-sonnet, openai:gpt-4o, deepseek:deepseek-chat",
   );
+
+  // The two quota percentages the stat tiles are allowed to meter, resolved once here so
+  // the "was it reported?" test and the width drawn from it can never disagree about the
+  // same number. Read before the tiles because the whole point is that a null must not
+  // reach the markup as a zero.
+  const sessionUsedPct = reportedPct(quota?.activeQuota.sessionUsedPct);
+  const weeklyUsedPct = reportedPct(quota?.activeQuota.weeklyUsedPct);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -179,7 +205,12 @@ export function GatewayPage() {
               <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 LLM Gateway & Quota Cockpit
               </h1>
-              <Badge tone="brand">Router v2 Active</Badge>
+              {/* The "Router v2 Active" badge that stood here was a hardcoded string with no
+                  data source behind it: it could not become untrue, which is the opposite of
+                  what a status badge is for. There is no version field on the gateway
+                  response to bind it to, so rather than invent one it is simply gone. If a
+                  router version ever becomes something the server reports, it belongs here
+                  again — reading a value, not asserting a claim. */}
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Multi-model routing chains, live cooldown gates, spend flow analysis, and quota
@@ -261,45 +292,88 @@ export function GatewayPage() {
               </div>
             ) : (
               <>
-                {/* Top Stat Meters */}
+                {/* Top Stat Meters.
+                    A meter is a quantitative claim, and an EMPTY full-width track makes
+                    that claim just as confidently as a filled one: at a glance, in a
+                    screenshot, or to someone skimming, "0% used" and "we have no idea"
+                    are the same pixels. The server sends null whenever it has no quota
+                    figure, so drawing the track under that null states a measurement
+                    the page does not have — the `?? 0` that used to do it silently
+                    turned "unknown" into "zero used".
+
+                    So the meter is drawn only when a number actually arrived. When none
+                    did, the tile says so in words instead. "Next Reset Window" beside it
+                    has always taken that second route (a caption, no meter), and the
+                    row now reads the same way in all three columns. The alternative —
+                    keeping the track and marking it "unknown" — was rejected because a
+                    dashed or faded track is still a track: it is a quantitative shape
+                    that a reader's eye resolves as a quantity before any caption under
+                    it is read. The honest unknown is the absence of the shape. */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">Session Quota Used</div>
+                    <div className="text-[11px] text-gray-400 font-medium">
+                      {S.gateway.sessionQuotaUsed}
+                    </div>
                     <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
-                      {quota.activeQuota.sessionUsedPct !== null
-                        ? `${quota.activeQuota.sessionUsedPct}%`
-                        : "N/A"}
+                      {sessionUsedPct !== null ? `${sessionUsedPct}%` : S.gateway.notAvailable}
                     </div>
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${quota.activeQuota.sessionUsedPct ?? 0}%` }}
-                      />
-                    </div>
+                    {sessionUsedPct !== null ? (
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                        <div
+                          className="h-full bg-blue-500 rounded-full"
+                          style={{ width: `${sessionUsedPct}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-[11px] text-gray-400">
+                        {S.gateway.quotaNotReported}
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">Weekly Quota Used</div>
+                    <div className="text-[11px] text-gray-400 font-medium">
+                      {S.gateway.weeklyQuotaUsed}
+                    </div>
                     <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
-                      {quota.activeQuota.weeklyUsedPct !== null
-                        ? `${quota.activeQuota.weeklyUsedPct}%`
-                        : "N/A"}
+                      {weeklyUsedPct !== null ? `${weeklyUsedPct}%` : S.gateway.notAvailable}
                     </div>
-                    <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      <div
-                        className="h-full bg-purple-500 rounded-full"
-                        style={{ width: `${quota.activeQuota.weeklyUsedPct ?? 0}%` }}
-                      />
-                    </div>
+                    {weeklyUsedPct !== null ? (
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--accent-bg)] rounded-full"
+                          style={{ width: `${weeklyUsedPct}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-[11px] text-gray-400">
+                        {S.gateway.quotaNotReported}
+                      </div>
+                    )}
                   </div>
 
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">Next Reset Window</div>
-                    <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
-                      {quota.activeQuota.resetsIn ?? "N/A"}
+                    <div className="text-[11px] text-gray-400 font-medium">
+                      {S.gateway.nextResetWindow}
+                    </div>
+                    {/* Green means "fine", and an unknown reset window is not fine — it is
+                        simply not something the server told us. Rendered in the same ink as
+                        the two N/A tiles beside it, which is the whole point: a reader
+                        scanning this row should not conclude that a value nobody reported
+                        is a healthy one. A missing value and a good value must not share a
+                        colour. */}
+                    <div
+                      className={`text-2xl font-bold font-mono mt-1 ${
+                        quota.activeQuota.resetsIn === null ||
+                        quota.activeQuota.resetsIn === undefined
+                          ? "text-gray-900 dark:text-gray-100"
+                          : "text-emerald-600 dark:text-emerald-400"
+                      }`}
+                    >
+                      {quota.activeQuota.resetsIn ?? S.gateway.notAvailable}
                     </div>
                     <div className="mt-2 text-[11px] text-gray-400">
-                      Automatic quota replenishment
+                      {S.gateway.resetReplenishment}
                     </div>
                   </div>
                 </div>
@@ -458,25 +532,47 @@ export function GatewayPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-mono">
-                    {pricing.map((p) => (
-                      <tr key={`${p.provider}-${p.modelId}`}>
-                        <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">
-                          {p.modelId}
-                        </td>
-                        <td className="p-3 capitalize text-gray-600 dark:text-gray-400">
-                          {p.provider}
-                        </td>
-                        <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">
-                          ${p.inputPerMillion.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-purple-600 dark:text-purple-400 font-medium">
-                          ${p.outputPerMillion.toFixed(2)}
-                        </td>
-                        <td className="p-3 text-emerald-600 dark:text-emerald-400">
-                          ${(p.cacheReadPerMillion ?? p.inputPerMillion * 0.1).toFixed(3)}
-                        </td>
-                      </tr>
-                    ))}
+                    {pricing.map((p) => {
+                      const cacheRead = reportedPrice(p.cacheReadPerMillion);
+                      return (
+                        <tr key={`${p.provider}-${p.modelId}`}>
+                          <td className="p-3 font-semibold text-gray-900 dark:text-gray-100">
+                            {p.modelId}
+                          </td>
+                          <td className="p-3 capitalize text-gray-600 dark:text-gray-400">
+                            {p.provider}
+                          </td>
+                          <td className="p-3 text-blue-600 dark:text-blue-400 font-medium">
+                            ${p.inputPerMillion.toFixed(2)}
+                          </td>
+                          <td className="p-3 text-purple-600 dark:text-purple-400 font-medium">
+                            ${p.outputPerMillion.toFixed(2)}
+                          </td>
+                          {/* Green here means "a provider told us the cache-read price, and
+                              it is the cheap one" — so it may only ever appear on a number
+                              the server sent. This cell used to print
+                              `inputPerMillion * 0.1` when no cache-read price was reported
+                              and colour that guess emerald: a fabricated figure, to three
+                              decimals, dressed as a provider price. There is no defensible
+                              ratio to guess from — providers that discount cached reads
+                              discount them by wildly different amounts, and plenty never
+                              bill them at all — so the honest cell is the absent one, in
+                              neutral ink, and it is what the gateway dialog already states
+                              in prose ("unknown prices are not inferred"). */}
+                          <td
+                            className={`p-3 ${
+                              cacheRead === null
+                                ? "text-gray-400 dark:text-gray-500"
+                                : "text-emerald-600 dark:text-emerald-400"
+                            }`}
+                          >
+                            {cacheRead === null
+                              ? S.gateway.notAvailable
+                              : `$${cacheRead.toFixed(3)}`}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -492,46 +588,37 @@ export function GatewayPage() {
         title="Register Model Combo"
       >
         <form onSubmit={handleCreateCombo} className="space-y-4 p-4 text-xs">
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Combo Identifier (slug) *
-            </label>
-            <input
-              type="text"
-              required
-              value={newComboId}
-              onChange={(e) => setNewComboId(e.target.value)}
-              placeholder="e.g. combo-robust-reasoning"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden font-mono dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
+          {/* These three went through raw <input>s whose <label> siblings had no htmlFor, so
+              the labels were read by nobody but the eye next to the box (WCAG 1.3.1 — a
+              control with no programmatic name). They go through the shared <Input> now:
+              `label=` wires a real <label> to the control, the required mark and
+              aria-required come from the same flag instead of a hand-typed " *", and the
+              three copies of hand-rolled border/padding/focus classes that had drifted
+              from `controlBase` are gone. Placeholders stay as the examples they are. */}
+          <Input
+            label={S.gateway.comboIdLabel}
+            required
+            value={newComboId}
+            onChange={(e) => setNewComboId(e.target.value)}
+            placeholder="e.g. combo-robust-reasoning"
+            className="font-mono"
+          />
 
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Display Name *
-            </label>
-            <input
-              type="text"
-              required
-              value={newComboName}
-              onChange={(e) => setNewComboName(e.target.value)}
-              placeholder="e.g. Robust Reasoning Combo"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
+          <Input
+            label={S.gateway.comboNameLabel}
+            required
+            value={newComboName}
+            onChange={(e) => setNewComboName(e.target.value)}
+            placeholder="e.g. Robust Reasoning Combo"
+          />
 
-          <div>
-            <label className="mb-1 block font-medium text-gray-700 dark:text-gray-300">
-              Routing Target Chain (comma separated provider:model)
-            </label>
-            <input
-              type="text"
-              value={newComboTargets}
-              onChange={(e) => setNewComboTargets(e.target.value)}
-              placeholder="anthropic:claude-3-7-sonnet, openai:gpt-4o, deepseek:deepseek-chat"
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-900 outline-hidden font-mono dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-          </div>
+          <Input
+            label={S.gateway.comboTargetsLabel}
+            value={newComboTargets}
+            onChange={(e) => setNewComboTargets(e.target.value)}
+            placeholder="anthropic:claude-3-7-sonnet, openai:gpt-4o, deepseek:deepseek-chat"
+            className="font-mono"
+          />
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

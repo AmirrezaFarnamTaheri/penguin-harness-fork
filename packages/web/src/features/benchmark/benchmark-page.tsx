@@ -163,7 +163,7 @@ function BenchmarkCard({
       <button type="button" onClick={onOpen} className="min-w-[14rem] flex-1 text-left">
         <span className="flex items-center gap-2">
           <span className="min-w-0 truncate text-base font-bold">{benchmark.title}</span>
-          <span className="hidden shrink-0 font-mono text-xs text-gray-400 md:inline dark:text-gray-500">
+          <span className="hidden shrink-0 font-mono text-xs text-gray-500 md:inline dark:text-gray-500">
             {benchmark.id}
           </span>
         </span>
@@ -208,7 +208,7 @@ function BenchmarkCard({
             </span>
           </>
         ) : (
-          <span className="block text-xs text-gray-400 dark:text-gray-500">
+          <span className="block text-xs text-gray-500 dark:text-gray-500">
             {S.benchmark.notEvaluated}
           </span>
         )}
@@ -459,7 +459,7 @@ export function BenchmarkPage() {
                   ) : group.error !== null ? (
                     <p className={`px-1 text-xs ${toneInk.danger}`}>{group.error}</p>
                   ) : rows.length === 0 ? (
-                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-gray-200 px-5 py-4 text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-gray-200 px-5 py-4 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-500">
                       <span>{S.benchmark.emptyAgent}</span>
                       <CreateButtons
                         size="sm"

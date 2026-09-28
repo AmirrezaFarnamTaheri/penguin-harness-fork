@@ -49,6 +49,10 @@ export const zh = {
     expandSidebar: "展开侧栏",
     collapseGroup: "折叠",
     expandGroup: "展开",
+    /** 折叠整个导航，而非单个分组。必须与 collapseGroup 区分：两个控件共用同一个
+     *  无障碍名称本身就是缺陷。 */
+    collapseAllGroups: "折叠全部分区",
+    expandAllGroups: "展开全部分区",
     pinGroup: "置顶分组",
     unpinGroup: "取消置顶",
     /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */
@@ -60,6 +64,28 @@ export const zh = {
       finance: "财务",
       handbook: "手册",
     },
+  },
+
+  /**
+   * Gateway & Quotas 页面（features/gateway/gateway-page.tsx）：顶部三个配额磁贴与
+   * 「注册组合」弹窗。其中承担「服务端没有给这个值」的那些文案是关键：N/A 及其下方
+   * 说明必须与中性色一起出现，否则缺失的读数会被读成健康的读数。
+   */
+  gateway: {
+    /** 冷却表格上方的三个配额磁贴。 */
+    sessionQuotaUsed: "会话配额已用",
+    weeklyQuotaUsed: "每周配额已用",
+    nextResetWindow: "下次重置窗口",
+    /** 服务端返回 null 时的占位文案，始终配中性色使用。 */
+    notAvailable: "无数据",
+    /** 服务端未给出配额数字时的磁贴说明：此时不绘制进度条。 */
+    quotaNotReported: "服务端未提供数字",
+    /** 重置窗口磁贴下方的补充说明。 */
+    resetReplenishment: "配额自动补充",
+    /** 注册组合弹窗的字段；前两个必填（Input 的 required 会自动加星号）。 */
+    comboIdLabel: "组合标识（slug）",
+    comboNameLabel: "显示名称",
+    comboTargetsLabel: "路由目标链（逗号分隔的 provider:model）",
   },
 
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
@@ -435,6 +461,8 @@ export const zh = {
     none: "（无）",
     retry: "重试",
     unknownError: "请求失败，请稍后重试",
+    /** 跳过导航（WCAG 2.2 SC 2.4.1）。 */
+    skipToContent: "跳到主内容",
     requiredField: "此项必填",
     copied: "已复制",
     /** Accessible name of the circled "?" that discloses a section or field explanation. */
@@ -1225,6 +1253,10 @@ export const zh = {
     filterHealthy: "仅健康",
     filterIssues: "存在冷却/异常",
     resetAllKeys: "重置全部 Key 状态",
+    /** Key 池过滤框的可访问名称：可见 label 会挤乱工具栏，仅靠 placeholder 不算名称。 */
+    searchKeyPools: "搜索模型、Key 或供应商",
+    /** 「重置全部」现在按名称逐个重置受影响的 Key 池，告知实际处理数量。 */
+    resetAllKeysDone: (n: number): string => `已重置 ${n} 个 Key 池`,
     refreshHealth: "刷新状态",
     activeLeases: "活跃租约",
     successRate: "成功率",
@@ -1238,8 +1270,25 @@ export const zh = {
     keysInCooldown: (n: number) => `${n} 个 Key 处于 429 冷却`,
     keysEvicted: (n: number) => `${n} 个 Key 已失效 (401)`,
     totalKeysConfigured: "已配置 Key 总数",
+    keyNameLabel: "名称",
+    keyNameHint: "用来区分这把 Key 的名称——在同一模型的 Key 池内唯一。",
+    keyNamePlaceholder: "例如：prod",
+    keyLabelLabel: "备注",
+    keyLabelPlaceholder: "例如：团队共享池，勿轮换",
+    keyNameSave: "保存名称",
+    keyNameCancel: "取消",
+    keyNameAction: "为该 Key 命名",
+    keyNameEdit: "重命名",
+    keyNameClear: "清除名称",
+    keyUnnamed: "未命名",
+    keyUnnamedHint: "尚未命名——起个名字，才能和其他 Key 区分开。",
+    keyNameColumn: "名称",
+    keyNameSaved: (name: string): string => `已将 Key 命名为「${name}」`,
+    keyNameCleared: (name: string): string => `已清除名称「${name}」`,
+    keyNameRequired: "保存前必须为该 Key 起一个名称。",
+    keyOrphaned: "该 Key 已不在配置中，其名称没有可对应的对象。",
+    keyActionFailed: (name: string, action: string): string => `对 ${name} 执行${action}失败`,
     healthyPoolsRatio: "健康 Key 占比",
-    resetSuccess: "Key 池状态已重置",
   },
 
   memory: {
@@ -1730,6 +1779,37 @@ export const zh = {
         ["{{SKILL_METADATA}}", "已安装技能的元数据行（每技能一行「- 名称 — 描述」；无技能时为空）"],
       ] as ReadonlyArray<readonly [string, string]>,
     },
+    /**
+     * /skills 页面（features/skills/skills-page.tsx）。文案描述的是插件库本身：这里每一句
+     * 要么说明列表接口真实返回了什么，要么直说它没有返回——`bodyMissing` 是关键的一句，它是
+     * 那个用技能名称和描述拼出「SKILL.md」的面板唯一诚实的替代。
+     */
+    hub: {
+      title: "技能中心",
+      subtitle: "内置插件库中的全部技能，可按名称、插件或分类搜索。",
+      /** 列表自身的长度——本页唯一能如实说明的技能数量。 */
+      loadedCount: (n: number): string => `${n} 个技能`,
+      refresh: "刷新",
+      searchPlaceholder: "按名称、插件或分类搜索技能…",
+      searchLabel: "搜索技能",
+      allCategories: "全部",
+      noSkills: "插件库中没有技能。",
+      noMatches: "没有匹配的技能。",
+      selectHint: "选择一个技能以查看它的指令正文。",
+      shippedBy: (plugin: string): string => `由插件 ${plugin} 提供。`,
+      invocationTitle: "调用方式",
+      copyInvocation: "复制斜杠命令",
+      /**
+       * 说明上面的命令为何可能还跑不通：只有已安装该技能的 Agent 才能用 `/名称` 寻址它，
+       * 而插件库列表并不等于安装，因此这里说明前提，而不是给出一条无处可解析的命令。
+       */
+      invocationNeedsInstall:
+        "只有在已安装该技能的 Agent 上才能用这条命令寻址它——请先在插件库中把它的插件安装到某个 Agent。",
+      bodyTitle: "指令正文（SKILL.md）",
+      /** 插件的文件清单里没有该技能的 SKILL.md，此处不显示任何替代文本。 */
+      bodyMissing: (plugin: string, skill: string): string =>
+        `插件 ${plugin} 未提供 ${skill} 的 SKILL.md，因此没有可显示的指令正文。`,
+    },
   },
 
   chat: {
@@ -1992,7 +2072,7 @@ Benchmark：
           "先看已有记忆索引避免重复，再逐条问我该记什么、要不要改已有的，我确认后你写进 Memory。",
       },
     },
-    sessionList: "Session",
+    sessionList: "会话",
     defaultSessionTitle: "新对话",
     agent: "Agent",
     model: "Model",
@@ -2362,6 +2442,7 @@ Benchmark：
       run_subagent: "子智能体",
       input_subagent: "交流",
       environment_info: "环境",
+      resource_pressure: "资源",
     } as Record<string, string>,
     workRunning: "运行中",
     workDone: "运行完毕",
@@ -2390,6 +2471,17 @@ Benchmark：
     pinSession: "置顶",
     unpinSession: "取消置顶",
     pinnedSession: "已置顶",
+    /** 批量操作栏：n = 已勾选且仍在屏幕上的行数。 */
+    selectedConversations: (n: number) => `已选 ${n} 项`,
+    /** 批量操作栏：归档 / 取消归档全部勾选的对话。 */
+    archiveSelected: "归档所选",
+    unarchiveSelected: "取消归档所选",
+    batchArchiveFailed: (failed: number, total: number, archived: boolean) =>
+      `${total} 个对话中有 ${failed} 个${archived ? "归档" : "取消归档"}失败。失败的对话仍保持选中，可重试。`,
+    /** 批量操作栏：退出多选，丢弃勾选。 */
+    cancelSelection: "取消多选",
+    /** 行右键菜单：进入多选并勾选该行（键盘可达的入口；指针入口是 Cmd/Ctrl+点击）。 */
+    selectConversations: "多选",
     /** The hover ellipsis button that opens the row's full context menu. */
     moreActions: "更多",
     /** Sidebar group "reveal/load next page" row (display cap + server paging). */
@@ -2757,6 +2849,57 @@ Benchmark：
     openAsSession: "跳转到该会话",
     /** The child's session record no longer exists and could not be revived. */
     subagentGone: "该子会话已不存在，无法恢复",
+    /** Graph node accessibility: who spawned this child, since the edges themselves are hidden. */
+    spawnedBy: "派生自",
+    mainSession: "主会话",
+    /** Shown when the selected child is not in the displayed Task's graph (A7). */
+    selectionElsewhere: (label: string) => `正在显示更早任务中的 ${label}`,
+    backToLatest: "回到最新任务",
+    loadingChild: "该子 Agent 的对话仍在加载",
+    skillsUnavailable: "无法加载该子 Agent 的技能",
+  },
+
+  coordination: {
+    activityTitle: "协作活动",
+    conversationTab: "对话",
+    activityTab: "活动",
+    empty: "当前会话还没有可显示的协作活动",
+    jevAdvisory: "Jev",
+    advised: "已返回观察",
+    unavailable: "暂不可用",
+    choiceMatches: "符合任务接下来的需要",
+    choiceDifferent: "换个工具更合适",
+    choiceNone: "不需要调用工具",
+    choiceUnknown: "没有回答",
+    confidence: "置信度",
+    risk: "风险",
+    riskOf: (score: number) => `5 分制中的 ${score} 分`,
+    needsTool: "需要工具",
+    argumentsComplete: "参数完整",
+    approvalLikely: "预计需签核",
+    latency: "延迟",
+    tokens: "令牌",
+    model: "模型",
+    reason: "原因",
+    toolActivity: "工具",
+    toolRunning: "执行中",
+    toolDone: "已完成",
+    toolDenied: "已拒绝",
+    toolWaiting: "等待审批",
+    parentMessage: "父 Agent 消息",
+    agentFailed: "Agent 失败",
+    retried: "重新连接",
+    aborted: "已中断",
+    retrying: (attempt: number) => `正在重试（第 ${attempt} 次）`,
+    retryGaveUp: (attempt: number) => `重试 ${attempt} 次后放弃`,
+    yourMessage: "你的消息",
+    childMessage: "发给该 Agent 的输入",
+    childSession: "子会话",
+    advisoryOnly: "仅供参考；由命令策略与审批提示决定，不由它决定。",
+    rollup: (children: number, running: number, calls: number) =>
+      `${children} 个子 Agent · ${running} 个运行中 · ${calls} 次工具调用`,
+    olderRowsHidden: (count: number) => `更早的 ${count} 条记录未显示`,
+    jumpToLatest: "跳到最新",
   },
 
   files: {
@@ -2848,6 +2991,22 @@ Benchmark：
     overwriteAnyway: "仍然覆盖",
   },
 
+  /** 产物预览抽屉（components/ui/artifact-preview-drawer）：工具栏上的视口切换、主题切换、弹出与导出。 */
+  artifactPreview: {
+    /** 三个固定视口；括号里是被模拟的视口宽度。 */
+    viewportDesktop: "桌面",
+    viewportTablet: "平板 (768px)",
+    viewportMobile: "手机 (375px)",
+    /** 主题切换按钮：说明「点了会变成什么」，而不是当前处于什么模式。 */
+    switchToDark: "切换到深色模式",
+    switchToLight: "切换到浅色模式",
+    openInNewTab: "在新标签页打开预览",
+    popout: "弹出窗口",
+    download: "下载文件",
+    export: "导出",
+    copySource: "复制产物源码",
+  },
+
   usage: {
     title: "成本与统计",
     today: "今日",
@@ -2863,6 +3022,9 @@ Benchmark：
     uncostedNote: "* 只计入配置了价格的模型成本",
     filterAllAgents: "全部 Agent",
     filterAllModels: "全部模型",
+    /** 两个筛选下拉框的无障碍名称：它们没有可见标签，缺少名称时读屏只会念出一个未命名的组合框（当前选项说明的是"选了什么"，而不是"在选什么"）。 */
+    filterAgentLabel: "按 Agent 筛选",
+    filterModelLabel: "按模型筛选",
     rangeLabel: "日期范围",
     rangeHour: "最近一小时",
     rangeDay: "最近一天",
@@ -2879,6 +3041,17 @@ Benchmark：
     bucketTotal: "合计",
     legendHitRate: "缓存命中率",
     empty: "暂无用量记录",
+    /**
+     * 每个图表的读屏数据表格的列名（WCAG 2.2 SC 1.1.1 / 2.1.1：这些数值同时也出现在悬浮气泡里，
+     * 而键盘与读屏用户够不到气泡）。`chartDataBucket` 是横轴的时间区间，
+     * `chartDataSeries` 是请求类图表拆分所用的维度。
+     */
+    chartDataBucket: "时间区间",
+    chartDataSeries: "系列",
+    /** 骨架屏的朗读文案（否则它只是一片无声的灰色网格）。 */
+    loadingUsage: "正在加载用量数据…",
+    /** 加载失败分支的标题，取代骨架屏。 */
+    loadFailed: "无法加载用量数据。",
     errors: "异常",
     errorsTotal: "总数",
     errorsUnexpected: "未预期",
@@ -3528,6 +3701,13 @@ Benchmark：
       legendEmpty: "还没有日程",
       legendFilter: (name: string): string => `只看 ${name} 的日程`,
       createAt: (label: string): string => `在 ${label} 新建日程`,
+      /** Names the week / day hour grid, then the range it covers: read on entering the grid. */
+      hourGrid: "小时网格",
+      /**
+       * A chip in the week and day columns: the DAY it is on, then its time and name. The month
+       * cell already names its day, so its chips pass no `day` and do not repeat it.
+       */
+      eventOnDay: (day: string, time: string, label: string): string => `${day} ${time} · ${label}`,
       loadFailed: (error: string): string => `日历加载失败：${error}`,
       /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
       dismissHint: "知道了",
@@ -3978,6 +4158,9 @@ Benchmark：
       ticket_session_failed: "无法发起工单会话。",
       handbook_file_not_found: "该文档已不存在。",
       handbook_index_required: "手册索引（README.md）不能删除。",
+      key_name_taken: "该模型的 Key 池中已有同名 Key，请换一个名称。",
+      key_mask_ambiguous:
+        "该掩码在本 Key 池中匹配到多把 Key，无法确定是哪一把。请使用界面上显示的完整掩码。",
     },
   },
 

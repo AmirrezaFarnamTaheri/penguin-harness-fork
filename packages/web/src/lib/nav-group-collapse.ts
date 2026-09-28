@@ -11,8 +11,10 @@
  * its nav rows from this manifest, so the covered range is pinned here (and in the
  * unit tests) rather than duplicated. Some entries are admin-only (see below), so the
  * sidebar renders navKeysFor(user.isAdmin), not the raw manifest. Traces is deliberately
- * absent: reading a Trace happens in the chat toolbar's panel switcher, which is the only
- * place it happens.
+ * NOT absent any more: it used to be reachable only through the chat toolbar's panel
+ * switcher, and a row for it now exists — so this sentence was describing a state the
+ * manifest moved past, and a reader checking "where is Traces" would have been sent to
+ * look inside the chat pane for a nav entry that is right here.
  */
 export const NAV_GROUP_KEYS = [
   "cockpit",
@@ -36,7 +38,9 @@ export const NAV_GROUP_KEYS = [
   "usage",
   "benchmark",
 ] as const;
-export type NavGroupKey = (typeof NAV_GROUP_KEYS)[number];
+/** A nav entry's key. Module-local: every function that names one also takes the manifest's
+ *  own union, and nothing outside this file ever spells the type. */
+type NavGroupKey = (typeof NAV_GROUP_KEYS)[number];
 
 /**
  * Entries the server refuses to a non-admin, so the sidebar does not offer them. Machines
@@ -47,10 +51,16 @@ export type NavGroupKey = (typeof NAV_GROUP_KEYS)[number];
 const ADMIN_ONLY_NAV_KEYS: ReadonlySet<NavGroupKey> = new Set<NavGroupKey>(["machines"]);
 
 /**
- * Entries built but not yet offered. They keep their place in the manifest — the page, its
- * route and its server routes all still exist and are reachable from a test — and are simply
- * not put in front of anyone, so releasing one is deleting its name from this set rather than
- * restoring code.
+ * Entries built but not yet offered. They keep their place in the manifest — the page and its
+ * unit tests still exist — and are simply not put in front of anyone, so releasing one is
+ * deleting its name from this set rather than restoring code.
+ *
+ * **This comment used to claim the route and the server routes "all still exist and are
+ * reachable from a test". Neither is true:** `router.tsx` has no `/machines`, so the catch-all
+ * sends it to `/chat`, and nothing imports `MachinesPage`. Only the page and its tests are
+ * real. The claim was not harmless — "there is a route" is exactly what a reader checks before
+ * deciding a nav key is merely hidden rather than unwired, and here it sent them the wrong way.
+ * The fix is the same in both cases: say what exists, not what you wish existed.
  *
  * `machines` installs this build onto another host over ssh with the server account's keys.
  * That is a capability worth shipping deliberately rather than as a row that happens to appear,
@@ -119,17 +129,6 @@ export function storeToolGroupExpanded(
 export function navKeysFor(isAdmin: boolean): readonly NavGroupKey[] {
   const offered = NAV_GROUP_KEYS.filter((key) => !UNRELEASED_NAV_KEYS.has(key));
   return isAdmin ? offered : offered.filter((key) => !ADMIN_ONLY_NAV_KEYS.has(key));
-}
-
-/**
- * Page entries that are visible and reachable: collapsing hides the whole group (the
- * chevron-button toggle and the pinned "New chat" block above are outside it and stay).
- * The sidebar keeps the rows mounted while collapsed — the collapse is an animated
- * height tween — but at zero height, faded out, and inert: exactly this empty set of
- * reachable entries.
- */
-export function visibleNavKeys(collapsed: boolean, isAdmin = true): readonly NavGroupKey[] {
-  return collapsed ? [] : navKeysFor(isAdmin);
 }
 
 /** Minimal storage interface (the subset of localStorage used here); tests inject an in-memory implementation. */

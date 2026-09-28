@@ -9,6 +9,7 @@
 import { S } from "../../lib/strings";
 import { attachmentFileName } from "../../lib/attachments";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
+import { STREAM_BANNER_FRAME } from "./disclosure-row";
 
 /** Paperclip glyph (24×24 line path), shared with the composer's file-attachment entry. */
 export const PAPERCLIP_ICON =
@@ -20,10 +21,10 @@ export function AttachedFilesBanner({ files }: { files: string[] }) {
     // max-w-full + truncate, the composer chip's rule (truncate max-w-56) applied to a notice
     // that has no fixed width of its own: several long names would otherwise wrap the banner
     // into a paragraph-tall block above the message. The full list stays reachable as a title.
-    <p
-      title={label}
-      className="flex w-fit max-w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400"
-    >
+    // No `anim-msg my-2`, unlike its in-transcript siblings: this one hangs off the message
+    // it belongs to, which owns the vertical spacing and the entrance, so adding either
+    // would double the gap and re-animate a notice that just arrived with its message.
+    <p title={label} className={`flex w-fit max-w-full ${STREAM_BANNER_FRAME}`}>
       <GlyphIcon d={PAPERCLIP_ICON} className="shrink-0 text-gray-400 dark:text-gray-500" />
       <span className="min-w-0 truncate">{label}</span>
     </p>

@@ -10,7 +10,7 @@ import { Field, controlBase } from "./field";
 // Adds width, placeholder and disabled styling on top of the shared control look; each of Input/Textarea appends its own font size and padding (see their size).
 const baseClass =
   `w-full ${controlBase} ` +
-  "placeholder:text-gray-400 disabled:cursor-not-allowed disabled:opacity-60 " +
+  "placeholder:text-gray-500 disabled:cursor-not-allowed disabled:opacity-60 " +
   "dark:placeholder:text-gray-500";
 
 /**
@@ -130,7 +130,7 @@ export const noAutofill = autofillProps(undefined, false);
  */
 const searchSharedClass =
   `w-full bg-transparent ${sizeTextClass.sm} text-gray-700 ` +
-  "placeholder:text-gray-400 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500";
+  "placeholder:text-gray-500 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500";
 
 export const menuSearchClass = `${searchSharedClass} rounded border border-transparent`;
 
@@ -138,20 +138,32 @@ export const panelSearchClass =
   `${searchSharedClass} rounded-md border border-gray-200 transition-colors ` +
   "focus:border-gray-400 dark:border-gray-700 dark:focus:border-gray-500";
 
-export function Input({
-  label,
-  hint,
-  info,
-  infoLabel,
-  error,
-  invalid,
-  required,
-  size = "sm",
-  className,
-  autoComplete,
-  id,
-  ...rest
-}: InputProps) {
+/**
+ * Forwards its ref to the underlying `<input>`.
+ *
+ * A function component cannot receive `ref` as an ordinary prop — React reserves
+ * it — so a caller passing one got neither a type error at the call site in JS nor a
+ * working handle: the ref simply never attached, and the focus/scroll/measurement it
+ * was for silently did nothing. `Textarea` below already does this; `Input` now
+ * matches it rather than leaving the two halves of one form primitive asymmetric.
+ */
+export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
+  {
+    label,
+    hint,
+    info,
+    infoLabel,
+    error,
+    invalid,
+    required,
+    size = "sm",
+    className,
+    autoComplete,
+    id,
+    ...rest
+  },
+  ref,
+) {
   const bad = Boolean(error) || Boolean(invalid);
   const errorId = useId();
   // The info layout moves the label out of the wrapping <label> and associates it by htmlFor
@@ -173,6 +185,7 @@ export function Input({
       controlId={controlId}
     >
       <input
+        ref={ref}
         id={info !== undefined ? controlId : id}
         className={`${baseClass} ${sizeClass[size]} ${bad ? errorClass : ""} ${className ?? ""}`}
         aria-invalid={bad ? true : undefined}
@@ -185,7 +198,7 @@ export function Input({
       />
     </Field>
   );
-}
+});
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;

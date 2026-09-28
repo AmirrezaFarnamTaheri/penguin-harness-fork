@@ -1,6 +1,6 @@
 {
   "name": "penguin-harness",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "private": true,
   "type": "module",
   "description": "PenguinHarness — TypeScript AI Agent (SDK + CLI).",
@@ -43,12 +43,13 @@
     "desktop": "pnpm -r build && node scripts/run-with-env.mjs PENGUIN_HOME=~/.penguin/dev-data -- pnpm --dir packages/desktop start"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.85.0",
     "@prismshadow/penguin-cli": "workspace:*",
     "@prismshadow/penguin-core": "workspace:*",
     "@types/node": "^24.0.0",
     "concurrently": "^10.0.4",
     "esbuild": "^0.28.1",
-    "oxlint": "^1.81.0",
+    "oxlint": "^1.85.0",
     "prettier": "^3.9.4",
     "tsx": "^4.20.0",
     "typescript": "^5.6.0",

@@ -592,7 +592,7 @@ function StoredSecretRow({
       {/* A disabled checkbox does not reliably fire hover, so the reason is on screen rather
           than in a title: a gated control that never says why is the bug this avoids. */}
       {enabled && (
-        <span className="text-gray-400 dark:text-gray-500">
+        <span className="text-gray-500 dark:text-gray-500">
           {S.messaging.disableBeforeClearHint}
         </span>
       )}
@@ -821,7 +821,7 @@ export function MessagingBindingBody({ b }: { b: MessagingBindingEditorState }) 
           it comes and goes with the switch's own state, so anything below it shifts by a
           line — trailing the probes leaves both of them at a fixed offset. */}
       {b.toggleHint !== null && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">{b.toggleHint}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-500">{b.toggleHint}</p>
       )}
       {/* The credential fields trail the controls above; explanations live in the FAQ folds
           below the save area. */}
@@ -878,7 +878,7 @@ export function MessagingBindingBody({ b }: { b: MessagingBindingEditorState }) 
             enabled={facts.enabled}
             onBound={(binding) => b.adoptBinding(binding)}
           />
-          <p className="text-xs text-gray-400 dark:text-gray-500">{S.qq.scanOrManual}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500">{S.qq.scanOrManual}</p>
           <CornerLinkedField
             label={S.qq.appId}
             required

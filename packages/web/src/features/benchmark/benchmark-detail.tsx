@@ -55,6 +55,7 @@ function ScoreTrendChart({
     <div ref={ref}>
       {width > 0 && (
         <ChartFrame
+          ariaLabel={S.benchmark.trendTitle(S.benchmark.colScore)}
           geom={geom}
           fmtY={formatScore}
           dates={dates}
@@ -66,14 +67,14 @@ function ScoreTrendChart({
             const v = values[i] ?? null;
             return (
               <>
-                <p className="text-gray-400">{formatDateTime(e.time)}</p>
+                <p className="text-gray-500">{formatDateTime(e.time)}</p>
                 <p className="font-mono">
                   {v === null ? "—" : formatScore(v)}
                   {e.version !== undefined && (
-                    <span className="ml-1.5 text-gray-400">v{e.version}</span>
+                    <span className="ml-1.5 text-gray-500">v{e.version}</span>
                   )}
                 </p>
-                <p className="font-mono text-gray-400">
+                <p className="font-mono text-gray-500">
                   {e.modelId} · {e.thinkingLevel}
                 </p>
               </>
@@ -178,7 +179,7 @@ function EvaluationRow({
       >
         <td className={CELL}>
           <span className="flex items-center gap-1.5 text-xs">
-            <Chevron open={open} size={12} className="text-gray-400" />
+            <Chevron open={open} size={12} className="text-gray-500" />
             {formatDateTime(evaluation.time)}
           </span>
         </td>
@@ -255,7 +256,7 @@ function EvaluationRow({
 
 /** Session id, for correlating a Run with what the side panel shows: identification only, reading a Trace is the side panel's job. */
 function SessionCell({ sessionId }: { sessionId?: string }) {
-  if (!sessionId) return <span className="text-gray-400">—</span>;
+  if (!sessionId) return <span className="text-gray-500">—</span>;
   return (
     <span className="font-mono text-gray-600 dark:text-gray-300" title={sessionId}>
       {sessionId}
@@ -288,7 +289,7 @@ function CaseRow({
       >
         <td className="px-2 py-1">
           <span className="flex items-start gap-1.5">
-            <Chevron open={open} size={12} className="text-gray-400" />
+            <Chevron open={open} size={12} className="text-gray-500" />
             <span className="min-w-0">
               {onOpenCase ? (
                 <button
@@ -307,7 +308,7 @@ function CaseRow({
                 </span>
               )}
               {title && title !== c.case && (
-                <span className="block font-mono text-[11px] text-gray-400">{c.case}</span>
+                <span className="block font-mono text-[11px] text-gray-500">{c.case}</span>
               )}
             </span>
           </span>
@@ -320,7 +321,7 @@ function CaseRow({
           {c.durationMs !== undefined ? humanizeDuration(c.durationMs) : "—"}
         </td>
         <td className="px-2 py-1">
-          <span className="text-gray-400">—</span>
+          <span className="text-gray-500">—</span>
         </td>
       </tr>
       {open &&
@@ -358,7 +359,7 @@ function CasesSection({
       <p className="mb-1 text-xs font-semibold text-gray-500">{S.benchmark.cases}</p>
       <div className="overflow-hidden rounded-md border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         {error && <p className={`px-3 py-2 text-xs ${toneInk.danger}`}>{error}</p>}
-        {!cases && !error && <p className="px-3 py-2 text-xs text-gray-400">{S.common.loading}</p>}
+        {!cases && !error && <p className="px-3 py-2 text-xs text-gray-500">{S.common.loading}</p>}
         {cases?.map((item) => {
           return (
             <button
@@ -371,7 +372,7 @@ function CasesSection({
                 <span className="block text-sm font-medium text-gray-800 dark:text-gray-200">
                   {item.title}
                 </span>
-                <span className="block truncate font-mono text-[11px] text-gray-400">
+                <span className="block truncate font-mono text-[11px] text-gray-500">
                   {item.id}
                 </span>
               </span>

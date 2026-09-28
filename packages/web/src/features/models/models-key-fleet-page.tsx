@@ -1,15 +1,22 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useProject } from "../../state/project";
+import * as api from "../../api/endpoints";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { S } from "../../lib/strings";
+import { toastError, toastSuccess } from "../../components/ui/toast";
 import { KeyHealthCard } from "./key-health-card";
+import { KeyNameEditor } from "./key-name-editor";
 import { KeyProbeModal } from "./key-probe-modal";
 import {
   calculateFleetHealth,
   filterKeyFleetReports,
+  joinKeyNames,
+  keyNameOf,
   type KeyActionType,
   type KeyHealthItem,
+  type KeyNameEntry,
   type ModelKeyFleetReport,
   type RotationStrategy,
 } from "./key-fleet-types";
@@ -233,9 +240,22 @@ const DEMO_FLEET_REPORTS: ModelKeyFleetReport[] = [
 
 export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { currentProject } = useProject();
-  const projectId = currentProject?.projectId ?? "default";
+  // The Project this page is scoped to, or null while the Project list is still resolving.
+  //
+  // This used to fall back to the literal string "default", which is not a Project id in
+  // this codebase — real ones are `default_project` or `<user>-default_project`. The
+  // server's `DEFAULT_PROJECT_ID` fallback cannot rescue it, because that only applies when
+  // the param is ABSENT and `?project=default` is present. So the first fetch of this page
+  // asked about a Project that does not exist, took a 404, and rendered the key fleet
+  // empty on first paint. There is no correct value to guess: `null` until it resolves, and
+  // every fetch below waits for it.
+  const projectId = currentProject?.projectId ?? null;
+  // Naming a key is a write, so the control only appears for someone who may write. The
+  // server refuses it either way (403); this is about not offering a button that cannot work.
+  const isOwner = currentProject?.role === "owner";
 
   const [reports, setReports] = useState<ModelKeyFleetReport[]>([]);
+  const [keyNames, setKeyNames] = useState<KeyNameEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDemo, setIsDemo] = useState(false);
   const [demoReports, setDemoReports] = useState(DEMO_FLEET_REPORTS);
@@ -243,15 +263,28 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
   const [actionPending, setActionPending] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<"all" | "healthy" | "cooldown" | "evicted">("all");
+  const [renamingKey, setRenamingKey] = useState<{
+    maskedKey: string;
+    provider: string;
+    modelId: string;
+    name?: string;
+    label?: string;
+  } | null>(null);
   const [probingTarget, setProbingTarget] = useState<{
     keyItem: KeyHealthItem;
     provider: string;
     modelId: string;
   } | null>(null);
 
+  // The names are joined onto the health report rather than fetched inside it: the report
+  // comes from the key rotator, which never sees a name, and the fleet report identifies a
+  // key by the mask it prints. Demo mode has no Project to ask, so it shows no names — the
+  // sample data is labelled as sample data on screen for exactly that reason.
+  const liveReports = useMemo(() => joinKeyNames(reports, keyNames), [reports, keyNames]);
+
   const activeReports = useMemo(() => {
-    return isDemo ? demoReports : reports;
-  }, [isDemo, demoReports, reports]);
+    return isDemo ? demoReports : liveReports;
+  }, [isDemo, demoReports, liveReports]);
 
   const fetchAbortRef = useRef<AbortController | null>(null);
 
@@ -263,6 +296,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setLoading(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys?project=${encodeURIComponent(projectId)}`, {
         signal: abortCtrl.signal,
       });
@@ -271,6 +307,11 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
       if (!Array.isArray(data.reports))
         throw new Error("The server returned an invalid key report.");
       if (!abortCtrl.signal.aborted) setReports(data.reports);
+      // Names are a second read, and a failure of this one must not blank the fleet: the
+      // keys are all still there, they are just unnamed on screen, which is what an unnamed
+      // key looks like anyway. The error is therefore not surfaced as a page error.
+      const names = await api.listModelKeyNames(projectId);
+      if (!abortCtrl.signal.aborted && Array.isArray(names.keys)) setKeyNames(names.keys);
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") return;
       setError(
@@ -285,12 +326,52 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
 
   useEffect(() => {
     setReports([]);
+    setKeyNames([]);
     setProbingTarget(null);
+    setRenamingKey(null);
+    // No Project yet: there is nothing to ask about, and the effect re-runs the moment the
+    // real id lands. Firing with a placeholder is the 404 this replaces.
+    if (projectId === null) {
+      setLoading(true);
+      return;
+    }
     void fetchLiveFleet();
     return () => {
       fetchAbortRef.current?.abort();
     };
   }, [projectId, fetchLiveFleet]);
+
+  /**
+   * A name, folded into the fleet in place so the row it belongs to is the row that changes.
+   * Re-fetching the whole fleet instead would be a second round trip to learn one string, and
+   * would move the cooldown timers of every other key under the person typing.
+   *
+   * The fleet coordinates come from the row that opened the editor, not from the previous
+   * list: a key being named for the FIRST time has no entry to inherit them from, and an
+   * entry built from nothing would never join onto anything.
+   */
+  const applySavedName = useCallback(
+    (
+      target: { maskedKey: string; provider: string; modelId: string },
+      saved: { name: string; label?: string; keyId: string },
+    ) => {
+      setKeyNames((source) => [
+        ...source.filter((entry) => entry.keyId !== saved.keyId),
+        {
+          keyId: saved.keyId,
+          name: saved.name,
+          ...(saved.label === undefined ? {} : { label: saved.label }),
+          provider: target.provider,
+          modelId: target.modelId,
+          maskedKey: target.maskedKey,
+          orphaned: false,
+        },
+      ]);
+      toastSuccess(S.models.keyNameSaved(saved.name));
+      setRenamingKey(null);
+    },
+    [],
+  );
 
   const stats = useMemo(() => calculateFleetHealth(activeReports), [activeReports]);
 
@@ -349,11 +430,14 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setActionPending(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId,
+          projectId: projectId ?? undefined,
           action,
           provider,
           keyId: item.keyId,
@@ -368,9 +452,17 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           return;
         }
       }
-      throw new Error(`Key action failed (HTTP ${res.status}).`);
+      // A failure has to say WHICH key, or the user gets a red banner over six rows and no
+      // idea which one refused. The name is the identifier they chose, so it is the one that
+      // goes in the sentence; an unnamed key falls back to its mask, which is what the row
+      // they clicked already showed them.
+      throw new Error(S.models.keyActionFailed(keyNameOf(item, S.models.keyUnnamed).name, action));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Key action failed. Refresh and try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : S.models.keyActionFailed(keyNameOf(item, S.models.keyUnnamed).name, action),
+      );
     } finally {
       setActionPending(false);
     }
@@ -401,6 +493,9 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
     setActionPending(true);
     setError(null);
     try {
+      // No Project resolved yet: there is nothing to ask about, and a guessed id
+      // is the 404 this guard replaces. Every caller waits the same way.
+      if (projectId === null) return;
       const res = await fetch(`/api/cockpit/keys/action?project=${encodeURIComponent(projectId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -656,24 +751,54 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
 
               {/* Cards Grid */}
               <div className="flex flex-col divide-y divide-gray-200 dark:divide-gray-800">
-                {report.keys.map((keyItem) => (
-                  <KeyHealthCard
-                    key={keyItem.keyId}
-                    keyItem={keyItem}
-                    disabled={actionPending || (!isDemo && (loading || !!error))}
-                    provider={report.provider}
-                    modelId={report.modelId}
-                    onAction={(action, item) =>
-                      void handleKeyAction(
-                        action,
-                        item,
-                        report.modelRef,
-                        report.provider,
-                        report.modelId,
-                      )
-                    }
-                  />
-                ))}
+                {report.keys.map((keyItem) => {
+                  const isRenaming =
+                    renamingKey !== null && renamingKey.maskedKey === keyItem.maskedKey;
+                  return (
+                    <KeyHealthCard
+                      key={keyItem.keyId}
+                      keyItem={keyItem}
+                      disabled={actionPending || (!isDemo && (loading || !!error))}
+                      provider={report.provider}
+                      modelId={report.modelId}
+                      canRename={!isDemo && isOwner && projectId !== null}
+                      renaming={isRenaming}
+                      onRename={(item) =>
+                        setRenamingKey({
+                          maskedKey: item.maskedKey,
+                          provider: report.provider,
+                          modelId: report.modelId,
+                          ...(item.name === undefined ? {} : { name: item.name }),
+                          ...(item.label === undefined ? {} : { label: item.label }),
+                        })
+                      }
+                      onAction={(action, item) =>
+                        void handleKeyAction(
+                          action,
+                          item,
+                          report.modelRef,
+                          report.provider,
+                          report.modelId,
+                        )
+                      }
+                    >
+                      {isRenaming && projectId !== null ? (
+                        <KeyNameEditor
+                          projectId={projectId}
+                          provider={report.provider}
+                          modelId={report.modelId}
+                          maskedKey={keyItem.maskedKey}
+                          {...(renamingKey?.name === undefined ? {} : { name: renamingKey.name })}
+                          {...(renamingKey?.label === undefined
+                            ? {}
+                            : { label: renamingKey.label })}
+                          onSaved={(saved) => applySavedName(renamingKey, saved)}
+                          onCancel={() => setRenamingKey(null)}
+                        />
+                      ) : null}
+                    </KeyHealthCard>
+                  );
+                })}
               </div>
             </div>
           ))
@@ -687,7 +812,7 @@ export function ModelsKeyFleetPage({ embedded = false }: { embedded?: boolean } 
           provider={probingTarget.provider}
           modelId={probingTarget.modelId}
           isDemo={isDemo}
-          projectId={projectId}
+          projectId={projectId ?? undefined}
           onClose={() => {
             setProbingTarget(null);
             if (!isDemo) void fetchLiveFleet();

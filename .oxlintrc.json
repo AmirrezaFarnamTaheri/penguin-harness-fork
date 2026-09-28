@@ -15,14 +15,135 @@
     // A value import beside an `import type` from the same module is still fine.
     "import/no-duplicates": "error",
     "import/no-self-import": "error",
-    "import/no-empty-named-blocks": "error"
+    "import/no-empty-named-blocks": "error",
+
+    // ---------------------------------------------------------------------------
+    // anti-slop (vendored from dmmulroy/anti-slop, MIT) — 15 rules, 2 adopted.
+    //
+    // Counts are measured on this repo at oxlint 1.85.0, `oxlint -f json`, with the
+    // vendored plugin registered. "owned" excludes 274 findings inside .agents/skills/**,
+    // which is third-party vendored skill source, not application source. Owned total:
+    // 8,305 findings across 13 rules over ~1,000 files (5,092 in src, 3,213 in tests).
+    //
+    // So: this repo is not ready for these rules. Two of fifteen are enforceable today.
+    // The other thirteen are switched off WITH their counts and reasons below, not
+    // silently — the whole point of counting before enforcing is that the gap is
+    // visible and re-measurable, not that it was papered over.
+    // ---------------------------------------------------------------------------
+
+    // ADOPTED: zero findings in owned source. Both genuinely run (verified against a
+    // fixture that trips each rule, so "0" means clean, not unloaded).
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-widen-then-assert": "error",
+
+    // NOT ADOPTED — 3,786 owned (1,337 src / 2,449 test, 339 files).
+    // The largest rule by an order of magnitude, and it is per-assertion, not per-site:
+    // it wants a hand-written invariant comment at every type assertion in the tree.
+    // The waiver for a finding IS the SAFETY comment, so "fixing" this means writing
+    // 3,786 real comments — several days of work whose output is exactly the token
+    // comments the rule exists to reject, at 10x the volume the rule was warned about.
+    // The honest migration is incremental: the comment is a one-line cost at any
+    // assertion you already touch, so it should be adopted file-by-file as they change
+    // rather than as a gate. Re-measure and flip it when the owned count is small.
+    "anti-slop/require-safety-comment-for-type-assertion": "off",
+
+    // NOT ADOPTED — 1,301 owned (1,212 src / 89 test, 284 files).
+    // Roughly one typeof guard per 3 source files. The rule's remedy (parse at the I/O
+    // boundary, then branch on the domain value) is a genuine refactor of every guard
+    // site, not a lint fix, and a quarter of the guards are legitimately discriminating
+    // array-vs-null-vs-scalar in JSON that has not been parsed yet.
+    "anti-slop/no-runtime-typeof": "off",
+
+    // NOT ADOPTED — 1,281 owned (1,176 src / 105 test, 192 files).
+    // `{...(cond ? { k: v } : {})}` is the repo's idiomatic optional-field merge and is
+    // correct at every site the rule flags; the evidence-preserving rewrite is
+    // `...(cond && { k: v })`, which is a file-wide stylistic churn with no safety gain.
+    "anti-slop/no-conditional-empty-object-spread": "off",
+
+    // NOT ADOPTED — 629 owned (509 src / 120 test, 253 files).
+    // Flags explicit annotations on values whose type is already known. Removing the
+    // annotation is often right, but across 253 files it is a public-signature review,
+    // and a wrong removal is a type error that only shows at a distant call site.
+    "anti-slop/no-known-value-widening": "off",
+
+    // NOT ADOPTED — 531 owned (398 src / 133 test, 139 files).
+    // Every `Record<string, unknown>` / `{ [k: string]: unknown }` in the tree. The
+    // remedy is threading a real value type through each one; these are the maps that
+    // carry unparsed provider payloads, so it is a typing project with its own review.
+    "anti-slop/no-unsafe-dictionary-type": "off",
+
+    // NOT ADOPTED — 441 owned (347 src / 94 test, 176 files).
+    // `unknown` parameters are how this codebase marks an I/O boundary it has already
+    // decided to parse later; the rule wants that parsing hoisted into the signature.
+    // Correct in principle, and a large per-call-site refactor in practice.
+    "anti-slop/no-unknown-parameters": "off",
+
+    // NOT ADOPTED — 147 owned (34 src / 113 test, 23 files).
+    // Two thirds are in test fixtures that build deliberately malformed doubles. The 34
+    // source hits are real, but they sit in sandbox/CDP boundary code where the double
+    // hop is load-bearing. Adopting now means 147 edits across tests and runtime.
+    "anti-slop/no-chained-type-assertions": "off",
+
+    // NOT ADOPTED — 109 owned (37 src / 72 test, 10 files).
+    // A naming preference, not a type-safety rule: it bans the word "shape" in
+    // identifiers. The hits are descriptive (`…Shape`, `shapeFrom…`) and accurate. This
+    // is a rename-everything change with real regression risk across ten files and no
+    // safety benefit, so it does not belong in a gate that must stay quiet.
+    "anti-slop/no-shape-in-symbol-names": "off",
+
+    // NOT ADOPTED — 58 owned (36 src / 22 test, 28 files).
+    // The first count small enough to fix, but each one is a public return-type change
+    // that propagates to every caller. 28 files of API surface is its own project, and
+    // it is the natural next tightening once one is scoped.
+    "anti-slop/no-unknown-returns": "off",
+
+    // NOT ADOPTED — 13 owned, all in tests, across 11 files in core, web and desktop.
+    // The rule's argument (inject a real seam instead of mocking a module) is sound and
+    // worth agreeing with, but converting 11 test files from vi.mock to injected
+    // dependencies is a test-architecture rewrite, and these tests are the ones guarding
+    // the 9,000-test suite. Measured and reported, deliberately not mass-rewritten.
+    "anti-slop/no-module-mocking": "off",
+
+    // NOT ADOPTED — 6 owned (5 src / 1 test, 3 files). Smallest real count here, and it
+    // fails only because 3 of the 6 are in packages/core/src/llm/generative-model.ts,
+    // which is under concurrent fleet/provider-gateway work. Those three are
+    // error-envelope probes (`providerSignals`, `hasRateLimitSignal`, `anyInCauseChain`)
+    // that take `object` and narrow via a cast because a `cause`-chain walk hands them
+    // `unknown` levels; typing the parameter is a real refactor of that classification
+    // path, not a signature tweak. The other three — use-cockpit-telemetry.ts:436,
+    // live-tail.ts:90, pty-quarantine.test.ts:11 — are genuinely fixable (see report);
+    // re-run once the core file is free.
+    "anti-slop/no-object-parameters": "off",
+
+    // NOT ADOPTED — 2 owned, both in tests. Both are `Proxy.get` traps forwarding to a
+    // typed target, where `Reflect.get(target, prop, receiver)` is the correct call
+    // because it preserves `this` for getters. The rule's remedy (parse into a named
+    // domain type) does not apply to a forwarding trap, and the alternative drops
+    // receiver forwarding, which is a behaviour change in a test double.
+    "anti-slop/no-reflect-get": "off",
+
+    // NOT ADOPTED — 1 owned: `ToolFactory` in packages/core/src/plugin/index.ts:45,
+    // documented as a RESERVED public-contract slot whose shape lands with the first
+    // plugin-provided tool. Satisfying the rule means either inventing that contract or
+    // inlining `unknown` at its use site to dodge an alias detector — the mechanical
+    // laundering the upstream install skill explicitly forbids. A rule that fires once,
+    // on a deliberate placeholder, is a rule this repo cannot adopt yet.
+    "anti-slop/no-unknown-type-aliases": "off"
   },
+  "jsPlugins": [
+    // Vendored, not a dependency: see tools/oxlint/anti-slop/ and its MIT provenance
+    // in tools/oxlint/anti-slop/README.md. Requires the @oxlint/plugins devDependency.
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+  ],
   "ignorePatterns": [
     "**/dist/**",
     "**/build/**",
     "**/node_modules/**",
     "packages/desktop/release/**",
     "packages/landing/.blog-assets/**",
-    "packages/web/dist-app/**"
+    "packages/web/dist-app/**",
+    // The vendored plugin's own source, including its RuleTester suites — it is
+    // third-party code, linted by its upstream, not application source.
+    "tools/oxlint/anti-slop/**"
   ]
 }

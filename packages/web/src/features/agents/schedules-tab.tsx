@@ -232,7 +232,7 @@ export function SchedulesTab({
                     <span className="block text-gray-600 dark:text-gray-300">
                       {item.nextFireAt ? formatDateTime(item.nextFireAt) : "—"}
                     </span>
-                    <span className="block text-gray-400 dark:text-gray-500">
+                    <span className="block text-gray-500 dark:text-gray-500">
                       {item.lastFiredAt ? formatDateTime(item.lastFiredAt) : "—"}
                     </span>
                   </td>

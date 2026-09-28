@@ -50,6 +50,7 @@ import { MachinesRepo } from "./db/repos/machines.js";
 import { migrate } from "./db/migrations.js";
 import { ErrorsRepo } from "./db/repos/errors.js";
 import { MessagingBindingsRepo } from "./db/repos/messaging-bindings.js";
+import { ModelKeysRepo } from "./db/repos/model-keys.js";
 import { SchedulesRepo } from "./db/repos/schedules.js";
 import { OrgCacheRepo } from "./db/repos/organizations.js";
 import { ServerSettingsRepo } from "./db/repos/server-settings.js";
@@ -71,6 +72,7 @@ import { ensureInstallId } from "./install-id.js";
 import { handleError, HttpError, errorBody } from "./http/errors.js";
 import { attributedProjectId } from "./http/attribution.js";
 import { authRoutes } from "./http/routes/auth.js";
+import { instanceRoutes } from "./http/routes/instance.js";
 import { installRoutes } from "./http/routes/install.js";
 import { ChannelHub } from "./runtime/channel.js";
 import { ErrorRecorder } from "./runtime/error-recorder.js";
@@ -134,7 +136,13 @@ import {
 } from "./services/preview-token.js";
 import type { PreviewTokenSigner } from "./services/preview-token.js";
 
-import type { ControlEnvContext, ProxyEnvPolicy, SpawnConfiner } from "@prismshadow/penguin-core";
+import type {
+  ControlEnvContext,
+  JevToolAdvisor,
+  ProxyEnvPolicy,
+  SpawnConfiner,
+} from "@prismshadow/penguin-core";
+import { createJevAdvisor } from "@prismshadow/penguin-core/jev";
 import { declined } from "./hmr/hono-seam.js";
 import { AgentsRepo } from "./db/repos/agents.js";
 import { MembersRepo } from "./db/repos/members.js";
@@ -155,6 +163,7 @@ import { auditRoutes } from "./http/routes/audit.js";
 import { wikiRoutes } from "./http/routes/wiki.js";
 import { pipelineRoutes, personaRoutes } from "./http/routes/pipelines.js";
 import { ModelKeyHealthService } from "./services/model-key-health.js";
+import { ModelKeyNamesService } from "./services/model-key-names.js";
 import { modelOAuthCallbackRoutes, modelOAuthRoutes } from "./http/routes/model-oauth.js";
 import { chatDefaultsRoutes } from "./http/routes/chat-defaults.js";
 import { commandPolicyRoutes } from "./http/routes/command-policy.js";
@@ -200,6 +209,8 @@ export interface AppDeps {
   projectConfigService: ProjectConfigService;
   /** In-memory API key health tracking and rotation registry. */
   keyHealthService: ModelKeyHealthService;
+  /** The names and labels a Project has given its API keys (annotations only — no key material). */
+  modelKeyNames: ModelKeyNamesService;
   /** In-flight provider key-minting flows (PKCE verifiers live here and nowhere else). */
   modelOAuth: ModelOAuthService;
   agentService: AgentService;
@@ -294,6 +305,8 @@ export interface BuildDepsOverrides {
   wechatRetryDelayMs?: (failures: number) => number;
   /** Test double: the WeChat scan-to-connect transport (avoids real ilinkai.weixin.qq.com requests). */
   wechatScanTransport?: WeChatScanTransport;
+  /** Test hook: a host-composed Jev advisor shared by the server's Session runtimes. */
+  jevAdvisor?: JevToolAdvisor;
   /** Test double: machines service whose ssh effects are faked (the real one reads ~/.ssh/config and spawns ssh). */
   machines?: MachinesService;
   /**
@@ -527,6 +540,11 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
 
   // Public routes (no login required).
   app.route("/api/auth", authRoutes(deps));
+  // Instance identity: which data root is this server serving? Public because the caller is
+  // by definition not yet sure whether it may talk to this server (see the route's header),
+  // and runtime-owned because discovery cannot depend on a route a hot push could withdraw
+  // from under a client that predates the push — which is exactly the client that asks.
+  app.route("/api/instance", instanceRoutes(deps));
   // Desktop shutdown authenticates with the shell's Bearer token, not the cookie
   // session, so it mounts outside authMiddleware (and only in desktop mode).
   if (deps.desktop) {
@@ -827,6 +845,36 @@ function registerStaticRoutes(app: Hono<AppEnv>, resolveSource: () => Promise<We
 // ---------------------------------------------------------------------------
 
 /**
+ * Composes the host-owned advisor from the deployment's environment, or nothing.
+ *
+ * Three variables, and the shape of the decision matters: no key means no advisor and no hook, so
+ * an unset deployment is byte-identical to one that never heard of this. A bad endpoint disables
+ * the advisor rather than crashing the server, and says why in one bounded line.
+ *
+ * `PENGUIN_JEV_BASE_URL` exists for a decision-model server running on this machine — the wire
+ * format is the provider's, so a local implementation answers it unchanged. The loopback/https rule
+ * is enforced by the client, not here: a cleartext remote endpoint is refused, and this function
+ * turns that refusal into "advisor off" rather than a process that will not boot.
+ */
+function jevAdvisorFromEnv(log: (line: string) => void): JevToolAdvisor | undefined {
+  const apiKey = process.env.PENGUIN_JEV_API_KEY?.trim();
+  if (!apiKey) return undefined;
+  const baseUrl = process.env.PENGUIN_JEV_BASE_URL?.trim();
+  try {
+    return createJevAdvisor({
+      apiKey,
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(process.env.PENGUIN_JEV_MODEL?.trim()
+        ? { model: process.env.PENGUIN_JEV_MODEL.trim() }
+        : {}),
+    });
+  } catch (error) {
+    log(`[jev] disabled: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * Assembles the business service graph over the claimed runtime capabilities.
  *
  * The db handle, auth service, channel hub, config object and hmr host come from the
@@ -846,6 +894,7 @@ export function buildAppDeps(
 ): AppDeps {
   const { config, db, authState, channels, hmr } = caps;
   const log = overrides.log ?? ((line: string) => console.log(line));
+  const jevAdvisor = overrides.jevAdvisor ?? jevAdvisorFromEnv(log);
 
   // A pushed platform carries its own migrations, which is the only way the tables its
   // business needs can reach a runtime older than they are — that runtime will never grow
@@ -954,6 +1003,7 @@ export function buildAppDeps(
       projectConfigService.setGroupApiKey(projectId, provider, apiKey),
   });
   const keyHealthService = new ModelKeyHealthService();
+  const modelKeyNames = new ModelKeyNamesService(new ModelKeysRepo(db), projectConfigService);
   const agentConfigService = new AgentConfigService(config.root);
   const snapshots = new SnapshotService(config.root);
   const agentService = new AgentService(config.root, agentsRepo, agentConfigService, snapshots);
@@ -981,7 +1031,6 @@ export function buildAppDeps(
   // harmless and there is nothing to persist or rotate. (Per-App is the same trade at a
   // smaller scale: a push invalidates open previews, and a preview is one reload away.)
   const previewTokens = createPreviewTokenSigner();
-  const benchmarks = new BenchmarkService(config.root, workspaceFiles);
   const usageService = new UsageService(
     usageRepo,
     errorsRepo,
@@ -990,6 +1039,10 @@ export function buildAppDeps(
     (projectId, provider, modelId) => projectConfigService.getPricing(projectId, provider, modelId),
     overrides.now ?? (() => new Date()),
   );
+  const benchmarks = new BenchmarkService(config.root, workspaceFiles, {
+    traceIndex,
+    usageService,
+  });
   const updateCheck =
     overrides.updateCheck ?? new UpdateCheckService(overrides.now ? { now: overrides.now } : {});
   const updateJob = overrides.updateJob ?? new UpdateJobService();
@@ -1037,6 +1090,7 @@ export function buildAppDeps(
         controlEnv,
         pathPrepend,
         confineSpawn,
+        ...(jevAdvisor ? { jevAdvisor } : {}),
       }),
     sources: sessionSources,
     recorder,
@@ -1150,6 +1204,7 @@ export function buildAppDeps(
         : null;
     },
     confineSpawn,
+    ...(jevAdvisor ? { jevAdvisor } : {}),
     // Company mode: which organization owns a Session, so development mode's list can hide
     // organization sessions and the company sidebar can group its own. The caches are a
     // projection of the organization's files, rebuilt every reconcile pass, so a row that
@@ -1221,6 +1276,7 @@ export function buildAppDeps(
     projectService,
     projectConfigService,
     keyHealthService,
+    modelKeyNames,
     modelOAuth,
     agentService,
     agentConfigService,

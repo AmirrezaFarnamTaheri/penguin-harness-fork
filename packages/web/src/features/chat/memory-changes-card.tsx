@@ -51,7 +51,7 @@ export function MemoryChangesCard({
     const glyph = scopeGlyph(row.scope, row.scopeKey);
     return (
       <>
-        <span title={glyph.title} className="shrink-0 text-gray-400">
+        <span title={glyph.title} className="shrink-0 text-gray-500">
           <GlyphIcon d={glyph.d} size={ICON_SIZE.rowLead} />
           <span className="sr-only">{glyph.title}</span>
         </span>
@@ -59,7 +59,7 @@ export function MemoryChangesCard({
         <span className="min-w-0 flex-1" />
         <span
           title={row.op === "write" ? S.chat.memoryOpWrite : S.chat.memoryOpEdit}
-          className="shrink-0 text-gray-400"
+          className="shrink-0 text-gray-500"
         >
           <GlyphIcon
             d={row.op === "write" ? FILE_WRITE_ICON : FILE_EDIT_ICON}
@@ -75,7 +75,7 @@ export function MemoryChangesCard({
       {/* Header bar, mirroring the file-summary card: "icon + N memory updates", plus the one
           card-level action (rows navigate to their own content, so this doesn't duplicate them). */}
       <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800/60 dark:bg-gray-800/40">
-        <GlyphIcon d={MEMORY_ICON} size={ICON_SIZE.rowLead} className="shrink-0 text-gray-400" />
+        <GlyphIcon d={MEMORY_ICON} size={ICON_SIZE.rowLead} className="shrink-0 text-gray-500" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {S.chat.memoryChangesTitle(alive.length)}
         </span>
@@ -84,7 +84,7 @@ export function MemoryChangesCard({
             type="button"
             title={S.chat.memoryViewTitle}
             onClick={onOpenPanel}
-            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-gray-400 transition-colors duration-150 hover:text-gray-600 dark:hover:text-gray-300"
+            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <GlyphIcon d={MEMORY_ICON} size={ICON_SIZE.inlineGlyph} />
             <span className="sr-only">{S.chat.memoryViewTitle}</span>
@@ -106,7 +106,7 @@ export function MemoryChangesCard({
               {/* Right-aligned action hint, the file card's affordance (span, not a nested button: the row itself is the button). */}
               <span
                 aria-hidden
-                className="shrink-0 text-xs text-gray-400 transition-colors duration-150 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
+                className="shrink-0 text-xs text-gray-500 transition-colors duration-150 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
               >
                 {S.chat.memoryRowOpen}
               </span>
@@ -124,7 +124,7 @@ export function MemoryChangesCard({
             className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800/50"
           >
             {expanded ? S.chat.showLess : S.chat.memoryShowMore(hidden)}
-            <Chevron open={expanded} className="text-gray-400" size={ICON_SIZE.chevronDense} />
+            <Chevron open={expanded} className="text-gray-500" size={ICON_SIZE.chevronDense} />
           </button>
         )}
       </div>

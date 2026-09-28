@@ -110,7 +110,7 @@ export function registerAuthCommand(program: Command, t: Messages): void {
         // process now holds. An explicit --server is the caller's own responsibility.
         let server: string | null = opts.server ?? null;
         if (server === null) {
-          const lock = await liveServerLock(root);
+          const lock = await liveServerLock(root, { requireIdentity: true });
           server = lock === null ? null : `http://localhost:${lock.port}`;
         }
         if (server === null) return fail(t.auth.noServer(root));
@@ -236,7 +236,7 @@ export function registerAuthCommand(program: Command, t: Messages): void {
       }
       // The session file says where a later `logout` goes, so the URL comes from a live lock
       // — a stale one would hand the token to whatever now holds that port.
-      const lock = await liveServerLock(root);
+      const lock = await liveServerLock(root, { requireIdentity: true });
       const server = lock === null ? null : `http://localhost:${lock.port}`;
       if (server !== null) {
         writeSession(root, {

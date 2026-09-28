@@ -46,6 +46,7 @@ import type {
   BackgroundSubagentInfo,
   CompactAvailability,
   ControlEnvContext,
+  JevToolAdvisor,
   OmniMessage,
   ProxyEnvPolicy,
   SpawnConfiner,
@@ -240,6 +241,8 @@ export function createCoreSessionLoader(
     controlEnv?: (ctx: ControlEnvContext) => Record<string, string>;
     pathPrepend?: () => string[];
     confineSpawn?: () => SpawnConfiner | null;
+    /** Optional host-composed Jev advisor; absent keeps tool calls on the historical path. */
+    jevAdvisor?: JevToolAdvisor;
   } = {},
 ): SessionLoader {
   return {
@@ -252,6 +255,7 @@ export function createCoreSessionLoader(
         ...(opts.controlEnv ? { controlEnv: opts.controlEnv } : {}),
         ...(opts.pathPrepend ? { pathPrepend: opts.pathPrepend } : {}),
         ...(opts.confineSpawn ? { confineSpawn: opts.confineSpawn } : {}),
+        ...(opts.jevAdvisor ? { jevAdvisor: opts.jevAdvisor } : {}),
       });
       const located = await findLatestTraceFile(
         tracesDir(root, row.projectId, row.agentId),
@@ -347,6 +351,65 @@ export interface SessionManagerDeps {
    * backfill assumes when it reads MAX(ts) as a session's last activity.
    */
   now?: () => Date;
+  /**
+   * Optional advisory observer for the surfaces a tool call does not cover: turn boundaries,
+   * Session lifecycle, context pressure. Optional in the strictest sense — when it is absent
+   * this class behaves exactly as before, and when it is present every call site below uses
+   * its fire-and-forget `notify`, so no observation can add latency to, or fail, a Task, a
+   * compaction, an idle sweep or a shutdown. Nothing here reads an observation back.
+   */
+  jevSurfaces?: AdvisorySurfaceObserver;
+}
+
+/** Which part of the run a surface observation describes. Mirrors core's closed surface set. */
+export type AdvisorySurface = "turn" | "session" | "context";
+
+/**
+ * The facts one surface observation carries. Counts, durations and enums only — the shape is
+ * closed, so there is no field here a caller could use to put a message body, a tool argument
+ * or a path onto the wire. Declared structurally rather than imported so this file's only
+ * dependency on the advisory is its behaviour (see {@link AdvisorySurfaceObserver}), not the
+ * class that implements it; `JevSurfaceAdvisor` satisfies this interface as-is.
+ */
+export type AdvisorySurfaceFacts =
+  | {
+      surface: "turn";
+      durationMs: number;
+      outcome: "completed" | "aborted" | "errored";
+      messageCount: number;
+      subagentsSpawned: number;
+      contextAvailability: CompactAvailability;
+      provider: string;
+      modelId: string;
+    }
+  | {
+      surface: "session";
+      event: "resumed" | "long_silence" | "abnormal_end";
+      idleMs?: number;
+      backgroundProcesses: number;
+      backgroundSubagents: number;
+    }
+  | {
+      surface: "context";
+      trigger: "turn_end" | "compaction_requested";
+      availability: CompactAvailability;
+    };
+
+/**
+ * The whole contract the runtime has on an advisory observer, and it is deliberately this
+ * small. `notify` returns `void`, so there is nothing here to await; the shipped
+ * `JevSurfaceAdvisor` is additionally synchronous and non-blocking — it starts the provider
+ * call and returns on the same tick. Because the return type is `void`, no caller can obtain
+ * an observation and branch on it: the advisory's answer is structurally unavailable as a
+ * control-flow input, not merely unused by convention.
+ *
+ * A host that injects an observer MUST make `notify` return promptly. The runtime calls it
+ * without awaiting (see observeSurface), so an async observer costs the runtime nothing, but
+ * a SYNCHRONOUS one that blocks would be inside the run-end path — this interface cannot
+ * prevent that, and the requirement is stated here rather than discovered in a profile.
+ */
+export interface AdvisorySurfaceObserver {
+  notify(input: AdvisorySurfaceFacts & { key: string }): void;
 }
 
 /**
@@ -788,6 +851,18 @@ export class SessionManager {
     // process (POST /sessions), and a listener registered only on the loader path left
     // freshly created sessions unable to deliver idle-arrival completion reports.
     this.registerNoticeListener(row.sessionId, session);
+    // Session-lifecycle surface: a Session entering the active table. Fired after the entry
+    // is fully constructed so the background counts below are the real ones. Fire-and-forget,
+    // so adopt returns on the same tick it always did.
+    const entry = this.entries.get(row.sessionId);
+    if (entry) {
+      this.observeSurface({
+        surface: "session",
+        key: row.sessionId,
+        event: "resumed",
+        ...this.backgroundCountsOf(entry),
+      });
+    }
   }
 
   /**
@@ -1224,6 +1299,18 @@ export class SessionManager {
       // telling someone who just compacted that there's "no completed conversation turn
       // yet" tells them nothing.
       const why = entry.session.compactability();
+      // Context-pressure surface, fired BEFORE the 409 below. That ordering is the whole
+      // point: "a user asked to compact and could not" is one of the few moments where
+      // context pressure is unambiguously real, and it is invisible to the observer if the
+      // throw happens first. The throw is the harness's own deterministic answer about
+      // compactability; the observation is a separate, non-authorizing note about the same
+      // fact, and the request is rejected identically whether or not an advisor is wired.
+      this.observeSurface({
+        surface: "context",
+        key: entry.sessionId,
+        trigger: "compaction_requested",
+        availability: why,
+      });
       if (why !== "ok") throw compactUnavailable(why);
       const ac = new AbortController();
       entry.status = "compacting";
@@ -1587,12 +1674,62 @@ export class SessionManager {
       // Session object, so evicting it would silently drop them.
       if (entry.session.hasPendingBackgroundNotices?.()) continue;
       if (now - entry.lastActivityMs <= idleMs) continue;
+      // Session-lifecycle surface: the long silence. This is the one event in the sweep worth
+      // observing, and the reason is what it means: an entry released after this long with no
+      // activity is a Session whose in-memory context is being dropped, which on resume is
+      // rebuilt from the Trace rather than continued. Firing it BEFORE the delete so the
+      // background counts below are the entry's last word on its own state. It cannot slow the
+      // sweep (synchronous, void, non-throwing) and cannot keep the entry alive.
+      this.observeSurface({
+        surface: "session",
+        key: entry.sessionId,
+        event: "long_silence",
+        idleMs: now - entry.lastActivityMs,
+        ...this.backgroundCountsOf(entry),
+      });
       this.entries.delete(key);
       this.disposeRemoved(entry);
     }
   }
 
   // —— Internal ——
+
+  /**
+   * Hands one set of recorded facts to the advisory observer, if a host composed one.
+   *
+   * Every property of this method exists to keep the observation off the caller's path:
+   * it is synchronous, it returns nothing, it does not await, and it is wrapped in a
+   * try/catch that swallows. That is what lets it be called from a Task's run-end
+   * bookkeeping, a compaction request, an idle sweep and a shutdown without any of those
+   * becoming slower or less reliable when the advisory provider is down.
+   *
+   * It also cannot become a second source of truth: no return value, and nothing anywhere
+   * in this class reads an observation back. `notify` coalesces per key and caps what is in
+   * flight, so a burst of surfaces is dropped and counted rather than queued.
+   */
+  private observeSurface(facts: AdvisorySurfaceFacts & { key: string }): void {
+    const advisor = this.deps.jevSurfaces;
+    if (!advisor) return;
+    try {
+      advisor.notify(facts);
+    } catch (err) {
+      // Unreachable with the shipped advisor, which converts every failure into an
+      // observation. Kept because a host may inject its own, and a broken observer must
+      // still not be able to fail a Task.
+      this.log(`[jev] surface observer threw: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /** The live background counts for an entry, for the session-lifecycle surface. */
+  private backgroundCountsOf(entry: RuntimeEntry): {
+    backgroundProcesses: number;
+    backgroundSubagents: number;
+  } {
+    return {
+      backgroundProcesses: entry.backgroundTasks.processes,
+      backgroundSubagents: entry.backgroundTasks.subagents,
+    };
+  }
 
   private assertOpen(): void {
     if (this.closed) {
@@ -1833,8 +1970,17 @@ export class SessionManager {
     // exist) — the latter is cleaned up when the parent-level tool_call_output settles;
     // if the call is still in the queue at that point, it never produced a session_meta.
     const subagentPrompts = new Map<string, string>();
+    // Turn-boundary accounting for the advisory turn surface (see observeSurface). These are
+    // three local counters and a timestamp: the point of the surface is to see a turn that no
+    // single tool call looks expensive for, and every number it needs is already being counted
+    // here. Nothing about the run's CONTENT is kept — no message text, no tool arguments, no
+    // paths — so this costs three integers and cannot become a second copy of the Trace.
+    const turnStartedAtMs = Date.now();
+    let turnMessageCount = 0;
+    let turnErrored = false;
     try {
       for await (const msg of gen) {
+        turnMessageCount++;
         // A parent-level (no origin) run_subagent call: record its prompt for the child
         // session_meta that arrives later to use as its title.
         if (!msg.origin || msg.origin.length === 0) {
@@ -1937,6 +2083,7 @@ export class SessionManager {
         `[session] Run failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
       );
       this.deps.errors?.record({ source: "session", err, ctx, code: "session_run_failed" });
+      turnErrored = true;
     } finally {
       // Wrap-up: persist any still-pending LLM failure and clear the tool-name cache (the watcher's state doesn't carry across runs).
       watcher?.close();
@@ -1951,6 +2098,11 @@ export class SessionManager {
       // outlives this task — it stays pending for the user (see ApprovalRegistry.denyMain).
       entry.approvals.denyMain();
       entry.status = "idle";
+      // Read the run's own signal before the entry drops it: this is how "aborted" is told
+      // apart from "completed" at the turn boundary. The SDK converges ordinary failures into
+      // the message stream rather than throwing, so the catch above and this flag are the two
+      // ways a run ends badly, and the surface needs to see both.
+      const turnAborted = entry.abort?.signal.aborted === true;
       entry.abort = null;
       entry.running = null;
       // The run is over, so core has discarded any undelivered steering (see ContextEngine's
@@ -1980,6 +2132,50 @@ export class SessionManager {
       // input-assembly boundary): start their delivery task now. No-op when a follow-up
       // just launched — that run's engine drains the same queue.
       else void this.startBackgroundNoticeTask(entry.sessionId);
+
+      // —— Advisory turn boundary ——
+      // Last statement in the finally, deliberately. Everything above it is load-bearing for
+      // correctness (idle broadcast, row stamp, follow-up auto-start) and this must not be able
+      // to interleave with any of it. `notify` is synchronous, returns void, never awaits and
+      // never throws, so the run-end path finishes on the same tick it always did whether or
+      // not an advisor is wired — and whether or not the provider is answering at all.
+      //
+      // Two surfaces, not one: the turn's own shape, and the context pressure it ended at.
+      // They are separate because they are separate facts that an operator reads separately —
+      // "that turn was slow" and "this session is about to need a compaction" are different
+      // questions with different cadences, and merging them would make each less useful.
+      const turnFacts = {
+        durationMs: Math.max(0, Date.now() - turnStartedAtMs),
+        outcome: turnErrored
+          ? ("errored" as const)
+          : turnAborted
+            ? ("aborted" as const)
+            : ("completed" as const),
+        messageCount: turnMessageCount,
+        // `children` is the map of subagent sessions registered during THIS run — the fan-out
+        // cost of the turn, which is exactly what no single tool call shows.
+        subagentsSpawned: children.size,
+        contextAvailability: entry.session.compactability(),
+        provider: entry.provider,
+        modelId: entry.modelId,
+      };
+      this.observeSurface({ surface: "turn", key: entry.sessionId, ...turnFacts });
+      this.observeSurface({
+        surface: "context",
+        key: entry.sessionId,
+        trigger: "turn_end",
+        availability: turnFacts.contextAvailability,
+      });
+      // A run that ended badly is also a session-lifecycle event. Separate key from the turn's
+      // so the two observations can be in flight at once without one coalescing the other away.
+      if (turnErrored) {
+        this.observeSurface({
+          surface: "session",
+          key: `${entry.sessionId}:abnormal_end`,
+          event: "abnormal_end",
+          ...this.backgroundCountsOf(entry),
+        });
+      }
     }
   }
 

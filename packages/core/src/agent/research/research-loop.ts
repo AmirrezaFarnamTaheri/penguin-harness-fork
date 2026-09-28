@@ -344,17 +344,45 @@ export class ResearchLoop {
     const bySource = new Map<string, SourceRecord>(
       this.sources.map((source) => [source.hit.id, source]),
     );
-    const { results, summary } = this.verifier.verifyBatch(
-      this.claims.slice(0, this.budget.maxVerifications),
-      (claim) => {
-        const record = this.claimToSource.get(claim.id);
-        if (!record) return undefined;
-        return { sourceId: record, text: bySource.get(record)?.text ?? "" };
-      },
-      this.network,
-    );
+    // Reserve BEFORE the work, not after. The budget charged on completion, so a run with two
+    // verifications in flight was admitted twice and only discovered the overrun once the first
+    // reported -- the same hole a spend ceiling has, in token clothing.
+    const planned = this.claims.slice(0, this.budget.maxVerifications);
+    // The work's own size, measured the way it will be charged -- not a guessed per-claim rate.
+    const reserved = this.budget.estimate(planned.map((claim) => claim.text).join(" "));
+    const reservation = this.budget.reserve(reserved);
+    if (!reservation) {
+      // Declining is the point: the run reports what it could not afford rather than starting
+      // work it has already promised it cannot pay for.
+      this.emit(
+        "verifying",
+        `budget exhausted: ${reserved} tokens needed, ${this.budget.remainingTokens} left`,
+      );
+      this.budget.charge("verifying", { verifications: 0 });
+      return;
+    }
+    let verification: ReturnType<EvidenceVerifier["verifyBatch"]>;
+    try {
+      verification = this.verifier.verifyBatch(
+        planned,
+        (claim) => {
+          const record = this.claimToSource.get(claim.id);
+          if (!record) return undefined;
+          return { sourceId: record, text: bySource.get(record)?.text ?? "" };
+        },
+        this.network,
+      );
+    } catch (error) {
+      // Verification started, so charge the reserved estimate even if the provider fails;
+      // leaving it outstanding would both strand capacity and hide attempted spend.
+      this.budget.settleReservation(reservation, { tokens: reservation.tokens });
+      throw error;
+    }
+    const { results, summary } = verification;
     this.verification = results;
     this.budget.charge("verifying", { verifications: results.length });
+    // The verifier exposes no token usage; book the admission estimate conservatively.
+    this.budget.settleReservation(reservation, { tokens: reservation.tokens });
     this.emit("verifying", `${summary.supported} supported / ${summary.contradicted} contradicted`);
 
     // Feedback: refuted hypotheses narrow the next expansion round.

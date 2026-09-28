@@ -254,7 +254,7 @@ function Track({ children }: { children: ReactNode }) {
 function Lane({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center">
-      <span className={`${LABEL_STICKY} text-gray-400 dark:text-gray-500`} title={label}>
+      <span className={`${LABEL_STICKY} text-gray-500 dark:text-gray-500`} title={label}>
         <span className={LABEL_TEXT}>{label}</span>
       </span>
       <Track>{children}</Track>
@@ -278,7 +278,7 @@ function Ticks({ total }: { total: number }) {
         {fracs.map((f, i) => (
           <span
             key={i}
-            className={`absolute top-0 font-mono text-[11px] text-gray-400 dark:text-gray-500 ${
+            className={`absolute top-0 font-mono text-[11px] text-gray-500 dark:text-gray-500 ${
               i === 0 ? "" : i === fracs.length - 1 ? "-translate-x-full" : "-translate-x-1/2"
             }`}
             style={{ left: `${f * 100}%` }}
@@ -396,7 +396,7 @@ export function TimelineChart({
   // Fallback cleanup of an in-progress drag listener on unmount (pointercancel / mid-drag unmount don't fire pointerup).
   useLayoutEffect(() => () => dragCleanup.current?.(), []);
 
-  if (groups.length === 0) return <p className="text-xs text-gray-400">{S.common.none}</p>;
+  if (groups.length === 0) return <p className="text-xs text-gray-500">{S.common.none}</p>;
 
   const hlTs = highlight?.ts;
   const hlKey = highlight?.key;
@@ -533,7 +533,7 @@ export function TimelineChart({
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                       {S.traces.task(g.taskIndex + 1)}
                     </span>
-                    <span className="font-mono text-[11px] text-gray-400">
+                    <span className="font-mono text-[11px] text-gray-500">
                       {humanizeDuration(g.total)}
                     </span>
                   </div>
@@ -702,7 +702,7 @@ export function TimelineChart({
 
       {/* Premiere-style zoom/pan slider: drag the body to pan, drag either handle to zoom, double-click to reset; −/+ covers the full range from <1 to >1 */}
       <div className="flex items-center gap-2">
-        <span className="shrink-0 text-[11px] text-gray-400">{S.traces.zoom}</span>
+        <span className="shrink-0 text-[11px] text-gray-500">{S.traces.zoom}</span>
         <button
           type="button"
           aria-label={S.traces.zoomOut}
@@ -744,13 +744,13 @@ export function TimelineChart({
         >
           <span className="text-[11px] leading-none">＋</span>
         </button>
-        <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums text-gray-400">
+        <span className="w-9 shrink-0 text-right font-mono text-[11px] tabular-nums text-gray-500">
           {zoom.toFixed(2)}×
         </span>
       </div>
 
       {onHighlight && (
-        <p className="text-[11px] text-gray-400 dark:text-gray-600">{S.traces.linkHint}</p>
+        <p className="text-[11px] text-gray-500 dark:text-gray-600">{S.traces.linkHint}</p>
       )}
     </div>
   );

@@ -71,8 +71,14 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
     replace: (_match, prefix) => `${prefix}${REDACTED_MARKER}`,
   },
   {
+    // The scheme run must be the WHOLE maximal run of scheme characters: `:` is not in the
+    // class, so a scheme can never be followed by more of them. That makes the greedy scan
+    // safe to bound, and the leading boundary guard keeps it from being retried at every
+    // position of a long alphanumeric run — without it, redaction is quadratic in the input
+    // (28s on a 256 KiB run, never finishing on the 8 MiB tool outputs this rule now sees).
+    // 255 is far above any registered scheme; a longer "scheme" is not one.
     name: "uri_credentials",
-    pattern: /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^:@\s]+):([^@\s]+)@/g,
+    pattern: /(?<![a-zA-Z0-9+.-])([a-zA-Z][a-zA-Z0-9+.-]{0,255}:\/\/)([^:@\s]+):([^@\s]+)@/g,
     replace: (_match, scheme, user) => `${scheme}${user}:${REDACTED_MARKER}@`,
   },
   {

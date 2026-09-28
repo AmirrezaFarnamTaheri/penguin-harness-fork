@@ -39,13 +39,14 @@ export const FAN_ENTRY_SIZE = 36;
  * The ring's radius at rest (px): how far an entry's centre sits from the ball's centre
  * while the whole semicircle is available.
  *
- * The floor is the tightest packing that arc produces. Seven entries — five panel kinds,
- * the terminal, and the hide entry — spread evenly over a semicircle leave a chord of
- * 2R·sin(step / 2) between neighbours, with step = pi / 6, so keeping FAN_ENTRY_GAP of air
- * around the 36px circles needs 44 / (2·sin 15°) ≈ 85px. 92 is that with a few pixels to
- * spare (a chord of ≈ 48px, some 12px of air), and it keeps the ring close enough to the
- * ball to read as one object. The arc only ever grows from here, and only where a trimmed
- * span would otherwise crowd the entries together.
+ * A FLOOR, not the resting radius: it was derived for the fan of seven — five panel kinds,
+ * the terminal, and the hide entry — spread evenly over a semicircle, which leaves a chord
+ * of 2R·sin(step / 2) between neighbours, with step = pi / 6, so keeping FAN_ENTRY_GAP of
+ * air around the 36px circles needs 44 / (2·sin 15°) ≈ 85px. 92 is that with a few pixels
+ * to spare. The real fan is wider than seven now (every PANEL_KINDS entry gets a rung, plus
+ * the terminal and hide), and the solver below opens the ring past this until the entries
+ * have their air again — which is why the arc only ever grows from here, and only where a
+ * trimmed span would otherwise crowd the entries together.
  */
 export const FAN_MIN_RADIUS = 92;
 /** Air kept between two neighbouring entries' circles (px). */

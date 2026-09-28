@@ -483,7 +483,7 @@ export function ChannelView() {
                   />
                 </span>
               ))}
-            <span className="ml-2 text-gray-400 dark:text-gray-500">{clockTime(m.time)}</span>
+            <span className="ml-2 text-gray-500 dark:text-gray-500">{clockTime(m.time)}</span>
             {renderRefs(m)}
           </p>
         </div>
@@ -636,7 +636,7 @@ export function ChannelView() {
                       </div>
                     ) : (
                       messageCount(days) > 0 && (
-                        <p className="py-2 text-center text-[11px] text-gray-400 dark:text-gray-500">
+                        <p className="py-2 text-center text-[11px] text-gray-500 dark:text-gray-500">
                           {S.company.channels.noEarlier}
                         </p>
                       )

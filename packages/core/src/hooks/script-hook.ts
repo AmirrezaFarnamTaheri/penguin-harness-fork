@@ -34,6 +34,46 @@ export const DEFAULT_HOOK_TIMEOUT_S = 60;
 /** Longest stderr tail kept in a failure reason. */
 const STDERR_TAIL = 400;
 
+/**
+ * Longest stdout (and separately stderr) kept from one hook run. A hook's output is parsed as
+ * JSON, so a legitimate answer is small; unbounded accumulation meant a script that printed a
+ * gigabyte took the host process with it. Past the cap the text is dropped, not truncated
+ * mid-token: a partial JSON document is the same thing as no document.
+ */
+const MAX_HOOK_OUTPUT_CHARS = 256 * 1024;
+
+function appendCapped(current: string, chunk: string, cap: number): string {
+  if (current.length >= cap) return current;
+  return current.length + chunk.length <= cap ? current + chunk : current;
+}
+
+/** Harness-owned configuration must not cross into an Agent-writable hook subprocess. */
+const HARNESS_ENV_PREFIX = "PENGUIN_";
+
+/**
+ * Hook scripts receive their coordinates and paths on stdin. They do not need the
+ * serving process's configuration, and inheriting it would expose host credentials
+ * (including the optional Jev key) to a Project member's installable hook.
+ *
+ * ONE variable is deliberately put back: the data-root locator. It is a path, not a secret,
+ * and stripping it breaks the one thing `pathPrepend` exists to enable — a hook that shells
+ * out to `penguin` has to reach the SAME harness that spawned it. Without it, `resolveRoot()`
+ * falls back to `~/.penguin/data` and the hook quietly operates on a second, parallel data
+ * root: different agents, different sessions, no error. A hook has no vault, so unlike an
+ * agent command there is no escape hatch for it to put the value back itself.
+ */
+function environmentForHook(pathPrepend: readonly string[]): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toUpperCase().startsWith(HARNESS_ENV_PREFIX)) continue;
+    env[key] = value;
+  }
+  const home = process.env.PENGUIN_HOME;
+  if (home !== undefined && home !== "") env.PENGUIN_HOME = home;
+  env.ELECTRON_RUN_AS_NODE = "1";
+  return prependPathEnv(env, pathPrepend);
+}
+
 export interface RunHookScriptOptions {
   /** Working directory of the script (defaults to its own directory). */
   cwd?: string;
@@ -70,7 +110,7 @@ export async function runHookScript(
       // In the desktop app process.execPath is the Electron binary: without this flag the
       // spawn boots a whole Electron app (GPU process and all) instead of running the
       // script, and dies on machines where that fails. A plain Node execPath ignores it.
-      env: prependPathEnv({ ...process.env, ELECTRON_RUN_AS_NODE: "1" }, opts.pathPrepend ?? []),
+      env: environmentForHook(opts.pathPrepend ?? []),
     });
     let stdout = "";
     let stderr = "";
@@ -122,8 +162,12 @@ export async function runHookScript(
     // Abort events are not replayed to listeners registered after the signal flips. Recheck
     // after registration to close the spawn-to-listener race without leaving a hook running.
     if (opts.signal?.aborted) onAbort();
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
-    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout = appendCapped(stdout, chunk, MAX_HOOK_OUTPUT_CHARS);
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr = appendCapped(stderr, chunk, MAX_HOOK_OUTPUT_CHARS);
+    });
     child.on("error", (err) => fail(err.message));
     child.on("close", (code) => {
       // Killing is asynchronous. Wait for close before the caller can remove the hook's

@@ -234,13 +234,13 @@ export function FileTree<Row extends FileTreeRow>({
               : "text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/50"
         } ${loading ? "opacity-60" : ""}`}
       >
-        <span className="flex w-3.5 shrink-0 justify-center text-gray-400" aria-hidden>
+        <span className="flex w-3.5 shrink-0 justify-center text-gray-500" aria-hidden>
           {row.kind === "dir" && <Chevron open={row.expanded} size={ICON_SIZE.chevronDense} />}
         </span>
         <GlyphIcon
           d={row.kind === "dir" ? (row.expanded ? FOLDER_OPEN_ICON : FOLDER_ICON) : FILE_ICON}
           size={ICON_SIZE.rowLead}
-          className="text-gray-400"
+          className="text-gray-500"
         />
         <span className="min-w-0 flex-1 truncate">{row.name}</span>
         {rowTrailing?.(row)}
@@ -252,7 +252,7 @@ export function FileTree<Row extends FileTreeRow>({
   const renderEmptyLine = (row: Row): ReactNode => (
     <p
       key={`empty:${row.path}`}
-      className="py-1 pr-2 text-xs text-gray-400"
+      className="py-1 pr-2 text-xs text-gray-500"
       style={{ paddingLeft: TREE_PAD_PX + (row.depth + 1) * TREE_INDENT_PX + CHEVRON_COL_PX }}
     >
       {emptyLabel}

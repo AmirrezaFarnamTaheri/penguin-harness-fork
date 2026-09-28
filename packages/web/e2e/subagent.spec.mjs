@@ -154,7 +154,9 @@ test("subagent renders as a chip; the panel shows the call graph and child conve
   // The child conversation keeps its USER side across a reload (child-Trace expansion carries
   // the child's own user messages; live streaming forwards the same message — both paths must
   // render the user bubble).
-  await expect(page.getByText(CHILD_PROMPT)).toBeVisible();
+  // Scoped to the message stream: the child's opening prompt now also appears in the
+  // coordination log, which is the point of that view — an unscoped getByText matches both.
+  await expect(page.locator("p.wrap-anywhere").filter({ hasText: CHILD_PROMPT })).toBeVisible();
   await expect(
     page.getByRole("group", { name: "调用关系" }).getByRole("button", { name: /General Agent/ }),
   ).toHaveCount(2);
@@ -201,11 +203,22 @@ test("subagent renders as a chip; the panel shows the call graph and child conve
   await expect(page.getByText("Command finished; the result looks as expected.")).toHaveCount(2);
   await openPanelViaChip(page); // the first turn's row (revealed from its collapsed group)
   await expect(graph.getByRole("button", { name: /General Agent/ })).toHaveCount(2);
-  // Node highlight follows the chip's child in the historical graph.
+  // Node highlight follows the chip's child in the historical graph. aria-current, not
+  // aria-pressed: exactly one node of the set is selected, which is not a toggle — a
+  // screen reader announced "toggle button, pressed" per node and never "1 of 2".
   await expect(graph.getByRole("button", { name: /General Agent/ }).nth(1)).toHaveAttribute(
-    "aria-pressed",
+    "aria-current",
     "true",
   );
+  await expect(graph.getByRole("button", { name: /General Agent/ }).first()).not.toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  // The graph's edges are aria-hidden, so the node's own name has to say who spawned it —
+  // the one thing a call graph exists to communicate.
+  await expect(
+    graph.getByRole("button", { name: /General Agent.*派生自 General Agent/ }),
+  ).toHaveCount(1);
   await expect(page.getByText("Subagent report: 3 TODOs")).toBeVisible();
   // Close the tab (its × — the last tab, so the dock goes away with it, dropping the
   // pinned scope), then reopen through the toolbar toggle and the picker -> back to the
@@ -379,7 +392,9 @@ test("draft flow: the panel auto-opens on the first live spawn and the child con
   await expect(page.locator('[data-tab-id="agents"][data-active="true"]')).toBeVisible();
   // The child conversation INCLUDES its user side while LIVE: run_subagent forwards the child's
   // input message itself (origin-tagged), not just the model's output.
-  await expect(page.getByText(CHILD_PROMPT)).toBeVisible();
+  // Scoped to the message stream: the child's opening prompt now also appears in the
+  // coordination log, which is the point of that view — an unscoped getByText matches both.
+  await expect(page.locator("p.wrap-anywhere").filter({ hasText: CHILD_PROMPT })).toBeVisible();
   await expect(page.getByText("Subagent report: 3 TODOs")).toBeVisible();
   await expect(page.getByText("Command finished; the result looks as expected.")).toBeVisible();
 
@@ -387,6 +402,8 @@ test("draft flow: the panel auto-opens on the first live spawn and the child con
   await page.reload();
   await revealChip(page);
   await openPanelViaChip(page);
-  await expect(page.getByText(CHILD_PROMPT)).toBeVisible();
+  // Scoped to the message stream: the child's opening prompt now also appears in the
+  // coordination log, which is the point of that view — an unscoped getByText matches both.
+  await expect(page.locator("p.wrap-anywhere").filter({ hasText: CHILD_PROMPT })).toBeVisible();
   await expect(page.getByText("Subagent report: 3 TODOs")).toBeVisible();
 });

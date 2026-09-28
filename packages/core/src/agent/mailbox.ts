@@ -73,19 +73,30 @@ export class MailboxKernel {
   private readonly queues = new Map<string, MailboxMessage[]>();
   private readonly leases = new Map<string, MailboxLease>();
   private readonly deadLetters = new Map<string, Array<{ msg: MailboxMessage; reason: string }>>();
+  /** Insertion order of `deadLetters`, so the oldest owner can be evicted when the key set is full. */
+  private readonly deadLetterOrder: string[] = [];
   private readonly lastActivity = new Map<string, number>();
   private readonly maxQueueDepth: number;
   private readonly maxPayloadSizeBytes: number;
   private readonly maxMailboxes: number;
+  private readonly maxDeadLetters: number;
+  private readonly maxDeadLetterMailboxes: number;
 
   constructor(options?: {
     maxQueueDepth?: number;
     maxPayloadSizeBytes?: number;
     maxMailboxes?: number;
+    maxDeadLetters?: number;
+    maxDeadLetterMailboxes?: number;
   }) {
     this.maxQueueDepth = options?.maxQueueDepth ?? 500;
     this.maxPayloadSizeBytes = options?.maxPayloadSizeBytes ?? 512 * 1024;
     this.maxMailboxes = options?.maxMailboxes ?? 100;
+    // Dead letters are the one structure on the failure path: a message that cannot be delivered
+    // fails again and again, and each attempt retained a whole MailboxMessage. Capped per owner
+    // AND across owners, because depth alone still leaves N owners × depth retained forever.
+    this.maxDeadLetters = options?.maxDeadLetters ?? 100;
+    this.maxDeadLetterMailboxes = options?.maxDeadLetterMailboxes ?? 50;
   }
 
   public send<T = unknown>(
@@ -255,9 +266,24 @@ export class MailboxKernel {
 
   public deadLetter(agentName: string, message: MailboxMessage, reason: string): void {
     const name = normalizeMailboxOwnerName(agentName);
-    const list = this.deadLetters.get(name) ?? [];
+    let list = this.deadLetters.get(name);
+    if (list === undefined) {
+      // New owner: make room by forgetting the least-recently-opened one, so a kernel that sees
+      // a steady churn of distinct failing owners cannot grow its key set without limit either.
+      while (this.deadLetterOrder.length >= this.maxDeadLetterMailboxes) {
+        const oldest = this.deadLetterOrder.shift();
+        if (oldest === undefined) break;
+        this.deadLetters.delete(oldest);
+      }
+      list = [];
+      this.deadLetters.set(name, list);
+      this.deadLetterOrder.push(name);
+    }
     list.push({ msg: message, reason });
-    this.deadLetters.set(name, list);
+    if (list.length > this.maxDeadLetters) {
+      // Oldest out: the most recent failures are the ones an operator is looking at.
+      list.splice(0, list.length - this.maxDeadLetters);
+    }
   }
 
   public getSummary(agentName: string): MailboxSummary {

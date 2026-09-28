@@ -234,6 +234,7 @@ PKCE 的 verifier 在服务端生成、只在内存中保留十分钟，绝不�
 | GET | /agents/:agentId/benchmarks | Benchmark 评分数据——只返回带 `benchmark_config.toml` 的目录；缺少该文件的目录（评测运行期间删除 Benchmark 所留下的残留）会被跳过 |
 | POST | /agents/:agentId/benchmarks | 手动新建 Benchmark（仅 owner）：`{ id, title, description?, runs?, cases: [{ id, title, statement, rubric }] }` → 201 `{ benchmark }`。服务端写入 `benchmark_config.toml`、内容为 `evaluations: []` 的 `scoreboard.yaml`，以及每道题的 `statement/README.md`（标题为其一级标题）与 `rubric/README.md`；id 沿用 Agent id 的字符规则，题目 id 以 `CASE-` 开头；目录已存在时返回 409 `benchmark_exists` |
 | DELETE | /agents/:agentId/benchmarks/:benchmarkId | 整目录删除一个 Benchmark——题目、配置与记分板（仅 owner；204，不存在返回 404） |
+| GET | /agents/:agentId/benchmarks/:benchmarkId/evaluations/:evaluationIndex/evidence | 某次记分板评测背后的产物，实时从磁盘重读而非照抄记分板：每轮的成绩连同其 Trace 分片路径与 SHA-256 摘要（`verified`、`missing`、`unreadable`、`too_large`）以及该轮的令牌总量与当前成本（`verified`、`missing`，模型没有带日期的价格表时为 `uncosted`），并给出 `complete`、`missing_trace`、`missing_usage`、`uncosted` 或 `incomplete` 的 `state`。任意成员可读；请求前会先对齐 Trace 索引，因此分片确实在磁盘上的轮次不会被误报为缺失。非成员返回 404 |
 
 ### Schedule
 

@@ -12,6 +12,8 @@
  * a malformed request is not.
  */
 
+import { approximateTokens } from "../../llm/context-limits.js";
+
 export interface ResearchBudgetOptions {
   /** Maximum papers to retrieve for one research task (plan: 25+ for synthesis). */
   readonly maxPapers?: number;
@@ -35,6 +37,12 @@ export interface ResearchBudgetOptions {
   readonly jitter?: number;
   /** Token estimator override (the core package's `approximateTokens` fits here). */
   readonly estimateTokens?: (text: string) => number;
+}
+
+/** Opaque identity for one admitted unit of work. Pass it back exactly once to settle/release. */
+export interface ResearchReservation {
+  readonly id: number;
+  readonly tokens: number;
 }
 
 export interface PhaseSpend {
@@ -77,6 +85,13 @@ export interface BudgetReport {
   readonly timeBudgetUsed: number;
   /** Total retry attempts across all phases. */
   readonly retries: number;
+  /** Charges refused for carrying an unusable token figure (see {@link ResearchBudget.charge}). */
+  readonly rejectedCharges: number;
+  /**
+   * Tokens charged by a prior `reset` for reservations that never settled. Unconfirmed spend,
+   * reported separately from `tokens`.
+   */
+  readonly abandonedTokens: number;
 }
 
 /**
@@ -90,6 +105,31 @@ export class ResearchBudget {
   private startedAt: number;
   private retries = 0;
   private readonly phases = new Map<ResearchPhase, PhaseSpend>();
+  /**
+   * Tokens reserved by work that has been admitted but has not reported yet.
+   *
+   * The ledger charges AFTER the fact, which is the same hole a naive spend ceiling has: a phase
+   * costs nothing until it finishes, so with two verifications in flight the budget admits both
+   * and then discovers it has overrun. Reserving at admission is what makes `remainingTokens`
+   * mean "what may I still afford" rather than "what have I already paid for".
+   */
+  private reservedTokens = 0;
+  private nextReservationId = 1;
+  private readonly reservations = new Map<ResearchReservation, number>();
+  /**
+   * Charges refused because their token figure was not a usable count (negative, `NaN`, or
+   * infinite). Counted rather than swallowed: a refused charge leaves the books unchanged, so
+   * without this counter a provider that started reporting `NaN` would look exactly like a run
+   * that simply did less work.
+   */
+  private rejectedCharges = 0;
+  /**
+   * Tokens charged by `reset` for reservations that were still outstanding when the previous task
+   * ended. The charge is real (the work was admitted) but unconfirmed, so it is held apart from
+   * `tokens` rather than folded in — a report can then distinguish confirmed spend from spend this
+   * ledger had to assume on the previous task's behalf.
+   */
+  private abandonedTokens = 0;
 
   readonly maxPapers: number;
   readonly maxTokens: number;
@@ -118,7 +158,23 @@ export class ResearchBudget {
     this.startedAt = nowNs();
   }
 
-  /** Charges a phase for work performed. */
+  /**
+   * A charge from a phase, with every field held to the ledger's own arithmetic.
+   *
+   * `tokens` arrives from a provider's usage report, and a provider report is not a promise about
+   * its own fields: negative, `NaN` and `Infinity` all reach this function in practice, and each
+   * one used to corrupt the books rather than being refused. A negative charge *refunds* tokens
+   * that were never there, so a phase could hand back more than it spent and leave `remainingTokens`
+   * above the whole budget; a single `NaN` made every later figure `NaN` silently, because
+   * `NaN <= maxTokens` is false, so the ledger reported "over budget" for a run that had spent
+   * nothing, and `report()` divided `NaN` into its fractions. None of those announce themselves.
+   *
+   * So the same rule as `reserve` applies here: a value that is not a usable, non-negative,
+   * finite count is **not** a charge, and it is not silently zero either — it is reported through
+   * {@link BudgetReport.rejectedCharges} so a run whose accounting went wrong is visible instead of
+   * quietly correct-looking. A refused charge leaves the books as they were, which is the direction
+   * that cannot under-report spend: the caller keeps whatever it had already charged.
+   */
   charge(
     phase: ResearchPhase,
     spend: {
@@ -129,10 +185,18 @@ export class ResearchBudget {
       durationNs?: number;
     },
   ): void {
-    const tokens = spend.tokens ?? (spend.text ? this.estimateTokens(spend.text) : 0);
-    const papers = spend.papers ?? 0;
-    const verifications = spend.verifications ?? 0;
-    const duration = spend.durationNs ?? 0;
+    const usable = (value: number | undefined): number | undefined =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+
+    const claimed = spend.tokens ?? (spend.text ? this.estimateTokens(spend.text) : 0);
+    const tokens = usable(claimed);
+    const papers = usable(spend.papers) ?? 0;
+    const verifications = usable(spend.verifications) ?? 0;
+    const duration = usable(spend.durationNs) ?? 0;
+    if (tokens === undefined) {
+      this.rejectedCharges += 1;
+      return;
+    }
 
     this.tokens += tokens;
     this.papers += papers;
@@ -186,7 +250,87 @@ export class ResearchBudget {
   }
 
   get remainingTokens(): number {
-    return Math.max(0, this.maxTokens - this.tokens);
+    // Reserved tokens count against what is left: they are committed, just not yet measured.
+    return Math.max(0, this.maxTokens - this.tokens - this.reservedTokens);
+  }
+
+  /** Tokens admitted but not yet reported. */
+  get reservedTokenCount(): number {
+    return this.reservedTokens;
+  }
+
+  /** Tokens charged so far, excluding anything still reserved. */
+  get tokensSpent(): number {
+    return this.tokens;
+  }
+
+  /**
+   * Unconfirmed tokens charged by a previous `reset` for reservations that never settled. Added to
+   * {@link tokensSpent} to get everything this ledger has committed, kept separate to show which
+   * part of it is a measurement.
+   */
+  get abandonedTokenCount(): number {
+    return this.abandonedTokens;
+  }
+
+  /**
+   * Reserves an estimate for work about to start, so a second concurrent call sees the first
+   * one's cost. Returns false — and reserves nothing — when the estimate does not fit, which is
+   * the caller's signal to decline the work rather than start it and overrun.
+   */
+  reserve(estimateTokens: number): ResearchReservation | null {
+    if (!Number.isFinite(estimateTokens) || estimateTokens < 0) return null;
+    if (this.tokens + this.reservedTokens + estimateTokens > this.maxTokens) return null;
+    this.reservedTokens += estimateTokens;
+    const reservation = Object.freeze({ id: this.nextReservationId++, tokens: estimateTokens });
+    this.reservations.set(reservation, estimateTokens);
+    return reservation;
+  }
+
+  /**
+   * What a piece of text is expected to cost, measured with the SAME estimator `charge` uses.
+   *
+   * A reservation is only meaningful if it is the figure the work will actually be charged at.
+   * An invented per-unit constant is not: it is wrong by an order of magnitude on a small budget
+   * and refuses real work the ledger could easily have paid for. The caller knows what it is
+   * about to process, so it measures that.
+   */
+  estimate(text: string): number {
+    return Math.max(1, this.estimateTokens(text));
+  }
+
+  /**
+   * Converts a reservation into real spend. A reservation may be settled at most once: a phase
+   * that reports twice (a replayed event, a retry double-counting itself) must not inflate the
+   * books, and must not leave the reservation stranded.
+   */
+  settleReservation(
+    reservation: ResearchReservation,
+    actual: {
+      tokens?: number;
+      text?: string;
+      phase?: ResearchPhase;
+    } = {},
+  ): boolean {
+    const reservedTokens = this.reservations.get(reservation);
+    if (reservedTokens === undefined) return false;
+    this.reservations.delete(reservation);
+    this.reservedTokens -= reservedTokens;
+    if (actual.phase !== undefined) {
+      this.charge(actual.phase, actual);
+    } else if (actual.tokens !== undefined || actual.text !== undefined) {
+      this.charge("verifying", actual);
+    }
+    return true;
+  }
+
+  /** Releases a reservation for work that never ran: declined, aborted, or skipped. */
+  releaseReservation(reservation: ResearchReservation): boolean {
+    const reservedTokens = this.reservations.get(reservation);
+    if (reservedTokens === undefined) return false;
+    this.reservations.delete(reservation);
+    this.reservedTokens -= reservedTokens;
+    return true;
   }
 
   get remainingTimeNs(): number {
@@ -203,16 +347,42 @@ export class ResearchBudget {
     );
   }
 
+  /**
+   * Whether `tokens` more may be charged, counting what is already reserved.
+   *
+   * Reserved tokens are deducted here for the same reason `remainingTokens` deducts them: a
+   * caller asking this question right before dispatching a request is asking "may I still afford
+   * it", and work admitted but not yet reported has already consumed the money. Leaving
+   * `reservedTokens` out made this the one optimistic path left in the class — the reservation
+   * machinery existed, `remainingTokens` honoured it, and the predicate a caller would naturally
+   * reach for did not, so two concurrent verifications both passed a check that only the first
+   * should have. The unreserved version is what the `reserve` guard was added to fix, so it could
+   * not stay.
+   */
   canSpendTokens(tokens: number): boolean {
-    return this.tokens + tokens <= this.maxTokens;
+    if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) return false;
+    return this.tokens + this.reservedTokens + tokens <= this.maxTokens;
   }
 
   elapsed(): number {
     return nowNs() - this.startedAt;
   }
 
-  /** Resets the ledger for a fresh task, keeping the configured limits. */
+  /**
+   * Resets the ledger for a fresh task, keeping the configured limits.
+   *
+   * Outstanding reservations are **settled at their reserved amount**, not dropped. The work behind
+   * them was admitted and may well have run, so charging the reservation is the only figure this
+   * class holds for it; releasing them instead would hand a fresh task a budget that the previous
+   * one had already promised away, and when those in-flight calls later settled they would charge
+   * the *new* task's books — work from task A landing in task B's totals. The amount is visible
+   * through {@link BudgetReport.abandonedTokens} so a run that reset with calls in flight is
+   * distinguishable from one that did not.
+   */
   reset(): void {
+    this.abandonedTokens += this.reservedTokens;
+    this.reservedTokens = 0;
+    this.reservations.clear();
     this.tokens = 0;
     this.papers = 0;
     this.verifications = 0;
@@ -240,11 +410,13 @@ export class ResearchBudget {
       paperBudgetUsed: this.maxPapers > 0 ? this.papers / this.maxPapers : 0,
       timeBudgetUsed: this.maxDurationNs > 0 ? elapsed / this.maxDurationNs : 0,
       retries: this.retries,
+      rejectedCharges: this.rejectedCharges,
+      abandonedTokens: this.abandonedTokens,
     };
   }
 
   get maxAttempts(): number {
-    return this.maxRetries;
+    return this.maxRetries + 1;
   }
 }
 
@@ -263,16 +435,19 @@ function pseudoRandom(seed: number, salt: number): number {
   return (value >>> 0) / 4_294_967_296;
 }
 
-/** Character-heuristic token estimate; callers with a real estimator should inject it. */
+/**
+ * Character-heuristic token estimate, delegating to the one implementation the request path uses
+ * (`llm/context-limits.ts`) instead of repeating the ascii/4 + wide-character loop here.
+ *
+ * The copy was byte-for-byte equivalent, which is exactly why it was a hazard: a ledger that must
+ * agree with the per-request output clamp is only as trustworthy as the single definition they
+ * share, and two identical-looking counters in two subsystems drift the first time either is
+ * tuned. Callers may still inject their own estimator, which stays the escape hatch for a budget
+ * that knows its text better than a character heuristic does.
+ */
 export function defaultTokenEstimate(text: string): number {
   if (!text) return 0;
-  let ascii = 0;
-  let wide = 0;
-  for (const character of text) {
-    if ((character.codePointAt(0) ?? 0) < 0x80) ascii += 1;
-    else wide += 1;
-  }
-  return Math.ceil(ascii / 4) + wide;
+  return approximateTokens(text);
 }
 
 function nowNs(): number {

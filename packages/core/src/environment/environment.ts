@@ -61,6 +61,14 @@ import {
   type TruncatedToolOutputArchiveSaveResult,
   type TruncatedToolOutputCapture,
 } from "./truncated-tool-output-archive.js";
+import {
+  classifyToolOutput,
+  compressCollected,
+  formatCompressionNote,
+  startCollector,
+  type ToolOutputCollector,
+} from "./output-compression/index.js";
+import { defaultPressurePaths, ResourcePressureProbe } from "../agent/resource/index.js";
 import { modelVisiblePath } from "../internal/model-visible-path.js";
 
 /** Default cap on tool output truncation (characters). */
@@ -210,6 +218,19 @@ export class Environment implements EnvironmentInterface {
         ...(webSearchEndpoint !== undefined ? { endpoint: webSearchEndpoint } : {}),
         ...(configuredWebSearch?.fetch !== undefined ? { fetch: configuredWebSearch.fetch } : {}),
       },
+      // Memory/disk pressure readings for the `resource_pressure` tool, over the data root
+      // and the Workspace — the two paths that actually fill a machine. A host that injected
+      // its own probe keeps it: the field is spread through from `config.services` above, and
+      // this only fills the gap when nothing was supplied. If neither exists the tool still
+      // builds and says it has no probe, which is an honest answer; failing the read would
+      // take the numbers away from an agent at the moment it needs them.
+      resourcePressureProbe:
+        config.services?.resourcePressureProbe ??
+        new ResourcePressureProbe({
+          paths: defaultPressurePaths({
+            ...(config.workspaceDir !== undefined ? { workspaceDir: config.workspaceDir } : {}),
+          }),
+        }),
       commandSessions: this.commandSessions,
       subagentSessions: this.subagentSessions,
       // Completion reports of run_in_background launches converge here; the Session attaches
@@ -709,6 +730,14 @@ export class Environment implements EnvironmentInterface {
     // Environment has a Session scratchpad. It captures the tool's complete text before the
     // rolling tail evicts the middle, but does not alter the model/frontend stream.
     let archiveCapture: TruncatedToolOutputCapture | null = null;
+    // Compression buffer, started only for a call whose output type was classified AND for which
+    // a recall store exists. Its deltas are withheld rather than forwarded, so the compressed
+    // text can replace them wholesale at finalization without breaking the
+    // "streamed concatenation == complete message" invariant this file guarantees.
+    const outputCollector: ToolOutputCollector | null = startCollector(
+      truncationEnabled ? classifyToolOutput(executionName, executionArgs) : null,
+      this.truncatedToolOutputArchive,
+    );
     const gen = tool.execute(executionArgs, {
       workspaceDir: this.workspaceDir,
       toolCallId,
@@ -746,6 +775,13 @@ export class Environment implements EnvironmentInterface {
           // Only takes delta content; start/stop are ignored (framing is uniformly handled by Environment).
           if (p.event_type !== "delta" || !p.output) continue;
           contentLen += p.output.length;
+          if (outputCollector) {
+            // Withheld, not forwarded: the call's text is decided as a whole at finalization.
+            // contentLen still tracks the true total so the fallback path below can size its
+            // truncation marker and the note can report real numbers.
+            outputCollector.append(p.output);
+            continue;
+          }
           if (
             truncationEnabled &&
             contentLen > maxOutputLength &&
@@ -804,7 +840,11 @@ export class Environment implements EnvironmentInterface {
         } else if (p.type === "tool_call_output") {
           // Fallback: if the tool still produces a full message, use it as the basis for content and stop reason (not needed under the new contract).
           toolOutput = p.output ?? "";
-          if (
+          if (outputCollector) {
+            // A compatibility tool's complete message is Environment's content basis, so it is
+            // also the compression basis instead of any deltas it happened to emit.
+            outputCollector.captureHandle.replace(toolOutput);
+          } else if (
             maxOutputLength > 0 &&
             toolOutput.length > maxOutputLength &&
             this.truncatedToolOutputArchive
@@ -844,7 +884,26 @@ export class Environment implements EnvironmentInterface {
     // deltas — streamed concatenation == the full message.
     let visible: string;
     let truncated: boolean;
-    if (toolOutput !== null) {
+    // Set only when this call's text was actually replaced by a summary. The note it produces
+    // names the strategy and the recall id, so a model can always tell a summary from a result.
+    let compressionNote: string | null = null;
+    // Declared before the branches below because the compression path may fill it itself: a
+    // call that was collected but not compressed still has to be bounded, and bounded text is
+    // saved by the same archive the truncation path uses.
+    let archiveResult: TruncatedToolOutputArchiveSaveResult | null = null;
+    if (outputCollector) {
+      const outcome = await this.finalizeCollected(outputCollector, {
+        headBudget,
+        tailBudget,
+        contentLen,
+        toolName: executionName,
+        toolCallId,
+      });
+      visible = outcome.visible;
+      truncated = outcome.truncated;
+      compressionNote = outcome.note;
+      if (outcome.archiveSave !== null) archiveResult = outcome.archiveSave;
+    } else if (toolOutput !== null) {
       ({ visible, truncated } = boundVisible(toolOutput, headBudget, tailBudget));
     } else if (!truncationEnabled || contentLen <= maxOutputLength) {
       // The rolling buffer never evicts within budget, so this is the complete tool text.
@@ -867,18 +926,18 @@ export class Environment implements EnvironmentInterface {
       (!timedOut &&
         (selfReported === "aborted" ||
           (thrown as { name?: string } | null)?.name === "AbortError"));
-    let archiveResult: TruncatedToolOutputArchiveSaveResult | null = null;
     if (truncated && archiveCapture) {
       // Both truncation paths initialize this capture at the exact point they first exceed the
       // visible cap, so a truncated call with a Session scratchpad always has one to save. A
       // standalone Environment has no capture and retains truncation-only behavior.
       archiveResult = await archiveCapture.save(executionName, toolCallId);
-    } else {
+    } else if (!outputCollector) {
       archiveCapture?.cancel();
     }
 
     let stopReason: StopReason;
     const notes: string[] = [];
+    if (compressionNote !== null) notes.push(compressionNote);
     if (truncated) {
       if (archiveResult?.status === "saved") {
         const archivePath = modelVisiblePath(archiveResult.path);
@@ -957,6 +1016,104 @@ export class Environment implements EnvironmentInterface {
       stopReason,
       ...(images ? { images } : {}),
     });
+  }
+
+  /**
+   * Turns one collected call's buffered text into the result the model sees.
+   *
+   * Three outcomes, in the order they are tried:
+   *
+   * 1. **Compressed.** The strategy produced a replacement and the full text is now stored in the
+   *    recall store, so the summary is lossless-in-principle. The note names the strategy, the
+   *    counts and the recall id.
+   * 2. **Unchanged.** No strategy cleared its win gate, or the text fitted the budget anyway:
+   *    the exact text is shipped, and the capture is released without writing anything.
+   * 3. **Truncated.** Either the buffer outgrew its per-call limit, or the text was too long and
+   *    uncompressible. Both produce exactly the head/tail windows such a call has always produced,
+   *    plus the recovery file the truncation archive has always written.
+   *
+   * Case 1 is *abandoned* if the recall write fails. A summary the model cannot expand is the
+   * exact failure this feature exists to prevent, so a failed recall falls back to the honest
+   * answer — the real text, bounded — rather than keeping a summary nobody can undo.
+   */
+  private async finalizeCollected(
+    collector: ToolOutputCollector,
+    opts: {
+      headBudget: number;
+      tailBudget: number;
+      contentLen: number;
+      toolName: string;
+      toolCallId: string;
+    },
+  ): Promise<{
+    visible: string;
+    truncated: boolean;
+    note: string | null;
+    archiveSave: TruncatedToolOutputArchiveSaveResult | null;
+  }> {
+    // startCollector only runs when a recall store exists, so this is never null here. The
+    // branch stays because Environment's contract is that it never throws: if the invariant were
+    // ever broken, the buffered text itself is the most honest answer still available.
+    const archive = this.truncatedToolOutputArchive;
+    if (archive === null) {
+      return { visible: collector.text() ?? "", truncated: false, note: null, archiveSave: null };
+    }
+    const full = collector.text();
+
+    if (full === null) {
+      // The buffer outgrew its limit, so what it holds is a window, not the output. Re-bound that
+      // window to the visible budget: the capture's own split is sized by the 8 MiB archive
+      // limit, which is three orders of magnitude larger than what the model may see.
+      const windows = collector.windows();
+      let head = windows.head.slice(0, opts.headBudget);
+      if (head !== "" && isHighSurrogate(head.charCodeAt(head.length - 1)))
+        head = head.slice(0, -1);
+      let tail = windows.tail.slice(Math.max(0, windows.tail.length - opts.tailBudget));
+      if (tail !== "" && isLowSurrogate(tail.charCodeAt(0))) tail = tail.slice(1);
+      return {
+        visible: joinVisibleParts(
+          head,
+          truncationMarker(head.length, tail.length, opts.contentLen),
+          tail,
+        ),
+        truncated: true,
+        note: null,
+        archiveSave: await collector.captureHandle.save(opts.toolName, opts.toolCallId),
+      };
+    }
+
+    const outcome = compressCollected(collector.kind, full, opts.headBudget + opts.tailBudget);
+    if (outcome !== null) {
+      const saved = await archive.saveRecallEntry(opts.toolName, full);
+      if (saved.status === "saved") {
+        const descriptor = archive.recallDescriptor(saved.id);
+        // The recall entry is the recovery copy; a second archive file would be the same bytes
+        // under a second name, so the capture is released instead of saved.
+        collector.captureHandle.cancel();
+        return {
+          visible: outcome.text,
+          truncated: false,
+          note: formatCompressionNote(collector.kind, outcome, {
+            id: saved.id,
+            path: saved.path,
+            lines: descriptor?.lines ?? outcome.originalLines,
+          }),
+          archiveSave: null,
+        };
+      }
+    }
+
+    if (full.length <= opts.headBudget + opts.tailBudget) {
+      collector.captureHandle.cancel();
+      return { visible: full, truncated: false, note: null, archiveSave: null };
+    }
+    const bounded = boundVisible(full, opts.headBudget, opts.tailBudget);
+    return {
+      visible: bounded.visible,
+      truncated: bounded.truncated,
+      note: null,
+      archiveSave: await collector.captureHandle.save(opts.toolName, opts.toolCallId),
+    };
   }
 }
 

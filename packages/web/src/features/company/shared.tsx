@@ -60,7 +60,7 @@ export function JumpButton({
       onClick={onClick}
       title={label}
       aria-label={label}
-      className={`inline-flex shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 ${className}`}
     >
       <GlyphIcon d={JUMP_ICON} size={ICON_SIZE.inlineGlyph} />
     </button>
@@ -279,7 +279,7 @@ export function MoneyPerMonthUnit({ currency }: { currency: Currency }) {
 export function StoredUsdNote({ usd, currency }: { usd: number | null; currency: Currency }) {
   if (currency === "USD" || usd === null) return null;
   return (
-    <span className="mt-1 block text-[11px] text-gray-400 dark:text-gray-500">
+    <span className="mt-1 block text-[11px] text-gray-500 dark:text-gray-500">
       {S.company.budgetStoredAs(formatMoney(usd, "USD"))}
     </span>
   );

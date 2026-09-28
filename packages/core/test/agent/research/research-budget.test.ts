@@ -125,7 +125,8 @@ describe("ResearchBudget", () => {
   });
 
   it("exposes the configured retry attempt count", () => {
-    expect(new ResearchBudget({ maxRetries: 7 }).maxAttempts).toBe(7);
+    expect(new ResearchBudget({ maxRetries: 7 }).maxAttempts).toBe(8);
+    expect(new ResearchBudget({ maxRetries: 0 }).maxAttempts).toBe(1);
   });
 });
 
@@ -178,7 +179,7 @@ describe("withRetry", () => {
         throw new Error("server disconnected");
       }),
     ).rejects.toThrow(/server disconnected/);
-    expect(attempts).toBe(2);
+    expect(attempts).toBe(3);
   });
 
   it("wraps a non-error rejection in an Error", async () => {

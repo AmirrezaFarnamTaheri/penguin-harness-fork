@@ -162,6 +162,54 @@ describe("script hooks", () => {
     expect(await runHookScript(quiet, {})).toBeUndefined();
   });
 
+  it("does not pass host PENGUIN_* credentials to an installable hook", async () => {
+    const previous = process.env.PENGUIN_JEV_API_KEY;
+    process.env.PENGUIN_JEV_API_KEY = "server-only-jev-key";
+    try {
+      const script = await write(
+        "env.mjs",
+        answering("{ jevKey: process.env.PENGUIN_JEV_API_KEY ?? null }"),
+      );
+      const out = (await runHookScript(script, {})) as { jevKey: string | null };
+      expect(out.jevKey).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.PENGUIN_JEV_API_KEY;
+      else process.env.PENGUIN_JEV_API_KEY = previous;
+    }
+  });
+
+  it("passes the data-root locator to a hook even while stripping PENGUIN_* credentials", async () => {
+    // The split-brain this prevents: the strip is by prefix, so it also removed PENGUIN_HOME —
+    // the one variable that decides WHICH data root a child harness addresses. A hook that
+    // shells out to `penguin` (the exact thing pathPrepend exists to enable) then resolved
+    // ~/.penguin/data and quietly worked on a second, parallel root: different agents,
+    // different sessions, no error. A hook has no vault, so it cannot put the value back.
+    const previous = process.env.PENGUIN_HOME;
+    process.env.PENGUIN_HOME = "D:/harness-data-root";
+    try {
+      const script = await write(
+        "root.mjs",
+        answering(
+          "{ home: process.env.PENGUIN_HOME ?? null, key: process.env.PENGUIN_JEV_API_KEY ?? null }",
+        ),
+      );
+      const out = (await runHookScript(script, {})) as { home: string | null; key: string | null };
+      expect(out.home).toBe("D:/harness-data-root");
+      expect(out.key).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.PENGUIN_HOME;
+      else process.env.PENGUIN_HOME = previous;
+    }
+  });
+
+  it("caps a hook's stdout instead of accumulating it without bound", async () => {
+    // A hook script lives in agent-writable state. Unbounded accumulation meant one that
+    // printed a gigabyte took the host process with it; the cap drops the tail whole rather
+    // than truncating mid-document, because a partial JSON answer is no answer.
+    const script = await write("loud.mjs", 'process.stdout.write("x".repeat(4 * 1024 * 1024));');
+    await expect(runHookScript(script, {})).rejects.toThrow();
+  });
+
   it("pathPrepend puts the host's directories at the front of the script's PATH", async () => {
     // A hook is spawned as `node <script>` — no shell, so nothing re-orders PATH after
     // this. It is the same directory commands get (the harness's own CLI shim), so a hook

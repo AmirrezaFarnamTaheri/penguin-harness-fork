@@ -96,7 +96,8 @@ export function DiffBlock({
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-200 bg-gray-100/70 dark:border-gray-800 dark:bg-gray-800/60 font-sans">
         <div className="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-300">
           <svg
-            className="w-3.5 h-3.5 text-gray-400"
+            aria-hidden
+            className="w-3.5 h-3.5 text-gray-500"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -109,7 +110,7 @@ export function DiffBlock({
             />
           </svg>
           <span className="truncate max-w-xs">{filePath ?? "Diff View"}</span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">
+          <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
             {lines.filter((l) => l.type === "add").length}+ /{" "}
             {lines.filter((l) => l.type === "remove").length}-
           </span>
@@ -156,7 +157,7 @@ export function DiffBlock({
               key={idx}
               className="flex items-start gap-2 px-2 py-0.5 text-gray-600 dark:text-gray-400 border-l-2 border-transparent"
             >
-              <span className="select-none text-gray-400 shrink-0"> </span>
+              <span className="select-none text-gray-500 shrink-0"> </span>
               <pre className="whitespace-pre-wrap break-all font-mono">{line.content}</pre>
             </div>
           );

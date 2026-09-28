@@ -67,7 +67,7 @@ function codeOf(err: unknown): string | null {
 export async function stop(root: string, fx: StopEffects = realEffects): Promise<StopResult> {
   // Already stopped is the outcome asked for, not a failure: the caller wants nothing serving
   // this root, and nothing is.
-  const lock = await liveServerLock(root);
+  const lock = await liveServerLock(root, { requireIdentity: true });
   if (lock === null) return { ok: true };
   // On Windows a "SIGTERM" from Node is not delivered to anything: the process is ended
   // outright, which skips the drain this command exists to allow — the database, a task

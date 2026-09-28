@@ -144,7 +144,7 @@ export function ChartCard({
         <span className="mt-2 flex items-center gap-1.5 text-[11px] leading-4 text-gray-600 dark:text-gray-300">
           <ChartStateDot state={state} />
           <span
-            className="flex min-w-0 flex-1 items-center gap-1 font-mono text-[10px] text-gray-400 dark:text-gray-500"
+            className="flex min-w-0 flex-1 items-center gap-1 font-mono text-[10px] text-gray-500 dark:text-gray-500"
             title={flag ?? employee.resolvedWorkspace ?? employee.workspace}
           >
             {flag !== undefined ? (
@@ -177,8 +177,26 @@ export function ChartCard({
         </span>
       </div>
       {/* The personnel menu: the overflow-menu style of the session rows, anchored at the card's
-          corner. Its own wrapper positions it — Dropdown's root is `relative` and would sit in flow. */}
-      <div className="absolute top-1.5 right-1.5">
+          corner. Its own wrapper positions it — Dropdown's root is `relative` and would sit in flow.
+
+          The button is a 40px box with the 24px kebab centred in it, and the wrapper is pulled 2px
+          past the card's corner so that the VISIBLE box lands exactly where it always was. The
+          whole drawing is `transform: scale(zoom)` (org-chart-page.tsx), so a 24px target renders
+          at 24 × 0.6 = 14.4px at ZOOM_MIN — under the 24px floor of WCAG 2.5.8. 40 × 0.6 = 24px,
+          so the target holds the floor at the chart's minimum zoom and is 40px at 100%.
+
+          The alternative fixes were both worse. Counter-scaling the kebab would enlarge the GLYPH
+          too, and a 40px kebab on a 144px-wide card at 60% lands on the employee's name. Flooring
+          the fit zoom above 0.8 gives up a third of the zoom range and turns the page's default
+          fit-to-width state into a horizontal scrollbar on a wide chart. Growing the hit area
+          instead costs nothing: the chart looks identical and the zoom range is untouched.
+
+          (WCAG 2.5.8's "Spacing" exception would in fact have permitted the 14.4px target — the
+          nearest other target is 172.8px away at ZOOM_MIN, since sibling cards sit CHART_GAP_X
+          apart, so a 24px circle round the kebab clears every other bounding box by 165px against
+          the 12px it needs. It is met regardless, and a 14.4px target is still a poor one to
+          acquire with a finger or a shaky pointer, so the target is fixed in its own right.) */}
+      <div className="absolute -top-0.5 -right-0.5">
         <Dropdown
           open={menuOpen}
           setOpen={setMenuOpen}
@@ -192,11 +210,13 @@ export function ChartCard({
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(!menuOpen)}
-              className={`flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-[opacity,background-color,color] duration-150 group-hover:opacity-100 hover:bg-gray-100 hover:text-gray-700 focus-visible:opacity-100 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200 ${
+              className={`flex h-10 w-10 items-center justify-center rounded-md transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100 ${
                 menuOpen ? "opacity-100" : "opacity-70"
               }`}
             >
-              <GlyphIcon d={ELLIPSIS_ICON} size={ICON_SIZE.groupHeaderAction} filled />
+              <span className="flex h-6 w-6 items-center justify-center rounded-md text-gray-500 transition-[background-color,color] duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+                <GlyphIcon d={ELLIPSIS_ICON} size={ICON_SIZE.groupHeaderAction} filled />
+              </span>
             </button>
           }
         >

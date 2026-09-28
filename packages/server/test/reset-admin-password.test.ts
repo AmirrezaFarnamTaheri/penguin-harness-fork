@@ -105,6 +105,11 @@ describe("resetAdminPassword", () => {
     const root = await tempRoot();
     const dbPath = await seedDatabase(root);
     const srv = net.createServer();
+    // Drain what arrives: the live-server check now also asks the peer which data root it
+    // serves, so it writes an HTTP request, and a socket nobody reads leaves the
+    // connection half-open so the close() in the finally never completes. Holding a port
+    // open is not the same as ignoring what is sent to it.
+    srv.on("connection", (socket) => socket.resume());
     const port = await new Promise<number>((resolve) => {
       srv.listen(0, "127.0.0.1", () => resolve((srv.address() as net.AddressInfo).port));
     });

@@ -128,12 +128,13 @@ describe("read_file on an image — session model views images (no describer)", 
     expect(result?.images?.[0]).toMatch(/^data:image\/png;base64,/);
   });
 
-  it("recognizes an image by extension when the bytes carry no known magic number", async () => {
-    // The extension routes the file into the image branch, where it is handed over as its
-    // extension says (the same fallback the URL branch applies to a content-type-less response).
+  it("rejects an image with an unreadable header even when its extension is supported", async () => {
+    // The extension routes the file into the image branch, but a decoder must not receive
+    // bytes whose dimensions cannot be verified.
     await writeFile(path.join(tmp, "plain.png"), Buffer.from("no magic here"));
     const { result } = await run({ file_path: "plain.png" }, tmp);
-    expect(result?.images?.[0]).toMatch(/^data:image\/png;base64,/);
+    expect(result?.images).toBeUndefined();
+    expect(result?.stopReason).toBe("fatal");
   });
 
   it("ignores offset and limit for an image", async () => {

@@ -13,6 +13,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { probeInstanceIdentity, rootFingerprint } from "./instance-identity.js";
 
 export interface ServerLock {
   pid: number;
@@ -105,11 +106,51 @@ export async function isServerLockAlive(lock: ServerLock): Promise<boolean> {
   return pidAlive(lock.pid) && (await portAccepts(lock.port));
 }
 
-/** Convenience for pre-checks: the live published lock on this root, or null. */
-export async function liveServerLock(root: string): Promise<ServerLock | null> {
+/**
+ * The live published lock on this root, or null.
+ *
+ * `isServerLockAlive` answers "is something there"; this answers "is the server for THIS
+ * data root there", which is the question an attach actually depends on. The gap between
+ * the two is recycled facts: a crashed server's pid is reused by an unrelated process and
+ * its port is taken by another program, and then both halves of the pid+port check pass
+ * while the thing on the port is a stranger. An agent that believed it would hand that
+ * stranger the data root's API token. So the peer is asked which root it serves
+ * (instance-identity.ts) and a peer that answers for a DIFFERENT root makes this record
+ * stale.
+ *
+ * Startup coordination accepts an older peer that does not answer the identity route, so
+ * an upgrade overlap cannot start a second writer. Credential-bearing clients pass
+ * `requireIdentity: true`: a non-answering or unrelated port must never receive their
+ * token or password. A peer that answers must also echo the lock's pid and port, so two
+ * unrelated processes cannot satisfy the two liveness checks independently.
+ *
+ * HOW THIS MEETS THE CLAIM. It does not touch it, and it must not: the BEGIN IMMEDIATE
+ * claim in `acquireServerInstanceClaim` remains the only thing that decides who OWNS a
+ * root, and it is what makes two live writers impossible. This runs on the attaching side
+ * only, and it is strictly the weaker of the two by design — it is a liveness opinion about
+ * a published record, where the claim is an atomic cross-process fact. A caller that is
+ * told a peer is live still has to take the claim to start anything, and a caller that is
+ * told "stale" is not thereby entitled to the root; the two checks can legitimately disagree
+ * for the fraction of a second between a server publishing its record and this probe
+ * running, and in that window the safe reading is the one the claim settles.
+ */
+export async function liveServerLock(
+  root: string,
+  options: { requireIdentity?: boolean } = {},
+): Promise<ServerLock | null> {
   const lock = readServerLock(root);
   if (!lock) return null;
-  return (await isServerLockAlive(lock)) ? lock : null;
+  if (!(await isServerLockAlive(lock))) return null;
+  const identity = await probeInstanceIdentity(lock.port);
+  if (identity === null) return options.requireIdentity ? null : lock;
+  if (
+    identity.rootId !== rootFingerprint(root) ||
+    identity.pid !== lock.pid ||
+    identity.port !== lock.port
+  ) {
+    return null;
+  }
+  return lock;
 }
 
 function isBusyError(error: unknown): boolean {

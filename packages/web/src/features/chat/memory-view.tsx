@@ -138,12 +138,12 @@ export function ChatMemoryView({
             type="button"
             onClick={() => setMode(memoryNavBack())}
             title={S.chat.memoryBack}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
           >
             <GlyphIcon d={BACK_ICON} size={ICON_SIZE.iconButton} />
             <span className="sr-only">{S.chat.memoryBack}</span>
           </button>
-          <span title={glyph.title} className="shrink-0 text-gray-400">
+          <span title={glyph.title} className="shrink-0 text-gray-500">
             <GlyphIcon d={glyph.d} size={ICON_SIZE.rowLead} />
             <span className="sr-only">{glyph.title}</span>
           </span>
@@ -152,7 +152,7 @@ export function ChatMemoryView({
           </p>
           {listedRow &&
             (listedRow.updatedAt !== undefined || listedRow.modifiedAt !== undefined) && (
-              <span className="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+              <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-500">
                 {listedRow.updatedAt ??
                   (listedRow.modifiedAt !== undefined
                     ? formatRelativeDate(listedRow.modifiedAt, locale)
@@ -167,7 +167,7 @@ export function ChatMemoryView({
           {!loaded || (!detail.failed && detail.content === null) ? (
             <SkeletonList rows={3} />
           ) : detail.failed ? (
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-500">
               {S.chat.memoryContentUnavailable}
             </p>
           ) : (
@@ -209,7 +209,7 @@ export function ChatMemoryView({
           <SkeletonList rows={3} />
         </div>
       ) : groups.every((g) => g.rows.length === 0) ? (
-        <p className="px-3.5 py-2 text-xs text-gray-400 dark:text-gray-500">
+        <p className="px-3.5 py-2 text-xs text-gray-500 dark:text-gray-500">
           {S.chat.memoryEmptyAll}
         </p>
       ) : (
@@ -217,7 +217,7 @@ export function ChatMemoryView({
           group.rows.length === 0 ? null : (
             <div key={`${group.scope} ${group.scopeKey}`} className="pb-2">
               <div className="flex items-center gap-2 px-3.5 py-1.5">
-                <span className="shrink-0 text-gray-400">
+                <span className="shrink-0 text-gray-500">
                   <GlyphIcon
                     d={group.scope === "user" ? USER_ICON : FOLDER_ICON}
                     size={ICON_SIZE.inlineGlyph}
@@ -229,7 +229,7 @@ export function ChatMemoryView({
                 >
                   {groupTitle(group)}
                 </p>
-                <span className="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-500">
                   {S.memory.itemCount(group.rows.length)}
                 </span>
               </div>
@@ -260,7 +260,7 @@ export function ChatMemoryView({
                         )}
                       </div>
                       {(row.updatedAt !== undefined || row.modifiedAt !== undefined) && (
-                        <span className="shrink-0 text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                        <span className="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-500">
                           {row.updatedAt ??
                             (row.modifiedAt !== undefined
                               ? formatRelativeDate(row.modifiedAt, locale)

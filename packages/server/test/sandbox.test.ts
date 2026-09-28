@@ -142,6 +142,27 @@ describe("sandbox service — capability routing across backends", () => {
     expect(svc.confiner()([...ARGV], OPTS)).toEqual(["dsh", "--", ...ARGV]);
   });
 
+  it("a provider that reports only partial enforcement is refused for a strict policy", async () => {
+    const svc = await service([
+      [
+        "partial",
+        {
+          dimensions: ["fs-write"],
+          confine(argv) {
+            return {
+              argv: [...argv],
+              enforcement: "partial",
+              denialSignatures: [],
+              runnerFailureRules: [],
+            };
+          },
+        },
+      ],
+    ]);
+    svc.configure({ mode: "workspace-write" });
+    expect(() => svc.confiner()([...ARGV], OPTS)).toThrow(/partial enforcement/);
+  });
+
   it("a backend throw (unusable runner, etc.) propagates — fail-closed end to end", async () => {
     const svc = await service([
       [

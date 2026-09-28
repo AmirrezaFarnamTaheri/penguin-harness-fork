@@ -3,7 +3,12 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { ProductNavigation } from "../src/components/layout/product-navigation";
 import { NAV_ICONS } from "../src/components/ui/icons";
-import { navKeysFor, navPathFor } from "../src/lib/nav-group-collapse";
+import {
+  initialNavGroupCollapsed,
+  navKeysFor,
+  navPathFor,
+  storeNavGroupCollapsed,
+} from "../src/lib/nav-group-collapse";
 import { S, setActiveStrings } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { zh } from "../src/lib/strings-zh";
@@ -12,6 +17,9 @@ setActiveStrings(en);
 function Fixture() {
   const [locale, setLocale] = useState("en");
   const [visits, setVisits] = useState(0);
+  // The whole-nav collapse is the sidebar's state, handed down; the fixture keeps the same
+  // one-key store so the toggle behaves here exactly as it does in the sidebar.
+  const [navCollapsed, setNavCollapsed] = useState(initialNavGroupCollapsed);
   const navigate = useNavigate();
   const location = useLocation();
   return (
@@ -26,6 +34,12 @@ function Fixture() {
             icon: NAV_ICONS[key],
             note: key === "skills" ? "Update available" : null,
           }))}
+          collapsed={navCollapsed}
+          onToggleCollapse={() => {
+            const next = !navCollapsed;
+            storeNavGroupCollapsed(next);
+            setNavCollapsed(next);
+          }}
           onNavigate={() => setVisits((n) => n + 1)}
         />
         <p>Conversations</p>

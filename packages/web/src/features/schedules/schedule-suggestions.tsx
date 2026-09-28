@@ -94,7 +94,7 @@ export function ScheduleSuggestions({
               onClick={() => onPick(s.prompt)}
               className={`flex w-full items-start ${ICON_GAP.menu} rounded-md px-2 py-1.5 text-left transition-colors duration-150 hover:bg-gray-100 dark:hover:bg-gray-800`}
             >
-              <span className="mt-0.5 shrink-0 text-gray-400 dark:text-gray-500">
+              <span className="mt-0.5 shrink-0 text-gray-500 dark:text-gray-500">
                 <GlyphIcon d={s.icon} size={ICON_SIZE.rowLead} />
               </span>
               <span className="min-w-0 flex-1">
@@ -102,7 +102,7 @@ export function ScheduleSuggestions({
                   <span className="truncate text-sm text-gray-800 dark:text-gray-100">
                     {s.name}
                   </span>
-                  <span className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500">
+                  <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">
                     {s.hint}
                   </span>
                 </span>

@@ -14,16 +14,20 @@
  * old Scoreboard formats.
  * Docs: /docs/self-improvement § "Benchmark storage".
  */
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { benchmarksDir } from "@prismshadow/penguin-core";
+import { benchmarksDir, tracesDir } from "@prismshadow/penguin-core";
 import type {
   BenchmarkCaseScore,
   BenchmarkCaseSummary,
   BenchmarkCasesResponse,
   BenchmarkEvaluation,
+  BenchmarkEvaluationEvidenceResponse,
+  BenchmarkRunEvidence,
   BenchmarkRunScore,
   BenchmarkSummary,
   BenchmarksResponse,
@@ -35,9 +39,33 @@ import type {
   WorkspaceFileReadOptions,
   WorkspaceFilesService,
 } from "./workspace-files-service.js";
+import { traceFilePath, type TraceIndexService } from "./trace-index.js";
+import type { UsageService } from "./usage-service.js";
 import { HttpError } from "../http/errors.js";
 
 const STATEMENT_TITLE_READ_BYTES = 64 * 1024;
+/**
+ * Evidence reads are bounded so a scoreboard cannot turn into an unbounded disk/CPU request.
+ * All three caps are PER REQUEST and shared across every session it inspects — a per-session cap
+ * multiplied by the run count is the same unbounded request wearing a hat.
+ */
+const MAX_EVIDENCE_FILES = 128;
+const MAX_EVIDENCE_TRACE_BYTES = 64 * 1024 * 1024;
+/** Runs resolved per request; a scoreboard larger than this is reported from its first slice. */
+const MAX_EVIDENCE_SESSIONS = 256;
+/** How many trace sessions are read at once. Bounded, so a wide benchmark does not fan out. */
+const EVIDENCE_READ_CONCURRENCY = 4;
+
+/** One request's read budget, threaded through every inspection. */
+interface EvidenceBudget {
+  filesLeft: number;
+  bytesLeft: number;
+}
+
+export interface BenchmarkEvidenceDependencies {
+  traceIndex: TraceIndexService;
+  usageService: UsageService;
+}
 
 /** One case of a hand-made Benchmark; ids are validated by the route before they reach the filesystem. */
 export interface BenchmarkCaseInput {
@@ -209,6 +237,7 @@ export class BenchmarkService {
   constructor(
     private readonly root: string,
     private readonly workspaceFiles: WorkspaceFilesService,
+    private readonly evidenceDeps?: BenchmarkEvidenceDependencies,
   ) {}
 
   async list(projectId: string, agentId: string): Promise<BenchmarksResponse> {
@@ -238,6 +267,224 @@ export class BenchmarkService {
       benchmarks.push(await this.readBenchmark(benchDir, item.name));
     }
     return { benchmarks };
+  }
+
+  /**
+   * Read-only evidence for one scoreboard evaluation. Stored scores stay authoritative; this
+   * method only links each run to its Project-owned Trace and recomputes current usage/cost.
+   */
+  async evaluationEvidence(
+    projectId: string,
+    agentId: string,
+    benchmarkId: string,
+    evaluationIndex: number,
+  ): Promise<BenchmarkEvaluationEvidenceResponse> {
+    if (!Number.isSafeInteger(evaluationIndex) || evaluationIndex < 0 || evaluationIndex > 10_000) {
+      throw new HttpError(
+        400,
+        "invalid_evaluation_index",
+        "Evaluation index must be a small non-negative integer.",
+      );
+    }
+    if (this.evidenceDeps === undefined) {
+      throw new HttpError(
+        503,
+        "benchmark_evidence_unavailable",
+        "Benchmark evidence is not configured.",
+      );
+    }
+    const baseDir = benchmarksDir(this.root, projectId, agentId);
+    const benchDir = path.join(baseDir, benchmarkId);
+    // Hoisted out of the guard below: the containment check validates the RESOLVED path, so the
+    // read that follows has to use that same path. Reading `benchDir` instead re-introduced the
+    // window the check exists to close (a symlink swapped in between), which is the threat
+    // `remove()` already treats as real.
+    let realBench: string;
+    try {
+      const [realBase, resolvedBench] = await Promise.all([
+        fs.realpath(baseDir),
+        fs.realpath(benchDir),
+      ]);
+      realBench = resolvedBench;
+      if (!isWithin(realBase, realBench)) {
+        throw new HttpError(404, "not_found", `Benchmark does not exist: ${benchmarkId}`);
+      }
+      await fs.access(path.join(realBench, "benchmark_config.toml"));
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      throw new HttpError(404, "not_found", `Benchmark does not exist: ${benchmarkId}`);
+    }
+
+    const benchmark = await this.readBenchmark(realBench, benchmarkId);
+    const evaluation = benchmark.evaluations[evaluationIndex];
+    if (evaluation === undefined) {
+      throw new HttpError(404, "not_found", `Evaluation ${evaluationIndex} does not exist.`);
+    }
+    // The mtime gate first, force only on a miss. `force` deliberately chains a fresh pass per
+    // call (trace-index.ts), so forcing here made every request — from any project member, with
+    // no rate limit — walk the agent's whole trace tree, and N concurrent requests walked it N
+    // times back to back. A run whose shard really is on disk still gets found, because the
+    // miss path below forces.
+    await this.evidenceDeps.traceIndex.reconcileAgent(projectId, agentId);
+    let sessionIds = [
+      ...new Set(evaluation.cases.flatMap((item) => item.runs.map((run) => run.sessionId))),
+    ];
+    if (sessionIds.length > MAX_EVIDENCE_SESSIONS)
+      sessionIds = sessionIds.slice(0, MAX_EVIDENCE_SESSIONS);
+    if (
+      sessionIds.some(
+        (id) =>
+          this.evidenceDeps!.traceIndex.repo.listFilesBySession(projectId, agentId, id).length ===
+          0,
+      )
+    ) {
+      await this.evidenceDeps.traceIndex.reconcileAgent(projectId, agentId, { force: true });
+    }
+    const usage = await this.evidenceDeps.usageService.usageForSessions(projectId, sessionIds);
+    // ONE budget for the whole request, not one per session: the caps exist so a scoreboard
+    // cannot turn into an unbounded disk/CPU request, and a per-session cap multiplied by the
+    // number of runs is exactly that. A 5-case x 3-run benchmark previously cost ~1 GB read and
+    // hashed in one member-initiated request.
+    const budget: EvidenceBudget = {
+      filesLeft: MAX_EVIDENCE_FILES,
+      bytesLeft: MAX_EVIDENCE_TRACE_BYTES,
+    };
+    const traceBySession = new Map<string, BenchmarkRunEvidence["trace"]>();
+    // Bounded concurrency, not a serial await per session: latency was the sum of every read.
+    for (let i = 0; i < sessionIds.length; i += EVIDENCE_READ_CONCURRENCY) {
+      const batch = sessionIds.slice(i, i + EVIDENCE_READ_CONCURRENCY);
+      const settled = await Promise.all(
+        batch.map((id) => this.inspectSessionTrace(projectId, agentId, id, budget)),
+      );
+      batch.forEach((id, index) => traceBySession.set(id, settled[index]!));
+    }
+
+    const runs: BenchmarkRunEvidence[] = evaluation.cases.flatMap((item) =>
+      item.runs.map((run) => {
+        const trace = traceBySession.get(run.sessionId) ?? {
+          status: "missing" as const,
+          files: [],
+        };
+        const totals = usage.get(run.sessionId);
+        const usageEvidence = totals
+          ? {
+              status: totals.uncosted ? ("uncosted" as const) : ("verified" as const),
+              inputTokens: totals.inputTokens,
+              cacheReadTokens: totals.cacheReadTokens,
+              cacheWriteTokens: totals.cacheWriteTokens,
+              outputTokens: totals.outputTokens,
+              totalTokens: totals.totalTokens,
+              costUsd: totals.costUsd,
+            }
+          : {
+              status: "missing" as const,
+              inputTokens: 0,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+              costUsd: null,
+            };
+        const state =
+          trace.status === "missing" && usageEvidence.status === "missing"
+            ? "incomplete"
+            : trace.status === "missing"
+              ? "missing_trace"
+              : usageEvidence.status === "missing"
+                ? "missing_usage"
+                : usageEvidence.status === "uncosted"
+                  ? "uncosted"
+                  : trace.status === "verified"
+                    ? "complete"
+                    : "incomplete";
+        return { run, trace, usage: usageEvidence, state };
+      }),
+    );
+    return { benchmarkId, evaluationIndex, evaluation, runs };
+  }
+
+  private async inspectSessionTrace(
+    projectId: string,
+    agentId: string,
+    sessionId: string,
+    budget: EvidenceBudget,
+  ): Promise<BenchmarkRunEvidence["trace"]> {
+    const session = this.evidenceDeps!.traceIndex.repo.getSession(sessionId);
+    if (session === null || session.projectId !== projectId || session.agentId !== agentId) {
+      return { status: "missing", files: [] };
+    }
+    const rows = this.evidenceDeps!.traceIndex.repo.listFilesBySession(
+      projectId,
+      agentId,
+      sessionId,
+    );
+    if (rows.length === 0) return { status: "missing", files: [] };
+
+    const traceRoot = path.resolve(tracesDir(this.root, projectId, agentId));
+    const files: BenchmarkRunEvidence["trace"]["files"] = [];
+    // "too_large" outranks "unreadable": both mean the evidence is not complete, and the caller
+    // needs to tell "we stopped early" from "a file failed" rather than collapsing the two.
+    let status: BenchmarkRunEvidence["trace"]["status"] = "verified";
+    const worsen = (next: "unreadable" | "too_large"): void => {
+      if (status === "verified" || (status === "unreadable" && next === "too_large")) status = next;
+    };
+
+    for (const row of rows) {
+      if (budget.filesLeft <= 0) {
+        worsen("too_large");
+        break;
+      }
+      budget.filesLeft -= 1;
+      const absolute = path.resolve(traceFilePath(this.root, row));
+      const relative = path.relative(this.root, absolute).split(path.sep).join("/");
+      if (!isWithin(traceRoot, absolute)) {
+        worsen("unreadable");
+        files.push({ path: relative, bytes: row.sizeBytes });
+        continue;
+      }
+      try {
+        const stat = await fs.stat(absolute);
+        if (!stat.isFile()) {
+          worsen("unreadable");
+          files.push({ path: relative, bytes: row.sizeBytes });
+          continue;
+        }
+        const hash = createHash("sha256");
+        // Count what is ACTUALLY read, not what the index said the file was: a shard still being
+        // appended to — the normal state while a benchmark evaluates — grew past the cap between
+        // the stat and the drain, and the response used to report a digest over bytes it had
+        // silently read beyond its own limit. `bytes` is now the value the digest covers.
+        let read = 0;
+        let overBudget = false;
+        const stream = createReadStream(absolute);
+        for await (const chunk of stream) {
+          const buffer = chunk as Buffer;
+          if (read + buffer.length > budget.bytesLeft) {
+            overBudget = true;
+            stream.destroy();
+            break;
+          }
+          read += buffer.length;
+          hash.update(buffer);
+        }
+        if (overBudget) {
+          worsen("too_large");
+          files.push({ path: relative, bytes: read });
+          break;
+        }
+        budget.bytesLeft -= read;
+        files.push({ path: relative, bytes: read, sha256: hash.digest("hex") });
+      } catch {
+        worsen("unreadable");
+        files.push({ path: relative, bytes: row.sizeBytes });
+      }
+    }
+    return {
+      status,
+      files,
+      ...(session.provider !== null ? { provider: session.provider } : {}),
+      ...(session.modelId !== null ? { modelId: session.modelId } : {}),
+    };
   }
 
   /**

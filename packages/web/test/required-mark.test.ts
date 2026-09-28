@@ -174,7 +174,7 @@ describe("required mark", () => {
         "Field/Input/Textarea/Select/OptionMenu, use <FieldLabel required> for a custom label " +
         "row, or render <RequiredMark /> directly.",
     ).toEqual([]);
-  });
+  }, 20_000);
 
   it("finds a hand-rolled mark however its className is written", () => {
     // Without this the scan above could silently stop matching and still report a clean tree.

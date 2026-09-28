@@ -83,6 +83,24 @@ export const DISCLOSURE_BODY_MD_CLASS =
 export const DISCLOSURE_CARD_CLASS =
   "anim-msg my-2 overflow-clip rounded-md border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900";
 
+/**
+ * The surface of every transient message notice — the in-transcript banners (handoff, model
+ * switch, skills, scheduled task, org trigger, attachments) and the goal card above the
+ * composer. This chrome — padding, gray-50 ground, hairline border, 600-weight text and its
+ * dark twin — was written out in full six times; it drifted the moment one copy was edited.
+ *
+ * Deliberately the *chrome only*. Motion and sizing belong to the caller, and two of the six
+ * genuinely differ: the goal card above the composer is `anim-fade mb-2` and must stay
+ * full-width, while the in-transcript notices are `anim-msg my-2 flex w-fit`. Tailwind
+ * composes by addition, never by subtraction, so folding `anim-msg my-2 flex w-fit` into
+ * this constant would leave the two exceptions overriding it (`!`-important fights, or
+ * `anim-fade` and `anim-msg` both on one element with the winner decided by stylesheet
+ * order rather than by class order) — a worse bug than the duplication this removes.
+ * So each caller keeps its own prefix and appends this: `` `anim-msg my-2 flex w-fit ${STREAM_BANNER_FRAME}` ``.
+ */
+export const STREAM_BANNER_FRAME =
+  "items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400";
+
 export function DisclosureRow({
   icon,
   label,
@@ -137,7 +155,7 @@ export function DisclosureRow({
         <span className={labelClass}>{label}</span>
         {trailing}
         <span className="min-w-0 flex-1" />
-        <Chevron open={open} className="text-gray-400" />
+        <Chevron open={open} className="text-gray-500" />
       </button>
       {open && children}
     </div>

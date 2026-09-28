@@ -94,13 +94,13 @@ export function SnapshotTimeline({
                 {item.label}
               </button>
 
-              {/* Metadata Row: Files, Memory, Archive Size */}
-              <div className="flex flex-wrap items-center justify-between border-t border-gray-200 dark:border-gray-800 pt-2 text-sm text-gray-600 dark:text-gray-400">
+              {/* Metadata row. Only what the server actually sends: the uncompressed size.
+                  The row used to also print "state files" and "memory topics" from fields
+                  the API never carried, so both rendered with their number silently
+                  missing — or, once the mapper began inventing zeros for them, as a
+                  confident "0". A row that cannot state a real number should not state one. */}
+              <div className="flex flex-wrap items-center justify-between border-t border-gray-200 pt-2 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span>{item.fileCount} state files</span>
-                  <span>•</span>
-                  <span>{item.memoryTopicsCount} memory topics</span>
-                  <span>•</span>
                   <span>{formatBytes(item.uncompressedSizeBytes)}</span>
                 </div>
 

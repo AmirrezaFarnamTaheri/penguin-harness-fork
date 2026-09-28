@@ -78,7 +78,7 @@ function RowAction({
       title={label}
       aria-label={label}
       onClick={onClick}
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 dark:text-gray-500 ${
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 dark:text-gray-500 ${
         danger
           ? "hover:text-red-600 dark:hover:text-red-400"
           : "hover:text-gray-700 dark:hover:text-gray-200"

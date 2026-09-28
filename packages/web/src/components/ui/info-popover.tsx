@@ -69,7 +69,7 @@ export function InfoPopover({
         // explanation on focus rather than only announcing that something expanded.
         aria-describedby={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 ${className}`}
       >
         <svg
           width={size}

@@ -126,7 +126,7 @@ function SummaryRow({ label, value, detail }: { label: string; value: string; de
       title={hasDetail ? `${label}${detail}` : undefined}
       className="flex items-baseline justify-between gap-3 py-0.5"
     >
-      <span className="shrink-0 text-[11px] text-gray-400">{label}</span>
+      <span className="shrink-0 text-[11px] text-gray-500">{label}</span>
       <span className="truncate font-mono text-sm font-semibold tabular-nums">{value}</span>
       {hasDetail && <span className="sr-only">{detail}</span>}
     </div>
@@ -147,7 +147,7 @@ const CHIP_CLASS =
 function StatChip({ icon, value, label }: { icon: string; value: string; label: string }) {
   return (
     <span title={label} aria-label={label} className={`${CHIP_CLASS} gap-1`}>
-      <GlyphIcon d={icon} className="text-gray-400" />
+      <GlyphIcon d={icon} className="text-gray-500" />
       {value}
     </span>
   );
@@ -171,10 +171,10 @@ function InputChip({ buckets }: { buckets: Buckets }) {
       className={CHIP_CLASS}
     >
       <span title={S.traces.taskInput} className="flex items-center gap-1">
-        <GlyphIcon d={STAT_ICONS.input} className="text-gray-400" />
+        <GlyphIcon d={STAT_ICONS.input} className="text-gray-500" />
         {humanizeTokens(input)}
       </span>
-      <span title={hitTitle} className="ml-1 flex items-center gap-0.5 text-gray-400">
+      <span title={hitTitle} className="ml-1 flex items-center gap-0.5 text-gray-500">
         <span>(</span>
         <GlyphIcon d={STAT_ICONS.cacheHit} />
         <span>{humanizeTokens(buckets.cacheRead)}</span>
@@ -533,7 +533,7 @@ export function TraceFileView({
               aria-expanded={open}
               className="flex w-full items-center gap-2 bg-gray-50 px-3 py-2 text-left transition-colors duration-150 hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800/60"
             >
-              <Chevron open={open} size={13} className="text-gray-400" />
+              <Chevron open={open} size={13} className="text-gray-500" />
               <span className="shrink-0 text-sm font-semibold">
                 {S.traces.task(t.taskIndex + 1)}
               </span>
@@ -626,7 +626,7 @@ export function TraceFileView({
                     {S.traces.messages}（{t.messages.length}）
                   </p>
                   {t.messages.length === 0 ? (
-                    <p className="text-xs text-gray-400">{S.common.none}</p>
+                    <p className="text-xs text-gray-500">{S.common.none}</p>
                   ) : (
                     <ul className="divide-y divide-gray-100 rounded-md border border-gray-200 dark:divide-gray-800/60 dark:border-gray-800">
                       {t.messages.map((msg, i) => {
@@ -651,7 +651,7 @@ export function TraceFileView({
       })}
 
       {events.length < total && (
-        <p className="text-xs text-gray-400">{S.traces.truncatedNote(events.length, total)}</p>
+        <p className="text-xs text-gray-500">{S.traces.truncatedNote(events.length, total)}</p>
       )}
     </div>
   );

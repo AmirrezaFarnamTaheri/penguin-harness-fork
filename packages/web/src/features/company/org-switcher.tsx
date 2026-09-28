@@ -126,7 +126,7 @@ export function OrgSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                   : company.channelUnread}
               </span>
             )}
-            <span className="text-gray-400">
+            <span className="text-gray-500">
               <ChevronDown />
             </span>
           </button>
@@ -134,7 +134,7 @@ export function OrgSwitcher({ onNavigate }: { onNavigate?: () => void }) {
       >
         {groups.map((group) => (
           <div key={group.projectId} role="group" aria-label={projectName(group.projectId)}>
-            <p className="px-3.5 pb-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            <p className="px-3.5 pb-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-500">
               {projectName(group.projectId)}
             </p>
             {group.organizations.map((o) => {
@@ -171,7 +171,7 @@ export function OrgSwitcher({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
         {groups.length === 0 && (
-          <p className="px-3.5 py-2 text-sm text-gray-400 dark:text-gray-500">
+          <p className="px-3.5 py-2 text-sm text-gray-500 dark:text-gray-500">
             {company.orgsLoaded ? S.company.noOrganizations : S.common.loading}
           </p>
         )}
@@ -184,7 +184,7 @@ export function OrgSwitcher({ onNavigate }: { onNavigate?: () => void }) {
               setCreateOpen(true);
             }}
           >
-            <span className="shrink-0 text-gray-400 dark:text-gray-500">
+            <span className="shrink-0 text-gray-500 dark:text-gray-500">
               <PlusIcon size={ICON_SIZE.rowLead} />
             </span>
             {S.company.createOrg}
@@ -198,7 +198,7 @@ export function OrgSwitcher({ onNavigate }: { onNavigate?: () => void }) {
                 setSettingsOpen(true);
               }}
             >
-              <span className="shrink-0 text-gray-400 dark:text-gray-500">
+              <span className="shrink-0 text-gray-500 dark:text-gray-500">
                 <GlyphIcon d={GEAR_ICON} size={ICON_SIZE.rowLead} />
               </span>
               {S.company.orgSettings}
@@ -246,7 +246,7 @@ export function NoOrganizationsSidebar({ onNavigate }: { onNavigate?: () => void
   if (!company.orgsLoaded) return <SkeletonList rows={3} />;
   return (
     <div className="mt-3 space-y-2 px-2.5 pt-2">
-      <p className="text-xs text-gray-400 dark:text-gray-500">{S.company.noOrganizations}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-500">{S.company.noOrganizations}</p>
       {/* A quiet secondary button: every empty page beside this list (the landing, the
           organization-gone page) carries the primary "New organization" itself, so this one
           only covers the pages that do not. */}

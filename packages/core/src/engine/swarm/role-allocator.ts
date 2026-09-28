@@ -83,17 +83,37 @@ export interface ScoredPair {
   reasons: string[];
 }
 
+/**
+ * One (role, agent) staffing outcome. Named rather than inlined so the routing
+ * layer can hold and return a holder without re-declaring the shape.
+ */
+export interface RoleAssignment {
+  roleId: SwarmRoleId;
+  agentId: string;
+  score: number;
+  incumbent: boolean;
+}
+
 export interface RoleAllocation {
-  assignments: Array<{
-    roleId: SwarmRoleId;
-    agentId: string;
-    score: number;
-    incumbent: boolean;
-  }>;
+  assignments: RoleAssignment[];
   unassigned: SwarmRoleId[];
   scores: ScoredPair[];
   computedAt: number;
   generation: number;
+}
+
+/**
+ * Whether an agent can take on new role work right now. `available` is the
+ * allocator's own answer and lives beside the numbers it was derived from, so
+ * a caller can explain a refusal without restating the threshold.
+ */
+export interface AgentAvailability {
+  agentId: string;
+  /** Current load in [0, 1]. */
+  load: number;
+  /** Load at or above which this allocator considers the agent unavailable. */
+  loadCeiling: number;
+  available: boolean;
 }
 
 export interface RoleAllocatorOptions {
@@ -486,6 +506,51 @@ export class RoleAllocator {
     const allocation = this.current;
     if (!allocation) return undefined;
     return allocation.assignments.find((assignment) => assignment.roleId === roleId)?.agentId;
+  }
+
+  /**
+   * Everyone currently holding `roleId`, in the order `allocate()` assigned
+   * them — which is score rank, best first. Routing reads this instead of
+   * `getCurrentAllocation()` so that asking "who holds this role" costs one
+   * filter rather than a deep clone of every (agent, role) score the last pass
+   * computed; on a wide swarm that clone is the dominant cost of a decision.
+   */
+  public holdersOf(roleId: SwarmRoleId): RoleAssignment[] {
+    const allocation = this.current;
+    if (!allocation) return [];
+    return allocation.assignments
+      .filter((assignment) => assignment.roleId === roleId)
+      .map((assignment) => ({ ...assignment }));
+  }
+
+  /**
+   * Whether `agentId` can take on new role work, and by how much it misses if
+   * it cannot. The load ceiling is the allocator's rule and lives here alone:
+   * `scorePair` gates on exactly this comparison, so a second copy of the
+   * threshold anywhere else is a rule that will drift from the one that staffs
+   * the mesh. Returns undefined for an agent this allocator does not know,
+   * which is not the same as available.
+   */
+  public agentAvailability(agentId: string): AgentAvailability | undefined {
+    const profile = this.agents.get(agentId.trim());
+    if (!profile) return undefined;
+    const loadCeiling = this.options.loadCeiling;
+    return {
+      agentId: profile.id,
+      load: profile.load,
+      loadCeiling,
+      // `scorePair` refuses at `>=`, so availability is its strict complement.
+      available: profile.load < loadCeiling,
+    };
+  }
+
+  /**
+   * The generation of the last `allocate()` pass, or 0 when none has run. Cheap
+   * on purpose — a caller stamping a routing decision with the allocation it
+   * was made against must not pay for the scores to read a counter.
+   */
+  public allocationGeneration(): number {
+    return this.current?.generation ?? 0;
   }
 
   // ---------------------------------------------------------------- internals

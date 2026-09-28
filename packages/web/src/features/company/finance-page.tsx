@@ -93,7 +93,7 @@ const PERCENT_ICON =
 const cellClass = "px-2 py-2 text-right tabular-nums";
 const headClass = "px-2 py-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400";
 const iconButtonClass =
-  "inline-flex items-center justify-center rounded p-0.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200";
+  "inline-flex items-center justify-center rounded p-0.5 text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200";
 
 /** The tree's indentation step per reporting depth, and the elbow that joins a child to the row above. */
 const INDENT_PX = 20;
@@ -245,7 +245,7 @@ function BudgetEditor({
           <CloseIcon />
         </button>
       </span>
-      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+      <span className="text-[10px] text-gray-500 dark:text-gray-500">
         {S.company.finance.budgetEmptyHint}
       </span>
       <StoredUsdNote usd={toStoredUsd(text, currency)} currency={currency} />
@@ -477,18 +477,19 @@ export function FinancePage() {
               />
             </div>
             {data.unpriced && (
-              <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-500">
                 {S.company.finance.unpriced}
               </p>
             )}
           </div>
           <FinanceCard title={S.company.finance.trend} info={S.company.finance.trendInfo}>
             {series.length === 0 ? (
-              <p className="py-2 text-xs text-gray-400 dark:text-gray-500">
+              <p className="py-2 text-xs text-gray-500 dark:text-gray-500">
                 {S.company.finance.trendEmpty}
               </p>
             ) : (
               <TrendChart
+                title={S.company.finance.total}
                 series={series}
                 granularity="day"
                 currency={currency}
@@ -554,7 +555,7 @@ export function FinancePage() {
                               employee.title.trim().toLowerCase() !== "ceo" && (
                                 <Badge tone="gray">{S.company.ceo}</Badge>
                               )}
-                            <span className="truncate text-gray-400 dark:text-gray-500">
+                            <span className="truncate text-gray-500 dark:text-gray-500">
                               {employee.title}
                             </span>
                           </span>
@@ -617,7 +618,7 @@ export function FinancePage() {
                                   <span
                                     className={
                                       employee.budget === undefined
-                                        ? "text-gray-400 dark:text-gray-500"
+                                        ? "text-gray-500 dark:text-gray-500"
                                         : "text-gray-900 dark:text-gray-100"
                                     }
                                   >
@@ -645,7 +646,7 @@ export function FinancePage() {
 
           <FinanceCard title={S.company.finance.ticketsTable} info={S.company.finance.ticketsInfo}>
             {ticketRows.length === 0 ? (
-              <p className="py-2 text-xs text-gray-400 dark:text-gray-500">
+              <p className="py-2 text-xs text-gray-500 dark:text-gray-500">
                 {S.company.finance.ticketsEmpty}
               </p>
             ) : (
@@ -722,7 +723,7 @@ export function FinancePage() {
           className="mt-4"
         >
           {data.alerts.length === 0 ? (
-            <p className="py-2 text-xs text-gray-400 dark:text-gray-500">
+            <p className="py-2 text-xs text-gray-500 dark:text-gray-500">
               {S.company.finance.alertsEmpty}
             </p>
           ) : (
@@ -741,7 +742,7 @@ export function FinancePage() {
               />
             </div>
           )}
-          <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-500">
+          <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-500">
             {S.company.finance.alertsHint}
           </p>
         </FinanceCard>

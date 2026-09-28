@@ -40,6 +40,8 @@ export interface StreamFollow {
   scrolled(m: ScrollMetrics): void;
   /** Explicit re-entry (the back-to-bottom button): resumes follow immediately — the caller scrolls to the bottom right after, and the resulting scroll event sees a bottom position, keeping it stuck. */
   resume(): void;
+  /** Explicitly restore a remembered non-following position without carrying another session's state. */
+  pause(): void;
 }
 
 export function createStreamFollow(): StreamFollow {
@@ -82,6 +84,11 @@ export function createStreamFollow(): StreamFollow {
       // Forget the last position: the caller jumps to the bottom right after, and that large
       // downward scroll must not be judged against a stale historical scrollTop.
       lastTop = null;
+    },
+    pause() {
+      stick = false;
+      lastTop = null;
+      touchY = null;
     },
   };
 }

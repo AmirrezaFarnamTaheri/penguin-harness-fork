@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { CodeToolbar } from "../../components/ui/code-toolbar";
 import { DiffBlock } from "../../components/ui/diff-block";
-import { ArtifactPreviewDrawer } from "./artifact-preview-drawer";
+import { ArtifactPreviewDrawer } from "../../components/ui/artifact-preview-drawer";
 
 /**
  * The highlighted code, with no box around it.

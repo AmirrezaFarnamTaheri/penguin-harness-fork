@@ -9,6 +9,7 @@
  */
 import { useNavigate } from "react-router";
 import { S } from "../../lib/strings";
+import { STREAM_BANNER_FRAME } from "./disclosure-row";
 import type { HandoffOrigin, ModelSwitchOrigin } from "./agent-handoff";
 
 /**
@@ -23,21 +24,22 @@ function agentLabel(origin: HandoffOrigin): string {
     : origin.agentId;
 }
 
-const bannerFrame =
-  "anim-msg my-2 flex w-fit items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400";
+/** This banner's own placement on top of the shared notice chrome: an in-transcript line, so
+ *  it enters with `anim-msg` and hugs its content. */
+const BANNER_FRAME = `anim-msg my-2 flex w-fit ${STREAM_BANNER_FRAME}`;
 
 export function HandoffBanner({ origin }: { origin: HandoffOrigin }) {
   const navigate = useNavigate();
   const text = S.chat.handoffFrom(agentLabel(origin));
   // A handoff initiated from draft state has no source Session: only the origin is shown, with nowhere to jump to.
-  if (!origin.sessionId) return <p className={bannerFrame}>{text}</p>;
+  if (!origin.sessionId) return <p className={BANNER_FRAME}>{text}</p>;
   const sessionId = origin.sessionId;
   return (
     <button
       type="button"
       title={S.chat.handoffBack(origin.sessionTitle)}
       onClick={() => navigate(`/chat/${sessionId}`)}
-      className={`${bannerFrame} transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200`}
+      className={`${BANNER_FRAME} transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200`}
     >
       {text}
       <span aria-hidden className="text-gray-400 dark:text-gray-500">
@@ -60,7 +62,7 @@ export function ModelSwitchBanner({ origin }: { origin: ModelSwitchOrigin }) {
       type="button"
       title={S.chat.handoffBack(origin.sessionTitle)}
       onClick={() => navigate(`/chat/${sessionId}`)}
-      className={`${bannerFrame} transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200`}
+      className={`${BANNER_FRAME} transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200`}
     >
       {S.chat.modelSwitchFrom(origin.prevModelId)}
       <span aria-hidden className="text-gray-400 dark:text-gray-500">

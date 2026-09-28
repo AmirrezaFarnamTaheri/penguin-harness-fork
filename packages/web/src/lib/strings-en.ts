@@ -49,6 +49,11 @@ export const en: Strings = {
     expandSidebar: "Expand sidebar",
     collapseGroup: "Collapse",
     expandGroup: "Expand",
+    /** The WHOLE nav, not one group. Distinct from collapseGroup because it is a
+     *  different action on a different target, and two controls sharing one accessible
+     *  name is a defect in itself. */
+    collapseAllGroups: "Collapse all sections",
+    expandAllGroups: "Expand all sections",
     pinGroup: "Pin group",
     unpinGroup: "Unpin group",
     /** Company mode's page entries (S.nav.org.<key>, the COMPANY_NAV_KEYS manifest), and the mode switch's option names. */
@@ -60,6 +65,32 @@ export const en: Strings = {
       finance: "Finance",
       handbook: "Handbook",
     },
+  },
+
+  /**
+   * Gateway & Quotas page (features/gateway/gateway-page.tsx). The stat tiles and the
+   * register-combo modal; the strings that stand in for a value the server did NOT send
+   * are the load-bearing ones here — "N/A" and the caption under it are what keeps an
+   * absent measurement from reading as a healthy one.
+   */
+  gateway: {
+    /** The three quota tiles above the cooldown table. */
+    sessionQuotaUsed: "Session Quota Used",
+    weeklyQuotaUsed: "Weekly Quota Used",
+    nextResetWindow: "Next Reset Window",
+    /**
+     * Stand-in for a value the server sent as null. Always paired with neutral ink —
+     * a green or amber "N/A" is the defect this page was audited for.
+     */
+    notAvailable: "N/A",
+    /** Caption on a quota tile whose figure the server never reported: no meter is drawn. */
+    quotaNotReported: "No figure reported",
+    /** Sub-caption under the reset-window tile. */
+    resetReplenishment: "Automatic quota replenishment",
+    /** Register-combo modal fields; the first two are required (Input `required` adds the mark). */
+    comboIdLabel: "Combo Identifier (slug)",
+    comboNameLabel: "Display Name",
+    comboTargetsLabel: "Routing Target Chain (comma separated provider:model)",
   },
 
   /** Machines page: the server's own ssh hosts, and installing this build on one. */
@@ -435,6 +466,8 @@ export const en: Strings = {
     none: "(none)",
     retry: "Retry",
     unknownError: "Request failed, please try again later",
+    /** Skip link past the navigation (WCAG 2.2 SC 2.4.1). */
+    skipToContent: "Skip to content",
     requiredField: "This field is required",
     copied: "Copied",
     /** Accessible name of the circled "?" that discloses a section or field explanation. */
@@ -1229,6 +1262,13 @@ export const en: Strings = {
     filterHealthy: "Healthy Only",
     filterIssues: "Issues / Cooldown",
     resetAllKeys: "Reset All Key Pools",
+    /**
+     * Accessible name for the Key Pools filter box: a visible label would reflow the
+     * toolbar, and the placeholder alone is not a name.
+     */
+    searchKeyPools: "Search model, key, or vendor",
+    /** "Reset All" now resets each affected pool by name; say how many that was. */
+    resetAllKeysDone: (n: number): string => `Reset ${n} key pool(s)`,
     refreshHealth: "Refresh Telemetry",
     activeLeases: "Active Leases",
     successRate: "Success Rate",
@@ -1242,8 +1282,25 @@ export const en: Strings = {
     keysInCooldown: (n: number) => `${n} key(s) in 429 cooldown`,
     keysEvicted: (n: number) => `${n} key(s) evicted (401)`,
     totalKeysConfigured: "Total Keys Configured",
+    keyNameLabel: "Name",
+    keyNameHint: "The name you use to tell this key apart — unique within this model's pool.",
+    keyNamePlaceholder: "e.g. prod",
+    keyLabelLabel: "Label",
+    keyLabelPlaceholder: "e.g. shared team pool, do not rotate",
+    keyNameSave: "Save name",
+    keyNameCancel: "Cancel",
+    keyNameAction: "Name this key",
+    keyNameEdit: "Rename",
+    keyNameClear: "Clear name",
+    keyUnnamed: "Unnamed",
+    keyUnnamedHint: "No name yet — name it to tell it apart from the other keys.",
+    keyNameColumn: "Name",
+    keyNameSaved: (name: string): string => `Key named "${name}"`,
+    keyNameCleared: (name: string): string => `Cleared the name "${name}"`,
+    keyNameRequired: "A key needs a name before it can be saved.",
+    keyOrphaned: "This key is no longer configured; its name has nothing to attach to.",
+    keyActionFailed: (name: string, action: string): string => `${action} failed for ${name}`,
     healthyPoolsRatio: "Healthy Ratio",
-    resetSuccess: "Key pool status reset successfully",
   },
 
   memory: {
@@ -1753,6 +1810,41 @@ export const en: Strings = {
           'Installed skills\' metadata lines (one "- name — description" line per skill; empty when none)',
         ],
       ] as ReadonlyArray<readonly [string, string]>,
+    },
+    /**
+     * The /skills page (features/skills/skills-page.tsx). Its copy is about the LIBRARY, so
+     * every string here either names what the listing response actually contains, or states
+     * plainly that it does not contain it — `bodyMissing` is the load-bearing one: it is the
+     * only honest substitute for a panel that used to assemble a "SKILL.md" out of the skill's
+     * own name and description.
+     */
+    hub: {
+      title: "Skills Hub",
+      subtitle:
+        "Every skill in the built-in plugin library, searchable by name, plugin or category.",
+      /** The list's own length — the only skill count this page can honestly state. */
+      loadedCount: (n: number): string => (n === 1 ? "1 skill" : `${n} skills`),
+      refresh: "Refresh",
+      searchPlaceholder: "Search skills by name, plugin, or category…",
+      searchLabel: "Search skills",
+      allCategories: "All",
+      noSkills: "The plugin library has no skills.",
+      noMatches: "No skills match this search.",
+      selectHint: "Select a skill to read its instructions.",
+      shippedBy: (plugin: string): string => `Ships in plugin ${plugin}.`,
+      invocationTitle: "Invocation",
+      copyInvocation: "Copy slash command",
+      /**
+       * Why the command above may not run yet. A skill is addressable as `/name` only on an
+       * Agent that has it installed; the library listing is not an install, so the page states
+       * the precondition instead of handing out a command that would resolve to nothing.
+       */
+      invocationNeedsInstall:
+        "A skill is addressable by this command on an Agent that has it installed — install its plugin on an Agent from the plugin library first.",
+      bodyTitle: "Instruction Body (SKILL.md)",
+      /** The plugin's file listing holds no SKILL.md for this skill; nothing is shown in its place. */
+      bodyMissing: (plugin: string, skill: string): string =>
+        `The plugin ${plugin} ships no SKILL.md for ${skill}, so there are no instructions to show.`,
     },
   },
 
@@ -2378,6 +2470,7 @@ Scenarios:
       run_subagent: "subagent",
       input_subagent: "communicate",
       environment_info: "environment",
+      resource_pressure: "resources",
     } as Record<string, string>,
     workRunning: "Running",
     workDone: "Done",
@@ -2408,6 +2501,17 @@ Scenarios:
     pinSession: "Pin",
     unpinSession: "Unpin",
     pinnedSession: "Pinned",
+    /** Batch bar over the marked conversations: n = how many rows are marked and still on screen. */
+    selectedConversations: (n: number) => `${n} selected`,
+    /** Batch bar: archive / unarchive every marked conversation. */
+    archiveSelected: "Archive selected",
+    unarchiveSelected: "Unarchive selected",
+    batchArchiveFailed: (failed: number, total: number, archived: boolean) =>
+      `${failed} of ${total} conversations could not be ${archived ? "archived" : "unarchived"}. Failed conversations remain selected for retry.`,
+    /** Batch bar: leave selection mode, dropping the marks. */
+    cancelSelection: "Cancel selection",
+    /** Row context menu: enter selection mode with this row marked (the keyboard-reachable route; Cmd/Ctrl-click is the pointer one). */
+    selectConversations: "Select",
     /** The hover ellipsis button that opens the row's full context menu. */
     moreActions: "More",
     /** Sidebar group "reveal/load next page" row (display cap + server paging). */
@@ -2788,6 +2892,56 @@ Scenarios:
     nodeDone: "done",
     openAsSession: "Jump to this session",
     subagentGone: "This subagent session no longer exists and could not be revived",
+    spawnedBy: "spawned by",
+    mainSession: "the main session",
+    /** Shown when the selected child is not in the displayed Task's graph (A7). */
+    selectionElsewhere: (label: string) => `Showing ${label} from an earlier task`,
+    backToLatest: "Back to the latest task",
+    loadingChild: "This subagent's transcript is still loading",
+    skillsUnavailable: "Skills could not be loaded for this subagent",
+  },
+
+  coordination: {
+    activityTitle: "Coordination activity",
+    conversationTab: "Conversation",
+    activityTab: "Activity",
+    empty: "No coordination activity is available for this session yet",
+    jevAdvisory: "Jev",
+    advised: "observation available",
+    unavailable: "unavailable",
+    choiceMatches: "fits what the task needs next",
+    choiceDifferent: "another tool fits better",
+    choiceNone: "no tool call needed",
+    choiceUnknown: "no answer",
+    confidence: "confidence",
+    risk: "risk",
+    riskOf: (score: number) => `${score} of 5`,
+    needsTool: "needs a tool",
+    argumentsComplete: "arguments complete",
+    approvalLikely: "wants approval",
+    latency: "latency",
+    tokens: "tokens",
+    model: "model",
+    reason: "reason",
+    toolActivity: "tool",
+    toolRunning: "running",
+    toolDone: "completed",
+    toolDenied: "denied",
+    toolWaiting: "awaiting approval",
+    parentMessage: "parent-agent message",
+    agentFailed: "agent failed",
+    retried: "reconnect",
+    aborted: "aborted",
+    retrying: (attempt: number) => `retrying (attempt ${attempt})`,
+    retryGaveUp: (attempt: number) => `gave up after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+    yourMessage: "your message",
+    childMessage: "input to agent",
+    childSession: "child session",
+    advisoryOnly: "Advisory only — the command policy and the approval prompt decide, not this.",
+    rollup: (children: number, running: number, calls: number) =>
+      `${children} subagent${children === 1 ? "" : "s"} · ${running} running · ${calls} tool call${calls === 1 ? "" : "s"}`,
+    olderRowsHidden: (count: number) => `${count} earlier entries not shown`,
+    jumpToLatest: "Jump to latest",
   },
 
   files: {
@@ -2886,6 +3040,23 @@ Scenarios:
     overwriteAnyway: "Overwrite",
   },
 
+  /** The artifact preview drawer (components/ui/artifact-preview-drawer): the viewport
+   *  switch, the theme toggle, and the popout / export pair on its toolbar. */
+  artifactPreview: {
+    /** The three fixed viewports; the number in brackets is the viewport width being simulated. */
+    viewportDesktop: "Desktop",
+    viewportTablet: "Tablet (768px)",
+    viewportMobile: "Mobile (375px)",
+    /** The theme toggle names the mode a press switches TO, not the one currently showing. */
+    switchToDark: "Switch to dark mode",
+    switchToLight: "Switch to light mode",
+    openInNewTab: "Open preview in new tab",
+    popout: "Popout",
+    download: "Download file",
+    export: "Export",
+    copySource: "Copy artifact source",
+  },
+
   usage: {
     title: "Costs & usage",
     today: "Today",
@@ -2901,6 +3072,9 @@ Scenarios:
     uncostedNote: "* Only models with configured pricing count toward cost",
     filterAllAgents: "All agents",
     filterAllModels: "All models",
+    /** Accessible names of the two filter dropdowns: they carry no visible label, so without these they announce as bare combo boxes (the "all" option says what is chosen, not what is being chosen). */
+    filterAgentLabel: "Filter by agent",
+    filterModelLabel: "Filter by model",
     rangeLabel: "Date range",
     rangeHour: "Last hour",
     rangeDay: "Last 24 hours",
@@ -2917,6 +3091,18 @@ Scenarios:
     bucketTotal: "Total",
     legendHitRate: "Cache hit rate",
     empty: "No usage records",
+    /**
+     * Column headers of each chart's screen-reader data table (WCAG 2.2 SC 1.1.1 /
+     * 2.1.1: the values are also in a hover bubble, which a keyboard or a
+     * screen reader cannot reach). `chartDataBucket` names the x-axis interval,
+     * `chartDataSeries` the stacked dimension the requests charts break down by.
+     */
+    chartDataBucket: "Time bucket",
+    chartDataSeries: "Series",
+    /** The skeletons' spoken form (they are otherwise a silent grey grid). */
+    loadingUsage: "Loading usage data…",
+    /** Heading of the failed-fetch branch that takes the skeletons' place. */
+    loadFailed: "Could not load usage data.",
     errors: "Errors",
     errorsTotal: "Total",
     errorsUnexpected: "Unexpected",
@@ -3600,6 +3786,13 @@ Scenarios:
       legendEmpty: "No events yet",
       legendFilter: (name: string): string => `Show only ${name}'s events`,
       createAt: (label: string): string => `New event at ${label}`,
+      /** Names the week / day hour grid, then the range it covers: read on entering the grid. */
+      hourGrid: "Hour grid",
+      /**
+       * A chip in the week and day columns: the DAY it is on, then its time and name. The month
+       * cell already names its day, so its chips pass no `day` and do not repeat it.
+       */
+      eventOnDay: (day: string, time: string, label: string): string => `${day} ${time} · ${label}`,
       loadFailed: (error: string): string => `Could not load the calendar: ${error}`,
       /** The "×" that puts the empty-calendar note away for good (the same sentence stays in the page's "?"). */
       dismissHint: "Got it",
@@ -4053,6 +4246,10 @@ Scenarios:
       ticket_session_failed: "The ticket session could not be started.",
       handbook_file_not_found: "That document no longer exists.",
       handbook_index_required: "The handbook index (README.md) cannot be deleted.",
+      key_name_taken:
+        "Another key in this model's pool already has that name. Pick a different one.",
+      key_mask_ambiguous:
+        "That masked key matches more than one key in this pool, so it does not name one. Use the exact mask shown for the key you mean.",
     },
   },
 

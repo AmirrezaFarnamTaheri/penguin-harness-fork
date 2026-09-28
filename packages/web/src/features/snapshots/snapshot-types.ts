@@ -6,15 +6,25 @@ export type SnapshotTrigger = "auto-save" | "pre-tool" | "user-checkpoint" | "br
 
 export type RollbackMode = "in-place" | "fork-branch";
 
+/**
+ * One snapshot version, as the server actually returns it.
+ *
+ * `fileCount`, `memoryTopicsCount` and `activePromptHash` used to be declared here and
+ * rendered in the timeline's metadata row. The server has never returned any of them — the
+ * only `fileCount` in the API is `MemoryScopeInfo`'s, a different type about a different
+ * directory — so the row read "state files" and "memory topics" with no number in front of
+ * them, because `undefined` renders as an empty string. A type that promises a field the
+ * wire never carries is worse than a missing one: it makes the gap invisible to the compiler
+ * and to the next reader. They are gone from the type, and with them the rendering.
+ *
+ * `uncompressedSizeBytes` and `isCurrent` are real and are what the row now shows.
+ */
 export interface SnapshotVersionInfo {
   version: number;
   label: string;
   timestamp: number;
   trigger: SnapshotTrigger;
   uncompressedSizeBytes: number;
-  fileCount: number;
-  memoryTopicsCount: number;
-  activePromptHash: string;
   isCurrent: boolean;
 }
 

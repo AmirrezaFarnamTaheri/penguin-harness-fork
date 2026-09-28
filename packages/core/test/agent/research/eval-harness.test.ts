@@ -11,6 +11,7 @@ import {
   type EvalCase,
   type EvaluationContext,
   type RatingOutcome,
+  type ResearchOutputEvaluator,
 } from "../../../src/agent/research/eval-harness.js";
 import { CitationNetwork } from "../../../src/agent/research/citation-network.js";
 import type { Claim } from "../../../src/agent/research/claim-extractor.js";
@@ -240,6 +241,52 @@ describe("ResearchEvalHarness", () => {
     expect(result.evaluatorResults.every((entry) => entry.passed)).toBe(true);
     expect(result.notes).toHaveLength(0);
     expect(result.durationNs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("fails a case when a hard-constraint evaluator throws, instead of passing vacuously", async () => {
+    // A thrown evaluator used to be absent from `results`, and the gate was `every(...)` over
+    // that array: a case whose only hard constraint crashed came back `pass` with no notes.
+    const exploding: ResearchOutputEvaluator = {
+      name: "verification-accuracy",
+      evaluate(): never {
+        throw new Error("verifier unavailable");
+      },
+    };
+    const harness = new ResearchEvalHarness({
+      evaluators: [exploding, new CoverageEvaluator()],
+    });
+    const result = await harness.evaluateCase(caseEntry(), context());
+    expect(result.outcome).toBe("fail");
+    expect(result.evaluatorResults).toHaveLength(2);
+    expect(result.notes.join(" ")).toContain("verifier unavailable");
+  });
+
+  it("never lets the judge overturn a hard-constraint failure", async () => {
+    // The judge is model output. It arbitrates soft signals; it cannot promote a case with an
+    // unresolved citation, which is the one path by which it previously could.
+    const harness = new ResearchEvalHarness({
+      evaluators: [new CitationHallucinationEvaluator(), new CoverageEvaluator()],
+      judge: { judge: async (): Promise<RatingOutcome> => "pass" },
+    });
+    const result = await harness.evaluateCase(
+      caseEntry(),
+      context({ citationReport: unresolvedReport() }),
+    );
+    expect(result.outcome).toBe("fail");
+    // A hard failure is never ALSO a review item: it is decided, not deferred.
+    expect(result.needsReview).toBeUndefined();
+  });
+
+  it("reports soft-signal uncertainty on its own channel rather than in the outcome", async () => {
+    // A review item is useful to return and must not be a quiet approval, so it never becomes
+    // the outcome: the judge said pass, and the uncertainty is recorded beside it.
+    const harness = new ResearchEvalHarness({
+      evaluators: [new LatencyEvaluator()],
+      judge: { judge: async (): Promise<RatingOutcome> => "pass" },
+    });
+    const result = await harness.evaluateCase(caseEntry(), context({ elapsedNs: 60_000_000_000 }));
+    expect(result.outcome).toBe("pass");
+    expect(result.needsReview).toBe(true);
   });
 
   it("fails a case and collects failure notes", async () => {

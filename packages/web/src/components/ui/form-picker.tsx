@@ -71,11 +71,11 @@ export function FormPicker({
         >
           {leading}
           <span
-            className={`min-w-0 flex-1 truncate ${muted ? "text-gray-400" : ""} ${labelClassName}`}
+            className={`min-w-0 flex-1 truncate ${muted ? "text-gray-500" : ""} ${labelClassName}`}
           >
             {label}
           </span>
-          <ChevronDown className="text-gray-400" />
+          <ChevronDown className="text-gray-500" />
         </button>
       }
     >

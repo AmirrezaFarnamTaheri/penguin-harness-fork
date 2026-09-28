@@ -46,7 +46,7 @@ export function PathLabel({ path }: { path: string }) {
   return (
     <span className="flex min-w-0 items-baseline font-mono text-sm">
       {dir && (
-        <span className="min-w-0 shrink-[9999] truncate text-gray-400 dark:text-gray-500">
+        <span className="min-w-0 shrink-[9999] truncate text-gray-500 dark:text-gray-500">
           {dir}
         </span>
       )}
@@ -114,7 +114,7 @@ export function MessageFilesCard({
           the rows (Codex-style). No card-level action entry point — each row already has its own
           "Preview", adding one to the header would just duplicate the row action. */}
       <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-800/60 dark:bg-gray-800/40">
-        <GlyphIcon d={FILE_ICON} size={ICON_SIZE.rowLead} className="text-gray-400" />
+        <GlyphIcon d={FILE_ICON} size={ICON_SIZE.rowLead} className="text-gray-500" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">
           {S.chat.filesInMessage(paths.length)}
         </span>
@@ -129,7 +129,7 @@ export function MessageFilesCard({
             onClick={() => onOpenFile(path)}
             className="group flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-800/50"
           >
-            <GlyphIcon d={FILE_ICON} size={ICON_SIZE.rowLead} className="text-gray-400" />
+            <GlyphIcon d={FILE_ICON} size={ICON_SIZE.rowLead} className="text-gray-500" />
             <PathLabel path={path} />
             <span className="min-w-0 flex-1" />
             {/* Right-aligned "click to preview" text: makes the row action explicit (a trailing
@@ -138,7 +138,7 @@ export function MessageFilesCard({
                 the whole row. */}
             <span
               aria-hidden
-              className="shrink-0 text-xs text-gray-400 transition-colors duration-150 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
+              className="shrink-0 text-xs text-gray-500 transition-colors duration-150 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"
             >
               {S.chat.openPreview}
             </span>

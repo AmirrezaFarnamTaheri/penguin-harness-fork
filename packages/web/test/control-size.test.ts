@@ -48,6 +48,22 @@ function tsxFiles(dir = SRC, out: string[] = []): string[] {
   return out;
 }
 
+// Three assertions inspect the same source tree. Parse each file once per test worker so
+// parallel suite runs do not spend their five-second test budget repeating disk and AST work.
+let parsedFiles: Array<{ path: string; source: ts.SourceFile }> | undefined;
+function sourceFiles(): Array<{ path: string; source: ts.SourceFile }> {
+  return (parsedFiles ??= tsxFiles().map((path) => ({
+    path,
+    source: ts.createSourceFile(
+      path,
+      readFileSync(path, "utf8"),
+      ts.ScriptTarget.Latest,
+      /* setParentNodes */ true,
+      ts.ScriptKind.TSX,
+    ),
+  })));
+}
+
 const jsxTag = (node: ts.Node): string | null => {
   if (ts.isJsxSelfClosingElement(node)) return node.tagName.getText();
   if (ts.isJsxOpeningElement(node)) return node.tagName.getText();
@@ -86,14 +102,7 @@ function literalChunks(node: ts.Node, out: string[] = []): string[] {
  */
 function findLooseFooterButtons(): string[] {
   const loose: string[] = [];
-  for (const path of tsxFiles()) {
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, "utf8"),
-      ts.ScriptTarget.Latest,
-      /* setParentNodes */ true,
-      ts.ScriptKind.TSX,
-    );
+  for (const { path, source } of sourceFiles()) {
     const visit = (node: ts.Node): void => {
       if (ts.isJsxAttribute(node) && node.name.getText() === "footer" && node.initializer) {
         const walk = (inner: ts.Node): void => {
@@ -150,16 +159,9 @@ const DIALOG_BODY_MODULES = new Set([
  */
 function findLooseDialogBodyButtons(): string[] {
   const loose: string[] = [];
-  for (const path of tsxFiles()) {
+  for (const { path, source } of sourceFiles()) {
     const rel = path.slice(SRC.length + 1).replaceAll(sep, "/");
     if (!DIALOG_BODY_MODULES.has(rel)) continue;
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, "utf8"),
-      ts.ScriptTarget.Latest,
-      /* setParentNodes */ true,
-      ts.ScriptKind.TSX,
-    );
     const visit = (node: ts.Node): void => {
       if (jsxTag(node) === "Button") {
         const attrs = (node as ts.JsxSelfClosingElement | ts.JsxOpeningElement).attributes
@@ -186,14 +188,7 @@ function findLooseDialogBodyButtons(): string[] {
 /** Control call sites whose own `className` spells a font size, as "relative/path:line — class". */
 function findSpelledSizes(): string[] {
   const strays: string[] = [];
-  for (const path of tsxFiles()) {
-    const source = ts.createSourceFile(
-      path,
-      readFileSync(path, "utf8"),
-      ts.ScriptTarget.Latest,
-      /* setParentNodes */ true,
-      ts.ScriptKind.TSX,
-    );
+  for (const { path, source } of sourceFiles()) {
     const visit = (node: ts.Node): void => {
       const tag = jsxTag(node);
       if (tag !== null && CONTROLS.has(tag)) {
@@ -227,7 +222,7 @@ describe("control font size", () => {
         "standalone page like login). A text-* class beside it either does nothing or freezes " +
         "the control against the user's font-size setting — see components/ui/input.tsx.",
     ).toEqual([]);
-  });
+  }, 20_000);
 
   it("actually reads the control's own attribute — the check is exercised on known shapes", () => {
     // Guards the guard: without this, the assertion above would pass just as happily on a

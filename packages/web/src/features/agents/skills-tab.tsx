@@ -277,7 +277,7 @@ export function SkillsTab({
               </div>
               {metaLine(skill) !== "" && (
                 <span
-                  className="hidden shrink-0 text-[11px] text-gray-400 sm:block dark:text-gray-500"
+                  className="hidden shrink-0 text-[11px] text-gray-500 sm:block dark:text-gray-500"
                   title={metaLine(skill)}
                 >
                   {metaLine(skill)}

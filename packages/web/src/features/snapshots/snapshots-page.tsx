@@ -17,7 +17,16 @@ import {
   type TimeTravelResult,
 } from "./snapshot-types";
 
-/** Maps a live GET /snapshots response onto the timeline's version rows. */
+/**
+ * Maps a live GET /snapshots response onto the timeline's version rows.
+ *
+ * It used to invent three fields the response does not carry — `fileCount: 0`,
+ * `memoryTopicsCount: 0`, `activePromptHash: ""` — because `SnapshotVersionInfo` declared
+ * them. Every row in production therefore read "0 state files" and "0 memory topics": not
+ * blanks, but confidently wrong numbers, invented by the mapper to satisfy its own type. The
+ * type has been narrowed to what the wire actually sends, so the mapper now only maps real
+ * fields and the timeline shows the size it has always had.
+ */
 export function toSnapshotVersionInfo(res: AgentSnapshotsResponse): SnapshotVersionInfo[] {
   const fallbackCurrent = res.snapshots.reduce<number>(
     (max, s) => Math.max(max, s.version),
@@ -29,9 +38,6 @@ export function toSnapshotVersionInfo(res: AgentSnapshotsResponse): SnapshotVers
     timestamp: Math.round(s.mtimeMs),
     trigger: "auto-save",
     uncompressedSizeBytes: s.sizeBytes,
-    fileCount: 0,
-    memoryTopicsCount: 0,
-    activePromptHash: "",
     isCurrent: s.isCurrent || (res.currentVersion === 0 && s.version === fallbackCurrent),
   }));
 }
@@ -99,9 +105,6 @@ const INITIAL_SNAPSHOTS: SnapshotVersionInfo[] = [
     timestamp: Date.now() - 3600_000 * 3,
     trigger: "user-checkpoint",
     uncompressedSizeBytes: 142000,
-    fileCount: 12,
-    memoryTopicsCount: 2,
-    activePromptHash: "a1b2c3d4",
     isCurrent: false,
   },
   {
@@ -110,9 +113,6 @@ const INITIAL_SNAPSHOTS: SnapshotVersionInfo[] = [
     timestamp: Date.now() - 3600_000,
     trigger: "pre-tool",
     uncompressedSizeBytes: 158000,
-    fileCount: 15,
-    memoryTopicsCount: 4,
-    activePromptHash: "e5f6g7h8",
     isCurrent: false,
   },
   {
@@ -121,9 +121,6 @@ const INITIAL_SNAPSHOTS: SnapshotVersionInfo[] = [
     timestamp: Date.now() - 600_000,
     trigger: "auto-save",
     uncompressedSizeBytes: 174000,
-    fileCount: 18,
-    memoryTopicsCount: 6,
-    activePromptHash: "i9j0k1l2",
     isCurrent: true,
   },
 ];
@@ -224,9 +221,6 @@ export function SnapshotsPage({ embedded = false, projectId, agentId }: Snapshot
       timestamp: Date.now(),
       trigger: "user-checkpoint",
       uncompressedSizeBytes: currentSnapshot.uncompressedSizeBytes + 1200,
-      fileCount: currentSnapshot.fileCount,
-      memoryTopicsCount: currentSnapshot.memoryTopicsCount,
-      activePromptHash: Math.random().toString(36).substring(2, 10),
       isCurrent: true,
     };
 
@@ -344,9 +338,14 @@ export function SnapshotsPage({ embedded = false, projectId, agentId }: Snapshot
 
       {!live && (
         <p className="border-b border-gray-200 pb-4 text-sm text-gray-600 dark:border-gray-800 dark:text-gray-400">
-          Current: v{currentSnapshot.version} · {snapshots.length} checkpoints ·{" "}
-          {currentSnapshot.fileCount} sample files · {currentSnapshot.memoryTopicsCount} memory
-          topics · {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
+          {/* Sample data, and it now says so in the first three words. The counts for files
+              and memory topics that used to sit in this line were invented — the mapper
+              filled them with zeros because the type asked for fields the API never sends —
+              so a reader saw a confident "0 state files" on a project with real state. The
+              version, checkpoint count and size below are at least self-consistent, so they
+              stay; the fabricated pair does not. */}
+          Sample data · v{currentSnapshot.version} · {snapshots.length} checkpoints ·{" "}
+          {(currentSnapshot.uncompressedSizeBytes / 1024).toFixed(1)} KB
         </p>
       )}
 

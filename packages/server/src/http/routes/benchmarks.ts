@@ -3,6 +3,7 @@
  *   GET /api/projects/:p/agents/:a/benchmarks (any member, read-only)
  *   POST /api/projects/:p/agents/:a/benchmarks (owner: create a Benchmark by hand)
  *   DELETE /api/projects/:p/agents/:a/benchmarks/:benchmarkId (owner: remove the directory whole)
+ *   GET /api/projects/:p/agents/:a/benchmarks/:benchmarkId/evaluations/:evaluationIndex/evidence
  *   GET /api/projects/:p/agents/:a/benchmarks/:benchmarkId/cases
  *   GET /api/projects/:p/agents/:a/benchmarks/:benchmarkId/cases/:caseId/files
  *   GET /api/projects/:p/agents/:a/benchmarks/:benchmarkId/cases/:caseId/files/content
@@ -15,7 +16,11 @@ import { Hono, type Context } from "hono";
 import { isValidId } from "@prismshadow/penguin-core";
 import type { AppEnv } from "../../auth/middleware.js";
 import type { AppDeps } from "../../app.js";
-import type { BenchmarkCreateResponse, CaseMaterial } from "../../api/types.js";
+import type {
+  BenchmarkCreateResponse,
+  BenchmarkEvaluationEvidenceResponse,
+  CaseMaterial,
+} from "../../api/types.js";
 import type { BenchmarkCaseInput } from "../../services/benchmark-service.js";
 import {
   badRequest,
@@ -181,6 +186,23 @@ export function benchmarksRoutes(deps: AppDeps): Hono<AppEnv> {
     await deps.agentConfigService.requireExists(projectId, agentId);
     await deps.benchmarks.remove(projectId, agentId, benchmarkId);
     return c.body(null, 204);
+  });
+
+  app.get("/:benchmarkId/evaluations/:evaluationIndex/evidence", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    const agentId = requireValidId(c, "agentId");
+    const benchmarkId = requireValidId(c, "benchmarkId");
+    const evaluationIndex = Number(c.req.param("evaluationIndex"));
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    await deps.agentConfigService.requireExists(projectId, agentId);
+    return c.json(
+      (await deps.benchmarks.evaluationEvidence(
+        projectId,
+        agentId,
+        benchmarkId,
+        evaluationIndex,
+      )) satisfies BenchmarkEvaluationEvidenceResponse,
+    );
   });
 
   app.get("/:benchmarkId/cases", async (c) => {

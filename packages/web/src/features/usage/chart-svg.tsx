@@ -28,6 +28,12 @@
  * here, so their x axis covers unequal spans of time; axisBreaks draws the
  * "//" between two points that are not neighbours, which is what keeps the
  * axis from being read as a continuous one.
+ *
+ * Nothing in here is reachable by keyboard — the hover bubble is the only place
+ * the values are written down. So every frame must be named (`ariaLabel`, which
+ * lands on both the svg's `aria-label` and its `<title>`), and its caller pairs
+ * it with the hidden data table (chart-data-table's ChartDataTable) that holds
+ * the same values. The bubble stays exactly as it is for pointer users.
  */
 import {
   useEffect,
@@ -137,6 +143,7 @@ export function ChartFrame({
   rightAxis,
   hoverLine = true,
   axisBreaks,
+  ariaLabel,
   children,
 }: {
   geom: ChartGeom;
@@ -164,6 +171,20 @@ export function ChartFrame({
   hoverLine?: boolean;
   /** Indices after which the x axis skips at least one interval (the usage charts drop the buckets that recorded nothing): a break mark is drawn between that point and the next, so a compressed axis never reads as a continuous one. */
   axisBreaks?: number[];
+  /**
+   * What this chart shows, in the caller's own words — the accessible name of
+   * the `role="img"` and its `<title>`, because an unlabelled image is announced
+   * as "image" and the marks inside it are never read: every value in here lives
+   * in a pointer-driven bubble, so this string plus the chart's hidden data
+   * table (chart-data-table's ChartDataTable) is the whole of what a keyboard
+   * or screen-reader user gets.
+   *
+   * Optional only because two callers live outside this feature and are owned
+   * elsewhere — benchmark-detail's ScoreTrendChart, which renders a
+   * ChartFrame directly. Every chart in features/usage passes it, and a frame
+   * with no name renders no name at all rather than a fabricated one.
+   */
+  ariaLabel?: string;
   /** Data marks: bars / line / area, drawn between the grid and the hit area. */
   children?: ReactNode;
 }) {
@@ -234,6 +255,7 @@ export function ChartFrame({
         height={CHART_H}
         className="text-gray-600 dark:text-gray-400"
         role="img"
+        aria-label={ariaLabel}
         onMouseLeave={() => {
           onHover(null);
           // Drop the pointer sample: on re-entry the bubble stays hidden until the fresh position is known, rather than flashing at the stale one.
@@ -245,6 +267,12 @@ export function ChartFrame({
           schedulePlace();
         }}
       >
+        {/* The same string as the aria-label, as the SVG's own title: this is the
+            pattern the benchmark score sparkline uses (role="img" + aria-label +
+            <title>), so a `role="img"` here is never a bare, unlabelled image.
+            It is what a browser shows as the hover tooltip as well. */}
+        {ariaLabel !== undefined && <title>{ariaLabel}</title>}
+
         {/* Grid lines and y-axis ticks (recessive gray) */}
         {gridLevels.map((v, i) => (
           <g key={i}>

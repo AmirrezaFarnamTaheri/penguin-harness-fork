@@ -15,9 +15,6 @@ describe("snapshot-types", () => {
       timestamp: 1726300000000,
       trigger: "user-checkpoint",
       uncompressedSizeBytes: 142000,
-      fileCount: 12,
-      memoryTopicsCount: 2,
-      activePromptHash: "a1b2c3d4",
       isCurrent: false,
     },
     {
@@ -26,9 +23,6 @@ describe("snapshot-types", () => {
       timestamp: 1726303600000,
       trigger: "pre-tool",
       uncompressedSizeBytes: 158000,
-      fileCount: 15,
-      memoryTopicsCount: 4,
-      activePromptHash: "e5f6g7h8",
       isCurrent: false,
     },
     {
@@ -37,9 +31,6 @@ describe("snapshot-types", () => {
       timestamp: 1726307200000,
       trigger: "auto-save",
       uncompressedSizeBytes: 174000,
-      fileCount: 18,
-      memoryTopicsCount: 6,
-      activePromptHash: "i9j0k1l2",
       isCurrent: true,
     },
   ];

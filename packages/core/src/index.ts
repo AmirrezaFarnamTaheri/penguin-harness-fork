@@ -139,6 +139,12 @@ export type { ScavengedToolCall } from "./llm/tool-call-repair.js";
 // requests on a Project's model sizes them the way the SDK sizes its own.
 export { Agent, createAgent, metaMaxTokens } from "./agent.js";
 export type {
+  JevSurfaceAdvisor,
+  JevSurfaceAdvisorOptions,
+  JevSurfaceFacts,
+  JevToolAdvisor,
+} from "./jev/index.js";
+export type {
   ControlEnvContext,
   CreateAgentOptions,
   CreateSessionOptions,
@@ -146,7 +152,7 @@ export type {
 } from "./agent.js";
 
 /** SDK version number. */
-export const VERSION = "0.2.17";
+export const VERSION = "0.2.18";
 /** Release build date (UTC yyyy-mm-dd), stamped by the release workflow next to VERSION; null in a dev/source build. */
 export const BUILD_DATE: string | null = null;
 /** Full commit sha the release was built from, stamped by the release workflow next to VERSION; null in a dev/source build. */

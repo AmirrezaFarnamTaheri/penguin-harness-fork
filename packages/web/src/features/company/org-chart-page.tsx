@@ -228,7 +228,7 @@ export function OrgChartPage() {
       {menuRow(MENU_ICONS.renewDesk, S.company.chart.renewDesk, () => setRenewFor(employee))}
       <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
       {isCeo ? (
-        <span className="block px-2.5 py-1.5 text-xs text-gray-400 dark:text-gray-500">
+        <span className="block px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-500">
           {S.company.chart.ceoCannotLeave}
         </span>
       ) : (

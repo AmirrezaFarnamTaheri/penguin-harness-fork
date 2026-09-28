@@ -74,7 +74,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChangeEvent, ClipboardEvent, KeyboardEvent, ReactNode, RefObject } from "react";
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent, RefObject } from "react";
 import type {
   AgentSummary,
   ApprovalMode,
@@ -106,11 +106,19 @@ import { toggleSkillName } from "../skills/skill-selection";
 import { ZoomableImage } from "../../components/ui/image-zoom";
 import { ProviderLogo } from "../../components/ui/provider-logo";
 import { sameModelRef } from "../models/model-grouping";
-import { filterAgents, stagedSendRoute } from "./agent-handoff";
-import { ModelMenuList, ModelSelect, PickerList, modelLabel } from "./model-select";
+import { stagedSendRoute } from "./agent-handoff";
+import { AgentMenuList } from "./agent-menu-list";
+import { ApprovalModeSelect } from "./approval-mode-select";
+import { ModelMenuList, ModelSelect, modelLabel } from "./model-select";
+import { SwitchPickerPanel } from "./switch-picker-panel";
 import { filterSlashCommands, matchSlash, removeSlashToken } from "./slash-token";
-import { SELECTABLE_THINKING_LEVELS, thinkingLevelLabel } from "./thinking-level";
-import { BOOK_ICON, buildSkillsMessage, localizedShortText, skillSlashItems } from "./skill-use";
+import { PlusMenu } from "./plus-menu";
+import { QueuedMessageLine } from "./queued-message-line";
+import { STEER_MODE_KEY, SteerModeRow, initialSteerMode } from "./steer-mode-row";
+import type { SteerMode } from "./steer-mode-row";
+import { ThinkingLevelSelect } from "./thinking-level-select";
+import { buildSkillsMessage, localizedShortText, skillSlashItems } from "./skill-use";
+import { SkillSelect } from "./skill-select";
 import { GOAL_ICON, UNLIMITED_BUDGET, parseBudgetInput } from "./goal-use";
 import { mergeRecalledDraft } from "./recall-draft";
 import { buildExampleFill } from "./example-fill";
@@ -132,509 +140,12 @@ import { splitBySize } from "../../lib/upload-limits";
 import { insertAtCaret } from "../../lib/workspace-tree";
 import type { InsertLayout } from "../../lib/workspace-tree";
 
-const APPROVAL_MODES: ApprovalMode[] = ["always-ask", "read-only", "allow-all", "deny-all"];
-
-/**
- * Illustrative icon for each approval mode (24x24 line art, grayscale via currentColor, no
- * color-coding): allow-all uses a warning triangle — it permits everything at the user's own
- * risk, the shape hints at it visually without rendering tension through color; deny-all is a
- * no-entry sign, read-only is an eye, always-ask is a question-mark circle.
- */
-const APPROVAL_MODE_ICONS: Record<ApprovalMode, string> = {
-  "allow-all":
-    "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4m0 4h.01",
-  "deny-all": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.64 5.64l12.72 12.72",
-  "read-only":
-    "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
-  "always-ask":
-    "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.1 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3m.07 4h.01",
-};
-
-/**
- * Approval mode selector (custom-drawn dropdown, not the browser's native select): small,
- * grayscale.
- * Popup direction depends on context: for the draft card, vertically centered with room below
- * -> opens downward; for the chat input area docked at the bottom of the screen, where opening
- * downward would overflow the viewport with nowhere to scroll -> opens upward.
- */
-function ApprovalModeSelect({
-  value,
-  onChange,
-  disabled,
-  direction = "up",
-}: {
-  value: ApprovalMode;
-  onChange: (mode: ApprovalMode) => void;
-  disabled: boolean;
-  direction?: "up" | "down";
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      // w-max: width exactly wraps the longest line (no wrapping within a line), avoiding an
-      // overly wide panel. Placement is portal-driven (the toolbar scrolls horizontally on
-      // phones, which would otherwise clip the panel); only size classes belong here.
-      menuClass="w-max"
-      portal={{ direction, align: "left" }}
-      button={
-        // Button styling matches the model selector (h-8 / rounded-md / solid hover background).
-        <button
-          type="button"
-          aria-label={S.chat.approvalMode}
-          title={`${S.chat.approvalMode}：${S.chat.approvalModeNames[value] ?? value}`}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          className="flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          {/* Icon changes with the current mode (allow-all = warning triangle, grayscale, no color-coding) */}
-          <GlyphIcon d={APPROVAL_MODE_ICONS[value]} />
-          {/* Button shows only the description (the mode id is spelled out in the menu); when the card is narrower than @md, only the icon remains (title shows the full name). */}
-          <span className="hidden min-w-0 truncate @md:block">
-            {S.chat.approvalModeNames[value] ?? value}
-          </span>
-          <ChevronDown size={ICON_SIZE.caretDense} />
-        </button>
-      }
-    >
-      {APPROVAL_MODES.map((m) => (
-        <button
-          key={m}
-          type="button"
-          onClick={() => {
-            onChange(m);
-            setOpen(false);
-          }}
-          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors duration-150 hover:bg-gray-100 dark:hover:bg-gray-800 ${
-            m === value
-              ? "font-medium text-gray-900 dark:text-gray-100"
-              : "text-gray-600 dark:text-gray-400"
-          }`}
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-            className="shrink-0 text-gray-400 dark:text-gray-500"
-          >
-            <path d={APPROVAL_MODE_ICONS[m]} />
-          </svg>
-          {/* Description first, mode id after (copy in strings); single line, no wrapping, selected checkmark at line end. */}
-          <span className="min-w-0 flex-1 truncate whitespace-nowrap">
-            {S.chat.approvalModes[m] ?? m}
-          </span>
-          <span className="w-3 shrink-0 text-center">{m === value ? "✓" : ""}</span>
-        </button>
-      ))}
-    </Dropdown>
-  );
-}
-
-/**
- * Agent candidate panel for the `/agent` switch picker — the agent-side counterpart of
- * ModelMenuList, and now literally the same panel (PickerList: search, scroll cap, keyboard
- * navigation, current-entry marker). Only the row differs: the Agent avatar (the same identity
- * tile the draft Agent picker uses), the agentId in monospace — the id is what identifies an
- * Agent everywhere else in the app — and the display name after it when it differs. The
- * conversation's own Agent is marked like the model list marks the session's model; picking it
- * is still a real action (a fresh conversation with the same Agent), not a no-op.
- */
-function AgentMenuList({
-  agents,
-  currentAgentId,
-  onPick,
-}: {
-  agents: AgentSummary[];
-  /** The Agent this conversation already belongs to (marked ✓); undefined while it is unknown. */
-  currentAgentId?: string;
-  onPick: (agent: AgentSummary) => void;
-}) {
-  const [query, setQuery] = useState("");
-  return (
-    <PickerList
-      items={filterAgents(agents, query)}
-      itemKey={(a) => a.agentId}
-      isCurrent={(a) => a.agentId === currentAgentId}
-      query={query}
-      onQueryChange={setQuery}
-      // Quick search: supports agentId / display name
-      searchPlaceholder={S.chat.agentSearchPlaceholder}
-      emptyText={S.chat.agentsNoMatch}
-      onPick={onPick}
-      renderRow={(a) => (
-        <>
-          <AgentAvatar
-            id={a.agentId}
-            name={agentDisplayName(a)}
-            size={16}
-            className="shrink-0 rounded"
-          />
-          <span className="shrink-0 font-mono text-gray-800 dark:text-gray-200">{a.agentId}</span>
-          {a.name && a.name !== a.agentId && (
-            <span className="min-w-0 flex-1 truncate text-gray-400 dark:text-gray-500">
-              {a.name}
-            </span>
-          )}
-        </>
-      )}
-    />
-  );
-}
-
-/**
- * Popup frame shared by the two `/` switch pickers (`/model`, `/agent`): the upward-opening
- * panel and its title bar. It opens upward from the composer and is height-capped to the room
- * actually measured above it (see upwardMaxH), so it can never render off-screen; the panel has
- * no trigger button of its own, so dismissal (click-outside / Escape) is handled by the host.
- */
-function SwitchPickerPanel({
-  panelRef,
-  maxHeight,
-  title,
-  children,
-}: {
-  panelRef: RefObject<HTMLDivElement | null>;
-  maxHeight: number | undefined;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      ref={panelRef}
-      style={{ maxHeight }}
-      className="anim-pop absolute bottom-full left-0 z-40 mb-1.5 flex w-80 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900"
-    >
-      <div className="border-b border-gray-100 px-3 pb-1.5 pt-0.5 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:text-gray-400">
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-/** Spark glyph for the thinking-level picker (24x24 line path, consistent with the toolbar icon set). */
-const SPARK_ICON = "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z";
-
-/**
- * Conversation-time thinking-level picker, used in two places. Both variants list only the
- * concrete levels (per review: a title bar names the control; short names only, no
- * descriptions, no "default"/"follow" row, and no "none" — many models cannot disable
- * thinking; a stored legacy "none" still displays via the label table, just never offered):
- * - Draft state (docked left of the model selector): shows the **selected Agent's** current
- *   `model.thinking_level` and writes a picked level straight through to the Agent settings —
- *   it applies to the session created on first send and becomes the Agent's new default
- *   (switch-becomes-default). An Agent without an explicit override shows an em dash until a
- *   level is picked.
- * - Active session: the level is a **per-turn parameter** sent with each task. The displayed
- *   value initializes to the Agent config's level and auto-follows it while the user hasn't
- *   picked (the parent resolves the display value and keeps omitting the level from tasks
- *   until touched); an explicit pick sticks for the session and rides on every subsequent
- *   send, never writing through to the Agent config.
- */
-function ThinkingLevelSelect({
-  value,
-  onChange,
-  disabled,
-  direction = "down",
-  note,
-}: {
-  /** Level to display and mark selected ("" = none to show yet); null = the Agent config is still loading (draft). */
-  value: string | null;
-  onChange: (level: string) => void;
-  disabled: boolean;
-  /** Popup direction: down for the draft card (room below), up for the bottom-docked session composer. */
-  direction?: "down" | "up";
-  /** Footnote under the rows — the session variant's pre-pick reminder: a change applies right away but invalidates the model's cached context, so compacting first is recommended. */
-  note?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const label =
-    value === null ? "…" : (thinkingLevelLabel(S.chat.thinkingLevelNames, value) ?? "—");
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      menuClass="w-max min-w-36"
-      portal={{ direction, align: "right" }}
-      button={
-        <button
-          type="button"
-          title={`${S.chat.thinkingLevel}：${label}`}
-          aria-label={S.chat.thinkingLevel}
-          disabled={disabled || value === null}
-          onClick={() => setOpen(!open)}
-          className="flex h-8 max-w-36 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          <GlyphIcon d={SPARK_ICON} className="shrink-0" />
-          {/* When the card is narrower than @md, only the icon remains (title shows the full state). */}
-          <span className="hidden min-w-0 truncate @md:block">{label}</span>
-          <ChevronDown size={ICON_SIZE.caretDense} />
-        </button>
-      }
-    >
-      {/* Title bar: names the control (the rows themselves are just the tier names). */}
-      <div className="border-b border-gray-100 px-3 pb-1.5 pt-0.5 text-xs font-semibold text-gray-500 dark:border-gray-800 dark:text-gray-400">
-        {S.chat.thinkingLevel}
-      </div>
-      {SELECTABLE_THINKING_LEVELS.map((level) => (
-        <button
-          key={level}
-          type="button"
-          onClick={() => {
-            onChange(level);
-            setOpen(false);
-          }}
-          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors duration-150 hover:bg-gray-100 dark:hover:bg-gray-800 ${
-            level === value
-              ? "font-medium text-gray-900 dark:text-gray-100"
-              : "text-gray-600 dark:text-gray-400"
-          }`}
-        >
-          {/* The one surface that annotates: a menu row is where the tier is CHOSEN, so it
-              names the wire value the pick will send. The trigger above stays the plain
-              name — in zh that is low/medium/high/very high/max, in en the annotation is a no-op. */}
-          <span className="min-w-0 flex-1 truncate">
-            {S.chat.thinkingLevelMenuName(S.chat.thinkingLevelNames[level] ?? level, level)}
-          </span>
-          <span className="w-3 shrink-0 text-center">{level === value ? "✓" : ""}</span>
-        </button>
-      ))}
-      {note && (
-        <div className="max-w-56 border-t border-gray-100 px-3 pb-1 pt-1.5 text-[11px] leading-snug text-gray-400 dark:border-gray-800 dark:text-gray-500">
-          {note}
-        </div>
-      )}
-    </Dropdown>
-  );
-}
-
-/**
- * Mid-run send mode: steer (delivered mid-run as a [user_steering] input) vs follow-up
- * (queued server-side until the run ends). A remembered per-user UI preference, persisted
- * the same way as the sidebar grouping mode (validated localStorage read under a
- * `penguin.*` key); configurable from the "+" menu's settings row in draft state and active
- * sessions alike.
- */
-type SteerMode = "steer" | "followup";
-const STEER_MODE_KEY = "penguin.steerMode";
-function initialSteerMode(): SteerMode {
-  return localStorage.getItem(STEER_MODE_KEY) === "followup" ? "followup" : "steer";
-}
-
-/** Sliders icon (24×24 line path) for the mid-run send-mode settings row. */
-const SLIDERS_ICON = "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6";
-
-/**
- * The mid-run send mode row, rendered as the "+" menu's settings footer: Steer (default) /
- * Queue as a follow-up, the full explanation hover-only via each pill's title (the toolbar's
- * "full meaning on hover" convention). Laid out like the menu's items — leading icon, label,
- * the control where an item's description sits — so the menu reads as one list. Clicking a
- * pill keeps the menu open — it's a setting, not an action — and the row is never disabled:
- * the preference is settable before and during a run.
- */
-function SteerModeRow({
-  steerMode,
-  onChangeSteerMode,
-}: {
-  steerMode: SteerMode;
-  onChangeSteerMode: (mode: SteerMode) => void;
-}) {
-  // Compact pills, no bordered wrapper: the control must not out-height an item's 16px text
-  // line by more than the row paddings absorb — h-5 pills inside py-1 land the row at the
-  // same 28px an item's text + py-1.5 does, so the menu keeps one line rhythm.
-  const modeButton = (mode: SteerMode, label: string, hint: string) => (
-    <button
-      type="button"
-      title={hint}
-      aria-pressed={steerMode === mode}
-      onClick={() => onChangeSteerMode(mode)}
-      className={`h-5 rounded px-1.5 text-xs transition-colors duration-150 ${
-        steerMode === mode
-          ? "bg-gray-200 font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-100"
-          : "text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-      }`}
-    >
-      {label}
-    </button>
-  );
-  return (
-    <div className="flex w-full items-center gap-2 px-3 py-1 text-xs">
-      <GlyphIcon d={SLIDERS_ICON} className="shrink-0 text-gray-400 dark:text-gray-500" />
-      <span className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-400">
-        {S.chat.steerModeLabel}
-      </span>
-      <div
-        role="group"
-        aria-label={S.chat.steerModeLabel}
-        className="flex shrink-0 items-center gap-0.5"
-      >
-        {modeButton("steer", S.chat.steerModeSteer, S.chat.steerModeSteerHint)}
-        {modeButton("followup", S.chat.steerModeFollowUp, S.chat.steerModeFollowUpHint)}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Multi-select skills dropdown (bottom toolbar, after approval mode): styled like the model
- * selector — button = book icon + "Skills" label + selected-count badge (no badge at 0; when the
- * card is narrower than @md the label hides, leaving just icon + badge); the menu body is the
- * shared SkillPickList (search box + toggle rows), without its bulk row — picking skills to send
- * a message with is a per-message act on a handful of names, not a set to fill in. Multi-select
- * semantics: clicking a row toggles its selection and **the menu stays open**; closes on Escape /
- * click outside (built into Dropdown). Popup direction depends on context (same as the approval
- * mode selector).
- */
-function SkillSelect({
-  skills,
-  selected,
-  onToggle,
-  disabled,
-  direction = "up",
-}: {
-  skills: SkillMetadataItem[];
-  selected: string[];
-  onToggle: (name: string) => void;
-  disabled: boolean;
-  direction?: "up" | "down";
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      // As wide as reasonably possible so descriptions stay readable; portal placement clamps
-      // it to the viewport, so the old hand-tuned anchor-offset clamps are no longer needed.
-      menuClass="w-[26rem]"
-      portal={{ direction, align: "left" }}
-      button={
-        <button
-          type="button"
-          aria-label={S.chat.skillsSelect}
-          title={S.chat.skillsSelect}
-          disabled={disabled}
-          // The panel is unmounted while closed, so its search box starts empty on every open.
-          onClick={() => setOpen(!open)}
-          className="flex h-8 max-w-44 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          <GlyphIcon d={BOOK_ICON} className="shrink-0" />
-          {/* When the card is narrower than @md, only the icon + badge remain (title shows the full name). */}
-          <span className="hidden min-w-0 truncate @md:block">{S.chat.skillsSelect}</span>
-          {/* Selected-count badge (the chip row above the input mirrors the selection too). */}
-          {selected.length > 0 && (
-            <span className="shrink-0 rounded-full bg-gray-200/80 px-1.5 py-px font-mono text-[10px] font-semibold text-gray-700 dark:bg-gray-700/60 dark:text-gray-200">
-              {selected.length}
-            </span>
-          )}
-          <ChevronDown size={ICON_SIZE.caretDense} />
-        </button>
-      }
-    >
-      <SkillPickList
-        skills={skills}
-        selected={selected}
-        onToggle={onToggle}
-        emptyHint={S.chat.skillsEmptyHint}
-      />
-    </Dropdown>
-  );
-}
-
 /**
  * Picture glyph (24×24 line path) for the "+" menu's image-upload entry: the framing rectangle
  * and the mountain line as two subpaths of one `d`, since GlyphIcon renders a single `<path>`.
  */
 const IMAGE_ICON =
   "M6 5h12a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3zM3 15l5-5 4 4 3-3 6 6";
-
-/** One entry of the composer's "+" extension menu. */
-interface PlusMenuItem {
-  key: string;
-  icon: string;
-  label: string;
-  desc: string;
-  /** Whether the entry is currently engaged (rendered with a check mark; clicking toggles). */
-  active: boolean;
-  /** Grayed out and inert (e.g. goal mode while a run is in progress); the menu still opens. */
-  disabled?: boolean;
-  onSelect: () => void;
-}
-
-/**
- * The composer's "+" extension menu: a general-purpose entry point for input add-ons (goal
- * mode today; future modes, plugins, apps, files slot in as further items) plus input
- * settings (`footer`, currently the mid-run send mode row). Data-driven — the caller passes
- * the item list and footer; the menu itself knows nothing about the entries. The button is
- * never disabled: settings must stay reachable during a run, so unavailable *items* gray out
- * individually instead.
- */
-function PlusMenu({
-  items,
-  footer,
-  direction = "up",
-}: {
-  items: PlusMenuItem[];
-  footer?: ReactNode;
-  direction?: "up" | "down";
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dropdown
-      open={open}
-      setOpen={setOpen}
-      // Placement is portal-driven like the rest of the toolbar (its scroll container would
-      // clip an absolutely-positioned panel); only size classes belong here.
-      menuClass="w-72"
-      portal={{ direction, align: "left" }}
-      button={
-        <button
-          type="button"
-          aria-label={S.chat.plusMenu}
-          title={S.chat.plusMenu}
-          onClick={() => setOpen(!open)}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          <GlyphIcon d="M12 5v14M5 12h14" size={15} className="shrink-0" />
-        </button>
-      }
-    >
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          aria-pressed={item.active}
-          disabled={item.disabled}
-          onClick={() => {
-            setOpen(false);
-            item.onSelect();
-          }}
-          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors duration-150 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:disabled:hover:bg-transparent ${
-            item.active
-              ? "font-medium text-gray-900 dark:text-gray-100"
-              : "text-gray-600 dark:text-gray-400"
-          }`}
-        >
-          <GlyphIcon d={item.icon} className="shrink-0 text-gray-400 dark:text-gray-500" />
-          <span className="shrink-0">{item.label}</span>
-          <span className="min-w-0 flex-1 truncate text-gray-400 dark:text-gray-500">
-            {item.desc}
-          </span>
-          <span className="w-3 shrink-0 text-center">{item.active ? "✓" : ""}</span>
-        </button>
-      ))}
-      {footer && (
-        <div className="mt-1 border-t border-gray-100 pt-1 dark:border-gray-800">{footer}</div>
-      )}
-    </Dropdown>
-  );
-}
 
 interface SlashCommand {
   cmd: string;
@@ -686,55 +197,6 @@ function steeringSummary(p: { text: string; images: number; files: number }): st
   if (p.images > 0) parts.push(S.chat.imagesInMessage(p.images));
   if (p.files > 0) parts.push(S.chat.filesInMessage(p.files));
   return parts.join(" \u00b7 ");
-}
-
-/**
- * Curved-back arrow glyph (24×24 line path) for the recall control: arrowhead at the left,
- * the shaft looping back beneath it — the undo reading, not the trash-can one. A recalled
- * message is not discarded, it comes back to the composer, and the icon has to say that on
- * its own (owner directive: this control carries no text).
- */
-const RECALL_ICON = "M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11";
-
-/**
- * One queued-message hint line (undelivered steering / queued follow-up) with its recall
- * button (#287): the button withdraws the message server-side and puts its content back into
- * the input box for editing and resending. No button when the channel offers no recall
- * (old server: entries without ids, or no handler supplied).
- *
- * Icon-only, so the two localized strings become its accessible name instead of its body:
- * `recallQueued` is the short one the button is *called* (aria-label), `recallQueuedTitle` the
- * tooltip that says what happens. Sized like the other icon controls on a text-xs row, and
- * `shrink-0` next to the truncating label so it survives narrow widths. It carries the icon
- * set's gray (a step darker than the hint text it sits beside), not the label's: gray-400 on
- * white is under the 3:1 an interactive control owes, and this one is interactive.
- */
-function QueuedMessageLine({
-  label,
-  onRecall,
-  disabled,
-}: {
-  label: string;
-  onRecall?: () => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      <p className="min-w-0 truncate text-xs text-gray-400 dark:text-gray-500">{label}</p>
-      {onRecall && (
-        <button
-          type="button"
-          aria-label={S.chat.recallQueued}
-          title={S.chat.recallQueuedTitle}
-          disabled={disabled}
-          onClick={onRecall}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          <GlyphIcon d={RECALL_ICON} size={13} />
-        </button>
-      )}
-    </div>
-  );
 }
 
 /**
@@ -2315,17 +1777,17 @@ export function ChatInput({
               <GlyphIcon
                 d={PAPERCLIP_ICON}
                 size={13}
-                className="shrink-0 text-gray-400 dark:text-gray-500"
+                className="shrink-0 text-gray-500 dark:text-gray-500"
               />
               <span className="min-w-0 truncate">{file.name}</span>
-              <span className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+              <span className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-500">
                 {formatBytes(file.size)}
               </span>
               <button
                 type="button"
                 aria-label={`${S.chat.removeFile} ${file.name}`}
                 onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
               >
                 ×
               </button>
@@ -2374,7 +1836,7 @@ export function ChatInput({
           path into the message text (the model views them via read_file). A small note is
           shown while images are attached. */}
       {!vision && images.length > 0 && (
-        <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
           {S.chat.imagesAsPathHint}
         </p>
       )}
@@ -2384,7 +1846,7 @@ export function ChatInput({
           this is the line that says why — the chip stays staged and goes out on the next Enter
           once the Session settles. */}
       {stagedRoute === "blocked" && (
-        <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+        <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
           {S.chat.modelSwitchBusyHint}
         </p>
       )}
@@ -2409,7 +1871,7 @@ export function ChatInput({
         </div>
       ) : (
         steerPending && (
-          <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+          <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
             {S.chat.steerQueuedIndicator}
           </p>
         )
@@ -2434,7 +1896,7 @@ export function ChatInput({
         </div>
       ) : (
         queuedFollowUps > 0 && (
-          <p className="anim-fade mb-1 text-xs text-gray-400 dark:text-gray-500">
+          <p className="anim-fade mb-1 text-xs text-gray-500 dark:text-gray-500">
             {S.chat.followUpQueuedChip(queuedFollowUps)}
           </p>
         )
@@ -2513,7 +1975,7 @@ export function ChatInput({
                         title={
                           goalBudgetDraftInvalid ? S.chat.goalBudgetInvalid : S.chat.goalBudgetHint
                         }
-                        className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 font-mono text-xs leading-5 placeholder:text-gray-400 focus:outline-none focus:ring-2 dark:bg-gray-950 dark:placeholder:text-gray-500 ${
+                        className={`min-w-0 flex-1 rounded-md border bg-white px-2 py-1 font-mono text-xs leading-5 placeholder:text-gray-500 focus:outline-none focus:ring-2 dark:bg-gray-950 dark:placeholder:text-gray-500 ${
                           goalBudgetDraftInvalid
                             ? "border-red-400 text-red-600 focus:border-red-500 focus:ring-red-400/20 dark:border-red-500 dark:text-red-400"
                             : "border-gray-300 text-gray-800 focus:border-gray-500 focus:ring-gray-400/20 dark:border-gray-700 dark:text-gray-100 dark:focus:border-gray-500"
@@ -2535,7 +1997,7 @@ export function ChatInput({
                       className={`mt-1.5 text-[11px] leading-4 ${
                         goalBudgetDraftInvalid
                           ? "text-red-500 dark:text-red-400"
-                          : "text-gray-400 dark:text-gray-500"
+                          : "text-gray-500 dark:text-gray-500"
                       }`}
                     >
                       {goalBudgetDraftInvalid ? S.chat.goalBudgetInvalid : S.chat.goalBudgetHint}
@@ -2546,7 +2008,7 @@ export function ChatInput({
                   type="button"
                   aria-label={S.chat.goalRemove}
                   onClick={() => toggleGoal(false)}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2575,7 +2037,7 @@ export function ChatInput({
                     onHandoffTargetChange?.(null);
                     textareaRef.current?.focus();
                   }}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2597,7 +2059,7 @@ export function ChatInput({
                     stageModel(null);
                     textareaRef.current?.focus();
                   }}
-                  className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                  className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   ×
                 </button>
@@ -2621,7 +2083,7 @@ export function ChatInput({
                     type="button"
                     aria-label={`${S.chat.skillRemove} ${name}`}
                     onClick={() => toggleSkill(name)}
-                    className="shrink-0 rounded p-0.5 text-gray-400 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
+                    className="shrink-0 rounded p-0.5 text-gray-500 transition-colors duration-150 hover:text-gray-700 dark:hover:text-gray-200"
                   >
                     ×
                   </button>
@@ -2676,7 +2138,7 @@ export function ChatInput({
           // text-base, not the sm rung the form controls take: this is a full-height typing
           // surface for prose the user composes and re-reads, not a field in a form, and the
           // toolbar under it is already text-xs so the two do not compete.
-          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500"
+          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500"
         />
 
         {/* Bottom toolbar row — one line, two groups: the settings controls sit left, the
@@ -2831,7 +2293,7 @@ export function ChatInput({
                  /model command exists here — so the badge is pure display, nothing to click. */
               <span
                 title={modelRef?.modelId ?? ""}
-                className="flex h-8 min-w-0 max-w-44 shrink items-center gap-1.5 rounded-md px-1 text-gray-400 dark:text-gray-500"
+                className="flex h-8 min-w-0 max-w-44 shrink items-center gap-1.5 rounded-md px-1 text-gray-500 dark:text-gray-500"
               >
                 <ProviderLogo
                   provider={modelRef?.provider ?? "custom"}
@@ -2852,7 +2314,7 @@ export function ChatInput({
                 // button's accessible name for assistive tech and name-based test queries.
                 aria-label={`${S.chat.model} ${modelRef?.modelId ?? ""}`}
                 onClick={() => toastInfo(S.chat.modelLockedHint)}
-                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-400 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
               >
                 <ProviderLogo
                   provider={modelRef?.provider ?? "custom"}
@@ -2877,7 +2339,7 @@ export function ChatInput({
               className={
                 stopAction
                   ? "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-red-600 transition-colors duration-150 hover:bg-red-100 dark:bg-red-950/60 dark:text-red-400 dark:hover:bg-red-950"
-                  : "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-900 text-white transition-colors duration-150 hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300 dark:disabled:bg-gray-800 dark:disabled:text-gray-600"
+                  : "flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-900 text-white transition-colors duration-150 hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-300 dark:disabled:bg-gray-800 dark:disabled:text-gray-600"
               }
             >
               {stopAction ? (

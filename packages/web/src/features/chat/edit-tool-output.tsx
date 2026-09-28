@@ -33,7 +33,16 @@ export function EditToolOutput({ output }: { output: string }) {
       break;
     }
     if (index === start) return null;
-    const filePath = /^Replaced \d+ occurrences? in "(.+)"\.$/.exec(lines[0] ?? "")?.[1];
+    // Three summary shapes reach this renderer, one per writing tool:
+    //   edit_file   → `Replaced 2 occurrences in "path".`
+    //   write_file  → `Created "path" (12 lines, 340 bytes).` / `Overwrote "path" (…)`
+    // The path label is cosmetic — the diff renders either way — so an unmatched line is not a
+    // parse failure, but matching all three is what lets a file OVERWRITE show the diff the
+    // core already paid to compute, instead of a wall of plain text.
+    const filePath =
+      /^Replaced \d+ occurrences? in "(.+)"\.$/.exec(lines[0] ?? "")?.[1] ??
+      /^(?:Created|Overwrote) "(.+)"\(/.exec(lines[0] ?? "")?.[1] ??
+      undefined;
     return {
       before: lines.slice(0, start).join("\n"),
       diff: lines.slice(start, index).join("\n"),

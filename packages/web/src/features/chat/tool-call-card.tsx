@@ -34,22 +34,42 @@ import { StatusIcon } from "../../components/ui/status-icon";
 import type { RunState } from "../../components/ui/status-icon";
 import { ToolBreakpointPanel } from "../cockpit/tool-breakpoint-panel";
 import { LiveDuration } from "./live-duration";
+import { JevAdvisoryNote } from "./jev-advisory-note";
 import { useTheme } from "../../state/theme";
 import { agentIdFromRunSubagentArgs } from "./agent-topology";
 import { SubagentChip } from "./subagent-chip";
 import { EditToolOutput } from "./edit-tool-output";
 import type { StreamRenderContext } from "./message-stream";
 
-/** Tools that accept the optional model-written `description` argument. */
+/**
+ * Tools that accept the optional model-written `description` argument.
+ *
+ * `web_search` belongs here and was missing: its schema marks the description REQUIRED and says
+ * in its own parameter text that "it is shown to the user while the call runs". The model was
+ * therefore being *obliged* to write a sentence that the card threw away — and because a search
+ * has no path argument either, the row rendered as a bare `web_search` with neither the
+ * narration nor the query. A requirement the UI ignores is worse than no requirement.
+ */
 const DESCRIBED_TOOLS = new Set([
   "exec_command",
   "input_command",
   "run_subagent",
   "input_subagent",
+  "web_search",
 ]);
 
 /** The three file tools: previewed by their `file_path` argument. */
 const FILE_TOOLS = new Set(["read_file", "edit_file", "write_file"]);
+
+/**
+ * A second, semantic argument to fall back on when a described tool sends no description, so a
+ * row is never blank. The command that ran, or the query that was issued — the thing the user
+ * would otherwise have to expand the arguments to find out.
+ */
+const TARGET_ARGUMENT: Readonly<Record<string, string>> = {
+  exec_command: "cmd",
+  web_search: "query",
+};
 
 /**
  * The tools whose running call can be handed back as a background task: the two that own a
@@ -134,6 +154,18 @@ export function headerSubtitle(name: string, argsJson: string, settled = true): 
       if (!desc.complete && !settled) return null;
       const line = desc.value.replace(/\s+/g, " ").trim();
       if (line) return line;
+    }
+    // No narration, or an empty one. Fall back to what the call actually DID rather than
+    // leaving the row blank: the command that ran, or the query that was issued. Only a tool
+    // with neither ends up with no subtitle, which is the honest outcome.
+    const targetArg = TARGET_ARGUMENT[name];
+    if (targetArg !== undefined) {
+      const target = extractStringField(argsJson, targetArg);
+      if (target !== null) {
+        if (!target.complete && !settled) return null;
+        const line = target.value.replace(/\s+/g, " ").trim();
+        if (line) return line;
+      }
     }
     if (DESCRIBED_TOOLS.has(name)) return null;
   }
@@ -474,9 +506,14 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
           onClick={toggleOpen}
           className="flex shrink-0 items-center self-stretch"
         >
-          <Chevron open={open} className="text-gray-400" />
+          <Chevron open={open} className="text-gray-500" />
         </button>
       </div>
+
+      {/* The Jev observation for THIS call, on THIS call's card: one muted line, the numbers
+          behind a disclosure. Placed after the row and before the approval panel so a pending
+          approval still reads as the thing that needs the reader. */}
+      {item.advisory !== undefined && <JevAdvisoryNote advisory={item.advisory} />}
 
       {/* Pending approval: always visible regardless of collapsed state — shows the tool name and arguments so the user knows what they're approving. */}
       {pending && (
@@ -511,9 +548,12 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
             </pre>
           )}
           {(item.output || item.outputStreaming) &&
-            // edit_file renders its unified diff with line-level highlighting (DiffBlock);
-            // other tools keep the plain preformatted block.
-            (item.name === "edit_file" && !item.outputStreaming ? (
+            // Both WRITING tools render their unified diff with line-level highlighting
+            // (DiffBlock). write_file was excluded and computed one anyway: every file
+            // overwrite was throwing away a diff the core had already paid to compute, and
+            // showing it as a wall of `+`/`-` text made an overwrite unreadable at a glance.
+            // Other tools keep the plain preformatted block.
+            ((item.name === "edit_file" || item.name === "write_file") && !item.outputStreaming ? (
               <div className="border-t border-gray-100 px-3 py-2 dark:border-gray-800">
                 <EditToolOutput output={output} />
               </div>

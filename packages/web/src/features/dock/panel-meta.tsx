@@ -40,6 +40,15 @@ export function AgentsGlyph({ size = ICON_SIZE.iconButton }: { size?: number }) 
 const API_TRACKER_ICON = "M22 12h-4l-3 9L9 3l-3 9H2";
 const COCKPIT_ICON = "M12 14l3.5-3.5M20.49 17A10 10 0 1 0 3.5 17";
 
+/**
+ * Spend Flow's mark: a tall source bar tapering to a shorter target bar — the Sankey the
+ * panel actually draws. It used to borrow NAV_ICONS.gateway, so the tab looked like the
+ * Gateway row in every strip and menu; nothing in NAV_ICONS has a flow mark, and the
+ * Cost Center's bar chart reads as volume, not flow.
+ */
+const SPEND_FLOW_ICON =
+  "M3 5h4v14H3zM17 9h4v6h-4zM7 7.5C11 7.5 13 10.5 17 10.5M7 16.5C11 16.5 13 13.5 17 13.5";
+
 /** The panel's short display name (read at call time — `S` is a live locale binding). */
 export function panelLabel(kind: PanelKind): string {
   switch (kind) {
@@ -58,23 +67,15 @@ export function panelLabel(kind: PanelKind): string {
     case "apiTracker":
       return S.apiTracker?.panelTitle ?? "API Tracker";
     case "cockpit":
-      return S.nav.cockpit ?? "Agent Cockpit";
+      return S.nav.cockpit;
     case "spendFlow":
-      return S.nav.spendFlow ?? "Spend Flow";
-    case "topology":
-      return S.nav.topology ?? "Code Topology";
-    case "guardian":
-      return S.nav.guardian ?? "Shell Guardian";
-    case "consensus":
-      return S.nav.consensus ?? "Quorum Consensus";
+      return S.nav.spendFlow;
     case "contextBreakdown":
-      return S.nav.contextBreakdown ?? "Context Breakdown";
-    case "keyFleet":
-      return S.nav.keyFleet ?? "Key Fleet";
+      return S.nav.contextBreakdown;
     case "flamegraph":
-      return S.nav.flamegraph ?? "Flamegraph";
+      return S.nav.flamegraph;
     case "snapshots":
-      return S.nav.snapshots ?? "Snapshots";
+      return S.nav.snapshots;
   }
 }
 
@@ -97,17 +98,9 @@ export function panelGlyph(kind: PanelKind, size: number = ICON_SIZE.iconButton)
     case "cockpit":
       return <GlyphIcon d={COCKPIT_ICON} size={size} />;
     case "spendFlow":
-      return <GlyphIcon d={NAV_ICONS.gateway} size={size} />;
-    case "topology":
-      return <GlyphIcon d={NAV_ICONS.topology} size={size} />;
-    case "guardian":
-      return <GlyphIcon d={NAV_ICONS.guardian} size={size} />;
-    case "consensus":
-      return <GlyphIcon d={NAV_ICONS.consensus} size={size} />;
+      return <GlyphIcon d={SPEND_FLOW_ICON} size={size} />;
     case "contextBreakdown":
       return <GlyphIcon d={NAV_ICONS.contextBreakdown} size={size} />;
-    case "keyFleet":
-      return <GlyphIcon d={NAV_ICONS.keyFleet} size={size} />;
     case "flamegraph":
       return <GlyphIcon d={NAV_ICONS.flamegraph} size={size} />;
     case "snapshots":

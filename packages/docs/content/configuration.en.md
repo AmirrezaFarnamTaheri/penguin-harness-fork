@@ -20,7 +20,10 @@ The CLI and the server automatically load a `.env` file from the working directo
 | `PENGUIN_TRUST_PROXY` | `1` trusts the `x-forwarded-proto` header — set it behind a reverse proxy that terminates TLS (and sets/strips the header itself) so session cookies are marked `Secure` and the hot-update network gate sees HTTPS | unset — the header is ignored |
 | `PENGUIN_SEED_ADMIN_PASSWORD` | Fixed initial password for the seeded built-in admin (automated tests / e2e) | unset — the seed generates a random password, hashed and discarded unseen; the account is claimed through the first-login link |
 | `PENGUIN_LANG` | CLI language (`en` / `zh`), set via `penguin config lang` | `en` |
-| `PENGUIN_UPDATE_CHECK` | `off` disables the web app's new-release check (the server's only outbound internet call) | enabled |
+| `PENGUIN_UPDATE_CHECK` | `off` disables the web app's new-release check (the server's ordinary outbound internet call; the optional Jev advisor has its own explicit switch) | enabled |
+| `PENGUIN_JEV_API_KEY` | Explicitly enables the server's host-owned TypeSafe Jev advisor; unset keeps the historical tool path. The advisor sends bounded tool metadata by default and never changes authorization | unset — disabled |
+| `PENGUIN_JEV_MODEL` | Optional model id for the host-owned Jev advisor | `jev-latest` |
+| `PENGUIN_JEV_BASE_URL` | Optional endpoint override, for a decision-model server on this machine. `http` is accepted only for a loopback host; a cleartext remote endpoint disables the advisor with one log line | unset — the hosted API |
 | `PENGUIN_NO_LOGIN_SHELL_ENV` | Any non-empty value stops the desktop app from importing the login shell's environment on macOS/Linux GUI launches (see [Desktop quickstart](/quickstart-desktop)) | unset — the import runs, filling only variables the launch left unset |
 | `PENGUIN_CLI_ENTRY` | The CLI entry script this installation offers the Agents it runs (see below) | set for you by `penguin server` / `penguin web` and by the desktop app; falls back to the checkout's own `packages/cli/dist/penguin.js` when the server was started from one |
 
@@ -181,6 +184,24 @@ The four `compaction.*` fields are the one part of this file a running conversat
 | `tools.toolExposureThresholdTokens` | `2048` | Initial MCP Schema estimate at which `auto` selects the fixed gateway; `0` always selects it |
 
 Tool permissions and approval semantics are covered in [Tools & Approval](/tools).
+
+### Optional Jev advisory (host-composed)
+
+The optional TypeSafe AI Jev adapter is deliberately **not** an Agent-config switch. An Agent can edit its own `system_config.yaml`, so storing an endpoint or credential there would let it redirect a host-owned secret. The server enables the advisor only when the deployment explicitly sets `PENGUIN_JEV_API_KEY`; SDK/embedded hosts pass a `JevToolAdvisor` through `createAgent({ jevAdvisor })` instead. The advisor is shared by the Agent's Sessions and subagents, and its endpoint, credential, retry budget, and circuit state stay host-owned.
+
+When enabled, each proposed tool call that reaches the undecided advisory seam is sent to Jev as bounded metadata and the resulting `choice` / `score` / `noul` observations are recorded as a pre-tool-use Trace event. Calls already decided by an ordinary hook or vetoed by the project command policy skip the advisor. The default state contains the tool name, deterministic permission, argument keys/types, and validity only. Argument values cross the provider boundary only when the host explicitly opts in; recognized credential-shaped values are scrubbed, but an opaque value cannot be proven safe by the built-in redactor, so treat this as an explicit data-egress decision. The call has a hard advisory deadline, is cancelled with the Session, and falls back to the normal tool path on failure. **Jev never grants, denies, or substitutes for approval**: the project command policy, Environment permission, and human approval callback remain authoritative. Omitting the advisor adds no hook or event.
+
+A minimal SDK composition is:
+
+```ts
+import { createAgent } from "@prismshadow/penguin-core";
+import { createJevAdvisor } from "@prismshadow/penguin-core/jev";
+
+const advisor = createJevAdvisor({ apiKey: process.env.TYPESAFE_API_KEY! });
+const agent = await createAgent({ jevAdvisor: advisor });
+```
+
+The server's `PENGUIN_JEV_MODEL` variable changes only the host-selected model; leaving it unset uses `jev-latest`. Jev is an observability aid, not a security boundary, routing oracle, or replacement for the existing tool gateway. For the counters, the troubleshooting table and what crosses the provider boundary, see [Running the Jev advisor](jev-advisor).
 
 A partial-override example (edit the file the init step generated). Note that this file is **not deep-merged with the defaults**: a key you write out takes effect wholesale, and only omitted keys fall back to the defaults above at their use sites; `system_prompt` is required (loading refuses without it), so keep the full generated template when editing other fields:
 

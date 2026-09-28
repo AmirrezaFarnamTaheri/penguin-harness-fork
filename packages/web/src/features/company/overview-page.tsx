@@ -721,7 +721,7 @@ export function OverviewPage() {
                         </span>
                       )}
                       <span
-                        className="w-20 shrink-0 text-right text-xs tabular-nums text-gray-400 dark:text-gray-500"
+                        className="w-20 shrink-0 text-right text-xs tabular-nums text-gray-500 dark:text-gray-500"
                         {...(row.time !== null ? { title: formatDateTime(row.time) } : {})}
                       >
                         {row.time === null ? "—" : formatRelativeShort(row.time, locale)}
@@ -769,7 +769,7 @@ export function OverviewPage() {
                   );
                 })}
                 {today.entries.length > TIMELINE_ROWS && (
-                  <li className="pl-4 pt-1 text-xs text-gray-400 dark:text-gray-500">
+                  <li className="pl-4 pt-1 text-xs text-gray-500 dark:text-gray-500">
                     {S.company.overview.timelineMore(today.entries.length - TIMELINE_ROWS)}
                   </li>
                 )}

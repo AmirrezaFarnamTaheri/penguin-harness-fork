@@ -45,7 +45,7 @@ export function CodeToolbar({
         <span className="font-mono font-medium text-gray-800 dark:text-gray-200">
           {filename || language || "text"}
         </span>
-        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+        <span className="text-[11px] text-gray-500 dark:text-gray-500">
           {lineCount} {lineCount === 1 ? "line" : "lines"}
         </span>
       </div>
@@ -56,10 +56,16 @@ export function CodeToolbar({
           <button
             type="button"
             onClick={onPreview}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
             title="Preview artifact"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              aria-hidden
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

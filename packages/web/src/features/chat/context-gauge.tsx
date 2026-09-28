@@ -215,7 +215,7 @@ export function ContextGauge({
 
   const color =
     unknown || pct <= 0.8
-      ? "text-gray-400 dark:text-gray-500"
+      ? "text-gray-500 dark:text-gray-500"
       : pct > 0.95
         ? toneInk.danger
         : toneInk.attention;
@@ -426,15 +426,15 @@ function ContextPanel({
       </div>
 
       {unmeasured ? (
-        <p className="mt-2 leading-relaxed text-gray-400 dark:text-gray-500">
+        <p className="mt-2 leading-relaxed text-gray-500 dark:text-gray-500">
           {S.chat.contextUnknownHint}
         </p>
       ) : state.status === "loading" ? (
-        <p className="mt-2 text-gray-400 dark:text-gray-500">{S.common.loading}</p>
+        <p className="mt-2 text-gray-500 dark:text-gray-500">{S.common.loading}</p>
       ) : state.status === "failed" ? (
-        <p className="mt-2 text-gray-400 dark:text-gray-500">{S.chat.contextBreakdownFailed}</p>
+        <p className="mt-2 text-gray-500 dark:text-gray-500">{S.chat.contextBreakdownFailed}</p>
       ) : composition === null ? (
-        <p className="mt-2 text-gray-400 dark:text-gray-500">{S.chat.contextBreakdownEmpty}</p>
+        <p className="mt-2 text-gray-500 dark:text-gray-500">{S.chat.contextBreakdownEmpty}</p>
       ) : (
         <>
           {/* The bar's scale is the model window: the filled run is the occupancy, the rest is
@@ -490,7 +490,7 @@ function ContextPanel({
               away, so nothing shifts — while a threshold gesture is running, because the
               cutter's pending value hangs into exactly this row. */}
           <p
-            className={`mt-1 text-right font-mono text-gray-400 dark:text-gray-500 ${
+            className={`mt-1 text-right font-mono text-gray-500 dark:text-gray-500 ${
               pendingThreshold !== null ? "invisible" : ""
             }`}
           >
@@ -522,7 +522,7 @@ function ContextPanel({
                   title={
                     ranking === "tools" ? S.chat.contextTopToolsHint : S.chat.contextTopFilesHint
                   }
-                  className="min-w-0 truncate text-gray-400 dark:text-gray-500"
+                  className="min-w-0 truncate text-gray-500 dark:text-gray-500"
                 >
                   {ranking === "tools" ? S.chat.contextTopTools : S.chat.contextTopFiles}
                 </p>
@@ -540,7 +540,7 @@ function ContextPanel({
                       className={`rounded px-1 text-xs leading-4 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-gray-400/60 ${
                         ranking === view
                           ? "font-medium text-gray-700 dark:text-gray-200"
-                          : "text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                          : "text-gray-500 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                       }`}
                     >
                       {label()}
@@ -563,7 +563,7 @@ function ContextPanel({
                   ))}
                 </ul>
               ) : composition.files.length === 0 ? (
-                <p className="mt-1 text-gray-400 dark:text-gray-500">
+                <p className="mt-1 text-gray-500 dark:text-gray-500">
                   {S.chat.contextNoFileTraffic}
                 </p>
               ) : (
@@ -866,7 +866,7 @@ function ShareRow({
       <span className="shrink-0 font-mono font-medium text-gray-900 dark:text-gray-100">
         ~{humanizeTokens(tokens)}
       </span>
-      <span className="w-8 shrink-0 text-right font-mono text-gray-400 dark:text-gray-500">
+      <span className="w-8 shrink-0 text-right font-mono text-gray-500 dark:text-gray-500">
         {percent}%
       </span>
     </li>

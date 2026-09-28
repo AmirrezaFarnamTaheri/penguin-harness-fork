@@ -12,8 +12,10 @@
  * tree they produced.
  *
  * Every app directory found is checked for the launchers and the bundled entry. The
- * launcher is then actually run: a cross-architecture bundle that cannot execute on this
- * host is reported and skipped, but at least one has to run and report a version.
+ * launcher is then actually run and its JSON version identity checked: a source build can
+ * truthfully describe the previous reachable tag while its version field names this
+ * release candidate. A cross-architecture bundle that cannot execute on this host is
+ * reported and skipped, but at least one has to report the expected package version.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -49,15 +51,16 @@ function appDirs() {
 }
 
 /**
- * Whether `penguin --version` named this build. The CLI prints its identity rather than a
- * bare version number: a release build prints `v<version>`, while a build from a checkout
- * prints git's description of it — `v<version>-3-g<sha>` when a tag is reachable, and
- * `v<version>-g<sha>` when none is, which is what a shallow CI checkout produces (core's
- * composeDescribe assembles both). Every form is `v<version>` alone or carrying a `-`
- * suffix; a launcher that ran some other bundle, or printed anything but a version, is not.
+ * Whether `penguin version --json` identifies this package version. A source build's
+ * `describe` may name the previous reachable tag during release preparation; the separate
+ * `version` field is the contract this check needs to verify.
  */
-function namesThisBuild(printed) {
-  return printed === `v${version}` || printed.startsWith(`v${version}-`);
+function reportsThisVersion(printed) {
+  try {
+    return JSON.parse(printed).version === version;
+  } catch {
+    return false;
+  }
 }
 
 const problems = [];
@@ -111,10 +114,12 @@ for (const app of dirs) {
   // is this script's own, not user input.
   const result =
     process.platform === "win32"
-      ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/c", launcher, "--version"], {
-          encoding: "utf8",
-        })
-      : spawnSync(launcher, ["--version"], { encoding: "utf8" });
+      ? spawnSync(
+          process.env.ComSpec ?? "cmd.exe",
+          ["/c", launcher, "version", "--json", "--root", app],
+          { encoding: "utf8" },
+        )
+      : spawnSync(launcher, ["version", "--json", "--root", app], { encoding: "utf8" });
   const printed = (result.stdout ?? "").trim();
   if (result.status !== 0) {
     // A bundle for another architecture cannot run here; that is not a packaging fault, so
@@ -124,14 +129,14 @@ for (const app of dirs) {
     console.log(`[verify-packed-cli] ${app}: launcher did not run on this host (${why}).`);
     continue;
   }
-  if (!namesThisBuild(printed)) {
+  if (!reportsThisVersion(printed)) {
     problems.push(
-      `${app}: penguin --version printed ${JSON.stringify(printed)}, want v${version} or v${version}-<git description>.`,
+      `${app}: penguin version --json reported ${JSON.stringify(printed)}, want a JSON version field of ${version}.`,
     );
     continue;
   }
   ran += 1;
-  console.log(`[verify-packed-cli] ${app}: penguin --version -> ${printed}`);
+  console.log(`[verify-packed-cli] ${app}: penguin version is ${version}.`);
 }
 
 if (ran === 0 && problems.length === 0) {

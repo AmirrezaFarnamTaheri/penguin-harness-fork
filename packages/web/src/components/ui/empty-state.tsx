@@ -32,7 +32,7 @@ export function EmptyState({
  */
 export function SettingsEmpty({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-24 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+    <div className="flex min-h-24 items-center justify-center rounded-md border border-dashed border-gray-300 px-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-500">
       {children}
     </div>
   );

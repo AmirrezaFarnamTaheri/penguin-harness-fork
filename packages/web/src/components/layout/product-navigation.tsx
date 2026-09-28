@@ -12,6 +12,7 @@ import { S } from "../../lib/strings";
 import { ChevronDown } from "../ui/icons";
 import { Icon } from "../ui/group-list";
 import { UpdateDot } from "../ui/update-dot";
+import { NavGroupCollapse } from "./nav-collapse";
 
 export interface ProductNavItem {
   key: string;
@@ -26,12 +27,25 @@ const rowClass =
 const idleClass =
   "text-gray-600 hover:bg-gray-200/50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200";
 
-/** Three everyday links, then named tool groups. A closed group still shows its current page. */
+/**
+ * Three everyday links, then named tool groups. A closed group still shows its current page.
+ *
+ * `collapsed` / `onToggleCollapse` are the WHOLE-nav collapse the sidebar owns: one
+ * preference, one stored key, shared with company mode's flat nav (nav-group-collapse.ts).
+ * The owner passes them in rather than this component reading the store itself, because a
+ * second reader would hold a second copy of the state and drift from the sidebar's the
+ * moment either side remounts. Every nav group expanded at once pushes the Session list
+ * below the fold at every window height, so this is the only way back up.
+ */
 export function ProductNavigation({
   items,
+  collapsed,
+  onToggleCollapse,
   onNavigate,
 }: {
   items: readonly ProductNavItem[];
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onNavigate?: () => void;
 }) {
   const { pathname } = useLocation();
@@ -69,51 +83,53 @@ export function ProductNavigation({
     );
   return (
     <nav aria-label={S.nav.navigation} className="space-y-0.5">
-      {PRIMARY_NAV_KEYS.map((key) => {
-        const item = items.find((item) => item.key === key);
-        return item ? row(item) : null;
-      })}
-      <div className="pt-2">
-        {NAV_TOOL_GROUPS.map((group) => {
-          const groupItems = group.keys.flatMap((key) => {
-            const item = items.find((item) => item.key === key);
-            return item ? [item] : [];
-          });
-          if (!groupItems.length) return null;
-          const open = expanded[group.key];
-          const notes = groupItems
-            .filter((item) => item.note !== null)
-            .map((item) => `${item.label}: ${item.note}`)
-            .join("; ");
-          const label = S.nav.toolGroups[group.key];
-          return (
-            <div key={group.key} className="space-y-0.5">
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-controls={`${id}-${group.key}`}
-                aria-label={notes ? `${label} · ${notes}` : undefined}
-                title={notes || undefined}
-                onClick={() => toggle(group.key)}
-                className={`${rowClass} ${idleClass}`}
-              >
-                <ChevronDown
-                  size={16}
-                  className={`shrink-0 transition-transform duration-150 ${open ? "" : "-rotate-90"}`}
-                />
-                <span className="min-w-0 flex-1 text-left">{label}</span>
-                {notes && !open && (
-                  <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
-                )}
-              </button>
-              <div id={`${id}-${group.key}`} className="space-y-0.5 pl-3">
-                {/* No zero-height focusable links: closed groups render only the active destination. */}
-                {groupItems.filter((item) => open || item.key === active).map(row)}
-              </div>
-            </div>
-          );
+      <NavGroupCollapse collapsed={collapsed} onToggle={onToggleCollapse}>
+        {PRIMARY_NAV_KEYS.map((key) => {
+          const item = items.find((item) => item.key === key);
+          return item ? row(item) : null;
         })}
-      </div>
+        <div className="pt-2">
+          {NAV_TOOL_GROUPS.map((group) => {
+            const groupItems = group.keys.flatMap((key) => {
+              const item = items.find((item) => item.key === key);
+              return item ? [item] : [];
+            });
+            if (!groupItems.length) return null;
+            const open = expanded[group.key];
+            const notes = groupItems
+              .filter((item) => item.note !== null)
+              .map((item) => `${item.label}: ${item.note}`)
+              .join("; ");
+            const label = S.nav.toolGroups[group.key];
+            return (
+              <div key={group.key} className="space-y-0.5">
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={`${id}-${group.key}`}
+                  aria-label={notes ? `${label} · ${notes}` : undefined}
+                  title={notes || undefined}
+                  onClick={() => toggle(group.key)}
+                  className={`${rowClass} ${idleClass}`}
+                >
+                  <ChevronDown
+                    size={16}
+                    className={`shrink-0 transition-transform duration-150 ${open ? "" : "-rotate-90"}`}
+                  />
+                  <span className="min-w-0 flex-1 text-left">{label}</span>
+                  {notes && !open && (
+                    <UpdateDot size="inline" position="right-2.5 top-1/2 -translate-y-1/2" />
+                  )}
+                </button>
+                <div id={`${id}-${group.key}`} className="space-y-0.5 pl-3">
+                  {/* No zero-height focusable links: closed groups render only the active destination. */}
+                  {groupItems.filter((item) => open || item.key === active).map(row)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </NavGroupCollapse>
     </nav>
   );
 }

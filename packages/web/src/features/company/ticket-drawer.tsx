@@ -257,7 +257,7 @@ export function TicketDrawer({
         onChange={(e) => setTextDraft(e.target.value)}
       />
     ) : text.trim() === "" ? (
-      <p className="text-xs text-gray-400 dark:text-gray-500">{empty}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-500">{empty}</p>
     ) : (
       <div className="md-body text-sm leading-relaxed text-gray-800 dark:text-gray-100">
         <Md text={text} />
@@ -435,7 +435,7 @@ export function TicketDrawer({
                       detail.owner !== undefined ? (
                         <PrincipalChip principal={detail.owner} names={names} />
                       ) : (
-                        <span className="text-gray-400 dark:text-gray-500">
+                        <span className="text-gray-500 dark:text-gray-500">
                           {S.company.tickets.noOwner}
                         </span>
                       ),
@@ -452,7 +452,7 @@ export function TicketDrawer({
                           {titles.get(detail.parent) ?? detail.parent}
                         </button>
                       ) : (
-                        <span className="text-gray-400 dark:text-gray-500">
+                        <span className="text-gray-500 dark:text-gray-500">
                           {S.company.tickets.noParent}
                         </span>
                       ),
@@ -460,7 +460,7 @@ export function TicketDrawer({
                     {row(
                       S.company.tickets.notify,
                       detail.notify.length === 0 ? (
-                        <span className="text-gray-400 dark:text-gray-500">{S.common.none}</span>
+                        <span className="text-gray-500 dark:text-gray-500">{S.common.none}</span>
                       ) : (
                         <span className="flex flex-wrap gap-x-3 gap-y-1">
                           {detail.notify.map((p) => (
@@ -488,7 +488,7 @@ export function TicketDrawer({
                             ` · ${S.company.tickets.overdue}`}
                         </span>
                       ) : (
-                        <span className="text-gray-400 dark:text-gray-500">
+                        <span className="text-gray-500 dark:text-gray-500">
                           {S.company.tickets.noDue}
                         </span>
                       ),
@@ -524,7 +524,7 @@ export function TicketDrawer({
               {/* Progress timeline, oldest first, plus the one-line append. */}
               <OrgSection title={S.company.tickets.progress}>
                 {detail.progress.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
                     {S.company.tickets.progressEmpty}
                   </p>
                 ) : (
@@ -584,7 +584,7 @@ export function TicketDrawer({
                 }
               >
                 {detail.sessionItems.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{S.common.none}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-500">{S.common.none}</p>
                 ) : (
                   <ul className="space-y-0.5">
                     {detail.sessionItems.map((s) => {
@@ -602,7 +602,7 @@ export function TicketDrawer({
                             </span>
                             {activity !== null && <SessionActivityIcon activity={activity} />}
                             {s.lastActiveAt !== undefined && (
-                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-500">
                                 {formatDateTime(s.lastActiveAt)}
                               </span>
                             )}
@@ -650,7 +650,7 @@ export function TicketDrawer({
                 title={`${S.company.tickets.children} · ${S.company.tickets.rolledUpCost} ${formatMoney(detail.rolledUpCost, currency)}`}
               >
                 {children.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-500">
                     {S.company.tickets.childrenEmpty}
                   </p>
                 ) : (
@@ -666,7 +666,7 @@ export function TicketDrawer({
                           {"priority" in c && <PriorityBadge priority={c.priority} />}
                           {"status" in c && <TicketStatusBadge status={c.status} />}
                           {"cost" in c && (
-                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                            <span className="shrink-0 font-mono text-[11px] tabular-nums text-gray-500 dark:text-gray-500">
                               {formatMoney(c.cost, currency)}
                             </span>
                           )}

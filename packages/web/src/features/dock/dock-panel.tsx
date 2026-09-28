@@ -866,7 +866,9 @@ export function DockPanel({
             {...resizerDragProps}
             onDoubleClick={onResizerDoubleClick}
             className={`absolute -top-[3px] left-0 right-0 z-20 h-1.5 cursor-ns-resize transition-colors duration-150 ${
-              resizing ? "bg-sky-500/60" : "bg-transparent hover:bg-sky-500/40"
+              resizing
+                ? "bg-[var(--accent-bg)]/60"
+                : "bg-transparent hover:bg-[var(--accent-bg)]/40"
             }`}
           />
         )}
@@ -898,7 +900,7 @@ export function DockPanel({
           {...resizerDragProps}
           onDoubleClick={onResizerDoubleClick}
           className={`w-1.5 shrink-0 cursor-col-resize transition-colors duration-150 ${
-            resizing ? "bg-sky-500/60" : "bg-transparent hover:bg-sky-500/40"
+            resizing ? "bg-[var(--accent-bg)]/60" : "bg-transparent hover:bg-[var(--accent-bg)]/40"
           }`}
         />
       )}

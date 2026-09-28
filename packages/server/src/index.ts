@@ -308,6 +308,7 @@ class PenguinServer {
 
   /** Everything derived from the actual bound port, run once the listener is up. */
   private onListening(port: number): void {
+    const startedAt = new Date().toISOString();
     console.log(`penguin-server started: http://${this.appHost()}:${port}`);
     console.log(`Data root: ${this.config.root}`);
     console.log(`SQLite: ${this.config.dbPath}`);
@@ -328,12 +329,15 @@ class PenguinServer {
     // port 0 and fail to load. deps.config is this same object, so both route call sites
     // (me.ts, sessions.ts) observe the update.
     this.config.port = port;
+    // Same reasoning for the identity route's startedAt: the instant worth publishing is
+    // the one the discovery record below is stamped with, not this process's boot.
+    this.config.startedAt = startedAt;
     // Root ownership was claimed atomically before mutable startup work; publish the discoverable
     // pid/port record only now that the listener is real.
     acquireServerLock(this.config.root, {
       pid: process.pid,
       port,
-      startedAt: new Date().toISOString(),
+      startedAt,
     });
     if (this.config.portFile !== null) writePortFile(this.config.portFile, port);
     if (this.config.host === "127.0.0.1" || this.config.host === "localhost") {

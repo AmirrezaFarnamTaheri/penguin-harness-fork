@@ -363,5 +363,5 @@ export function OrgSection({
 
 /** A section with nothing to list: one quiet line where the rows would be. */
 export function OrgEmptyLine({ children }: { children: ReactNode }) {
-  return <p className="py-1 text-xs text-gray-400 dark:text-gray-500">{children}</p>;
+  return <p className="py-1 text-xs text-gray-500 dark:text-gray-500">{children}</p>;
 }

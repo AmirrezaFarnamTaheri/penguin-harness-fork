@@ -543,7 +543,7 @@ export function AgentsPage() {
                       <span className="min-w-0 truncate text-base font-bold">
                         {agentDisplayName(a)}
                       </span>
-                      <span className="hidden shrink-0 font-mono text-xs text-gray-400 md:inline dark:text-gray-500">
+                      <span className="hidden shrink-0 font-mono text-xs text-gray-500 md:inline dark:text-gray-500">
                         {a.agentId}
                       </span>
                       <Badge tone="gray">v{a.version}</Badge>
@@ -835,7 +835,7 @@ export function AgentsPage() {
                       aria-label={S.agent.createSnapshotClear}
                       disabled={busy}
                       onClick={() => setSnapshotFile(null)}
-                      className="shrink-0 rounded-md p-1 text-gray-400 transition-colors duration-150 hover:text-gray-600 dark:hover:text-gray-300"
+                      className="shrink-0 rounded-md p-1 text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:hover:text-gray-300"
                     >
                       <CloseIcon size={12} />
                     </button>

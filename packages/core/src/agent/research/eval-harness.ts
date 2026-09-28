@@ -16,10 +16,18 @@ import type { Claim } from "./claim-extractor.js";
 import { aggregateSpecificity } from "./claim-extractor.js";
 import type { CitationReport } from "./citation-network.js";
 import type { VerificationSummary } from "./evidence-verifier.js";
+import type { EvalScoredRow } from "./eval-manifest.js";
 
 export type RatingType = "five-star" | "pass-fail" | "pass-fail-critical";
 
 export type RatingOutcome = 1 | 2 | 3 | 4 | 5 | "pass" | "fail" | "critical";
+
+/**
+ * Evaluators whose verdict is a hard constraint rather than a signal. A failure here is an
+ * actionable defect no amount of confidence should soften into a review item — see the gate
+ * order in ResearchEvalHarness.evaluateCase.
+ */
+const HARD_EVALUATORS = new Set(["citation-hallucination", "verification-accuracy"]);
 
 export interface EvalCase {
   readonly id: string;
@@ -54,6 +62,12 @@ export interface EvalResult {
   readonly evaluatorResults: ReadonlyArray<EvaluatorResult>;
   readonly durationNs: number;
   readonly notes: string[];
+  /**
+   * Set when a SOFT signal was uncertain, so the case is reported but the uncertainty is never
+   * folded into the outcome. A review item is useful to return and must not be a quiet approval,
+   * which is why it lives on its own field rather than inside `outcome`.
+   */
+  readonly needsReview?: boolean;
 }
 
 export interface EvaluatorResult {
@@ -268,19 +282,54 @@ export class ResearchEvalHarness {
   /** Evaluates one case against a research output. */
   async evaluateCase(caseEntry: EvalCase, context: EvaluationContext): Promise<EvalResult> {
     const started = nowNs();
-    const results = this.evaluators.map((evaluator) => evaluator.evaluate(context));
     const notes: string[] = [];
+    const results: EvaluatorResult[] = [];
+    for (const evaluator of this.evaluators) {
+      try {
+        results.push(evaluator.evaluate(context));
+      } catch (error) {
+        // A crashed evaluator used to be SILENTLY ABSENT from `results`, and the gate below is
+        // `every(...)` over that array — so a case whose only hard constraint threw passed
+        // vacuously. A run is not passing because the thing that would have caught it crashed.
+        results.push({
+          name: evaluator.name,
+          passed: false,
+          score: 0,
+          detail: `evaluator threw: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
 
     const deterministic =
       results.reduce((sum, result) => sum + result.score, 0) / Math.max(1, results.length);
-    let outcome: RatingOutcome = results.every((result) => result.passed) ? "pass" : "fail";
-    let numeric = deterministic;
 
-    if (this.judge) {
-      const prompt = buildJudgePrompt(caseEntry, context, results);
+    // Gate ORDER, which is the whole point: hard constraints are checked FIRST and with no
+    // confidence test. A hallucinated citation or a failed verification is an actionable
+    // failure even when the signal behind it is weak — routing it to a review channel would
+    // hide the actionable failure and make the review queue unsafe to treat as unresolved.
+    // Uncertainty in the SOFT signals routes to review instead, and never to "fail".
+    const hard = results.filter((result) => HARD_EVALUATORS.has(result.name));
+    const soft = results.filter((result) => !HARD_EVALUATORS.has(result.name));
+    const hardFailure = hard.find((result) => !result.passed) ?? null;
+    const softUncertain = soft.find((result) => result.detail !== undefined && !result.passed);
+
+    let outcome: RatingOutcome;
+    let numeric = deterministic;
+    let needsReview = false;
+    if (hardFailure !== null) {
+      outcome = "fail";
+    } else if (this.judge) {
+      // The judge arbitrates the soft signals ONLY. It can no longer overturn a hard-constraint
+      // failure, which is the one path by which model output could previously promote a broken
+      // case to a pass.
+      const prompt = buildJudgePrompt(caseEntry, context, soft);
       outcome = await this.judge.judge(prompt);
       numeric = ratingToScore(outcome, deterministic);
+      needsReview = softUncertain !== undefined;
+    } else {
+      outcome = soft.every((result) => result.passed) ? "pass" : "fail";
     }
+    if (hardFailure !== null) needsReview = false;
 
     for (const result of results) {
       if (!result.passed && result.detail) notes.push(`${result.name}: ${result.detail}`);
@@ -293,6 +342,7 @@ export class ResearchEvalHarness {
       evaluatorResults: results,
       durationNs: nowNs() - started,
       notes,
+      ...(needsReview ? { needsReview: true } : {}),
     };
   }
 
@@ -304,6 +354,20 @@ export class ResearchEvalHarness {
       cases.map((entry) => this.evaluateCase(entry.case, entry.context)),
     );
     return this.summarise(results);
+  }
+
+  /**
+   * The scored rows a manifest binds, in the shape `auditEvalRun` expects. Kept next to
+   * `evaluateBatch` so the two cannot drift: a report is only auditable if the rows it was
+   * computed from are recoverable in the form the manifest hashes.
+   */
+  scoredRows(results: readonly EvalResult[]): EvalScoredRow[] {
+    return results.map((result) => ({
+      caseId: result.caseId,
+      outcome: String(result.outcome),
+      numericScore: result.numericScore,
+      ...(result.needsReview ? { error: "review" } : {}),
+    }));
   }
 
   private summarise(results: readonly EvalResult[]): EvalReport {

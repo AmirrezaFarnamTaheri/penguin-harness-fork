@@ -13,7 +13,7 @@ import path from "node:path";
 import xterm from "@xterm/headless";
 import { createTestApp, loginAdmin, apiClient } from "./helpers.js";
 import { TerminalManager, MAX_TERMINALS_PER_USER } from "../src/terminal/manager.js";
-import { expandHomePath } from "../src/terminal/session.js";
+import { buildTerminalEnv, expandHomePath } from "../src/terminal/session.js";
 import { repairSpawnHelpers } from "../src/terminal/spawn-helper.js";
 import { TerminalInputModeTracker } from "../src/terminal/input-mode.js";
 import { TerminalOutputCoalescer } from "../src/terminal/output-coalescer.js";
@@ -50,6 +50,26 @@ async function replay(ansi: string, cols = 40, rows = 6): Promise<string[]> {
 function flush(terminal: xterm.Terminal): Promise<void> {
   return new Promise((resolve) => terminal.write("", resolve));
 }
+
+describe("terminal environment", () => {
+  it("does not expose server PENGUIN_* credentials to a PTY", () => {
+    const previous = process.env.PENGUIN_JEV_API_KEY;
+    process.env.PENGUIN_JEV_API_KEY = "server-only-jev-key";
+    try {
+      const env = buildTerminalEnv(
+        { PENGUIN_API_TOKEN: "server-only-api-token", SAFE_VALUE: "kept" },
+        process.cwd(),
+      );
+      expect(env.PENGUIN_JEV_API_KEY).toBeUndefined();
+      expect(env.PENGUIN_API_TOKEN).toBeUndefined();
+      expect(env.PENGUIN_TERMINAL).toBe("1");
+      expect(env.SAFE_VALUE).toBe("kept");
+    } finally {
+      if (previous === undefined) delete process.env.PENGUIN_JEV_API_KEY;
+      else process.env.PENGUIN_JEV_API_KEY = previous;
+    }
+  });
+});
 
 describe("restore rendering", () => {
   it("replays into an identical screen", async () => {

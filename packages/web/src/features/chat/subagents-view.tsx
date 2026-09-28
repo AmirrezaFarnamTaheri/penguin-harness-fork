@@ -20,7 +20,7 @@
  * conversation visible (found by walking the origin chain); the graph simply has no
  * highlighted node.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   ApprovalMode,
@@ -46,6 +46,8 @@ import type { NestedSessionMeta, StreamModel } from "../../lib/omni/stream-model
 import { ChatInput } from "./chat-input";
 import { AgentAvatar } from "../../components/ui/agent-avatar";
 import { EmptyState } from "../../components/ui/empty-state";
+import { Segmented } from "../../components/ui/segmented";
+import { SkeletonList } from "../../components/ui/skeleton";
 import { GlyphIcon } from "../../components/ui/glyph-icon";
 import { StatusIcon } from "../../components/ui/status-icon";
 import { ICON_SIZE } from "../../lib/icon-scale";
@@ -61,8 +63,10 @@ import {
 } from "./agent-topology";
 import type { TopologyNode } from "./agent-topology";
 import { AgentTopologyView } from "./agent-topology-view";
+import { DISCLOSURE_HEADER_TITLE_CLASS } from "./disclosure-row";
 import { MessageStream } from "./message-stream";
 import type { StreamRenderContext } from "./message-stream";
+import { CoordinationActivity } from "./cross-agent-activity";
 
 interface Selection {
   sessionId: string;
@@ -110,6 +114,7 @@ export function SubagentsView({
   const { sessions } = useSessions();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Selection | null>(null);
+  const [view, setView] = useState<"conversation" | "activity">("conversation");
 
   // A chip click focuses that child (fresh-object identity: re-clicking the same chip re-fires).
   useEffect(() => {
@@ -143,12 +148,43 @@ export function SubagentsView({
     [model, version, session.sessionId, taskRunning, taskScope, liveStates],
   );
 
-  const nodes = topology.map((node) => {
-    const identity = subagents.find((agent) => agent.sessionId === node.sessionId);
-    return identity?.description !== undefined
-      ? { ...node, description: identity.description || null }
-      : node;
-  });
+  const nodes = useMemo(() => {
+    const described = topology.map((node) => {
+      const identity = subagents.find((agent) => agent.sessionId === node.sessionId);
+      return identity?.description !== undefined
+        ? { ...node, description: identity.description || null }
+        : node;
+    });
+    return described;
+  }, [topology, subagents]);
+
+  // The three numbers a reader of this panel wants before reading any of it, counted in the same
+  // pass as the topology so the panel never shows a graph and a roll-up that disagree.
+  const { childCount, runningCount, callCount } = useMemo(
+    () => ({
+      childCount: nodes.filter((n) => n.depth > 0).length,
+      runningCount: nodes.filter((n) => n.depth > 0 && n.running).length,
+      callCount: countToolCalls(model, session.sessionId),
+    }),
+    // version is the model's change signal (items mutate in place).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, model, session.sessionId, version],
+  );
+
+  /** Display name of the agent that owns a session, for activity-row attribution. */
+  const agentNameFor = useCallback(
+    (sessionId: string): string => {
+      if (sessionId === session.sessionId) {
+        const agent = agents.find((a) => a.agentId === session.agentId);
+        return agent ? (agent.name?.length ? agent.name : agent.agentId) : session.agentId;
+      }
+      const node = nodes.find((n) => n.sessionId === sessionId);
+      return node ? labelForNode(node) : shortSessionId(sessionId);
+    },
+    // labelForNode is stable per topology; agents/sessions feed it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, agents, sessions, subagents, session.sessionId, session.agentId],
+  );
 
   // No explicit selection yet: auto-focus the displayed Task's first child (null when none spawned).
   const firstChild = nodes.find((n) => n.depth > 0) ?? null;
@@ -156,25 +192,28 @@ export function SubagentsView({
     selected ??
     (firstChild ? { sessionId: firstChild.sessionId, origin: firstChild.origin } : null);
 
-  const labelFor = (node: TopologyNode): string => {
-    if (node.depth === 0) {
-      const agent = agents.find((a) => a.agentId === session.agentId);
-      // Same empty-name rule as resolveAgentLabel: an empty display name falls back to the id.
-      return agent ? (agent.name?.length ? agent.name : agent.agentId) : session.agentId;
-    }
-    // Last-resort label is the short session id, not a generic word: two unknown children must stay distinguishable in the graph.
-    return (
-      subagents.find((agent) => agent.sessionId === node.sessionId)?.name ||
-      resolveAgentLabel(node, agents, sessions) ||
-      shortSessionId(node.sessionId)
-    );
-  };
+  const labelForNode = useCallback(
+    (node: TopologyNode): string => {
+      if (node.depth === 0) {
+        const agent = agents.find((a) => a.agentId === session.agentId);
+        // Same empty-name rule as resolveAgentLabel: an empty display name falls back to the id.
+        return agent ? (agent.name?.length ? agent.name : agent.agentId) : session.agentId;
+      }
+      // Last-resort label is the short session id, not a generic word: two unknown children must stay distinguishable in the graph.
+      return (
+        subagents.find((agent) => agent.sessionId === node.sessionId)?.name ||
+        resolveAgentLabel(node, agents, sessions) ||
+        shortSessionId(node.sessionId)
+      );
+    },
+    [agents, sessions, subagents, session.agentId],
+  );
 
   const isRoot = active !== null && active.origin.length === 0;
   const activeNode = active ? (nodes.find((n) => n.sessionId === active.sessionId) ?? null) : null;
   const activeModel = active && !isRoot ? modelAtOrigin(model, active.origin) : null;
   const activeLabel = activeNode
-    ? labelFor(activeNode)
+    ? labelForNode(activeNode)
     : active
       ? (resolveAgentLabel(
           { sessionId: active.sessionId, agentId: activeModel?.meta?.agentId ?? null },
@@ -221,128 +260,220 @@ export function SubagentsView({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Call graph of the displayed Task — latest by default, a chip's Task when pinned (capped height; scrolls both ways for deep/wide trees). */}
-      <div className="shrink-0 border-b border-gray-200 px-3 pb-2 pt-1.5 dark:border-gray-800">
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          {S.subagentPanel.topologyLabel}
-        </p>
-        {nodes.length > 1 ? (
+      {/* One scope bar for the whole panel: which agent, what the Task is doing, and how to
+          change what is shown. The view switch lives HERE rather than in a second tab strip,
+          because the dock already has a tab strip a few pixels above and two stacked tab
+          affordances in two visual languages is how one panel stops reading as one panel. */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-3 py-1.5 dark:border-gray-800">
+        <Segmented
+          cols={2}
+          options={[
+            { value: "conversation" as const, label: S.coordination.conversationTab },
+            { value: "activity" as const, label: S.coordination.activityTab },
+          ]}
+          value={view}
+          onChange={setView}
+        />
+        <span className="min-w-0 flex-1" />
+        {/* The roll-up, counted in the same pass as the graph so the two can never disagree. */}
+        <span
+          className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400"
+          data-testid="subagent-rollup"
+        >
+          {S.coordination.rollup(childCount, runningCount, callCount)}
+        </span>
+      </div>
+
+      {/* Call graph of the displayed Task — latest by default, a chip's Task when pinned (capped
+          height; scrolls both ways for deep/wide trees). Shown only when there IS a graph: the
+          old version printed "no subagents" here AND in the body below, so an empty panel said
+          the same sentence twice, and a child whose transcript had not loaded said it wrongly. */}
+      {childCount > 0 && (
+        <div className="shrink-0 border-b border-gray-200 px-3 pb-2 pt-1.5 dark:border-gray-800">
+          <p className={`mb-1.5 ${DISCLOSURE_HEADER_TITLE_CLASS}`}>
+            {S.subagentPanel.topologyLabel}
+          </p>
           <div className="max-h-48 overflow-y-auto">
             <AgentTopologyView
               nodes={nodes}
               selectedId={active?.sessionId ?? null}
-              labelFor={labelFor}
+              labelFor={labelForNode}
               onSelect={(node) => setSelected({ sessionId: node.sessionId, origin: node.origin })}
             />
           </div>
+        </div>
+      )}
+
+      {/*
+        BOTH views stay mounted and one is hidden, exactly as the dock does for its own tabs
+        (dock-panel.tsx). The second reason is the important one: the activity log is a live
+        region, and a region that mounts with its history already inside announces all of it, on
+        every switch, in both directions. Kept mounted, only appended rows are announced — and the
+        conversation keeps its scroll position and streaming state across a view change.
+      */}
+      <div className={view === "conversation" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        {/* Selected conversation (or the root note / empty state). */}
+        {active === null ? (
+          <div className="min-h-0 flex-1">
+            <EmptyState title={S.subagentPanel.empty} />
+          </div>
+        ) : isRoot ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+            <p className="text-sm text-gray-500 dark:text-gray-500">
+              {S.subagentPanel.mainSessionNote}
+            </p>
+          </div>
+        ) : activeModel === null ? (
+          // The chain broke (a resync swapped in a fresh model and this child has not re-streamed
+          // yet). Skeleton, not "no subagents": there are, and this one is on its way.
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <SkeletonList rows={3} />
+          </div>
         ) : (
-          <p className="py-1 text-xs text-gray-400 dark:text-gray-500">{S.subagentPanel.empty}</p>
+          <>
+            {/* The selected child is not in the displayed Task's graph — a chip click on an older
+                turn, or the Task rolled over. The conversation below belongs to a previous task,
+                and it used to say so only by NOT appearing in the graph above, which is not an
+                explanation. Named here, with a way back. */}
+            {selected !== null && activeNode === null && (
+              <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-1 text-[11px] text-gray-600 dark:border-gray-800/60 dark:bg-gray-900 dark:text-gray-300">
+                <span className="min-w-0 truncate">
+                  {S.subagentPanel.selectionElsewhere(activeLabel)}
+                </span>
+                <span className="min-w-0 flex-1" />
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="shrink-0 text-brand-600 underline-offset-2 hover:underline dark:text-brand-300"
+                >
+                  {S.subagentPanel.backToLatest}
+                </button>
+              </div>
+            )}
+            {/* Slim identity strip for the conversation below. The spawning call's description
+              belongs to its node in the graph above, not here — one line, one place. */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-3 py-1.5 dark:border-gray-800/60">
+              <AgentAvatar
+                id={activeModel.meta?.agentId ?? active.sessionId}
+                name={activeLabel}
+                size={16}
+              />
+              <span className="min-w-0 truncate text-xs font-semibold text-gray-700 dark:text-gray-300">
+                {activeLabel}
+              </span>
+              <span
+                title={active.sessionId}
+                className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-500"
+              >
+                {shortSessionId(active.sessionId)}
+              </span>
+              {activeRunning && (
+                <StatusIcon state="running" size={10} label={S.chat.subagentRunning} />
+              )}
+              <span className="min-w-0 flex-1" />
+              {!activeRunning && (
+                <button
+                  type="button"
+                  title={S.chat.resumeSubagent}
+                  aria-label={S.chat.resumeSubagent}
+                  data-testid="subagent-resume"
+                  disabled={resuming}
+                  onClick={() => void handleResume()}
+                  className="flex h-6 items-center gap-1 rounded px-1.5 text-xs text-brand-600 transition-colors duration-150 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-950/40"
+                >
+                  <GlyphIcon d="M8 5v14l11-7z" size={10} />
+                  <span>{S.chat.resumeSubagent}</span>
+                </button>
+              )}
+              {/* Jump out of the panel: the child conversation as a full Session. */}
+              <button
+                type="button"
+                title={S.subagentPanel.openAsSession}
+                aria-label={S.subagentPanel.openAsSession}
+                data-testid="subagent-open-session"
+                onClick={openAsSession}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              >
+                <GlyphIcon
+                  d="M14 4h6v6M20 4l-8 8M10 6H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"
+                  size={ICON_SIZE.rowLead}
+                />
+              </button>
+            </div>
+            {activeNode?.description && (
+              // Capped at two lines with the full text in the tooltip, the node's own convention
+              // (agent-topology-view.tsx). Uncapped, a model-written paragraph of a few hundred
+              // characters takes the conversation and the composer down to nothing on the narrow
+              // bottom dock — and no other prose surface here nests a scrollbox either.
+              <p
+                title={activeNode.description}
+                className="line-clamp-2 shrink-0 whitespace-pre-wrap break-words border-b border-gray-100 px-3 py-1.5 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-400"
+              >
+                {activeNode.description}
+              </p>
+            )}
+            <div className="min-h-0 flex-1">
+              {/* Keyed by child: switching nodes resets scroll-follow instead of carrying the old position over. */}
+              {childCtx && (
+                <MessageStream
+                  key={active.sessionId}
+                  items={activeModel.items}
+                  version={version}
+                  ctx={childCtx}
+                />
+              )}
+            </div>
+            {/* Keyed by child too: switching nodes must not carry a half-typed message over. */}
+            <SubagentComposer
+              key={`composer-${active.sessionId}`}
+              sessionId={session.sessionId}
+              childSessionId={active.sessionId}
+              running={activeRunning}
+              meta={activeModel.meta}
+              contextNow={activeModel.stats.contextNow}
+              deliveredInputs={countDeliveredInputs(activeModel)}
+              models={models}
+              approvalMode={approvalMode}
+              onChangeApprovalMode={onChangeApprovalMode}
+              modeSaving={modeSaving}
+              fallbackThinkingLevel={activeNode?.spawnThinkingLevel ?? parentThinkingLevel}
+            />
+          </>
         )}
       </div>
 
-      {/* Selected conversation (or the root note / empty state). */}
-      {active === null ? (
-        <div className="min-h-0 flex-1">
-          <EmptyState title={S.subagentPanel.empty} />
-        </div>
-      ) : isRoot ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-          <p className="text-sm text-gray-400 dark:text-gray-500">
-            {S.subagentPanel.mainSessionNote}
-          </p>
-        </div>
-      ) : activeModel === null ? (
-        // The chain broke (e.g. a resync swapped in a fresh model and this child hasn't re-streamed yet).
-        <div className="min-h-0 flex-1">
-          <EmptyState title={S.subagentPanel.empty} />
-        </div>
-      ) : (
-        <>
-          {/* Slim identity strip for the conversation below. The spawning call's description
-              belongs to its node in the graph above, not here — one line, one place. */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-gray-100 px-3 py-1.5 dark:border-gray-800/60">
-            <AgentAvatar
-              id={activeModel.meta?.agentId ?? active.sessionId}
-              name={activeLabel}
-              size={16}
-            />
-            <span className="min-w-0 truncate text-xs font-semibold text-gray-700 dark:text-gray-300">
-              {activeLabel}
-            </span>
-            <span
-              title={active.sessionId}
-              className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500"
-            >
-              {shortSessionId(active.sessionId)}
-            </span>
-            {activeRunning && (
-              <StatusIcon state="running" size={10} label={S.chat.subagentRunning} />
-            )}
-            <span className="min-w-0 flex-1" />
-            {!activeRunning && (
-              <button
-                type="button"
-                title={S.chat.resumeSubagent}
-                aria-label={S.chat.resumeSubagent}
-                data-testid="subagent-resume"
-                disabled={resuming}
-                onClick={() => void handleResume()}
-                className="flex h-6 items-center gap-1 rounded px-1.5 text-xs text-blue-600 transition-colors duration-150 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
-              >
-                <GlyphIcon d="M8 5v14l11-7z" size={10} />
-                <span>{S.chat.resumeSubagent}</span>
-              </button>
-            )}
-            {/* Jump out of the panel: the child conversation as a full Session. */}
-            <button
-              type="button"
-              title={S.subagentPanel.openAsSession}
-              aria-label={S.subagentPanel.openAsSession}
-              data-testid="subagent-open-session"
-              onClick={openAsSession}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-            >
-              <GlyphIcon
-                d="M14 4h6v6M20 4l-8 8M10 6H5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"
-                size={ICON_SIZE.rowLead}
-              />
-            </button>
-          </div>
-          {activeNode?.description && (
-            <p className="shrink-0 whitespace-pre-wrap break-words border-b border-gray-100 px-3 py-2 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-400">
-              {activeNode.description}
-            </p>
-          )}
-          <div className="min-h-0 flex-1">
-            {/* Keyed by child: switching nodes resets scroll-follow instead of carrying the old position over. */}
-            {childCtx && (
-              <MessageStream
-                key={active.sessionId}
-                items={activeModel.items}
-                version={version}
-                ctx={childCtx}
-              />
-            )}
-          </div>
-          {/* Keyed by child too: switching nodes must not carry a half-typed message over. */}
-          <SubagentComposer
-            key={`composer-${active.sessionId}`}
-            sessionId={session.sessionId}
-            childSessionId={active.sessionId}
-            running={activeRunning}
-            meta={activeModel.meta}
-            contextNow={activeModel.stats.contextNow}
-            deliveredInputs={countDeliveredInputs(activeModel)}
-            models={models}
-            approvalMode={approvalMode}
-            onChangeApprovalMode={onChangeApprovalMode}
-            modeSaving={modeSaving}
-            fallbackThinkingLevel={activeNode?.spawnThinkingLevel ?? parentThinkingLevel}
-          />
-        </>
-      )}
+      <div className={view === "activity" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <CoordinationActivity
+          model={model}
+          sessionId={session.sessionId}
+          version={version}
+          agentFor={agentNameFor}
+          selectedId={active?.sessionId ?? null}
+          onSelect={(id) => {
+            // "Show me this agent" is what a reader of a log wants next; selecting the node and
+            // returning to the conversation is the action that answers it.
+            const node = nodes.find((n) => n.sessionId === id);
+            if (node) setSelected({ sessionId: node.sessionId, origin: node.origin });
+            setView("conversation");
+          }}
+        />
+      </div>
     </div>
   );
+}
+
+/** Tool calls in a session and every bound descendant — the roll-up's denominator. */
+function countToolCalls(model: StreamModel, rootSessionId: string): number {
+  let n = 0;
+  const seen = new Set<string>();
+  const walk = (current: StreamModel, sessionId: string): void => {
+    if (seen.has(sessionId)) return;
+    seen.add(sessionId);
+    for (const item of current.items) if (item.kind === "tool_call") n += 1;
+    for (const [childId, childModel] of current.subagents) walk(childModel, childId);
+  };
+  walk(model, rootSessionId);
+  return n;
 }
 
 /**
@@ -398,16 +529,25 @@ function SubagentComposer({
   // Skills of the CHILD's agent (it may differ from the parent's): candidates for the
   // toolbar dropdown and the slash menu; a failed fetch reads as no skills.
   const [skills, setSkills] = useState<SkillMetadataItem[]>([]);
+  // A failed fetch used to be swallowed into "no skills", so a 500 left the slash menu
+  // permanently empty and the reader concluded this child has no skills. The failure is its own
+  // state now, distinct from an agent that genuinely has none.
+  const [skillsFailed, setSkillsFailed] = useState(false);
   useEffect(() => {
     let stale = false;
     setSkills([]);
+    setSkillsFailed(false);
     const agentId = meta?.agentId;
     if (!projectId || !agentId) return;
     getAgentSkills(projectId, agentId)
       .then((res) => {
         if (!stale) setSkills(res.skills);
       })
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        if (stale) return;
+        setSkillsFailed(true);
+        toastError(apiErrorText(err));
+      });
     return () => {
       stale = true;
     };
@@ -443,6 +583,13 @@ function SubagentComposer({
 
   return (
     <div className="shrink-0 border-t border-gray-100 px-2 pb-2 pt-2 dark:border-gray-800/60">
+      {/* Said where the reader will look for it. A toast alone disappears; the empty slash menu
+          stays, and its emptiness is the thing that looked like an answer. */}
+      {skillsFailed && (
+        <p className="mb-1 px-1 text-[11px] text-amber-700 dark:text-amber-300">
+          {S.subagentPanel.skillsUnavailable}
+        </p>
+      )}
       <ChatInput
         variant="subagent"
         status={running ? "running" : "idle"}

@@ -17,6 +17,7 @@ import { EmptyState } from "../../components/ui/empty-state";
 import { MessageItem } from "./message-item";
 import { WorkGroup, isWorkItem } from "./work-group";
 import { createStreamFollow, stickToBottom } from "./stream-follow";
+import { scrollMemory } from "./scroll-memory";
 import type { StreamFollow } from "./stream-follow";
 import type { ForkTarget } from "./task-stats-line";
 
@@ -195,6 +196,7 @@ export function MessageStream({
   version,
   ctx,
   scrollElRef,
+  sessionId,
   outline,
   older,
 }: {
@@ -204,6 +206,12 @@ export function MessageStream({
   ctx: StreamRenderContext;
   /** Mirrors the scroll container element out to the owner (the conversation outline's jump/scrollspy target). */
   scrollElRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * The Session this stream belongs to, when the route knows it. Scroll memory keys on it, so
+   * a draft route (no id) simply keeps no memory — which is right: there is no conversation
+   * to come back to yet.
+   */
+  sessionId?: string;
   /**
    * Overlay slot rendered inside the stream's positioning wrapper (the conversation
    * outline's tick rail): the rail must span exactly the stream area — not the composer —
@@ -317,6 +325,71 @@ export function MessageStream({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [version, follow, older?.prependedCount]);
 
+  /**
+   * Scroll memory: put the reader back where they were, and record where they leave.
+   *
+   * Two halves, and the ORDER is the whole design. The outgoing conversation must be
+   * recorded BEFORE the incoming one is restored, or a switch from A to B would record B's
+   * fresh bottom position over A's remembered one and A would be lost every time you visited
+   * it. One effect handles both so the browser cannot interleave them.
+   *
+   * The restore runs in a LAYOUT effect, before paint, for the same reason the stick snap
+   * does: an effect-restore would show the tail for one frame and then jump, which is the
+   * exact "I lost my place" flicker this is meant to remove. It also has to happen only
+   * once per conversation — a plain effect re-running on every commit would fight the
+   * reader's own scrolling — so it is keyed on the session id and guarded by a ref.
+   *
+   * A remembered reader who was FOLLOWING the tail gets no scrollTop applied: stick-to-bottom
+   * is already the right answer for them, and applying a stale offset first would show the
+   * wrong place for a frame. The one that matters is the reader who had scrolled up.
+   */
+  const restoredForRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (sessionId === undefined) return;
+    const previous = restoredForRef.current;
+    if (previous === sessionId) return; // already seated in this conversation
+    cancelReturn();
+    lastTopRef.current = null;
+    if (previous !== null) scrollMemory.remember(previous, el?.scrollTop ?? 0, follow.stick);
+    restoredForRef.current = sessionId;
+
+    const remembered = scrollMemory.recall(sessionId);
+    if (remembered === undefined || remembered.following) {
+      follow.resume();
+      if (el !== null) stickToBottom(el, follow);
+      syncJump();
+      return;
+    }
+    follow.pause();
+    if (el === null) return;
+    // The transcript may not have painted yet on a cold open; a restore into a zero-height
+    // container is silently discarded by the browser. The commit layout effect above re-snaps
+    // on the first growth, and a not-yet-known height is treated as "stay at the top" rather
+    // than being applied to a container that cannot hold it.
+    if (el.scrollHeight === 0) return;
+    el.scrollTop = Math.min(remembered.top, Math.max(0, el.scrollHeight - el.clientHeight));
+    follow.scrolled({
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    });
+    syncJump();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  /** Leaving entirely (route change, unmount) is the other place a position can be lost. */
+  useEffect(() => {
+    return () => {
+      const el = scrollRef.current;
+      if (restoredForRef.current !== null) {
+        scrollMemory.remember(restoredForRef.current, el?.scrollTop ?? 0, follow.stick);
+        restoredForRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // The container and the content can also resize OUTSIDE stream commits: the app shell's
   // notice banner (initial-password reminder) mounting after /api/me resolves shrinks the
   // scroll viewport, and a late-loading image grows the transcript. Neither fires a scroll
@@ -416,7 +489,7 @@ export function MessageStream({
           {older && items.length > 0 && (
             <div className="flex justify-center pb-2">
               {older.loading ? (
-                <span className="flex items-center gap-2 py-1 text-xs text-gray-400 dark:text-gray-500">
+                <span className="flex items-center gap-2 py-1 text-xs text-gray-500 dark:text-gray-500">
                   <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-400 border-t-transparent" />
                   {S.chat.loadingEarlier}
                 </span>
@@ -429,7 +502,7 @@ export function MessageStream({
                   {S.chat.loadEarlierRetry}
                 </button>
               ) : !older.hasMore && older.prependedCount > 0 ? (
-                <span className="py-1 text-xs text-gray-400 dark:text-gray-500">
+                <span className="py-1 text-xs text-gray-500 dark:text-gray-500">
                   {S.chat.historyBeginning}
                 </span>
               ) : null}

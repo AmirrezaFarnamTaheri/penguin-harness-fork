@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { approximateTokens } from "../llm/context-limits.js";
 
 export type CompactionPhase = "turn-start" | "in-loop" | "agent-session";
 export type CompactionTrigger = "manual" | "auto";
@@ -37,6 +38,13 @@ const DECLARATION_START =
  */
 const COMPACTION_SUMMARY_ID_PREFIX = "compaction-summary-";
 
+/**
+ * Per-message overhead for role framing and separators. The previous counter added 10 characters
+ * to a total it then divided by 4, so the real charge was 2.5 tokens; 3 is that cost rounded up,
+ * which is the direction that keeps the estimate from being optimistic.
+ */
+const MESSAGE_FRAMING_TOKENS = 3;
+
 function isCompactionSummary(message: ConversationMessage): boolean {
   return typeof message.id === "string" && message.id.startsWith(COMPACTION_SUMMARY_ID_PREFIX);
 }
@@ -73,12 +81,33 @@ export class ContextCompactor {
     return currentEstimatedTokens >= this.tokenThreshold;
   }
 
+  /**
+   * Estimated size of the context, in tokens.
+   *
+   * Delegates to the same `approximateTokens` the per-request output clamp uses
+   * (`llm/context-limits.ts`) rather than keeping a second counter. That is the whole point: the
+   * two numbers have to describe the same conversation, and while this one used `length / 4` over
+   * UTF-16 code units they disagreed by **four times** on CJK text and two times on emoji — a
+   * Chinese conversation estimated at a quarter of its real size. That error did not merely
+   * misreport a gauge, it moved the trigger: compaction fired when the *estimate* crossed the
+   * threshold, so on a 128k window a CJK session could reach roughly 4x the intended threshold
+   * before anything happened, and the request that finally crossed the real window limit was
+   * rejected by the provider as a non-retryable 400. The direction is the one that must never be
+   * wrong here — an over-estimate shrinks work early, an under-estimate costs a turn.
+   *
+   * The per-message framing charge is the old one, made explicit: 10 characters ÷ 4 was 2.5
+   * tokens of role/separator overhead, now a flat 3 — the same cost rounded up, which keeps the
+   * safe direction for the rounding itself.
+   */
   public estimateTokens(messages: ConversationMessage[]): number {
-    let charCount = 0;
+    let total = 0;
     for (const msg of messages) {
-      charCount += (msg.content || "").length + (msg.role || "").length + 10;
+      total +=
+        approximateTokens(msg.content ?? "") +
+        approximateTokens(msg.role ?? "") +
+        MESSAGE_FRAMING_TOKENS;
     }
-    return Math.ceil(charCount / 4);
+    return total;
   }
 
   /**

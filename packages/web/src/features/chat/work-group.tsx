@@ -201,7 +201,7 @@ function WorkGroupInner({ items, ctx, isLast }: WorkGroupProps) {
             dropped entirely (title on the header carries nothing extra — the header must stay
             a single uncut line on phones). */}
         {steps > 0 && (
-          <span className="hidden shrink-0 font-mono text-xs text-gray-400 sm:inline">
+          <span className="hidden shrink-0 font-mono text-xs text-gray-500 sm:inline">
             {S.chat.workGroupSteps(steps)}
           </span>
         )}
@@ -217,12 +217,12 @@ function WorkGroupInner({ items, ctx, isLast }: WorkGroupProps) {
             snap backwards the moment the group settles. */}
         {itemsRunning
           ? startMs !== undefined && (
-              <span className="shrink-0 font-mono text-xs text-gray-400">
+              <span className="shrink-0 font-mono text-xs text-gray-500">
                 <LiveDuration sinceMs={startMs} />
               </span>
             )
           : durationMs > 0 && (
-              <span className="shrink-0 font-mono text-xs text-gray-400">
+              <span className="shrink-0 font-mono text-xs text-gray-500">
                 {humanizeDuration(durationMs)}
               </span>
             )}
@@ -246,7 +246,7 @@ function WorkGroupInner({ items, ctx, isLast }: WorkGroupProps) {
           </>
         )}
         <span className="min-w-0 flex-1" />
-        <Chevron open={shown} className="text-gray-400" />
+        <Chevron open={shown} className="text-gray-500" />
       </button>
       {shown && (
         <div className="anim-fade divide-y divide-gray-100 border-t border-gray-200 dark:divide-gray-800/60 dark:border-gray-800">

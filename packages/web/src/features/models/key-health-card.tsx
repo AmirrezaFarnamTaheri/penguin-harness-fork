@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { CopyButton } from "../../components/ui/copy-button";
-import {
-  calculateKeySuccessRate,
-  formatCooldownTimer,
-  type KeyActionType,
-  type KeyHealthItem,
-} from "./key-fleet-types";
+import { S } from "../../lib/strings";
+import { calculateKeySuccessRate, formatCooldownTimer, keyNameOf } from "./key-fleet-types";
+import type { KeyActionType, KeyHealthItem } from "./key-fleet-types";
 
 export interface KeyHealthCardProps {
   keyItem: KeyHealthItem;
@@ -15,6 +12,14 @@ export interface KeyHealthCardProps {
   modelId: string;
   onAction?: (action: KeyActionType, item: KeyHealthItem) => void;
   disabled?: boolean;
+  /** Whether the viewer may name keys (the Project owner may; a member may not). */
+  canRename?: boolean;
+  /** Opens the rename editor for this key, replacing the name line. */
+  onRename?: (item: KeyHealthItem) => void;
+  /** True while this specific key's rename editor is open. */
+  renaming?: boolean;
+  /** The editor itself, rendered in place of the name line. */
+  children?: ReactNode;
 }
 
 export function KeyHealthCard({
@@ -23,6 +28,10 @@ export function KeyHealthCard({
   modelId,
   onAction,
   disabled = false,
+  canRename = false,
+  onRename,
+  renaming = false,
+  children,
 }: KeyHealthCardProps) {
   const [remainingMs, setRemainingMs] = useState(keyItem.cooldownRemainingMs);
 
@@ -39,16 +48,46 @@ export function KeyHealthCard({
 
   const successRate = calculateKeySuccessRate(keyItem.successCount, keyItem.failureCount);
   const totalCalls = keyItem.successCount + keyItem.failureCount;
+  const { name, isUnnamed } = keyNameOf(keyItem, S.models.keyUnnamed);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 p-4 transition-colors hover:border-gray-400">
+    <div
+      data-testid="key-health-card"
+      className="flex flex-col gap-3 border-b border-gray-200 dark:border-gray-800 p-4 transition-colors hover:border-gray-400"
+    >
       {/* Header: Masked Key, Copy, Status Badge */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {keyItem.maskedKey}
-          </span>
-          <CopyButton text={keyItem.maskedKey} label="Copy masked key" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {keyItem.maskedKey}
+            </span>
+            <CopyButton text={keyItem.maskedKey} label="Copy masked key" />
+          </div>
+          {renaming ? null : (
+            <div className="flex flex-wrap items-center gap-2">
+              {isUnnamed ? (
+                <span className="text-sm text-gray-500 italic dark:text-gray-400">
+                  {S.models.keyUnnamed}
+                </span>
+              ) : (
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{name}</span>
+              )}
+              {canRename && onRename && (
+                <button
+                  type="button"
+                  onClick={() => onRename(keyItem)}
+                  disabled={disabled}
+                  className="text-xs text-blue-700 underline underline-offset-2 hover:no-underline disabled:opacity-60 dark:text-blue-400"
+                >
+                  {isUnnamed ? S.models.keyNameAction : S.models.keyNameEdit}
+                </button>
+              )}
+            </div>
+          )}
+          {keyItem.label !== undefined && keyItem.label !== "" && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">{keyItem.label}</span>
+          )}
         </div>
 
         <div>
@@ -59,6 +98,8 @@ export function KeyHealthCard({
           {keyItem.status === "evicted" && <Badge tone="red">Evicted</Badge>}
         </div>
       </div>
+
+      {children}
 
       {/* Invocation Statistics & Success Bar */}
       <div className="flex flex-col gap-1.5">
