@@ -906,15 +906,20 @@ describe("context compaction", () => {
     // 1 turn request + 3 compaction attempts (initial + compactionMaxReconnects retries).
     expect(llm1.calls).toHaveLength(4);
     // The Trace-written compaction request_ends announce the planned backoff under the
-    // COMPACTION cap (base 1ms: 1, then 2), with none on the final failure — these events
-    // are never streamed, so the value lands in the Trace record only.
+    // COMPACTION cap. The base-1ms ladder is 1ms then 2ms, with seeded jitter allowed to
+    // add up to 1ms on the second delay; the final failure has no retry. These events are
+    // never streamed, so the value lands in the Trace record only.
     const compactionEnds = recorded.filter(
       (m) => (m.payload as { type?: string }).type === "request_end",
     );
     const retryPlans = compactionEnds.map(
       (m) => (m.payload as { retry_in_ms?: number }).retry_in_ms,
     );
-    expect(retryPlans).toEqual([undefined, 1, 2, undefined]);
+    expect(retryPlans[0]).toBeUndefined();
+    expect(retryPlans[1]).toBe(1);
+    expect(retryPlans[2]).toBeGreaterThanOrEqual(2);
+    expect(retryPlans[2]).toBeLessThanOrEqual(3);
+    expect(retryPlans[3]).toBeUndefined();
     // The attempt ordinal rides the same events: the turn's clean completion stays
     // unstamped, the three compaction failures count 1..3.
     const attempts = compactionEnds.map((m) => (m.payload as { attempt?: number }).attempt);

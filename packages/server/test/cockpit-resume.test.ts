@@ -225,8 +225,19 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     const resumed = collect(
       `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=${init.seq}&generation=${init.generation}`,
     );
-    await waitFor(() => resumed.messages.some((m) => m.type === "cockpit_resume"), "resume ack");
-    const ack = resumed.messages.find((m) => m.type === "cockpit_resume")!;
+    await waitFor(
+      () =>
+        resumed.messages.some(
+          (m) => m.type === "cockpit_resume" || m.type === "cockpit_stream_gap",
+        ),
+      "resume acknowledgement or explicit gap",
+      15_000,
+    );
+    const response = resumed.messages.find(
+      (m) => m.type === "cockpit_resume" || m.type === "cockpit_stream_gap",
+    );
+    expect(response?.type, JSON.stringify(response)).toBe("cockpit_resume");
+    const ack = response!;
     expect(ack.missed).toBeGreaterThan(0);
     // The backlog arrives BEFORE the ack and before the fresh snapshot, so a client applies
     // missed deltas in the order they happened and then reconciles against truth.

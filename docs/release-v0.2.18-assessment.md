@@ -34,6 +34,7 @@ The `WorkRouter`, `OperationShareRegistry`, `SpendCeiling`, and `JevSurfaceAdvis
 - Repository-wide type checking, core/server/web/CLI production builds, lint, Prettier, localization parity, skill integrity (2,567 skills with zero errors or warnings), and release-publishing regression tests passed.
 - Four browser multi-select E2E cases passed earlier against a built web app and live server, including partial failure and retry.
 - The prior recursive Windows workspace test command failed with `spawn UNKNOWN`; per-package test commands passed. Linux pull-request CI remains the cross-platform aggregate gate.
+- The first pull-request CI run found three release-gate issues: the core build identity constant still held 0.2.17, a compaction test expected an exact retry delay despite intentional seeded jitter, and a WebSocket acknowledgement wait was too short under the Windows shard's load. The core version now matches all package manifests; retry assertions honor the bounded jitter; and the socket test waits longer and distinguishes a resume from an explicit gap. Local CLI identity, compaction, and cockpit-resume checks pass; the corrected cross-platform CI run is required before tagging.
 - A paid live-provider E2E assertion was inconclusive after retries and was not repeated. It is not presented as a local pass.
 - The web build reports a chunk above 500 KB after minification. The build succeeds; chunk splitting is a follow-up performance opportunity, not a release blocker in this change.
 

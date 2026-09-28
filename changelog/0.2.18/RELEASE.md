@@ -18,7 +18,7 @@ Download the platform archive from this fork's GitHub Release. Linux and macOS a
 
 - Research evaluation manifests validate the current model and reporting configuration as well as the source revision.
 - ACP connection generations prevent an old transport failure from poisoning a replacement connection.
-- Release notes and package metadata are aligned at 0.2.18 across workspace packages.
+- Release notes, workspace package manifests, and the core runtime identity agree on 0.2.18.
 
 ## Requirements
 
