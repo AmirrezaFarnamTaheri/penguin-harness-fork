@@ -470,7 +470,7 @@ review. Do not apply a blanket major-version override across both dependency bra
 
 ### Checkpoint: Wave R
 - [ ] R0 and R1–R14 acceptance criteria green; R2d remains deferred until a trusted binding exists; `test/knowledge` + `findings-routes` + web suite pass
-- [ ] Audit has zero high findings and both named `undici` paths are repaired or explicitly blocked from release with a dated owner
+- [ ] Audit has zero high findings and neither named `undici` path remains; otherwise Wave R and release remain blocked with a dated owner
 - [ ] §2 Status Ledger updated wherever R7/R12 change the wording
 - [ ] Reviewer's F1–F7/N1–N12 all marked resolved/declined-with-reason in §3
 
