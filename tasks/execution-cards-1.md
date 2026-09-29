@@ -1,51 +1,52 @@
 # Execution Cards — Vol. 1: Wave R + Wave 1
 
 Companion to `tasks/plan.md` (architecture, ordering, sources) and `tasks/todo.md` (checklist).
-Each card unpacks one task into build steps with the exact shapes, constants, and test names the
-implementer needs. Cards assume the Definition of Done in plan §0. **Line numbers cited are from
-PR #12's head (`beebef8`) — re-anchor with `grep -n` before editing.**
+Each card unpacks one task into its smallest useful slice, compatibility boundary, failure mode,
+verification, and rollback. Cards assume the Definition of Done in plan §0. Any line number in
+an inherited audit is evidence for that commit, not an edit target; locate the current symbol
+before implementation. `execution-cards-2.md` covers the later, risk-bearing work.
 
 ---
 
+## R0 · Findings scope and authority contract
+
+**Inventory:** Tool writes `<workspace>/.penguin/knowledge/findings-graph.json`; server routes
+write `projectDir(config.root, projectId)/.findings_graph.json`. The project DB row has no
+workspace path. These remain separate authorities by default; a trusted mapping may later
+establish that they describe the same logical project. Use a table with columns `scope key`, `owner`, `path`, `reader/writer`,
+`auth check`, `backup`, `equivalence proof`, and `unmapped behavior`.
+
+**Decision:** Derive canonical scope ids from trusted project/workspace metadata, never a
+model-supplied path. Resolve and normalize symlinks before comparison; verify ownership on
+every HTTP read/write. A missing/ambiguous mapping keeps the two scopes separate with visible
+labels. Record a migration manifest fixture for same, different, corrupt, and missing files.
+
+**Exit:** The identity test proves that two projects sharing a display name are distinct and a
+workspace rename does not silently bind it to a server project; any path rebinding is explicit
+and audited. R2a must not start before this
+contract is approved in the PR.
+
 ## R1a · Eviction policy truth & reference hygiene
 
-**Goal:** The invariant becomes "nothing is *lost*": eviction archives, cleans references, and the
-docs name the real order.
+**Invariant:** Live graph is bounded; archived history is recoverable only within the published
+retention window. A 32 MiB archive rotated to one backup can discard older entries. Remove
+“nothing is lost” from comments and product copy.
 
-**Constants (pin in code and tests):**
-- `DEFAULT_MAX_FINDINGS = 5000` (unchanged) · archive `findings-graph.evicted.ndjson` beside the
-  store · archive rotation at 32 MB (the audit-retention precedent) → rename to `.1`, keep one.
-- Rank order (already computed by `STATUS_RANK`, ascending): `refuted(0) → superseded(1) →
-  open(2) → confirmed(3)`; within a rank, oldest `updatedAt` goes first.
+**Build:** Keep rank order `refuted → superseded → open → confirmed`, oldest `updatedAt` first
+inside a rank. Have the pure graph produce an eviction batch and a new snapshot without changing
+the previously committed store. Under R2a's lock, persist the archive batch with operation ids
+and then atomically commit the snapshot. If the required archive step fails, reject the report
+and retain the prior snapshot. A retry may see an archive record from a failed snapshot write;
+dedupe by `(scopeRevision, victimId)` on replay. Clean `related` and `supersededBy` live links;
+store enough tombstone metadata to explain a former replacement without inventing a live edge.
 
-**Build steps:**
-1. Rewrite the header invariant (`findings-graph.ts:14`): "Nothing is lost. Lifecycle marks and
-   chains; eviction past `maxFindings` archives the victim to `findings-graph.evicted.ndjson` and
-   cleans references; see `evictIfNeeded`."
-2. Fix the `:508` doc comment to the real order above.
-3. `evictIfNeeded()`: before `this.findings.delete(victim.id)` —
-   a. append `JSON.stringify(this.clone(victim)) + "\n"` to the archive (via the store's injected
-      `archive?: (line: string) => void` so the engine stays pure — `FileFindingsStore` supplies
-      the fs writer; tests supply a collector);
-   b. reference hygiene over survivors: `related = related.filter((r) => r !== victim.id)`;
-      if `supersededBy === victim.id`, clear `supersededBy` (history lives in the archive line and
-      an `update` event `evicted:<id>` is pushed to the log);
-   c. rotation: the store writer checks byte size before append; ≥32 MB → `rename(.1)` then append.
-4. Export a test seam `evictionSink` option in `FindingsGraphOptions` (defaults to none → no
-   archive, only deletion — the in-memory engine must stay fs-free).
+**Tests:** rank order and confirmed-last; linked eviction and snapshot import; disk-full/archive
+permission failure; snapshot-rename failure after archive append; restart/retry idempotency;
+rotation and documented recoverability limit; `maxFindings = 0` rejection. Use a small cap to
+force the branch without adding thousands of records.
 
-**Tests (`test/knowledge/findings-graph.test.ts`, new `describe("eviction")`):**
-- `evicts in rank order and archives each victim` — cap 3; seed refuted+superseded+open+confirmed;
-  after one more ingest: victim is the refuted one; archive collector holds exactly its record.
-- `cleans related and supersededBy on eviction` — the N1 case: a superseded pair where the
-  replacement is evicted first; assert `related` has no dangling ids and `supersededBy` cleared;
-  `exportSnapshot()` re-imports with `skipped === 0`.
-- `confirmed is evicted only when it is the only rank left` — the reviewer's probe, pinned.
-- `archive rotation renames at the byte cap` — fake writer with a size counter.
-
-**Edge cases:** eviction during `report()` merge (the merged target must never be the victim);
-empty-graph cap 0 (throws on construction — add the guard); archive write failure (log-free
-degradation: eviction proceeds, `evictionArchiveFailures` counter in `stats()`).
+**Rollback:** Preserve the old snapshot and archive bytes; disabling the feature must not make
+new-format snapshots unreadable. Do not delete an archive while rolling back a code change.
 
 ---
 
@@ -55,10 +56,10 @@ degradation: eviction proceeds, `evictionArchiveFailures` counter in `stats()`).
 
 **Data shapes:**
 ```ts
-export type ActorKind = "user" | "agent" | "system";
+export type ActorKind = "user" | "agent" | "system" | "unknown";
 export interface Actor { kind: ActorKind; id: string }
 export interface FindingEvent { seq; type; findingId; at; note?; actor?: Actor;
-                                method?: "tool" | "route" | "engine" }   // extend, keep optional
+                                method?: "tool" | "route" | "engine" }   // optional only for legacy reads
 export class LifecycleError extends Error {
   code: "illegal_transition" | "evidence_gate" | "replacement_not_live" | "cycle";
 }
@@ -71,25 +72,28 @@ export function canTransition(from: FindingStatus, to: FindingStatus): boolean;
 |---|---|---|---|---|
 | open | — | ✔ (evidence gate) | ✔ | ✔ (replacement live) |
 | confirmed | ✖ (use reopen) | — | ✔ (falsification) | ✔ (replacement live) |
-| refuted | ✔ **only** via `reopen` with `actor.kind === "user"` or a report carrying `reopen:true` | ✖ | — | ✖ |
+| refuted | ✔ **only** via an authenticated, reasoned user `reopen` operation | ✖ | — | ✖ |
 | superseded | ✖ | ✖ | ✖ | — (immutable) |
 
 **Evidence gate:** `confirm(id, opts)` where `opts = { note?, actor, override?: boolean }`;
 requires `finding.evidence.some((e) => e.tier === "runtime" || e.tier === "implementation")` —
 else `LifecycleError("evidence_gate")` unless `override === true && opts.actor.kind === "user"`.
 
-**Actor plumbing:** routes build `actor = { kind: "user", id: c.var.user.userId }`; the tool uses
-`ctx.attribution ? { kind: "agent", id: ctx.attribution.agentId } : { kind: "system", id: "tool" }`
-— **body-supplied actors are ignored** (add a test). Every confirm/refute/supersede/reopen/link
-pushes `FindingEvent` with `actor` + `method`.
+**Actor plumbing:** routes build `actor = { kind: "user", id: c.var.user.userId }`; the tool
+uses host-attested `ctx.attribution`. If it is absent, record `legacy-unknown`/unattributed and
+deny privilege-bearing overrides. Never convert missing attribution to `system`. Body-supplied
+actors are ignored. New confirm/refute/supersede/reopen/link events include actor + method;
+legacy snapshots with absent actor remain readable and display `unknown`, not `user`.
 
 **Build steps:** 1) types + `canTransition` + `LifecycleError`; 2) gate check in `confirm`;
 3) `assertTransition` at the top of `confirm/refute/supersede/reopen`; 4) actor on events;
-5) thread `actor` through tool + routes (R4 shares the call sites); 6) `reopens(id, actor)` API.
+5) thread `actor` through tool + routes (R4 shares the call sites); 6) `reopen(id, actor, reason)`
+as a distinct user action; 7) keep an old-snapshot import fixture.
 
 **Tests:** `rejects confirming an evidence-free finding` · `user override records the actor` ·
 `illegal transitions throw typed codes` (table-driven over the matrix) · `events name the actor` ·
-`tool ignores body-supplied actor` (route + tool layers).
+`tool ignores body-supplied actor` · `agent cannot request override` · `legacy actor stays unknown`
+(route + tool layers). Verify that the route requires the right project access for each action.
 
 ---
 
@@ -99,54 +103,71 @@ pushes `FindingEvent` with `actor` + `method`.
 1. `supersede(id, replacementId, opts)`:
    - self-check (existing `:309`);
    - **liveness**: `replacement.status ∈ {open, confirmed}` else `LifecycleError("replacement_not_live")`;
-   - **cycle walk** (bounded):
+   - **cycle walk** (bounded and fail-closed):
      ```ts
      let cur = replacementId;
      for (let hops = 0; hops < 64; hops++) {
        const f = this.findings.get(cur);
-       if (!f) break;
+       if (!f) throw new LifecycleError("dangling_replacement", …);
        if (f.id === id) throw new LifecycleError("cycle", …);
        cur = f.supersededBy ?? "";
        if (cur === "") break;
      }
+     if (cur !== "") throw new LifecycleError("chain_too_deep", …);
      ```
-2. Dead-claim re-report: in `report()`'s id-line merge, if the existing finding is `refuted` or
-   `superseded` and the new report is not `reopen`: create a NEW finding (fresh id — salt the
-   fingerprint with `report.at`) and `link` it `contradicts`-style to the dead claim (use the
-   existing `related` link plus a `contradicts` tag until C5 adds typed edges). With
-   `ReportFindingInput.reopen === true`: reopen (`status = "open"`, event `update` with actor).
+2. Dead-claim re-report: for a matching `refuted` claim, derive a new revision id from canonical
+   claim plus evidence digest and predecessor id; replaying the same report returns that same
+   revision. Use a typed contradiction relation or explicit relation metadata, not a tag whose
+   meaning depends on later C5 work. A report against a `superseded` claim follows its live
+   replacement or creates a distinct open claim; it never mutates the terminal old record.
+3. `reopen` is a separate route action limited to the authenticated user with a reason. A tool
+   report cannot set it. Document whether reopening a claim resets confirmation evidence.
 
-**Tests:** `supersede cycle is rejected (a→b→a)` · `replacement must be live` · `re-reporting a
-refuted claim creates a contradicting claim` · `reopen is explicit and attributed` · `chain walk
-terminates at 64 hops`.
+**Tests:** imported cycle and >64-hop chain are rejected; a normal `a→b` followed by `b→a`
+fails the liveness gate; replacement must be live; repeating a report after refutation creates
+one stable new claim; agent-supplied reopen is rejected; user reopen is reasoned and attributed.
 
 ---
 
-## R2a · One findings store behind one locked interface
+## R2a · Scope-aware findings store and acknowledged writes
 
 **Interface (new `packages/core/src/knowledge/store.ts`):**
 ```ts
 export interface FindingsStore {
-  readonly path: string;
-  read(): Promise<FindingsGraphSnapshot>;                 // cache-validated by mtime+size
-  update<T>(fn: (graph: FindingsGraph) => T | Promise<T>): Promise<T>;  // serialized per path
+  readonly scopeId: string;
+  read(): Promise<{ snapshot: FindingsGraphSnapshot; revision: string; recovery: RecoveryState }>;
+  update<T>(expectedRevision: string | null,
+    fn: (graph: FindingsGraph) => T | Promise<T>): Promise<{ result: T; revision: string }>;
   invalidate(): void;
 }
 export class StoreCorruptionError extends Error { quarantinedTo?: string }
 ```
-**Lock protocol:** move the server's `withFileLock` (`packages/server/src/services/project-json-store.ts:279`)
-into `packages/core/src/internal/file-lock.ts`; `FileFindingsStore.update` runs
-`withFileLock(path, root, …)` with a per-path promise chain (`Map<string, Promise<void>>` tails —
-the exact shape `ProjectJsonStore` already uses). The server keeps `ProjectJsonStore` but wraps it
-in `ProjectJsonStoreAdapter implements FindingsStore`; the tool's `graphs` Map becomes the cache
-inside `FileFindingsStore` keyed by `{mtimeMs, size}`.
+**Authority:** R0 chooses the canonical path for a mapped logical scope. An unmapped workspace
+and server project keep separate scope ids; the UI must say which is being shown. Use one
+cross-process lock and atomic-write implementation for both paths (extract the proven server
+seam or compose it, avoiding independent lock files for the same authority). Clone the graph
+inside a transaction; only replace the cached graph after the write succeeds. Return a typed
+failure when write, flush, rename, or lock acquisition fails. Never treat an unwritable
+workspace as a successful report.
+
+**Cache:** key by canonical scope and a durable revision/content fingerprint, not just mtime+size;
+bound entries and invalidate after every commit. Avoid a second hydration cache in the route if
+the shared store already caches. A concurrent force reload must not replace a newer in-memory
+revision. Read-only calls may serve a validated cached copy; writers always recheck under lock.
 
 **Tests (`test/knowledge/findings-store.test.ts`):**
-- `serializes concurrent updates` — 50 parallel `update(report)` on one path → 50 findings on disk.
-- `observes external edits` — rewrite the file outside the store; next `read()` reflects it.
-- `single-flight` — two concurrent `update`s never interleave (instrument fn with an array log).
-- `tool and route share one store instance per path` — construct both adapters against one temp
-  file; interleaved writes all land (this is F2's regression test).
+- `serializes concurrent updates` — 50 parallel reports through two store instances for each
+  independent authority, then restart → 50 findings per authority. A shared tool/route ingress
+  test joins the suite only if R2d's trusted mapping is implemented.
+- `observes same-size external edit` — preserve mtime if the fixture platform permits; next
+  `read()` still reflects the revision change.
+- `never acknowledges an uncommitted report` — inject permission, full disk, rename, and lock
+  failures; the call fails and the old snapshot remains readable.
+- `keeps unmapped scopes distinct` — identical titles in unrelated project/workspace scopes do
+  not mix. `invalidate()` cannot invalidate another scope.
+
+**Rollback:** keep old format readable before R2d migration; do not remove the legacy paths in
+the same change as the new lock contract.
 
 ---
 
@@ -163,22 +184,42 @@ inside `FileFindingsStore` keyed by `{mtimeMs, size}`.
 | tags | ≤50 × ≤100 |
 | note (lifecycle) | ≤2,000 |
 
-**Byte cap:** `update` refuses to write a snapshot >8 MB → `StoreTooLargeError` with guidance
-("prune or split per project"). **Rehydrate cache:** routes hold `Map<projectId, {mtimeMs,size,graph}>`;
-`store.read()` stats first and only re-parses on change. **Tests:** `tool caps match route caps
-exactly` (same fixture table run against both), `store refuses oversized writes`, `GET parses the
-store once per change` (parse counter in a spy decoder).
+**Capacity:** 24 MiB UTF-8 serialized bytes is the high-water warning and 32 MiB is the hard
+cap per live store; keep the 5,000-finding count cap. Prove the largest permitted single report
+fits in an empty store and measure hydration memory/startup before raising the cap. At capacity,
+reads, export, archive inspection, and recovery stay possible; only a new
+write that cannot fit fails with `StoreTooLargeError`. **Cache:** reuse R2a's bounded revision
+cache; do not add an unrelated route cache. **Tests:** shared limit table for tool/route;
+high-water warning and hard-limit refusal; export/recovery at capacity; two unchanged reads
+parse once; same-size rewrite invalidates.
 
 ---
 
-## R2c · Corruption quarantine (never silent loss)
+## R2c · Corruption quarantine and read-only recovery
 
-**Flow:** `read()` parse failure → (1) `copyFile(path, path + ".corrupt-" + Date.now())`;
-(2) structured log once per file; (3) start empty and set `recoveredFromCorruption: true` on the
-store (surfaced in the `snapshot` route response and the tool's `snapshot` output);
-(4) second corruption creates a second uniquely-named copy (never overwrite).
-**Tests:** `quarantines a corrupt store before starting empty` · `second corruption does not
-overwrite the first quarantine` · `snapshot output flags recovery`.
+**Flow:** `ENOENT` creates a new empty store; parse/validation/unsupported-version errors do not.
+On corruption: copy original bytes to a uniquely named, permission-preserving quarantine file,
+emit one structured event per revision, and mark the scope read-only. `snapshot`/tool output
+reports `recoveryRequired` without presenting an empty graph as truth. A privileged recovery
+action can export raw bytes, restore a selected backup, or explicitly reset after a second
+confirmation; it preserves the corrupt original. Quarantine failure still blocks writes.
+**Tests:** invalid JSON, partial JSON, unsupported version, unreadable file, quarantine failure,
+repeated corruption, restore/reset, and a valid legacy snapshot. Verify no normal write changes
+the original bytes in every error case.
+
+## R2d · Existing-store migration and rollback
+
+**Dry-run first:** for a scope R0 proved equivalent, enumerate both old files, permissions,
+hashes, counts, event sequences, and same-id conflicts. Back up both exact byte streams before
+the first mutation. `same id + different content` is a conflict for review, never last-write-wins.
+Preserve the trusted actor and event provenance during deduplication; assign a new revision only
+after deterministic reconciliation.
+
+**Apply:** acquire the canonical scope lock; recheck the manifest hashes; write the new snapshot
+atomically; verify by read-back/restart; switch the route and tool to it. Keep old files for a
+documented rollback window. An interrupted or repeated migration resumes/idempotently reports
+the same result. **Fixture matrix:** both empty, tool only, route only, identical, divergent,
+corrupt side, concurrent writer, interrupted write, and rollback after one successful report.
 
 ---
 
@@ -220,22 +261,25 @@ finding ids are 400 not 500` · `confirm requires evidence (409)`.
 
 ---
 
-## R5 · Tool output markers + pagination
+## R5 · Revision-aware, byte-bounded tool output
 
 **Protocol:**
 ```ts
-type Page<T> = { page: T[]; nextCursor: string | null; total: number };
-// cursor = base64 of the last record's stable key (finding id / event seq)
+type Page<T> = { schemaVersion: 2; items: T[]; scopeRevision: string;
+  nextCursor: string | null; truncated: boolean; omittedCount: number;
+  gap?: { earliestAvailableSeq: number } };
+// cursor = opaque, versioned encoding of scope + revision + filter hash + stable sort key
 ```
-- `snapshot`: `limit` (default 100, max 500) + `after` (cursor) → `Page<Finding>`.
-- `events`: keep `since`, add `limit` + `after`.
-- Small outputs (`JSON.stringify` ≤ budget) are emitted as plain JSON (back-compat).
-- Oversized single objects (a giant finding body) truncate at the field boundary and append
-  `… [truncated: showing X of Y chars]` **outside** the JSON (`{"…": "truncated", "data": …}`
-  envelope) so `JSON.parse` always succeeds.
-**Tests:** `pages a 500-finding snapshot with no gaps or duplicates` · `every output parses`
-(JSON.parse each variant in a loop over sizes 100…10,000) · `truncation marker present` ·
-`budget never produces invalid JSON` (the N6 regression).
+- Sort `snapshot` by stable `(id)` and events by `seq`; use the same revision and filter on every
+  page. A mutation between pages returns `stale_cursor` with a restart hint. A cursor for another
+  scope/filter is invalid; bounded event history returns an explicit gap.
+- Enforce a UTF-8 byte budget **after** serialization; reserve envelope space. If one body or
+  event cannot fit, emit an id/title/size summary and recall id, never a cut JSON string.
+- Audit current consumers, then migrate them to `schemaVersion: 2`. Keep the old small-output
+  shape only behind a temporary, documented compatibility mode with a removal task.
+**Tests:** 500-record traversal without gaps/duplicates; mutation mid-page; wrong scope/filter;
+multibyte budget; single 50,000-char body; event-log truncation; JSON.parse for every variant;
+legacy consumer fixture. Roll back by selecting the compatibility mode, not by slicing JSON.
 
 ---
 
@@ -267,25 +311,24 @@ evicted watchers` · `TTL refresh does not leak the old watcher` · `docs claim 
 
 ---
 
-## R7 · Memory-plane honesty or wiring (decision card)
+## R7 · Memory-plane honesty (Option B selected)
 
-**Option A (preferred if the fixture run is cheap):** `HierarchicalMemoryStore.evictToTokenBudget`
-gains `retentionPolicy?: { tiers: 0.7/0.4/0.15; decay: { λ: 0.01, σ: 0.3 } }` (defaults = today's
-behavior); run the existing memory fixtures before/after and record recall deltas in the PR.
-**Option B:** `@experimental` JSDoc on `retention.ts` + one docs line; fix `FindingsGraph.strength`
-— either add `lastAccessedAt?: number` (set on `query` hits, used like `strengthAt`) or reword the
-doc to "reinforced by creation recency". **Q5 decides; default B if the fixture run exceeds an
-hour.** Tests: option-A recall fixture or option-B doc/impl agreement (`strength` math pinned to
-the reworded description).
+List actual consumers of `retention.ts` and freeze a small recall fixture with retained and
+retrieved items, write volume, and latency. Label the module unconsumed/experimental and reword
+`FindingsGraph.strength` to its actual creation-recency math; do not claim access reinforcement
+from `createdAt`. Leave default retention unchanged. C2 owns any later opt-in policy proposal:
+it needs a named consumer, pinned-memory survival, restart/rollback tests, and a measured gain
+on the frozen fixture before C3 can use it.
 
 ---
 
 ## R8 · Agent-authored marking on read-back
 
-`query`/`snapshot` rows gain `agentAuthored: true` and always include `sources` + `status`; tool
-description appends: "Findings are agent-authored claims with evidence — verify before acting."
-Docs (`tools.en/zh.md`) get a short "Trust model" paragraph. Tests: `query rows carry provenance
-and the trust flag`.
+`query`/`snapshot` rows expose `authoredBy` from trusted R1b events and `sourceLabel` from
+untrusted report text as separate fields. An old snapshot is `legacy-unknown`; a user override
+is not retroactively an author change. Every row shows status and strongest evidence tier; the
+tool description says these are claims requiring verification. Tests cover agent, user, system,
+legacy, and a forged body actor. Update `packages/docs/content/tools.en.md` and `tools.zh.md`.
 
 ---
 
@@ -301,22 +344,28 @@ still green).
 
 ## R10 · Tool-schema token cost measurement
 
-Method: `JSON.stringify({name, description, parameters})` per default tool → `chars/4` (the repo's
-labelled estimate); baseline = the 9-tool set before PR #12; report `{ baseline, withNew, delta,
-perTool }` in `docs/content/tools.*.md` (a small table) and as `tools/measure-tool-schema-tokens.mts`.
-Trim rule: if delta > 1,500 tokens, cut description prose to the schema (the catalog defers
-exposure, so long descriptions are not load-bearing).
+Method: freeze one agent config from before PR #12 and the PR head; serialize the actual default
+tool payload, including catalog/lazy exposure, with the same code path the agent sees. Record
+`{chars, chars/4 estimate, provider-tokenizer tokens when available}` per tool and total. Run a
+tiny task-success probe if the delta exceeds 1,500 estimated tokens; trim schema descriptions
+only if the probe confirms no routing loss. Commit a path-free measurement script. The four
+preexisting `tools/measure-q*` scripts contain local paths and stay outside the PR.
 
 ---
 
 ## R11 · Findings-plane test battery
 
-Named cases (each must FAIL against pre-R code — use the revert-check method):
+Named cases (a regression assertion should fail against the relevant pre-fix code when isolated):
 1. `merge idempotency under randomized reports` (seeded LCG, 100 reports over 20 titles).
 2. `snapshot round-trip preserves the events log` (seq + actor + type).
 3. `supersede cycles` (R1c) · 4. `eviction + reference hygiene` (R1a) · 5. `dead-claim re-report`
-(R1c) · 6. `truncation markers` (R5) · 7. `store concurrency` (R2a) · 8. `corruption quarantine`
-(R2c). Property loops use a tiny seeded PRNG (no new deps).
+(R1c) · 6. `bounded parseable output and gap` (R5) · 7. `store concurrency and same-size external
+replacement` (R2a) · 8. `corruption quarantine` (R2c) · 9. `separate-scope isolation and
+unauthorized binding refusal` (R0/R2a) · 10. `acknowledged write survives restart and write
+failure never reports success` (R2a) · 11. `revision cursor rejects a changed snapshot` (R5).
+The two-path migration and rollback suite runs only if R2d's binding prerequisite is met. Property loops use a
+tiny seeded PRNG (no new deps). Keep one table mapping each lifecycle rule to engine, tool, and
+route assertions; a missing layer requires a written reason.
 
 ---
 
@@ -332,9 +381,17 @@ app already states). Output: `a11y-report.md` in the PR with the raw counts.
 
 ## R13 · CI truth pass
 
-`gh pr checks 12 --repo …` → per-job table into `docs/audits/2026-09-29-unified.md` §Validation;
-any red: `gh run view <id> --log-failed`, fix, push, re-record. Node version note: CI = 24
-(Dockerfile pins 24.18.0); local runs = 26.
+**Current blocker:** PR #12 run `36563549648` has 155 browser cases passed, two skipped, one
+failed. At `packages/web/e2e/skills.spec.mjs:246`, `getByText("使用 data-analysis 技能", {exact:true})`
+resolves to sidebar title, chat heading, and message paragraph, causing a Playwright strict-mode
+failure. Aggregate `ci` failed; the other reported jobs passed.
+
+**Repair sequence:** scope the locator to the intended message/card (prefer a role or test id
+with product meaning), then verify the dropdown selection cleared and the sent message really
+contains the invocation. Inspect the same flow for an actual update-order race; if present, fix
+the product state transition as well. Run the named case, full browser suite, then the complete
+PR matrix on the exact pushed SHA. Record per-job result and run URL in the report. A green
+targeted rerun alone does not close R13. CI Node = 24; local runs recorded in the plan used 26.
 
 ---
 
@@ -392,15 +449,14 @@ Acceptance check = R12's axe run (zero focus-indicator violations).
 
 ### F3 · Comment-lies + dead code (defaults recorded)
 - `router.tsx:427-428`: fix the comment to the real gate (`usage.ts:69` is `requireProjectAccess`).
-- `nav-group-collapse.ts:50-53`: delete the phantom-route claim (default), or ship the route —
-  maintainer's call recorded in the PR.
+- `nav-group-collapse.ts:50-53`: delete the phantom-route claim; do not add an unrelated route.
 - `features/canvas/` — delete (0 importers, verified by the III.2 audit); run the verbatim/dead-import
   checks used by the IV.4 split work.
 - `features/cockpit/` directory rename → `features/cockpit-widgets/` (ends the name collision);
   update importers (grep-driven).
 
 ### F6 · STREAM_BANNER_FRAME
-Constant lives beside `disclosure-row.tsx`'s exported frame strings; five call sites
+Constant lives beside `disclosure-row.tsx`'s exported frame strings; nine banner modules
 (`attached-files-banner`, `goal-banner`, `handoff-banner`, `harness-banner`, `mcp-connect-banner`,
 `org-trigger-banner`, `scheduled-banner`, `skills-banner`, `step-banner` — take the verbatim
 copies the III.5 audit listed) import it. Rendered-class strings must be byte-identical before
@@ -413,21 +469,43 @@ CA, the escape hatch is an explicit env var (`NODE_EXTRA_CA_CERTS`), not a disab
 
 ### G7 · Anti-slop installer path fix
 `tools/oxlint/anti-slop/` ships `rules-src/`; the vendored skill's `install.mjs` expects
-`assets/anti-slop`. Fix `install.mjs`'s path or add the missing manifest entry (the skill permits
-`rules-src` copies — follow its own README). Acceptance: `node install.mjs --dry-run` resolves.
+`assets/anti-slop`. Fix `install.mjs` to resolve the existing `rules-src` layout, preserving the
+installer's destination contract. Acceptance: `node install.mjs --dry-run` resolves and copies
+the expected manifest without introducing a second source tree.
 
-### J1 / J6 / T0.3 / J11
-- **J1:** `package.json` `"clean": "node scripts/clean-workspace.mjs"`.
-- **J6:** `ci.yml:150` comment → "59 spec files" (or `# N spec files` computed); sweep sibling count claims.
-- **T0.3:** `scripts/refresh-core-snapshot.mjs` — build core (tsup via the `.pnpm` path trick),
-  glob `node_modules/.pnpm/@prismshadow+penguin-core@*/node_modules/@prismshadow/penguin-core`,
-  copy `dist/**`, print `grep -c <sentinel> …/dist/index.js` per copy. AGENTS.md line: "after
-  changing `packages/core/src`, run `node scripts/refresh-core-snapshot.mjs` — server/web/cli see
-  core through file: snapshots."
-- **J11:** `scripts/check-doc-claims.mjs` — parse Status-Ledger tables in `tasks/plan.md` +
-  `docs/audits/*`, resolve each named module path, `grep -c` importers outside its package;
-  a "DONE"/"Shipped" row with zero external importers fails (R7's Option B keeps `retention.ts`
-  legal by labelling it experimental — the checker honors the label).
+### J1 · Safe workspace clean command
+
+Wire `package.json` `"clean": "node scripts/clean-workspace.mjs"` as a **report-only** default;
+`pnpm clean -- --apply` remains the explicit mutation. Test a disposable fixture containing a
+tracked file, a known rebuildable cache and a deliberately ignored user file: the report lists
+only the cache and apply preserves the other two. Rollback: remove the script alias; do not
+weaken `clean-workspace.mjs` safety checks.
+
+### J6 · CI and documentation drift sweep
+
+Remove the brittle numeric spec count in `ci.yml:150` and sibling prose, or generate the count
+from the test discovery command at runtime. A fixture adding one spec must not leave an asserted
+stale count. Verify the docs suite and workflow syntax; rollback only the prose change if an
+automation consumes it.
+
+### T0.3 · Read-only workspace dependency freshness guard
+
+`scripts/check-workspace-deps.mjs` compares the built core revision/export sentinel with the
+package actually resolved by server/web/CLI. It prints concrete paths and a supported
+reinstall/build command when stale. It does **not** mutate `node_modules/.pnpm` or write the root
+`AGENTS.md` (git-ignored in this checkout). A fixture plants an old resolved snapshot, expects
+failure, then refreshes through the package manager and expects success. Document the workflow
+in a tracked contributor guide. Rollback: disable the freshness check, preserve package state.
+
+### J11 · Docs claim consistency gate
+
+`scripts/check-doc-claims.mjs` validates versioned status-ledger syntax, paths and evidence
+links. A `Shipped` claim needs a proven runtime entrypoint chain, dynamic-registry fixture or
+integration test; a simple external-import count is insufficient for same-package consumers.
+`Experimental/unconsumed` (R7's Option B) is a valid distinct status. Plant a false `Shipped`
+claim and a valid same-package consumer fixture; only the false claim fails with file/line and
+reason. Rollback: keep the evidence table and run checker as advisory while false positives are
+fixed, with an owner and expiry.
 
 ---
 
@@ -436,38 +514,43 @@ CA, the escape hatch is an explicit env var (`NODE_EXTRA_CA_CERTS`), not a disab
 ### C10 · Session briefing injection (P1)
 **Where it hooks:** `Agent.assembleContext` (`packages/core/src/agent.ts` — the same seam the
 skills index uses) gains a `findingsSection()` built from `FindingsGraph.query`:
-`status ∈ {confirmed, open}`, `subject` = the session workspace, sorted by
-severity·confidence·recency, **cap 8 rows and ≤1,200 tokens** (chars/4), titles + subjects +
-status only (P4's trust rule: `open` rows are labelled "unverified"). Dedupe against the skills
-index lines (no title overlap). Re-assembles only where skills do (compaction rotation).
-**Tests:** `briefings carry only confirmed or labelled-unverified rows` · `budget is respected`
-(100-finding fixture → ≤8 rows) · `a poisoned body never reaches the prompt` (body content
-asserted absent) · `workspace with zero findings adds no section`.
+`status === confirmed`, `stale !== true`, and scope = R0's trusted session mapping. Sort by
+evidence strength, severity, then recency with a stable id tie-break; cap at eight rows and
+≤1,200 measured prompt tokens (chars/4 only as a fallback estimate). Render title/subject as
+quoted **untrusted data** in a lower-priority context section, never as a system instruction;
+exclude body, free-form source labels, and URLs. Dedupe by finding id/evidence path, not title
+overlap with a skill. Pin a scope revision for the assembled turn and refresh only at the normal
+context-rebuild seam. **Tests:** only confirmed/non-stale rows; wrong project excluded; 100-row
+budget; prompt-injection title remains inert; zero findings adds no section; mutation between
+query and assembly restarts or omits the stale page. Rollback flag disables injection while
+keeping on-demand query.
 **Files:** `agent.ts`, `knowledge/briefing.ts` (new), tests.
 
 ### C11 · Watcher-driven staleness (P2)
-**Hook:** `CodeGraphWatcher` `change` events (already emitted for the cockpit) add a second
-listener in the server runtime: for each changed file, `findings.query({ subject: file })` and set
-`stale: true` (new optional field; `FindingEvent { type: "demote" }`). Query gains
-`stale?: boolean` filter; `confirm` clears staleness (re-verification). Never delete (invariant).
-**Tests:** `touching a subject demotes its findings` · `confirm re-verifies` · `demote is logged
-with actor system`. **Files:** `packages/server/src/cockpit/ws.ts` (listener), `findings-graph.ts`
-(`demote`), tests.
+**Hook:** watcher events schedule a debounced content-revision check; only a changed, directly
+evidenced path marks a finding `stale: true`. A touch-only event, unrelated file, or repeated
+event does not write the store. Staleness is metadata, **not** a refutation or status transition;
+reverification records the new code revision and actor. Workspaces without a trusted R0 mapping
+stay separate. **Tests:** real content change marks stale once; touch-only/unrelated change does
+not; restart retains the marker; confirm without new evidence cannot clear it. Do not scan the
+whole codegraph or block an edit waiting for the staleness write.
 
 ### C12 · Findings chat-native surface (P3)
-Composer action "Log finding" (in the `PlusMenu`), prefilled `subjects: [currentFile]`; chat
-header badge = count of open findings for this workspace; rows render `path:line` drill-through
-(uses the existing file-preview drawer seam). Reuses C1's components — one implementation, two
-mounts. Acceptance: keyboard-operable; a11y per R12; i18n en+zh (new keys in `strings-*.ts`).
-**Tests:** web unit (form validation mirrors routes) + one e2e flow in `session-select` style.
+Composer action "Log finding" (in the `PlusMenu`) pre-fills the current file only after R0
+resolves the chat's authorized scope. Header badge counts **open, non-stale** findings for that
+scope and has a loading/error state. `path:line` opens the existing file preview only after a
+workspace path guard. Reuse C1's form and list implementation. Acceptance: keyboard-operable,
+R12 a11y, en/zh parity, no leakage when switching projects. Tests: unit validation, project
+switch/cross-scope negative case, and one live e2e report→badge→drill-through flow.
 
 ### K18 · Verification workflow gating briefings (P4)
 UI: findings rows gain Confirm/Refute buttons → `POST /confirm` with `actor:user` (R1b) and the
 evidence-gate dialog ("confirm needs runtime/implementation evidence — add one or override").
-Briefing rule (C10) ships `confirmed` + `user`-verified only; `open` rows render labelled
-"unverified" until then. Tests: `confirm without evidence opens the override dialog` ·
-`briefing excludes unverified claims when the strict flag is on` (default on; the flag is a
-session option, not a silent knob).
+The briefing rule is simply `confirmed && !stale`, with actor/evidence shown beside the claim.
+An open claim remains visible in on-demand UI with an "unverified" label but never enters the
+automatic briefing. Tests: evidence-free confirm opens a reasoned human-override dialog;
+agents cannot submit that override; refute/confirm controls operate by keyboard and report
+server errors without changing the visible state optimistically.
 
 ### D11 · Impact-aware write advisory (P5)
 `edit_file`/`write_file` post-success: resolve the edited file in the cached code graph
@@ -478,38 +561,46 @@ to the tool output: `impact: <symbol> has N dependents (code_graph)`. Budget: �
 notice` · `cache miss stays silent` · `notice never exceeds one line`.
 
 ### F17 · Offline posture banner (P8)
-Global banner bound to `navigator.onLine` events: "Offline — PenguinHarness is local-first;
-nothing syncs." C8's e2e asserts it appears under `setOffline(true)` and disappears on restore.
-One component + one i18n pair + one e2e assertion.
+Global status combines `navigator.onLine` with a bounded health probe to the local server.
+Copy distinguishes "browser offline" from "local server unavailable" and lists the cached
+actions that still work; it never claims sync is absent. C8's e2e verifies the banner, cached
+chat hydration, failed-write affordance, and disappearance after a successful reconnect probe.
+One component, en/zh strings, and a retry action; avoid a persistent banner for a transient
+failed request.
 
 ### F18 · Spill/recall UI affordance (P7)
-When a tool-call result carries B1's `{path,sizeBytes,tokenCount}`, the tool-call card renders a
-chip "Full output saved (N KB, ~M tokens) — open" that streams the recall id via a small endpoint
-(`GET /api/scratchpad-file?...` with the existing workspace-file seam, read-only, path-guarded);
-CLI `penguin recall <id>` prints to stdout. Tests: chip renders for spilled results only; recall
-endpoint refuses paths outside the archive root (the path-guard test from the workspace-file seam).
+When a tool-call result carries B1's opaque `{recallId,sizeBytes,tokenCount}`, the card renders
+"Full output saved" with a bounded preview and an explicit open action. The endpoint resolves
+the id server-side after project/session authorization; no arbitrary `path` query parameter is
+accepted. CLI `penguin recall <id>` uses the same permission and expiry rules. Tests: only
+spilled results show a chip; cross-project/expired/path-traversal ids fail; large output streams
+without loading the whole file into the browser; screen-reader label names the action.
 
 ### I7 · Pressure-aware write guard (P10)
 `internal/command-policy.ts` (or `sandbox/service.ts` where writes converge): before write-capable
-commands, consult the same probe `resource_pressure` uses; free space <200MB → surface warning in
-tool output; <50MB → refuse with `PressureBlocked` unless the call carries the explicit
-`overridePressure: true` user-approved flag (approval flow integration — recorded in the
-approval receipt). The `resource_pressure` **tool** is untouched (its observe-only contract).
-Tests: `warns under 200MB` · `blocks under 50MB without override` · `override passes and is
-recorded` · `resource_pressure still never refuses`.
+commands, measure free space on the **target volume**, not the process cwd. Below 200 MiB warn;
+below 50 MiB block only nonessential new writes. Export, deletion, cleanup, recovery, and
+read-only operations remain available. An unavailable probe warns but cannot invent a zero.
+The explicit override comes from the trusted approval flow and is recorded; a model argument
+named `overridePressure` has no authority. The `resource_pressure` tool stays observe-only.
+Tests: threshold matrix, wrong-volume fixture, cleanup escape, missing probe, user override,
+and no model-origin override.
 
 ### J12 · PR annotations for gates + findings (P15)
-CI step after J3/J11 compute their results: GitHub annotations API (`::error file=…`) for
-stale-doc claims and coverage deltas; a findings sweep: for every file in the diff, `query({subject:
-file, status: confirmed})` → `::warning` per hit, `::error` for severity critical. Output also lands
-in the job summary. Tests: the check script has a fixture diff + fixture findings producing the
-expected annotation lines (pure function test).
+Run only after J3/J11 produce structured results. Emit bounded GitHub annotations for coverage
+regressions and stale documentation, with validated repository-relative paths and escaped
+message text. Findings on changed files are **advisory**, attributed, and never turn an
+unverified claim into a failing check. On fork PRs, run with read-only permissions and no
+secrets. Cap duplicate annotations per file/run; put full details in the job summary. Tests:
+untrusted title/path injection, fork permission model, duplicate suppression, and a fixture diff.
 
 ### J13 · Health → alerting (P11)
-`/health` computes `degradations: string[]` (disk <200MB, DB closed, kernel-version skew on the
-default agent, eviction-archive >16MB); when non-empty and changed since the last emit (dedupe
-window 6h), publish through the K6/notification seam (once K6 exists; until then, a structured
-log + `/health` payload is the contract). Tests: `degradations listed` · `repeats deduped`.
+**Wave 2:** E8/E9 expose structured readiness/degradation state and logs. **Wave 4:** after K6
+exists, map actionable degradation codes to digest notifications with an owner, severity,
+dedupe key, recovery event, and quiet period; do not alert on a normal temporary offline state.
+Health payload remains independent of notification delivery. Tests: repeat coalescing,
+recovery/resolve, clock skew, disabled notifications, and no alert loop when the notification
+plane itself is unhealthy.
 
 ### G8 · Skills doctor + health badges (P12)
 `penguin skills doctor` wraps G1/G2/G6 outputs (same code path as CI — one implementation);
