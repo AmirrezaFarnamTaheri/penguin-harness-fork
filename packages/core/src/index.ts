@@ -30,6 +30,7 @@ export { SERVER_RESTART_EXIT_CODE } from "./internal/server-lifecycle.js";
 
 // Submodules
 export * from "./state/index.js";
+export * from "./knowledge/index.js";
 export * from "./llm/index.js";
 export * from "./environment/index.js";
 export * from "./trace/index.js";

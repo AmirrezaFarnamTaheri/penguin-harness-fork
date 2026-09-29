@@ -142,3 +142,5 @@ export {
   cacheKey,
   contentListDocumentId,
 } from "./embedding-pipeline.js";
+
+export * from "./retention.js";
