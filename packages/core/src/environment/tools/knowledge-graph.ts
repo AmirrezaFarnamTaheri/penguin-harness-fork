@@ -14,7 +14,7 @@
  * The tool never touches anything outside that file — it is read-only with respect to the
  * codebase itself and safe under any approval mode that allows state writes.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
@@ -118,6 +118,18 @@ function storePathFor(workspaceDir: string): string {
   return path.join(workspaceDir, ".penguin", "knowledge", "findings-graph.json");
 }
 
+function canonicalWorkspaceDir(workspaceDir: string): string {
+  const resolved = path.resolve(workspaceDir);
+  try {
+    return realpathSync(resolved);
+  } catch (error) {
+    // A not-yet-created workspace still has a stable lexical identity. Other failures must
+    // surface instead of letting an inaccessible path become a second graph authority.
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolved;
+    throw error;
+  }
+}
+
 function loadGraph(workspaceDir: string): FindingsGraph {
   const cached = graphs.get(workspaceDir);
   if (cached) return cached;
@@ -216,7 +228,8 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
       }
       if (signal?.aborted) return { stopReason: "aborted" };
 
-      const graph = loadGraph(ctx.workspaceDir);
+      const workspaceDir = canonicalWorkspaceDir(ctx.workspaceDir);
+      const graph = loadGraph(workspaceDir);
 
       let text: string;
       try {
@@ -259,7 +272,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
                   }
                 : undefined,
             });
-            saveGraph(ctx.workspaceDir, graph);
+            saveGraph(workspaceDir, graph);
             text = JSON.stringify(
               {
                 merged: result.merged,
@@ -321,7 +334,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               action === "confirm"
                 ? graph.confirm(id, asString(args["note"]))
                 : graph.refute(id, asString(args["note"]));
-            saveGraph(ctx.workspaceDir, graph);
+            saveGraph(workspaceDir, graph);
             text = JSON.stringify({ id: finding.id, status: finding.status }, null, 2);
             break;
           }
@@ -338,7 +351,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               return { stopReason: "fatal" };
             }
             const finding = graph.supersede(id, replacementId, asString(args["note"]));
-            saveGraph(ctx.workspaceDir, graph);
+            saveGraph(workspaceDir, graph);
             text = JSON.stringify(
               { id: finding.id, status: finding.status, supersededBy: finding.supersededBy },
               null,
@@ -359,7 +372,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               return { stopReason: "fatal" };
             }
             graph.link(id, linkId);
-            saveGraph(ctx.workspaceDir, graph);
+            saveGraph(workspaceDir, graph);
             text = JSON.stringify({ linked: [id, linkId] }, null, 2);
             break;
           }

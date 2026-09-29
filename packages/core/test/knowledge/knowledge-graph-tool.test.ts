@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -50,6 +50,27 @@ async function run(
 }
 
 describe("knowledge_graph builtin tool", () => {
+  it("shares one cached graph when the workspace is reached through a symlink", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kg-tool-symlink-"));
+    const workspaceDir = path.join(root, "workspace");
+    const aliasDir = path.join(root, "workspace-alias");
+    mkdirSync(workspaceDir);
+    symlinkSync(workspaceDir, aliasDir, process.platform === "win32" ? "junction" : "dir");
+
+    try {
+      await run({ action: "report", title: "First workspace claim" }, workspaceDir);
+      await run({ action: "report", title: "Second workspace claim" }, aliasDir);
+
+      const queried = await run({ action: "query" }, workspaceDir);
+      const findings = JSON.parse(queried.output) as Array<{ title: string }>;
+      expect(findings.map((finding) => finding.title)).toEqual(
+        expect.arrayContaining(["First workspace claim", "Second workspace claim"]),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("reports with host-attested provenance and queries the claim back", async () => {
     const workspaceDir = mkdtempSync(path.join(tmpdir(), "kg-tool-"));
     const reported = await run(
