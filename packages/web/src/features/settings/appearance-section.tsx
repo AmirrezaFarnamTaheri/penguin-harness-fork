@@ -71,10 +71,18 @@ export function AppearanceSection() {
         <AccentPicker value={accent} onChange={setAccent} />
       </PrefRow>
       <PrefRow label={S.settings.launcher} info={S.settings.launcherInfo}>
-        <Switch checked={launcherShown} onChange={(shown) => writeLauncherHidden(!shown)} />
+        <Switch
+          checked={launcherShown}
+          onChange={(shown) => writeLauncherHidden(!shown)}
+          aria-label={S.settings.launcher}
+        />
       </PrefRow>
       <PrefRow label={S.settings.toolAliases} info={S.settings.toolAliasesInfo}>
-        <Switch checked={toolAliases} onChange={setToolAliases} />
+        <Switch
+          checked={toolAliases}
+          onChange={setToolAliases}
+          aria-label={S.settings.toolAliases}
+        />
       </PrefRow>
     </div>
   );

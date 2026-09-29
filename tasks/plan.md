@@ -76,7 +76,7 @@ experiments until a named user journey, baseline, owner, and stop criterion just
 | Cockpit runtime key coherence (backend F1 core) | **Shipped** — review probed the reap path and found it sound | `packages/server/src/cockpit/ws.ts` |
 | Incremental-cache invalidation ordering | **Shipped** | `incremental-graph-cache.ts` |
 | Multi-select batch delete + e2e (user bug) | **Shipped** (fan-out bound: R9) | `sidebar.tsx` / `selection-bar.tsx` / `e2e/session-select.spec.mjs` |
-| Secondary-ink contrast sweep (web F1) | **Shipped** (full a11y proof: R12) | 29 files |
+| Secondary-ink contrast sweep (web F1) | **Shipped** (R12: zero axe violations, keyboard stops covered; manual-review cases documented) | 29 files |
 | Kernel advance + tool-alias sync (both guards fired) | **Shipped** | `kernel-history.ts` 2026-09-29, `strings-*.ts` |
 | Findings dedupe/supersession/provenance core semantics | **Shipped** (lifecycle truth: R1) | `findings-graph.ts` |
 | Audit adjudication + ledger | **Shipped** (R3 reconciled and moved) | `docs/audits/2026-09-29-unified.md` |
@@ -450,6 +450,17 @@ Playwright keyboard/focus/dark-mode/target-size check; record the results and fi
 pass finds (F-wave leftovers). Acceptance: axe report with zero critical/serious on chat, sidebar,
 settings; every interactive control reachable by keyboard with a visible focus ring. Verification:
 new `e2e/a11y.spec.mjs` + axe run. Files: `packages/web/e2e/a11y.spec.mjs`, fixes as found.
+Status: **Complete.** `docs/audits/web-accessibility-2026-09-30.md` records the exact surfaces,
+results, and remaining Axe manual-review cases. `@axe-core/playwright` 4.13.0 reports zero
+violations across chat/sidebar, system settings, and Agent settings in the tested themes; all
+desktop and mobile Tab stops are reached with visible focus, and the mobile chat/sidebar scan
+passes target-size and overflow checks. The remaining `color-contrast` incomplete cases are a short decorative
+SVG initial and the session timestamp overlapped by the hover-action layer; both are documented,
+and the affected text tokens were manually checked against their rendered theme backgrounds.
+Fixes include missing switch names, low-contrast text, segmented target size, the composer focus
+ring, and fail-fast handling for an unavailable isolated E2E data directory.
+Files: `packages/web/e2e/a11y.spec.mjs`, `packages/web/src/`, `packages/web/e2e/run.sh`,
+`docs/audits/web-accessibility-2026-09-30.md`.
 
 **R13 · PR #12 CI repair and evidence ledger (Node 24)** · S · deps — · src review §8 + live run
 Description: Repair the observed browser failure at `skills.spec.mjs:246` by scoping the

@@ -31,7 +31,7 @@ strategic rows require design/measurement gates before implementation.
 | [x] | **R9** Bounded batch fan-out (8 concurrent) | S | `test/all-settled-bounded.test.ts` + full web suite/typecheck | 200-item batch peaks at 8; ordered all-settled results preserve partial failures |
 | [x] | **R10** Tool-schema token measurement | S | `tools/measure-default-tool-schema.mts` + audit report | direct + lazy payloads measured; two additions cost 1,176 chars/4 estimates (<1,500 threshold); provider tokenizer unavailable and documented |
 | [ ] | **R11** Findings-plane test battery | M | `vitest run test/knowledge` | lifecycle, byte-bound output, durable ack, corruption, stale cache, and separate-scope fixtures; conditional migration suite only if R2d activates |
-| [ ] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + axe | zero critical/serious on chat/sidebar/settings; keyboard-reachable with visible focus |
+| [x] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + [audit report](../docs/audits/web-accessibility-2026-09-30.md) | zero axe violations on covered surfaces; every desktop and mobile stop reached with visible focus; mobile target-size and overflow checks pass; Axe manual-review items documented |
 
 ### Checkpoint R
 - [ ] R13 browser/aggregate CI green on the exact PR head; R14a/b audit paths repaired; Wave-R suites green (`test/knowledge`, `findings-routes`, web)

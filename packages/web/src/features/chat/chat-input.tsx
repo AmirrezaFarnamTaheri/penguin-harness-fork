@@ -2138,7 +2138,7 @@ export function ChatInput({
           // text-base, not the sm rung the form controls take: this is a full-height typing
           // surface for prose the user composes and re-reads, not a field in a form, and the
           // toolbar under it is already text-xs so the two do not compete.
-          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500"
+          className="block max-h-44 min-h-[60px] w-full resize-none bg-transparent px-1 py-0.5 text-base leading-6 placeholder:text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60 dark:placeholder:text-gray-500 dark:focus-visible:ring-gray-400"
         />
 
         {/* Bottom toolbar row — one line, two groups: the settings controls sit left, the
@@ -2236,7 +2236,7 @@ export function ChatInput({
                 space on phones, where the group scrolls instead. */}
             <span
               title={running ? S.chat.runningFooterHint : S.chat.slashHint}
-              className="hidden min-w-0 truncate text-gray-300 @lg:block dark:text-gray-600"
+              className="hidden min-w-0 truncate text-gray-500 @lg:block dark:text-gray-400"
             >
               {running ? S.chat.runningFooterHint : S.chat.slashHint}
             </span>
@@ -2314,7 +2314,7 @@ export function ChatInput({
                 // button's accessible name for assistive tech and name-based test queries.
                 aria-label={`${S.chat.model} ${modelRef?.modelId ?? ""}`}
                 onClick={() => toastInfo(S.chat.modelLockedHint)}
-                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                className="flex h-8 min-w-0 max-w-44 shrink cursor-pointer items-center gap-1.5 rounded-md px-1 text-gray-500 transition-colors duration-150 hover:text-gray-600 dark:text-gray-400 dark:hover:text-gray-300"
               >
                 <ProviderLogo
                   provider={modelRef?.provider ?? "custom"}
