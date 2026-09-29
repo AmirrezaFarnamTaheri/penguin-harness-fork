@@ -226,16 +226,13 @@ corrupt side, concurrent writer, interrupted write, and rollback after one succe
 
 ---
 
-## R3 · Report & governance reconciliation
+## R3 · Report & governance reconciliation — completed
 
-**Steps:** (1) `UNIFIED-AUDIT-AND-IMPLEMENTATION.md` → `docs/audits/2026-09-29-unified.md`, leaving
-a 3-line pointer at the old path (or a README link — pick one, note it in the commit); (2) fix
-Part 5's "unimplemented" line → "shipped (item 11)"; (3) header: replace "No commits made" with
-"landed on PR #12 (7 commits)"; (4) create `docs/policies/porting-and-refusals.md` — the REFUSE
-list + license table from plan §9 verbatim, with a "checked-in policy" preamble; (5) link the
-policy from `tasks/plan.md` §9 and the README's governance section if one exists.
-**Tests:** grep gates — zero matches for `unimplemented` in the report's Part 3/5, zero
-`No commits made`; docs suite green.
+Moved the dated audit to `docs/audits/2026-09-29-unified.md`, kept a short root pointer, and
+reconciled its historical baseline with current branch status. Added the checked-in
+`docs/policies/porting-and-refusals.md` and linked it from the plan and README.
+**Verification:** docs suite 7/7 files and 53/53 tests, docs typecheck, Prettier, and targeted
+contradiction/path/policy-link checks all passed.
 
 ---
 

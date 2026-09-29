@@ -3,7 +3,7 @@
 **Target:** `D:/GitHub/penguin-harness-fork` · **Working branch:** PR #12
 `feat/knowledge-plane-native-tools`; review baseline `fd27e3d3c` (re-check HEAD before execution;
 older commit counts and line numbers are historical snapshots) · **Versioned evidence:**
-`UNIFIED-AUDIT-AND-IMPLEMENTATION.md`, current code/tests, and the
+`docs/audits/2026-09-29-unified.md`, current code/tests, and the
 [PR #12 review and checks](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/12).
 Historical source labels (`cluster-A`–`F`, collage Parts I–V, prior audits) identify the earlier
 investigation, but their source files are not versioned in this checkout. The contracts and
@@ -79,7 +79,7 @@ experiments until a named user journey, baseline, owner, and stop criterion just
 | Secondary-ink contrast sweep (web F1) | **Shipped** (full a11y proof: R12) | 29 files |
 | Kernel advance + tool-alias sync (both guards fired) | **Shipped** | `kernel-history.ts` 2026-09-29, `strings-*.ts` |
 | Findings dedupe/supersession/provenance core semantics | **Shipped** (lifecycle truth: R1) | `findings-graph.ts` |
-| Audit adjudication + ledger | **Shipped** (contradiction cleanup: R3) | `UNIFIED-AUDIT-AND-IMPLEMENTATION.md` |
+| Audit adjudication + ledger | **Shipped** (R3 reconciled and moved) | `docs/audits/2026-09-29-unified.md` |
 
 Local verification already done (Node 26; CI runs Node 24 — R13 records CI's verdict): core 248
 files/4,845 tests, web 205/2,525, docs 53, findings routes 5/5, session-select e2e 6/6, server
@@ -94,7 +94,7 @@ Node 22) are covered by the local runs in §2. Every verdict below lands as a ta
 |---|---|---|---|---|
 | F1 | "Nothing is deleted" invariant false; eviction order comment wrong; no eviction test | **Confirmed** (with the reviewer's correction: `confirmed` sorts last, evicted only after all else) | `findings-graph.ts:14` header vs `:508` comment ("superseded-then-refuted") vs code (`STATUS_RANK` ascending = refuted→superseded→open→confirmed); eviction test grep = 0 hits | R1a |
 | F2 | Two stores; tool cache never invalidated; no lock on tool writes | **Partly confirmed; scopes deliberately separate by default.** Workspace and server project keys may name distinct legitimate authorities. Stale cache, best-effort write acknowledgement, and unlocked tool writes are confirmed defects. Bind or migrate only after authenticated identity mapping. | Tool: `<workspace>/.penguin/knowledge/findings-graph.json`; route: `projectDir(config.root, projectId)/.findings_graph.json`. `ProjectRow` has no workspace-path mapping. | R0,R2a; conditional R2d |
-| F3 | Report self-contradiction (Part 5 "unimplemented" vs Part 3 "DONE"); stale "No commits made"; root placement | **Confirmed** | `UNIFIED-AUDIT-AND-IMPLEMENTATION.md` Part 5 line predates item 11; header stale after the PR | R3 |
+| F3 | Report self-contradiction (Part 5 "unimplemented" vs Part 3 "DONE"); stale "No commits made"; root placement | **Confirmed; resolved by R3** | Dated audit baseline, current branch reconciliation, root pointer, corrected status and canonical policy | R3 |
 | F4 | GET query casts unchecked; `mutate()` maps all engine errors to 400; unused `_c`; duplicated `TIERS`; transitions record no actor | **Confirmed** | `findings.ts:38` TIERS dup of core, `:120-121` casts, `:191/206/221` bare `decodeURIComponent`, `mutate` catch-all `badRequest` | R4 (+R1b for actor) |
 | F5 | "Memory graph DONE" overstated; `strength()` docs vs `createdAt` math | **Confirmed** | `findings-graph.ts:397` computes reinforcement from `createdAt`; `retention.ts` consumers = 0 (grep hits are unrelated modules) | R7 |
 | F6 | PR too big to review/revert cleanly | **Qualified** — keep the coherent PR intact after R13 repair, then use narrow follow-up PRs | PR commit list and `git log --oneline` on the branch | Resolved decision Q1 |
@@ -345,14 +345,13 @@ matrix + tool/route end-to-end restart test.
 Files: store/migration module, server composition, tool wiring, tests, operator docs.
 
 **R3 · Report & governance reconciliation** · S · deps — · src F3
-Description: Fix the contradictions (Part 5 "unimplemented" line → "shipped: item 11"; header
-"No commits made" → the PR state); move the report to `docs/audits/2026-09-29-unified.md` with a
-root pointer line in the old path or a README link; create `docs/policies/porting-and-refusals.md`
-holding the REFUSE list and the license table (so policy is checked in, not report-scoped — the
-review's governance note). Acceptance: ① zero contradictory status claims (grep "unimplemented",
-"No commits made"); ② the policy file exists and the plan/README link it. Verification: docs
-suite + grep. Files: `UNIFIED-AUDIT-AND-IMPLEMENTATION.md` → `docs/audits/…`,
-`docs/policies/porting-and-refusals.md`.
+Description: Reconcile the dated audit snapshot with the current branch without erasing its
+historical baseline; keep a root pointer; make the REFUSE list, source/license constraints, and
+review workflow canonical in `docs/policies/porting-and-refusals.md`; link the policy from this
+plan and README. Acceptance: ① no contradictory status claims in report Parts 3/5 or stale
+"No commits made" header; ② audit is under `docs/audits/`; ③ policy exists and both plan/README
+link it. Verification: docs suite + targeted contradiction/path grep. Files: report, pointer,
+policy, plan, README.
 
 **R4 · Route hygiene** · S · deps R1b · src F4,N12
 Description: GET `kind`/`status` validated through the same `enumField` path as POST (400 on
@@ -875,17 +874,13 @@ a removal date once the rollout proves stable.
 | Release size from wasm grammars | Med | TS/JS lazy pack first; D10 per-language resource gate before D3 expansion |
 | Full server suite local stall (`isolate:false` quirk) | Low | named-file runs; CI split jobs authoritative |
 
-## 9. Constraints — permanent REFUSE list (now `docs/policies/porting-and-refusals.md`, R3)
+## 9. Constraints — permanent REFUSE list and source-transfer policy
 
-No free-api bridges (glm/qwen/gemini/deepseek families), no account/quota rotation, no device-fingerprint
-spoofing, no uTLS/JA3 dialers, no vendor-binary patching, no PoW-WASM, no `.assets/`
-reverse-engineering material, no WAF/prompt-sanitiser stripping. Licenses: Antigravity twins CC
-BY-NC-SA (clean-room from reports only), Budibase core GPLv3 (design-rewrite), dify `web/`
-(modified Apache), tldraw editor (proprietary), mastra `ee/**` + `connect` (ELv2) — ideas only;
-PiX MPL-2.0 — modified files stay open; MIT/Apache-2.0 material keeps its notice. Retention
-constants come from the agentmemory *report descriptions* (clean-room numbers; no upstream source
-code copied). The upstream [LICENSE](https://github.com/rohitg00/agentmemory/blob/main/LICENSE)
-was verified as Apache-2.0 on 2026-09-30; retain that source link with the implementation.
+The canonical hard refusals, license-scope findings, required evidence, and clean-room workflow
+live in [`docs/policies/porting-and-refusals.md`](../docs/policies/porting-and-refusals.md).
+Retention constants come from agentmemory report descriptions (clean-room numbers; no upstream
+source code copied). The upstream [LICENSE](https://github.com/rohitg00/agentmemory/blob/main/LICENSE)
+was verified as Apache-2.0 on 2026-09-30; the implementation records that source link.
 
 ## 10. Ownership and change packaging
 

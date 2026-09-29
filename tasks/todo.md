@@ -22,7 +22,7 @@ strategic rows require design/measurement gates before implementation.
 | [ ] | **R2b** Bounds parity + capacity/recovery path | S | store+route+tool tests | shared field caps; high-water and hard-limit behavior; export possible at capacity; revision cache bounded |
 | [ ] | **R2c** Corruption quarantine + read-only recovery | S | store+route+tool fault tests | corrupt/partial/unsupported file never overwritten by report; raw export, explicit audited reset/restore |
 | [ ] | **R2d** Conditional migration after trusted workspace↔project binding | M | binding proof + migration fixture matrix | deferred under today's model; dry-run conflicts, idempotent apply and byte-exact rollback only after binding exists |
-| [ ] | **R3** Report & governance reconciliation | S | docs suite + grep | zero "unimplemented"/"No commits made" contradictions; report under `docs/audits/`; `docs/policies/porting-and-refusals.md` exists |
+| [x] | **R3** Report & governance reconciliation | S | docs suite + contradiction/path grep | dated report reconciled under `docs/audits/`; root pointer; canonical policy exists and is linked by plan + README |
 | [ ] | **R4** Route hygiene | S | `vitest run test/findings-routes` | GET enums validated (400); engine TypeError → 500; `%zz` → 400; one definition of TIERS; `_c` gone |
 | [ ] | **R5** Revision-aware, byte-bounded output | M | tool/consumer contract tests | stable cursor bound to scope/filter/revision; parseable UTF-8 bounded pages; stale/gap/oversize explicit |
 | [x] | **R6** code_graph resource discipline | S | cache/tool tests + full core suite/typecheck | single-flight scan (20 concurrent → 1 scan); LRU cap 8 with observed closes; TTL refresh closes old only after success; cache stats + watcher boundary documented |
