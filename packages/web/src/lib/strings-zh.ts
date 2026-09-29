@@ -2478,6 +2478,12 @@ Benchmark：
     unarchiveSelected: "取消归档所选",
     batchArchiveFailed: (failed: number, total: number, archived: boolean) =>
       `${total} 个对话中有 ${failed} 个${archived ? "归档" : "取消归档"}失败。失败的对话仍保持选中，可重试。`,
+    /** 批量操作栏：删除全部勾选的对话——先给出写明数量的确认。 */
+    deleteSelected: "删除所选",
+    deleteSelectedConfirm: (n: number) =>
+      `确定永久删除这 ${n} 个对话？其消息与 Trace 将被移除，且不可恢复。`,
+    batchDeleteFailed: (failed: number, total: number) =>
+      `${total} 个对话中有 ${failed} 个删除失败。失败的对话仍保持选中，可重试。`,
     /** 批量操作栏：退出多选，丢弃勾选。 */
     cancelSelection: "取消多选",
     /** 行右键菜单：进入多选并勾选该行（键盘可达的入口；指针入口是 Cmd/Ctrl+点击）。 */

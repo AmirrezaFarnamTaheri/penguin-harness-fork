@@ -2508,6 +2508,12 @@ Scenarios:
     unarchiveSelected: "Unarchive selected",
     batchArchiveFailed: (failed: number, total: number, archived: boolean) =>
       `${failed} of ${total} conversations could not be ${archived ? "archived" : "unarchived"}. Failed conversations remain selected for retry.`,
+    /** Batch bar: delete every marked conversation — one confirmation naming the count first. */
+    deleteSelected: "Delete selected",
+    deleteSelectedConfirm: (n: number) =>
+      `Delete ${n} ${n === 1 ? "chat" : "chats"} permanently? Their messages and Traces will be removed and cannot be recovered.`,
+    batchDeleteFailed: (failed: number, total: number) =>
+      `${failed} of ${total} conversations could not be deleted. Failed conversations remain selected for retry.`,
     /** Batch bar: leave selection mode, dropping the marks. */
     cancelSelection: "Cancel selection",
     /** Row context menu: enter selection mode with this row marked (the keyboard-reachable route; Cmd/Ctrl-click is the pointer one). */

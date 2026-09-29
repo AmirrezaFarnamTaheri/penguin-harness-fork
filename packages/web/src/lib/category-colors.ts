@@ -70,7 +70,7 @@ export const CONTEXT_PART_COLORS: readonly string[] = [
  * Deliberately outside the sequence: it must not read as a fifth category.
  */
 export const NEUTRAL_SERIES: SeriesColor = {
-  text: "text-gray-400 dark:text-gray-500",
+  text: "text-gray-500 dark:text-gray-400",
   swatch: "bg-gray-400 dark:bg-gray-500",
 };
 

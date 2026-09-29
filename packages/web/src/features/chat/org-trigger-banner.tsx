@@ -27,10 +27,10 @@ export function OrgTriggerBanner({ origin }: { origin: OrgTriggerOrigin }) {
         </span>
       )}
       {t.firedAt !== null && (
-        <span className="text-gray-400 dark:text-gray-500">{formatDateTime(t.firedAt)}</span>
+        <span className="text-gray-500 dark:text-gray-400">{formatDateTime(t.firedAt)}</span>
       )}
       {t.budget !== null && (
-        <span className="text-gray-400 dark:text-gray-500">
+        <span className="text-gray-500 dark:text-gray-400">
           {S.chat.orgTriggerBudget(t.budget)}
         </span>
       )}

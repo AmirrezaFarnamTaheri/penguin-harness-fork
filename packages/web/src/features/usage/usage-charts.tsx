@@ -69,7 +69,11 @@ import {
 
 /** Empty state for a chart card (defaults to "no usage records yet"; the errors chart passes its own copy). */
 export function Empty({ text }: { text?: string }) {
-  return <p className="py-6 text-center text-xs text-gray-400">{text ?? S.usage.empty}</p>;
+  return (
+    <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">
+      {text ?? S.usage.empty}
+    </p>
+  );
 }
 
 /** Bucket name copy: S is a runtime live binding (switching language remounts the whole tree), so it must be read at render time and never cached at module scope. */
@@ -285,7 +289,9 @@ export function RequestsChart({
             rightAxis={{ y: rateGeom.y, ticks: [0, 50, 100], fmt: (v) => `${v}%` }}
             bubble={(i) => (
               <>
-                <p className="text-gray-400">{bucketFullLabel(granularity, buckets[i]!)}</p>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {bucketFullLabel(granularity, buckets[i]!)}
+                </p>
                 {drawn.map((e, si) => (
                   <p
                     key={`${e.label}:${si}`}
@@ -577,7 +583,9 @@ export function TokenBarChart({
             );
             return (
               <>
-                <p className="text-gray-400">{bucketFullLabel(granularity, p.bucket)}</p>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {bucketFullLabel(granularity, p.bucket)}
+                </p>
                 {(["cacheRead", "cacheWrite", "output"] as const).map((k) =>
                   bubbleRow(sq(colors[k]), bucketLabel(k), humanizeTokens(p[k]), key === k),
                 )}

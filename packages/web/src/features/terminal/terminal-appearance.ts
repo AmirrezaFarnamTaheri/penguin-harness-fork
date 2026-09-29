@@ -43,12 +43,12 @@ const DARK: TerminalChrome = {
   dark: true,
   surface: "bg-gray-950 text-gray-100",
   border: "border-gray-800",
-  iconButton: "text-gray-400 hover:bg-gray-800 hover:text-gray-200",
+  iconButton: "text-gray-500 dark:text-gray-400 hover:bg-gray-800 hover:text-gray-200",
   grip: "text-gray-600",
   tabActive: "bg-gray-800 text-gray-100",
-  tabIdle: "text-gray-400 hover:bg-gray-800 hover:text-gray-200",
+  tabIdle: "text-gray-500 dark:text-gray-400 hover:bg-gray-800 hover:text-gray-200",
   tabKill: "bg-gray-800 hover:bg-gray-700",
-  muted: "text-gray-400",
+  muted: "text-gray-500 dark:text-gray-400",
   // The dark halves of the shared status tones (lib/tone.ts); they cannot be written as
   // `dark:` pairs here for the reason in the file header.
   success: "text-emerald-400",

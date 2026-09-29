@@ -366,7 +366,9 @@ export function ModelsKeyPools({
             <div className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1 tabular-nums">
               {summaryStats.totalKeys}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">Across all models</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Across all models
+            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200/80 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-3">
@@ -378,7 +380,7 @@ export function ModelsKeyPools({
                 ? `${Math.round((summaryStats.healthyCount / summaryStats.totalKeys) * 100)}%`
                 : "100%"}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
               {summaryStats.healthyCount}/{summaryStats.totalKeys} active
             </div>
           </div>
@@ -396,7 +398,9 @@ export function ModelsKeyPools({
             >
               {summaryStats.cooldownCount}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">Backoff active</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Backoff active
+            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200/80 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-3">
@@ -412,7 +416,9 @@ export function ModelsKeyPools({
             >
               {summaryStats.evictedCount}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">Expired / invalid</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Expired / invalid
+            </div>
           </div>
 
           <div className="rounded-lg border border-gray-200/80 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/20 p-3">
@@ -422,7 +428,7 @@ export function ModelsKeyPools({
             <div className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1 tabular-nums">
               {summaryStats.successRate.toFixed(1)}%
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
               {summaryStats.totalSuccesses} ok / {summaryStats.totalFailures} err
             </div>
           </div>
@@ -434,7 +440,9 @@ export function ModelsKeyPools({
             <div className="text-xl font-bold text-blue-600 dark:text-blue-400 mt-1 tabular-nums">
               {summaryStats.totalLeases}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">In-flight requests</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+              In-flight requests
+            </div>
           </div>
         </div>
       </div>
@@ -543,7 +551,7 @@ export function ModelsKeyPools({
                         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                           {name}
                         </span>
-                        <span className="font-mono text-xs text-gray-400 dark:text-gray-500">
+                        <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
                           {row.modelId}
                         </span>
                         {inCooldown && (
@@ -588,7 +596,7 @@ export function ModelsKeyPools({
                 {/* Keys Breakdown */}
                 <div className="pt-3">
                   {!hasKeys && !hasRotator ? (
-                    <div className="text-xs text-gray-400 dark:text-gray-500 italic py-1">
+                    <div className="text-xs text-gray-500 dark:text-gray-400 italic py-1">
                       {S.models.noKeysConfigured}
                     </div>
                   ) : hasRotator ? (
@@ -723,7 +731,7 @@ export function ModelsKeyPools({
                                 </div>
                               )}
 
-                              <div className="flex items-center justify-between text-gray-400 text-[10px] pt-1 border-t border-gray-100 dark:border-gray-800/40">
+                              <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-[10px] pt-1 border-t border-gray-100 dark:border-gray-800/40">
                                 <span>{S.models.lastUsed}</span>
                                 <span>
                                   {k.lastUsedAt
@@ -759,7 +767,9 @@ export function ModelsKeyPools({
                         </div>
                         <Badge tone="green">{S.models.keyHealthActive}</Badge>
                       </div>
-                      <div className="mt-1 text-[11px] text-gray-400">Single Key Configured</div>
+                      <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        Single Key Configured
+                      </div>
                     </div>
                   )}
                 </div>

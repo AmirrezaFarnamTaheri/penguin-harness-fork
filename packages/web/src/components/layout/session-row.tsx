@@ -259,7 +259,7 @@ function SessionRowInner({
               active
                 ? "font-medium text-gray-900 dark:text-gray-100"
                 : s.archived
-                  ? "text-gray-400 dark:text-gray-500"
+                  ? "text-gray-500 dark:text-gray-400"
                   : "text-gray-700 dark:text-gray-300"
             }`}
           />

@@ -274,12 +274,12 @@ const headerControlClass = (active: boolean) =>
   `flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150 ${
     active
       ? "bg-gray-200/70 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
-      : "text-gray-400 hover:bg-gray-200/50 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800/70 dark:hover:text-gray-300"
+      : "text-gray-500 hover:bg-gray-200/50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-300"
   }`;
 
 /** Muted section label inside the list-settings menu (Grouping / Sorting), at the overflow menus' density. */
 const menuSectionClass =
-  "px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500";
+  "px-2.5 pb-0.5 pt-1.5 text-[11px] font-medium text-gray-500 dark:text-gray-400";
 
 /**
  * Collapsed-group and pinned-group persistence (survives a refresh), one storage key
@@ -457,6 +457,16 @@ export function Sidebar({
    */
   const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
   const [selectionMode, setSelectionMode] = useState(false);
+  /**
+   * The marks, mirrored for handlers that must keep their identity (see the row-handler note
+   * below): a memoised row holds the first closure it was given, so a handler that closed
+   * over `selection` would act on the marks as they were when the row mounted. Synced after
+   * commit — which is the first moment a click can observe them anyway.
+   */
+  const selectionRef = useRef(selection);
+  useEffect(() => {
+    selectionRef.current = selection;
+  });
   const batchArchiveBusy = useRef(false);
   /** The scroll area, so the selection can ask the DOM which rows are on screen and in what order. */
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -537,6 +547,9 @@ export function Sidebar({
   /** Session pending delete confirmation (null = none). */
   const [deletingSession, setDeletingSession] = useState<SessionInfo | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
+  /** Batch delete: the marked ids one confirmation will remove (null = the dialog is closed). */
+  const [deletingMany, setDeletingMany] = useState<readonly string[] | null>(null);
+  const batchDeleteBusy = useRef(false);
   /** Parked draft conversation pending delete confirmation (null = none). */
   const [deletingDraft, setDeletingDraft] = useState<DraftSessionEntry | null>(null);
   /** Parked draft conversations of this user × Project, newest first (reactive module store). */
@@ -1196,6 +1209,81 @@ export function Sidebar({
     }
   };
 
+  /**
+   * Batch delete over the marked rows: one confirmation naming the count, then the per-id
+   * delete route fanned out — the same rationale as batchArchive (each request re-checks
+   * project access on the server, and one conversation failing does not roll back the
+   * others). The cleanup the single path does per row (store tombstone, draft, pin, manual
+   * order) is done once over the ids that actually went.
+   */
+  const confirmBatchDelete = async () => {
+    if (deletingMany === null || batchDeleteBusy.current) return;
+    const ids = [...deletingMany];
+    if (ids.length === 0) {
+      setDeletingMany(null);
+      return;
+    }
+    batchDeleteBusy.current = true;
+    setDeletingBusy(true);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => api.deleteSession(id)));
+      const succeeded = new Set<string>();
+      for (const [index, result] of results.entries()) {
+        if (result.status !== "fulfilled") continue;
+        const id = ids[index];
+        if (id !== undefined) succeeded.add(id);
+      }
+      let prunedPins = pinnedSessions;
+      let prunedOrder = sessionOrder;
+      for (const id of succeeded) {
+        // remove() also tombstones the id (see the store's isDeleted), which is what keeps
+        // the chat page from re-fetching a Session it is still routed at — same reason as
+        // the single-row path.
+        remove(id);
+        if (user) clearDraft(sessionDraftKey(user.userId, id));
+        forgetSession(currentProjectId, id);
+        prunedPins = removePinnedSession(prunedPins, id);
+        prunedOrder = removeFromSessionOrder(prunedOrder, id);
+      }
+      if (prunedPins !== pinnedSessions) {
+        setPinnedSessions(prunedPins);
+        savePinnedSessions(currentProjectId, prunedPins);
+      }
+      if (prunedOrder !== sessionOrder) {
+        setSessionOrder(prunedOrder);
+        saveSessionOrder(currentProjectId, groupMode, prunedOrder);
+      }
+      const failed = ids.length - succeeded.size;
+      if (failed > 0) {
+        // Keep the rows that failed marked for retry, including new marks made while the
+        // requests ran (same contract as batchArchive).
+        setSelection((prev) => ({
+          selected: new Set([...prev.selected].filter((id) => !succeeded.has(id))),
+          anchor: null,
+        }));
+        toastError(S.chat.batchDeleteFailed(failed, ids.length));
+      } else {
+        clearSelection();
+      }
+      setDeletingMany(null);
+      // The chat that was open went with the batch: jump to that Agent's next conversation,
+      // else the chat home page (the single-row delete's fallback).
+      if (activeSessionId !== null && succeeded.has(activeSessionId)) {
+        const open = sessions.find((x) => x.sessionId === activeSessionId);
+        const rest = (open ? (byAgent.get(open.agentId) ?? []) : []).filter((s) => {
+          const category = sessionCategory(s);
+          return !succeeded.has(s.sessionId) && (category === "active" || category === "schedule");
+        });
+        navigate(rest[0] ? `/chat/${rest[0].sessionId}` : "/chat");
+      }
+    } catch (e) {
+      toastError(apiErrorText(e));
+    } finally {
+      batchDeleteBusy.current = false;
+      setDeletingBusy(false);
+    }
+  };
+
   const go = (to: string) => {
     navigate(to);
     onNavigate?.();
@@ -1442,7 +1530,17 @@ export function Sidebar({
     setRenamingSession(x);
   }, []);
   const onMessagingRow = useCallback((x: SessionInfo) => setMessagingSession(x), []);
-  const onDeleteRow = useCallback((x: SessionInfo) => setDeletingSession(x), []);
+  const onDeleteRow = useCallback((x: SessionInfo) => {
+    // With two or more rows marked, Delete deletes the MARKED rows — the same contract the
+    // batch bar's other actions follow; a row's menu is just where the click landed. The
+    // marks are read through the ref so this handler keeps its identity (see above).
+    const marked = selectedInOrder(selectionRef.current, visibleSessionIds());
+    if (marked.length > 1 && marked.includes(x.sessionId)) {
+      setDeletingMany(marked);
+      return;
+    }
+    setDeletingSession(x);
+  }, []);
   const onToggleArchiveRow = useCallback(
     (x: SessionInfo) => void toggleArchive(x),
     [toggleArchive],
@@ -1877,7 +1975,7 @@ export function Sidebar({
             title={S.nav.collapseSidebar}
             aria-label={S.nav.collapseSidebar}
             onClick={onCollapse}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
           >
             <Icon d="M15 6l-6 6 6 6M4 4v16" size={18} />
           </button>
@@ -2095,7 +2193,7 @@ export function Sidebar({
               }`}
             >
               <span
-                className={`min-w-0 overflow-hidden whitespace-nowrap px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 transition-opacity duration-200 dark:text-gray-500 ${
+                className={`min-w-0 overflow-hidden whitespace-nowrap px-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 transition-opacity duration-200 dark:text-gray-400 ${
                   searchOpen ? "opacity-0" : "opacity-100"
                 }`}
               >
@@ -2123,7 +2221,7 @@ export function Sidebar({
                           closeSearch();
                         }
                       }}
-                      className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500"
+                      className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 placeholder:text-gray-500 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-400"
                     />
                     <button
                       type="button"
@@ -2292,6 +2390,7 @@ export function Sidebar({
                 onUnpin={() => batchPin(false)}
                 onArchive={() => void batchArchive(true)}
                 onUnarchive={() => void batchArchive(false)}
+                onDelete={() => setDeletingMany(selectedIds())}
                 onClear={clearSelection}
               />
             )}
@@ -2305,7 +2404,7 @@ export function Sidebar({
                   open={searching || !collapsedGroups.has(DRAFTS_GROUP_KEY)}
                   onToggle={() => toggleGroup(DRAFTS_GROUP_KEY)}
                   icon={
-                    <span className="shrink-0 text-gray-400 dark:text-gray-500">
+                    <span className="shrink-0 text-gray-500 dark:text-gray-400">
                       <Icon d={NEW_CHAT_ICON} size={ICON_SIZE.groupHeaderGlyph} />
                     </span>
                   }
@@ -2372,7 +2471,7 @@ export function Sidebar({
                               title={S.chat.newSessionMenu}
                               aria-label={S.chat.newSessionMenu}
                               onClick={() => newChat(agent.agentId)}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                             >
                               <Icon d="M12 5v14M5 12h14" size={ICON_SIZE.groupHeaderAction} />
                             </button>
@@ -2380,7 +2479,7 @@ export function Sidebar({
                               type="button"
                               title={S.agent.settings}
                               onClick={() => go(`/agents/${agent.agentId}`)}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                             >
                               <Icon d={GEAR_ICON} size={ICON_SIZE.groupHeaderAction} />
                             </button>
@@ -2436,7 +2535,7 @@ export function Sidebar({
                       onToggle={() => toggleGroup(group.key)}
                       icon={
                         /* Folder opens and closes with the group */
-                        <span className="shrink-0 text-gray-400 dark:text-gray-500">
+                        <span className="shrink-0 text-gray-500 dark:text-gray-400">
                           <Icon
                             d={collapsed ? FOLDER_ICON : FOLDER_OPEN_ICON}
                             size={ICON_SIZE.groupHeaderGlyph}
@@ -2459,7 +2558,7 @@ export function Sidebar({
                             title={S.chat.newSessionInWorkspace}
                             aria-label={S.chat.newSessionInWorkspace}
                             onClick={() => newChat(workspaceNewChatAgentId, group.fullPath ?? "")}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
                           >
                             <Icon d="M12 5v14M5 12h14" size={ICON_SIZE.groupHeaderAction} />
                           </button>
@@ -2511,7 +2610,7 @@ export function Sidebar({
                         open={!collapsed}
                         onToggle={() => toggleGroup(group.key)}
                         icon={
-                          <span className="shrink-0 text-gray-400 dark:text-gray-500">
+                          <span className="shrink-0 text-gray-500 dark:text-gray-400">
                             <Icon d={GROUP_MODE_ICONS.time} size={ICON_SIZE.groupHeaderGlyph} />
                           </span>
                         }
@@ -2601,7 +2700,7 @@ export function Sidebar({
               </span>
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{user?.userId}</span>
               {user?.isAdmin && (
-                <span className="text-xs text-gray-400 dark:text-gray-500">{S.auth.admin}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{S.auth.admin}</span>
               )}
             </button>
           )}
@@ -2725,6 +2824,21 @@ export function Sidebar({
           {deletingSession
             ? S.chat.deleteSessionConfirm(deletingSession.title ?? S.chat.defaultSessionTitle)
             : ""}
+        </p>
+      </ConfirmModal>
+
+      {/* Batch delete confirmation: one dialog naming the count. Opened from the batch bar's
+          Delete, or from a marked row's own delete — the marks decide the scope. */}
+      <ConfirmModal
+        open={deletingMany !== null}
+        title={S.chat.deleteSelected}
+        confirmLabel={S.common.delete}
+        busy={deletingBusy}
+        onClose={() => (deletingBusy ? undefined : setDeletingMany(null))}
+        onConfirm={() => void confirmBatchDelete()}
+      >
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {deletingMany ? S.chat.deleteSelectedConfirm(deletingMany.length) : ""}
         </p>
       </ConfirmModal>
 

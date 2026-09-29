@@ -19,7 +19,7 @@ export function HarnessInjectedBanner({ text }: { text: string }) {
     <div className={DISCLOSURE_CARD_CLASS}>
       <DisclosureRow
         variant="header"
-        icon={<GlyphIcon d={HOOK_ICON} size={14} className="text-gray-400 dark:text-gray-500" />}
+        icon={<GlyphIcon d={HOOK_ICON} size={14} className="text-gray-500 dark:text-gray-400" />}
         label={S.chat.harnessInjected}
       >
         <pre className={DISCLOSURE_OUTPUT_PRE_CLASS}>{text}</pre>
