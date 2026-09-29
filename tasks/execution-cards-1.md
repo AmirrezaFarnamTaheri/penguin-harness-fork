@@ -395,6 +395,30 @@ targeted rerun alone does not close R13. CI Node = 24; local runs recorded in th
 
 ---
 
+## R14a · Electron high-severity repair
+
+**Evidence:** current lockfile resolves desktop `electron@43.2.0`; the 2026-09-29 audit reports
+four high advisories, with the strictest patched floor at 43.5.0. Update the desktop manifest
+and lockfile to a supported 43.x version at or above that floor. Inspect the lockfile diff for
+unexpected runtime changes. Test desktop launch, server utility process, same-origin window,
+installer and packaged binaries on Windows/macOS/Linux. **Negative case:** a manifest change
+that leaves the bundled binary at 43.2.0 fails the release gate. **Rollback:** ship the previous
+release artifact; never republish a known vulnerable binary as a successful upgrade.
+
+---
+
+## R14b · Undici runtime and build-chain repair
+
+**Evidence:** audit JSON reports runtime `undici@7.29.0` and transitive desktop build-chain
+`undici@6.28.0` against the same decompression advisory. Update the server range/resolution to
+≥7.29.1 and the builder chain to ≥6.28.1 with the narrowest compatible change. Review both
+paths in `pnpm audit --json`; a single clean runtime path is insufficient. Run server
+WebSocket/HTTP tests and desktop package smoke. **Negative case:** a broad override that forces
+7.x into the 6.x chain fails compatibility review. **Rollback:** revert the dependency update
+and block release until a compatible patched path is available.
+
+---
+
 ## Wave 1 cards
 
 ### A2 · FailureStatusTracker + error taxonomy triple
