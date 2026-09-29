@@ -2443,6 +2443,8 @@ Benchmark：
       input_subagent: "交流",
       environment_info: "环境",
       resource_pressure: "资源",
+      knowledge_graph: "知识",
+      code_graph: "图谱",
     } as Record<string, string>,
     workRunning: "运行中",
     workDone: "运行完毕",

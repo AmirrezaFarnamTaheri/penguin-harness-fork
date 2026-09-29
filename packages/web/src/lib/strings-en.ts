@@ -2471,6 +2471,8 @@ Scenarios:
       input_subagent: "communicate",
       environment_info: "environment",
       resource_pressure: "resources",
+      knowledge_graph: "findings",
+      code_graph: "graph",
     } as Record<string, string>,
     workRunning: "Running",
     workDone: "Done",
