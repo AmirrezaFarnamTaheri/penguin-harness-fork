@@ -1,12 +1,14 @@
 # Implementation Plan: Absorption & Hardening Master Plan (v3)
 
 **Target:** `D:/GitHub/penguin-harness-fork` · **Working branch:** PR #12
-`feat/knowledge-plane-native-tools` at `fd27e3d3c` (re-check HEAD before execution; commit counts
-and line numbers in older reports are historical snapshots) · **Sources:** `Unified Report
-Multi-Agent Collage.txt` (Parts I–V),
-`absorb/reports/cluster-{A–F}.md` + per-repo sections, `UNIFIED-AUDIT-AND-IMPLEMENTATION.md`,
-the four adjudicated prior audits, and the **PR #12 external review (2026-09-29)** — adjudicated
-in §3 and absorbed as Wave R.
+`feat/knowledge-plane-native-tools`; review baseline `fd27e3d3c` (re-check HEAD before execution;
+older commit counts and line numbers are historical snapshots) · **Versioned evidence:**
+`UNIFIED-AUDIT-AND-IMPLEMENTATION.md`, current code/tests, and the
+[PR #12 review and checks](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/12).
+Historical source labels (`cluster-A`–`F`, collage Parts I–V, prior audits) identify the earlier
+investigation, but their source files are not versioned in this checkout. The contracts and
+acceptance criteria here and in the execution cards are self-contained; an implementation must
+verify any historical assertion against current code before changing behavior.
 
 **Live release gate, 2026-09-29:** PR #12 is **red**, not merge-ready. CI run
 [`36563549648`](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/36563549648)
@@ -92,7 +94,7 @@ Node 22) are covered by the local runs in §2. Every verdict below lands as a ta
 | F3 | Report self-contradiction (Part 5 "unimplemented" vs Part 3 "DONE"); stale "No commits made"; root placement | **Confirmed** | `UNIFIED-AUDIT-AND-IMPLEMENTATION.md` Part 5 line predates item 11; header stale after the PR | R3 |
 | F4 | GET query casts unchecked; `mutate()` maps all engine errors to 400; unused `_c`; duplicated `TIERS`; transitions record no actor | **Confirmed** | `findings.ts:38` TIERS dup of core, `:120-121` casts, `:191/206/221` bare `decodeURIComponent`, `mutate` catch-all `badRequest` | R4 (+R1b for actor) |
 | F5 | "Memory graph DONE" overstated; `strength()` docs vs `createdAt` math | **Confirmed** | `findings-graph.ts:397` computes reinforcement from `createdAt`; `retention.ts` consumers = 0 (grep hits are unrelated modules) | R7 |
-| F6 | PR too big to review/revert cleanly | **Qualified** — 7 logically separated commits, each revertable; keep current PR intact after R13 repair | `git log --oneline` on the branch | Resolved decision Q1 |
+| F6 | PR too big to review/revert cleanly | **Qualified** — keep the coherent PR intact after R13 repair, then use narrow follow-up PRs | PR commit list and `git log --oneline` on the branch | Resolved decision Q1 |
 | F7 | Default tool schemas: token cost unmeasured; frozen agents need kernel path | **Confirmed as measurement gap** (frozen-config behavior already documented in tools docs) | `default-config.ts` additions; docs note | R10 |
 | N1 | Eviction leaves dangling `related`/`supersededBy` refs | **Confirmed** | `evictIfNeeded` deletes map entries without pruning survivors | R1a |
 | N2 | Supersession cycles allowed; replacement liveness unchecked | **Confirmed** | `findings-graph.ts:309` guards only `id === replacementId` | R1c |
