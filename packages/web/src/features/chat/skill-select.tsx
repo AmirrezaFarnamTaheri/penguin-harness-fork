@@ -60,7 +60,10 @@ export function SkillSelect({
           <span className="hidden min-w-0 truncate @md:block">{S.chat.skillsSelect}</span>
           {/* Selected-count badge (the chip row above the input mirrors the selection too). */}
           {selected.length > 0 && (
-            <span className="shrink-0 rounded-full bg-gray-200/80 px-1.5 py-px font-mono text-[10px] font-semibold text-gray-700 dark:bg-gray-700/60 dark:text-gray-200">
+            <span
+              data-testid="selected-skills-count"
+              className="shrink-0 rounded-full bg-gray-200/80 px-1.5 py-px font-mono text-[10px] font-semibold text-gray-700 dark:bg-gray-700/60 dark:text-gray-200"
+            >
               {selected.length}
             </span>
           )}
