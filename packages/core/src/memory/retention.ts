@@ -1,10 +1,18 @@
 /**
- * Retention & consolidation policy for memory records — the memory-graph half of the
- * knowledge plane.
+ * Experimental retention and consolidation policy for memory records.
+ *
+ * Repository status: exported by `memory/index.ts`, but currently has no production call sites
+ * in this repository. `retention.test.ts` tests these pure helpers; `RecallStore` has its own
+ * independent age/count/token bounds, and `FindingsGraph` does not use this module. No scheduled
+ * runner or persistence integration applies these decay, promotion, or eviction rules. Keep
+ * this policy opt-in until a recall/storage baseline and an explicit integration owner exist.
  *
  * Constants and semantics are taken from the agentmemory lifecycle investigation
  * (absorb/reports/agentmemory-lifecycle.md + agentmemory-graph-search.md), which shipped the
  * benchmark-backed numbers rather than guesses:
+ * - Upstream source: https://github.com/rohitg00/agentmemory; its LICENSE declares Apache-2.0
+ *   (verified 2026-09-30). This module is an independent implementation of reported formulas,
+ *   not copied upstream source.
  * - strength at read: `min(1, salience · e^(-λ·days) + σ · Σ 1/daysSinceAccess)` with λ=0.01/day,
  *   σ=0.3 (access reinforcement, diminishing per access);
  * - storage decay: ×0.9 per 30 idle days, floored at 0.1, and ONLY rows whose strength actually
@@ -14,7 +22,7 @@
  *   promote procedural ones.
  *
  * Everything here is pure: given records and a clock, it computes. Persistence and I/O are the
- * caller's concern (FindingsGraph, the memory store, or a server service).
+ * caller's concern; there is no in-repository production caller today.
  */
 
 /** A memory record this policy scores. Mirrors agentmemory's strength-bearing rows. */

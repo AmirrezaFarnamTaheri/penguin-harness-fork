@@ -1,0 +1,54 @@
+{
+  "now": 1760000000000,
+  "halfLifeMs": 3600000,
+  "query": "postgres connection pool",
+  "events": [
+    {
+      "id": "postgres-new",
+      "category": "user",
+      "type": "message",
+      "data": "Postgres connections recovered after pool retry.",
+      "severity": "info",
+      "ageMs": 180000
+    },
+    {
+      "id": "postgres-failover",
+      "category": "tool",
+      "type": "failure",
+      "data": "Postgres failover recovered; connection pool stable after retry.",
+      "severity": "error",
+      "ageMs": 1200000
+    },
+    {
+      "id": "postgres-history",
+      "category": "user",
+      "type": "message",
+      "data": "Postgres pool reached capacity; connections stalled during migration.",
+      "severity": "warning",
+      "ageMs": 3600000
+    },
+    {
+      "id": "redis",
+      "category": "tool",
+      "type": "result",
+      "data": "Redis cache warmed after failover; no database incident was detected.",
+      "severity": "info",
+      "ageMs": 2400000
+    },
+    {
+      "id": "frontend",
+      "category": "assistant",
+      "type": "message",
+      "data": "Frontend route cache invalidated after deployment.",
+      "severity": "info",
+      "ageMs": 3540000
+    }
+  ],
+  "expected": [
+    { "id": "postgres-new", "score": 0.06037102055780285 },
+    { "id": "postgres-failover", "score": 0.03720471215550468 },
+    { "id": "postgres-history", "score": 0.021739130434782608 }
+  ],
+  "retainedCount": 5,
+  "retainedTokens": 77
+}

@@ -13,9 +13,10 @@
  *    one claim collapse); near-misses below the threshold are linked, never merged.
  * 2. **Nothing is deleted.** A refuted or outdated claim is marked and chained to its
  *    replacement (`supersededBy`). History is the point.
- * 3. **Strength decays at read time.** `strength(finding, now)` = confidence-weighted base
- *    decayed exponentially since `updatedAt`, reinforced by access recency. Storing decayed
- *    values would rewrite history on every read.
+ * 3. **Strength is a read-only display score.** `strength(finding, now)` combines a
+ *    confidence-weighted base decayed since `updatedAt` with an additive term decayed by age
+ *    since `createdAt`. That second term is a creation-age heuristic, not access tracking. The
+ *    score does not control query order or eviction, and storing it would rewrite history.
  * 4. **Accounting is replace-by-source.** Each reporter's evidence and note are kept under its
  *    own source slot; a second report from the same source replaces it instead of appending.
  * 5. **Every mutation appends to the event log** (bounded), so a consumer can ask "what
@@ -48,7 +49,7 @@ export interface FindingsGraphOptions {
   now?: () => number;
   /** Exponential decay rate per day (agentmemory used 0.01). */
   decayPerDay?: number;
-  /** Weight of the access-recency reinforcement term (agentmemory used 0.3). */
+  /** Weight of the legacy-named creation-age additive term in strength() (default 0.3). */
   accessReinforcement?: number;
   /** Jaccard threshold above which two reports are the same claim (agentmemory: 0.7). */
   mergeJaccard?: number;
@@ -385,18 +386,18 @@ export class FindingsGraph {
   }
 
   /**
-   * Decayed strength in [0, 1] at read time: confidence-weighted base decayed exponentially
-   * since the last update, reinforced by access recency. This is the retention score from
-   * the agentmemory reference (`salience · e^(-λd) + σ · Σ 1/daysSinceAccess`), simplified to
-   * the last-access term because this graph does not yet track access counts.
+   * Read-only display score in [0, 1]: confidence-weighted base decayed exponentially since
+   * `updatedAt`, plus `accessReinforcement / (1 + ageDaysSinceCreated)`. Despite the option's
+   * legacy name, the additive term uses `createdAt`; this graph does not track access events.
+   * The score is returned by the tool but does not affect query ordering or retention/eviction.
    */
   strength(id: string, at: number = this.now()): number {
     const finding = this.require(id);
     const ageDays = Math.max(0, (at - finding.updatedAt) / DAY_MS);
     const base = CONFIDENCE_WEIGHT[finding.confidence] * Math.exp(-this.decayPerDay * ageDays);
-    const accessDays = Math.max(0, (at - finding.createdAt) / DAY_MS);
-    const reinforcement = this.accessReinforcement / (1 + accessDays);
-    return Math.min(1, base + reinforcement);
+    const ageDaysSinceCreated = Math.max(0, (at - finding.createdAt) / DAY_MS);
+    const creationAgeTerm = this.accessReinforcement / (1 + ageDaysSinceCreated);
+    return Math.min(1, base + creationAgeTerm);
   }
 
   /** Events since a sequence number (0 = everything), for consumers that replay changes. */

@@ -26,7 +26,7 @@ strategic rows require design/measurement gates before implementation.
 | [ ] | **R4** Route hygiene | S | `vitest run test/findings-routes` | GET enums validated (400); engine TypeError → 500; `%zz` → 400; one definition of TIERS; `_c` gone |
 | [ ] | **R5** Revision-aware, byte-bounded output | M | tool/consumer contract tests | stable cursor bound to scope/filter/revision; parseable UTF-8 bounded pages; stale/gap/oversize explicit |
 | [x] | **R6** code_graph resource discipline | S | cache/tool tests + full core suite/typecheck | single-flight scan (20 concurrent → 1 scan); LRU cap 8 with observed closes; TTL refresh closes old only after success; cache stats + watcher boundary documented |
-| [ ] | **R7** Memory-plane honesty (Option B selected) | S | core memory tests + fixture run | experimental/unconsumed label; `strength()` docs match creation-recency math; default behavior unchanged |
+| [x] | **R7** Memory-plane honesty (Option B selected) | S | core memory/findings tests + frozen recall fixture | retention module is exported but has no in-repo production callers; strength formula documents/tests createdAt term; frozen RecallStore ranking/tokens; no new eviction behavior |
 | [ ] | **R8** Accurate provenance on read-back | S | tool/route tests + docs | author inferred from trusted event, legacy unknown, free-form source cannot impersonate user |
 | [x] | **R9** Bounded batch fan-out (8 concurrent) | S | `test/all-settled-bounded.test.ts` + full web suite/typecheck | 200-item batch peaks at 8; ordered all-settled results preserve partial failures |
 | [ ] | **R10** Tool-schema token measurement | S | `tools/measure-*` run | measured table in docs; >1,500 tokens → trimmed or justified |

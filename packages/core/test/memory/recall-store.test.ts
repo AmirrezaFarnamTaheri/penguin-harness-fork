@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
   type RecallEvent,
+  type RecallEventSeverity,
   type RecallQueryOptions,
   RecallStore,
   recallScore,
@@ -9,7 +11,52 @@ import {
 
 const HOUR_MS = 60 * 60 * 1000;
 
+interface RecallBaselineFixture {
+  now: number;
+  halfLifeMs: number;
+  query: string;
+  events: Array<{
+    id: string;
+    category: string;
+    type: string;
+    data: string;
+    severity: RecallEventSeverity;
+    ageMs: number;
+  }>;
+  expected: Array<{ id: string; score: number }>;
+  retainedCount: number;
+  retainedTokens: number;
+}
+
+const recallBaseline = JSON.parse(
+  readFileSync(new URL("./recall-baseline.fixture.json", import.meta.url), "utf8"),
+) as RecallBaselineFixture;
+
 describe("recall-store", () => {
+  it("matches the frozen recall ranking and retained-window baseline", async () => {
+    const store = new RecallStore({ halfLifeMs: recallBaseline.halfLifeMs });
+    for (const event of recallBaseline.events) {
+      await store.record(
+        event.id,
+        event.category,
+        event.type,
+        event.data,
+        event.severity,
+        recallBaseline.now - event.ageMs,
+      );
+    }
+
+    const results = await store.query(recallBaseline.query, {}, recallBaseline.now);
+    expect(results.map((event) => event.id)).toEqual(
+      recallBaseline.expected.map((event) => event.id),
+    );
+    results.forEach((event, index) => {
+      expect(event.score).toBeCloseTo(recallBaseline.expected[index]!.score, 12);
+    });
+    expect(store.size()).toBe(recallBaseline.retainedCount);
+    expect(store.tokens()).toBe(recallBaseline.retainedTokens);
+  });
+
   describe("recallScore", () => {
     it("is zero for no query terms and for no match", () => {
       const event: RecallEvent = {

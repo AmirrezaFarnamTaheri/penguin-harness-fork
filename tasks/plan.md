@@ -70,7 +70,7 @@ experiments until a named user journey, baseline, owner, and stop criterion just
 | Item (OG naming) | State | Where |
 |---|---|---|
 | Findings knowledge graph + agent reporting (mission 1) | **Shipped** (hardening: Wave R) | `packages/core/src/knowledge/`, `knowledge_graph` tool, `/api/projects/:id/findings/*` |
-| Memory retention/decay/consolidation **policy module** | **Shipped as unconsumed library** — see R7 before calling memory "done" | `packages/core/src/memory/retention.ts` |
+| Memory retention/decay/consolidation **policy module** | **Experimental, exported, and unconsumed by in-repo production code** — distinct from `RecallStore`'s active age/count/token bounds; see R7 | `packages/core/src/memory/retention.ts`, `memory/index.ts` |
 | AST substrate: IR + FQN + `entityIdOf` + parser pool (cluster-D §7 core) | **Shipped** (needs D1–D4 + benchmark before promotion) | `packages/core/src/codegraph/ast/` |
 | Native code intelligence tool | **Shipped** (resource discipline: R6) | `code_graph` tool |
 | Cockpit runtime key coherence (backend F1 core) | **Shipped** — review probed the reap path and found it sound | `packages/server/src/cockpit/ws.ts` |
@@ -392,11 +392,14 @@ English and Chinese tool docs.
 
 **R7 · Memory-plane honesty (Option B now)** · S · deps — · src F5,N9
 Description: Mark `retention.ts` experimental/unconsumed and correct `FindingsGraph.strength()`
-to describe its creation-recency calculation. Do not wire new eviction behavior in Wave R.
-Record the current consumer inventory and a baseline recall fixture so C2 can decide whether
-an opt-in integration merits a later slice. Acceptance: docs, math, and tests agree; the status
-ledger says unconsumed; no default eviction changes. Verification: core memory tests + frozen
-recall fixture. Files: retention, findings graph, docs.
+to describe its creation-age calculation. Do not wire new eviction behavior in Wave R. Record
+the consumer inventory: `memory/index.ts` re-exports the helpers, `retention.test.ts` exercises
+them, and no in-repository production code calls them; `RecallStore` has separate active bounds.
+Freeze the current recall ranking and retained-window accounting in
+`test/memory/recall-baseline.fixture.json` for C2. Acceptance: docs, formula, and tests agree;
+the status ledger distinguishes exported policy from active store behavior; no default eviction
+changes. Verification: core memory/findings tests plus the frozen fixture. Files: retention,
+findings graph, tests, fixture, plan ledger, unified report status.
 
 **R8 · Accurate provenance on read-back** · S · deps R1b · src N7
 Description: `query`/`snapshot` expose trusted actor provenance separately from a reporter's
@@ -880,8 +883,9 @@ reverse-engineering material, no WAF/prompt-sanitiser stripping. Licenses: Antig
 BY-NC-SA (clean-room from reports only), Budibase core GPLv3 (design-rewrite), dify `web/`
 (modified Apache), tldraw editor (proprietary), mastra `ee/**` + `connect` (ELv2) — ideas only;
 PiX MPL-2.0 — modified files stay open; MIT/Apache-2.0 material keeps its notice. Retention
-constants come from the Apache-2.0 agentmemory *report descriptions* (clean-room numbers, cited) —
-R7's PR must re-verify the license line.
+constants come from the agentmemory *report descriptions* (clean-room numbers; no upstream source
+code copied). The upstream [LICENSE](https://github.com/rohitg00/agentmemory/blob/main/LICENSE)
+was verified as Apache-2.0 on 2026-09-30; retain that source link with the implementation.
 
 ## 10. Ownership and change packaging
 

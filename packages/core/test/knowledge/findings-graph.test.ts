@@ -188,6 +188,21 @@ describe("FindingsGraph query and strength", () => {
     const refreshed = graph.strength(f.finding.id);
     expect(refreshed).toBeGreaterThan(aged);
   });
+
+  it("uses update age for decay and creation age for its legacy-named additive term", () => {
+    const { graph, advance } = makeGraph();
+    const createdAt = 1_700_000_000_000;
+    const finding = graph.report({ title: "Creation-age score", confidence: "high" }).finding;
+
+    advance(10 * 24 * 60 * 60 * 1000);
+    graph.report({ title: "Creation-age score", confidence: "high" });
+    advance(10 * 24 * 60 * 60 * 1000);
+
+    const expected = Math.exp(-0.01 * 10) + 0.3 / (1 + 20);
+    expect(finding.createdAt).toBe(createdAt);
+    expect(graph.get(finding.id)?.updatedAt).toBe(createdAt + 10 * 24 * 60 * 60 * 1000);
+    expect(graph.strength(finding.id)).toBeCloseTo(expected, 10);
+  });
 });
 
 describe("FindingsGraph snapshot round-trip", () => {

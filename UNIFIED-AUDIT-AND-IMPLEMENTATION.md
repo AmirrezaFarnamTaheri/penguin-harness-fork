@@ -51,7 +51,7 @@ commit `9ca1a00d` (merge of PR #11, release/0.2.18) — a tree that **contains t
 | 6 | **`knowledge_graph` builtin tool** (new): report/query/confirm/refute/supersede/link/events/snapshot with host-attested provenance (forgery-proof attribution), atomic 0600 persistence at `.penguin/knowledge/findings-graph.json` | `packages/core/src/environment/tools/knowledge-graph.ts`, `registry.ts` | 3/3 tool tests |
 | 7 | **`code_graph` builtin tool** (new): native code intelligence over the cockpit's own engines — index/search/callers/callees/impact/explore/files/hubs, 60s cache, no fs watchers, read-only | `packages/core/src/environment/tools/code-graph.ts`, `registry.ts` | 3/3 tool tests |
 | 8 | Tools documentation synced (en+zh): registry table corrected from 8 → 12 entries (it was already missing `environment_info` and `resource_pressure`), new sections for `knowledge_graph` and `code_graph` | `packages/docs/content/tools.{en,zh}.md` | docs suite 7 files / 53 tests green |
-| 9 | **Memory retention & consolidation policy** (new): agentmemory's measured numbers as a pure module — strength `min(1, salience·e^(-0.01d) + 0.3·Σ1/daysSinceAccess)`, tiers 0.7/0.4/0.15, storage decay ×0.9 per 30 idle days floor 0.1 with write-only-what-changed, consolidation gates (≥5 summaries → semantic, ≥2 patterns × freq ≥2 → procedural), budget eviction | `packages/core/src/memory/retention.ts` | 10/10 new tests pinned to the reference constants |
+| 9 | **Experimental memory retention & consolidation policy** (new, exported but not wired to production): agentmemory's reported numbers as pure helpers — strength `min(1, salience·e^(-0.01d) + 0.3·Σ1/daysSinceAccess)`, tiers 0.7/0.4/0.15, storage decay ×0.9 per 30 idle days floor 0.1 with write-only-what-changed, consolidation gates (≥5 summaries → semantic, ≥2 patterns × freq ≥2 → procedural), budget eviction | `packages/core/src/memory/retention.ts` | 10/10 policy-unit tests; frozen recall baseline maintained separately |
 | 10 | **AST layer** (new, per cluster-D §7): parser-agnostic IR (ParsedFile/Function/Call/LocalVar/CallStep, dangling edges, provenance tiers), FQN scheme (`filePath::Name`, single `entityIdOf` builder — the absorbed two-builders drift lesson), grammar-backed parser pool (lazy optional `web-tree-sitter`, absolute grammar paths, LRU + byte-budget tree cache, 6-field incremental `tree.edit` deltas, honest `ast`/`fallback` engine tiers) | `packages/core/src/codegraph/ast/{ir,fqn,parser-pool,index}.ts` | 11/11 new tests; tsc clean |
 | 11 | **Server-persistent findings plane** (new): `ProjectJsonStore`-backed routes mirroring the wiki — report (merges, host-attested provenance from the authenticated user), query, confirm/refute/supersede/link, events replay (log now snapshot-persisted), snapshot export; bounded inputs, 404/400 semantics | `packages/server/src/http/routes/findings.ts`, `app.ts`, `packages/core/src/knowledge/*` (events in snapshot format) | 5/5 route tests; tsc server clean |
 | 12 | **Double-check completion**: the two new builtin tools joined the DEFAULT toolset (`state/default-config.ts` — the registry alone never delivers tools to agents), and the kernel advanced `2026-09-18 → 2026-09-29` per the module's documented workflow (old `tools` hash appended to `KERNEL_SUPERSEDED_TAB_HASHES`, new hash pinned, generation line added). The pinned-hash guard caught the omission — exactly its job. Pinned lists in `state.test.ts` updated | `packages/core/src/state/{default-config,kernel-history}.ts`, `packages/core/test/state.test.ts` | kernel-hash guard + state/tool-registry/kernel-version/agent/engine suites green (576 + 97 tests) |
@@ -67,11 +67,13 @@ vitest core targeted + full, vitest web (2,525), vitest docs (53), `node scripts
    snapshot-persisted event log + tests + docs. Both the tool (workspace `.penguin/knowledge/`)
    and the server (`ProjectJsonStore`) write paths exist; the tool serves single-workspace
    agents, the routes serve the multi-user server.
-2. **Memory graph — DONE at the policy layer.** `packages/core/src/memory/retention.ts`
-   implements the reference's measured retention/decay/consolidation policy (item 9), and
-   `FindingsGraph.strength()` applies the read-time decay. The remaining piece is wiring these
-   policies into `HierarchicalMemoryStore`'s eviction path and the 4-tier LLM consolidation
-   (deliberately left: it needs the model-call layer and a scheduled runner).
+2. **Memory subsystem — PARTIALLY IMPLEMENTED.** `RecallStore` enforces its own active age,
+   event-count, and token bounds. `packages/core/src/memory/retention.ts` is an experimental,
+   exported pure-policy module with unit tests but no in-repository production caller;
+   `FindingsGraph.strength()` exposes a separate read-only score whose additive term follows
+   creation age, not tracked access. Neither policy is an eviction or consolidation runner.
+   Integrating retention remains deferred until C2 establishes recall/storage baselines, an
+   owner, and an opt-in boundary.
 3. **AST CodeGraph + graphify as native tools — DONE at the architecture layer.** The native
    tool surface (`code_graph`) and the AST substrate (IR/FQN/parser-pool, item 10) are in. The
    remaining pieces are mechanical and specified in cluster-D: vendor `web-tree-sitter` + build
