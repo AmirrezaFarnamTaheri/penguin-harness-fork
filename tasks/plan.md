@@ -115,7 +115,67 @@ Wave 4:  K1 ← A5,A9 · K5 ── K14 · K16 ← R1b · K17 ← D10,C4
 Single-owner files: core/src/index.ts, state/default-config.ts, state/kernel-history.ts
 ```
 
-## 6. Task List
+## 5A. Promotion Ladder — passive → active → product
+
+The plan's tasks mostly *build* things. This section asks the second question the OG material
+supports but never states: **which built things should be elevated** — wired to a second system,
+promoted from read to write, or surfaced from engine layer to product/user layer. Ladder:
+**L0** library/engine · **L1** wired + active in-process · **L2** agent surface (tool) ·
+**L3** server/API surface · **L4** user-facing product surface.
+
+| # | Item (today's layer) | Promote to | Wiring that elevates it | Task | Product surface gained |
+|---|---|---|---|---|---|
+| P1 | Findings store is a passive record (L0–L3) | **Active context** (L4) | session-open hook: `query({status: confirmed\|open, subject: cwd})` top-N → briefing block in the system prompt, ≤1,200 tokens, deduped against the skills index | **C10** | chat "Known findings" panel; first-run orientation |
+| P2 | Findings ⇄ code-graph links are static text (L0) | **Live staleness** (L1) | `code-graph-watcher` change events demote findings whose `subjects` touch changed files (`stale` flag — the agentmemory "watcher-demoted, never deleted" rule) | **C11** | `stale` badge in query rows and the cockpit page |
+| P3 | Findings live on the cockpit page only (L3) | **Chat-native surface** (L4) | composer "log finding" action (opens the report dialog prefilled with the current file/symbol), count badge on the chat header, drill-through `path:line` | **C12** | findings inside the daily surface, not a separate page |
+| P4 | Findings trust is a marker (R8, L1) | **Verification workflow** (L4) | only `confirmed` (or `user`-verified) findings enter briefings (C10); UI gains Confirm/Refute buttons that record `actor:user` | **K18** | "verify this claim" loop in the UI; briefing trust is earned, not assumed |
+| P5 | `code_graph.impact` is a read (L2) | **Write-path advisory** (L1) | `edit_file`/`write_file` compute impact for touched symbols (cheap: reuse the cached graph) and append one line — "impact: N dependents (code_graph)" — above a threshold (≥5) | **D11** | impact warning at the moment of change, not on request |
+| P6 | Engine tier (ast vs regex fallback) is internal (L0) | **Honest status** (L2–L4) | `code_graph` `status` action reports tier + staleness + cache stats (R6); topology header shows an "AST / scan" badge | **D9** (amended) | users know which quality tier they are looking at |
+| P7 | Large-output spill is invisible plumbing (L1) | **Recall affordance** (L4) | tool-call card renders a "full output saved" chip; clicking streams the recall id on demand; CLI `penguin recall <id>` | **F18** | the compression story becomes legible in the chat |
+| P8 | Offline behavior is a test only (L0) | **Posture banner** (L4) | `navigator.onLine` banner ("offline — this is a local-first app; nothing syncs"), asserted by C8 | **F17** | the local-first promise becomes visible instead of implied |
+| P9 | ACP resume/behind-state is engine-only (L1) | **Resync control** (L4) | the E4 gap signal feeds a "N events behind — resync" button in the cockpit | **E3/E4** (amended) | users self-heal staleness instead of trusting it |
+| P10 | `resource_pressure` observes and never refuses (L2, by design) | **Enforcement elsewhere** (L1) | a pressure-aware guard at the *command-policy* layer: warn <200MB free, block new writes <50MB, always overridable by an explicit user action; the tool itself stays observe-only | **I7** | pressure gauge + block toast; safety without betraying the tool's contract |
+| P11 | `/health` is an endpoint (L3) | **Alerting** (L4) | degradation emits through the K6 digest/notification plane (disk, DB, kernel-version skew, eviction-archive growth) | **J13** | ops learn from the product, not from a curl |
+| P12 | Skill validators are CI scripts (L1) | **Doctor + badges** (L4) | `penguin skills doctor` (G1/G2 output as CLI) + skills-page health badges (capability risk from G6 manifests) | **G8** | skill health is user-visible where skills are managed |
+| P13 | Classifier flip is engine policy (A1, L1) | **Failure stories** (L4) | A1's classifications + B2's head/tail become K4's `failureTrace`, rendered in the web error panel and in `penguin why` | **K4** (amended) | "what actually went wrong" is a product answer |
+| P14 | Retention/eviction is library policy (R7, L0) | **Memory transparency** (L4) | the eviction archive (R1a) is surfaced: "why is this memory gone" reads the archive; dashboard counts by tier | **R7/C1** (amended) | memory stops being a black box |
+| P15 | Gates are scripts (J3/J11, L1) | **PR annotations** (L4) | CI posts annotations (coverage delta, stale-doc claims, findings on touched files) instead of only a red check | **J12** | reviewers see why, in the PR |
+| P16 | Benchmark runs are reports (D10/K17, L0) | **Auto-findings** (L1) | benchmark outcomes auto-`report()` as findings with run artifacts as evidence | **K17** (amended) | the ledger writes itself |
+
+### Explicit NON-promotions (design invariants — do not "elevate" these)
+
+1. **Jev advisory stays event-only.** Its `PROVENANCE.md` invariant — observes, never authorizes,
+   vetoes, gates, or adds latency — is the module's reason to exist. Any "make Jev decide" request
+   is refused at the design level.
+2. **`resource_pressure` the *tool* stays observe-only** (see P10: enforcement lives at the
+   command-policy layer). The tool's docs comment exists precisely to stop this drift.
+3. **`query` keeps bodies out of its output** (poisoning bound, review N7). Briefings (P1) ship
+   titles + subjects + status only, and only `confirmed`/user-verified claims (P4).
+4. **`code_graph` stays read-only** — no refactor/write actions on the graph surface. P5 is an
+   advisory *inside existing write tools*, not a new writer.
+5. **Refusal-list items are never promoted to product** (plan §9): a bridge, a rotation pool, or a
+   fingerprint spoofer is not a feature waiting for a UI.
+6. **Frozen agent configs are not auto-migrated.** Kernel updates stay explicit (the tools docs
+   already promise this); P-tier surfaces may *show* "kernel outdated" but never rewrite silently.
+
+### Promotion tasks (full cards in `tasks/execution-cards-1.md`, §Promotion)
+
+**C10 · Session briefing injection** · M · deps R2a,R1b,K18 — P1
+**C11 · Watcher-driven staleness** · S · deps C5(or C6),R1a — P2
+**C12 · Findings chat-native surface** · M · deps C1,R8 — P3
+**K18 · Verification workflow gating briefings** · S · deps R1b — P4
+**D11 · Impact-aware write advisory** · S · deps D4b(or regex-tier impact),R6 — P5
+**F17 · Offline posture banner** · XS · deps C8 — P8
+**F18 · Spill/recall UI affordance** · S · deps B1 — P7
+**I7 · Pressure-aware write guard** · M · deps E9 — P10
+**J12 · PR annotations for gates + findings** · M · deps J3,J11 — P15
+**J13 · Health → alerting** · S · deps E8,E9,K6 — P11
+**G8 · Skills doctor + health badges** · S · deps G1,G2,G6 — P12
+
+Amended acceptance (existing tasks): **D9** += P6 status/tier surfacing · **E3/E4** += P9 resync
+button · **R7/C1** += P14 memory transparency · **K4** += P13 rendered failure stories ·
+**K17** += P16 auto-findings · **A1** += classifications consumed by K4's panel.
+
 
 ### Wave R — PR #12 review absorptions (start here)
 

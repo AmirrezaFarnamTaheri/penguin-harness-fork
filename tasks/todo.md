@@ -176,6 +176,27 @@ the exact command to run. Sizing: XS / S / M (L is pre-split).
 - [ ] K4/K2/K3 end-to-end demos recorded
 - [ ] Q1–Q5 resolved or deferred with reasons recorded in tasks/plan.md
 
+## Promotion add-ons (plan §5A — schedule with the wave named)
+
+| # | Task | Size | Wave | Verify |
+|---|---|---|---|---|
+| [ ] | **C10** Session briefing injection (confirmed/unverified-labelled, ≤1,200 tokens) | M | 3 | briefing tests (budget, trust, poison-free) |
+| [ ] | **C11** Watcher-driven finding staleness (demote, never delete) | S | 3 | watcher→demote tests |
+| [ ] | **C12** Findings chat-native surface (composer action + badge + drill-through) | M | 3 | web unit + e2e flow |
+| [ ] | **K18** Verification workflow gating briefings (user-actor confirm/refute) | S | 3 | override-dialog + strict-briefing tests |
+| [ ] | **D11** Impact-aware write advisory (≤1 line, cache-hit only) | S | 3 | notice presence/absence tests |
+| [ ] | **F17** Offline posture banner | XS | 1 | C8 asserts banner |
+| [ ] | **F18** Spill/recall UI affordance + `penguin recall` | S | 2 | chip render + path-guard tests |
+| [ ] | **I7** Pressure-aware write guard (warn 200MB / block 50MB / override recorded) | M | 2 | pressure matrix tests; resource_pressure stays observe-only |
+| [ ] | **J12** PR annotations (coverage, stale docs, findings-on-diff) | M | 2 | fixture-diff annotation tests |
+| [ ] | **J13** Health → alerting (deduped degradations) | S | 2 | /health tests |
+| [ ] | **G8** Skills doctor + health badges | S | 3 | doctor exit codes + badge mapping |
+
+Amended acceptance riding along: **D9** +P6 tier/status surfacing · **E3/E4** +P9 resync button ·
+**R7/C1** +P14 memory transparency · **K4** +P13 failure stories · **K17** +P16 auto-findings ·
+**A1** classifications feed K4. Non-promotions (plan §5A) are binding: Jev event-only,
+resource_pressure tool observe-only, query bodies excluded from briefings, code_graph read-only.
+
 ## Sequencing & ownership rules
 
 - Waves run in order; within a wave, all streams may run in parallel across 4–8 flash-model workers.
