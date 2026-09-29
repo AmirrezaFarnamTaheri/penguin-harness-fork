@@ -162,6 +162,12 @@ export class IncrementalGraphCache {
     entry.instanceTypes = extractInstanceTypes(content, scopes, normalized);
     entry.variableBindings = extractVariableBindings(content, scopes, normalized);
 
+    // Dependents are read before detachImportLinks on purpose: that call deletes the
+    // reverse-import key holding them (delete() below snapshots them first for the same
+    // reason). Reading them after the detach always yields [] and silently dropped the
+    // importers of a changed file from `stale`.
+    const dependents = this.dependentsOf(normalized);
+
     // Remove the previous reverse-import edges contributed by this file before re-deriving them.
     this.detachImportLinks(normalized);
     this.entries.set(normalized, entry);
@@ -170,7 +176,7 @@ export class IncrementalGraphCache {
     this.linkImporters(normalized, entry.imports);
 
     entry.edges = [];
-    return { changed: true, stale: [normalized, ...this.dependentsOf(normalized)] };
+    return { changed: true, stale: [normalized, ...dependents] };
   }
 
   /** Importer -> targets and reverse-index population for one file. */

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_PROJECT_ID, projectDir } from "@prismshadow/penguin-core";
 import {
   getOrCreateProjectRuntime,
+  getSharedCodeGraphWatcher,
   resetCockpitRuntimesForTesting,
   scheduleRuntimeReap,
 } from "../src/cockpit/ws.js";
@@ -32,6 +33,24 @@ describe("cockpit runtime ownership", () => {
     expect(a).not.toBe(b);
     a.coordinator.dispatchDirective("operator", "coder", "only A");
     expect(b.coordinator.getMailboxSummaries().coder?.queueDepth).toBe(0);
+  });
+
+  it("keeps the sync seams separate per workspace root, not per project id alone", () => {
+    const dirA = mkdtempSync(path.join(tmpdir(), "cockpit-seam-a-"));
+    const dirB = mkdtempSync(path.join(tmpdir(), "cockpit-seam-b-"));
+    const watcherA = getSharedCodeGraphWatcher(dirA, "seam-project");
+    const watcherB = getSharedCodeGraphWatcher(dirB, "seam-project");
+    expect(watcherA).not.toBe(watcherB);
+    // The same root keeps the same runtime.
+    expect(getSharedCodeGraphWatcher(dirA, "seam-project")).toBe(watcherA);
+  });
+
+  it("shares one runtime between the async factory and the sync seams for the same root", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "cockpit-shared-key-"));
+    const runtime = await getOrCreateProjectRuntime("shared-key-project", { root });
+    expect(
+      getSharedCodeGraphWatcher(projectDir(root, "shared-key-project"), "shared-key-project"),
+    ).toBe(runtime.codeGraphWatcher);
   });
 
   it("disconnects authoritative key listeners when an idle runtime is reaped", async () => {
