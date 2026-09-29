@@ -98,7 +98,7 @@ Node 22) are covered by the local runs in §2. Every verdict below lands as a ta
 | F4 | GET query casts unchecked; `mutate()` maps all engine errors to 400; unused `_c`; duplicated `TIERS`; transitions record no actor | **Confirmed** | `findings.ts:38` TIERS dup of core, `:120-121` casts, `:191/206/221` bare `decodeURIComponent`, `mutate` catch-all `badRequest` | R4 (+R1b for actor) |
 | F5 | "Memory graph DONE" overstated; `strength()` docs vs `createdAt` math | **Confirmed** | `findings-graph.ts:397` computes reinforcement from `createdAt`; `retention.ts` consumers = 0 (grep hits are unrelated modules) | R7 |
 | F6 | PR too big to review/revert cleanly | **Qualified** — keep the coherent PR intact after R13 repair, then use narrow follow-up PRs | PR commit list and `git log --oneline` on the branch | Resolved decision Q1 |
-| F7 | Default tool schemas: token cost unmeasured; frozen agents need kernel path | **Confirmed as measurement gap** (frozen-config behavior already documented in tools docs) | `default-config.ts` additions; docs note | R10 |
+| F7 | Default tool schemas: token cost unmeasured; frozen agents need kernel path | **Resolved** — direct and lazy payloads measured; the two added schemas cost 1,176 chars/4 estimated tokens, below the 1,500 threshold | `docs/audits/default-tool-schema-cost-2026-09-30.md`; frozen-config behavior remains documented in tools guides | R10 |
 | N1 | Eviction leaves dangling `related`/`supersededBy` refs | **Confirmed** | `evictIfNeeded` deletes map entries without pruning survivors | R1a |
 | N2 | Supersession cycles allowed; replacement liveness unchecked | **Confirmed** | `findings-graph.ts:309` guards only `id === replacementId` | R1c |
 | N3 | `confirmed` needs no evidence; transitions unattributed | **Confirmed** | `confirm(id, note?)` `:288`; no actor params anywhere in the lifecycle API | R1b |
@@ -426,6 +426,14 @@ or justify with a task-success measurement. Do not publish the four local `measu
 they contain machine-specific paths. Acceptance: a reproducible, path-free measurement script
 and a before/after table with method and fixture. Verification: run the new script in a clean
 checkout and compare its output.
+Status: **Complete.** `tools/measure-default-tool-schema.mts` reproduces a 9→11 direct-schema
+change; the two schemas add 4,704 characters (1,176 chars/4; 1,179 production-estimated tokens),
+below the 1,500-token threshold. Lazy remains two fixed schemas at 1,309 characters (328 chars/4)
+before and after; search results expose each requested definition on demand. No provider-specific
+tokenizer is installed, so actual provider token counts are unavailable. The method, fixture,
+limitations, and full table are recorded in `docs/audits/default-tool-schema-cost-2026-09-30.md`
+and summarized in both tool guides. The script verifies direct configured/exposed names and lazy
+payload stability. User-local `measure-q*` scripts remain untouched.
 Files: `default-config.ts` (descriptions), `docs/content/tools.*.md`, `tools/`.
 
 **R11 · Findings-plane test battery** · M · deps R0,R1a,R1b,R1c,R2a,R2b,R2c,R5 · src review §5

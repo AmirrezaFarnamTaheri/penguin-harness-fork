@@ -29,7 +29,7 @@ strategic rows require design/measurement gates before implementation.
 | [x] | **R7** Memory-plane honesty (Option B selected) | S | core memory/findings tests + frozen recall fixture | retention module is exported but has no in-repo production callers; strength formula documents/tests createdAt term; frozen RecallStore ranking/tokens; no new eviction behavior |
 | [ ] | **R8** Accurate provenance on read-back | S | tool/route tests + docs | author inferred from trusted event, legacy unknown, free-form source cannot impersonate user |
 | [x] | **R9** Bounded batch fan-out (8 concurrent) | S | `test/all-settled-bounded.test.ts` + full web suite/typecheck | 200-item batch peaks at 8; ordered all-settled results preserve partial failures |
-| [ ] | **R10** Tool-schema token measurement | S | `tools/measure-*` run | measured table in docs; >1,500 tokens → trimmed or justified |
+| [x] | **R10** Tool-schema token measurement | S | `tools/measure-default-tool-schema.mts` + audit report | direct + lazy payloads measured; two additions cost 1,176 chars/4 estimates (<1,500 threshold); provider tokenizer unavailable and documented |
 | [ ] | **R11** Findings-plane test battery | M | `vitest run test/knowledge` | lifecycle, byte-bound output, durable ack, corruption, stale cache, and separate-scope fixtures; conditional migration suite only if R2d activates |
 | [ ] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + axe | zero critical/serious on chat/sidebar/settings; keyboard-reachable with visible focus |
 
