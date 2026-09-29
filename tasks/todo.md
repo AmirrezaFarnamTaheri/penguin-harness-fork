@@ -3,7 +3,8 @@
 Index of `tasks/plan.md` (authority for acceptance, evidence, dependencies, rollback). Check a
 box only after its acceptance criteria and named checks pass on the exact commit. The Verify
 column names the required suite or evidence; use the owning package's actual script. Current
-PR #12 gate is red (browser skill-invocation locator, R13). Sizing: XS / S / M; the broad
+PR #12 gate is red (browser skill-invocation locator, R13); the current dependency audit also
+finds Electron high advisories and two undici moderate paths (R14a/b). Sizing: XS / S / M; the broad
 strategic rows require design/measurement gates before implementation.
 
 ## Wave R — PR #12 review absorptions (first)
@@ -11,6 +12,8 @@ strategic rows require design/measurement gates before implementation.
 | # | Task | Size | Verify | Acceptance (compressed) |
 |---|---|---|---|---|
 | [ ] | **R13** Repair PR #12 browser E2E and record exact-head CI | S | named Playwright case, full E2E, `gh pr checks 12` | `skills.spec.mjs:246` targets the intended message; aggregate CI and browser job green on same SHA |
+| [ ] | **R14a** Upgrade Electron past four high advisories | S | `pnpm audit --audit-level high` + desktop/installer matrix | lockfile and packaged runtime ≥43.5.0; no Electron high advisory; exact-head desktop smokes green |
+| [ ] | **R14b** Repair runtime/build undici advisory paths | S | `pnpm audit --json` + server/packaging smokes | runtime ≥7.29.1, build-chain ≥6.28.1; neither path in audit |
 | [ ] | **R0** Findings scope and authority contract | S | tool/route identity fixtures | workspace and server project mapping, permissions, unmapped behavior and migration matrix documented |
 | [ ] | **R1a** Eviction policy truth & reference hygiene | M | eviction + store fault tests | bounded archive guarantee, fail-closed durable write, zero dangling live refs, rank-order/rotation/restart tests |
 | [ ] | **R1b** Lifecycle state machine + evidence gate + actor | M | engine+tool+route tests | `canTransition` table; `confirm` needs runtime/impl evidence (or user override); every event names actor |
@@ -31,7 +34,7 @@ strategic rows require design/measurement gates before implementation.
 | [ ] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + axe | zero critical/serious on chat/sidebar/settings; keyboard-reachable with visible focus |
 
 ### Checkpoint R
-- [ ] R13 browser/aggregate CI green on the exact PR head; Wave-R suites green (`test/knowledge`, `findings-routes`, web)
+- [ ] R13 browser/aggregate CI green on the exact PR head; R14a/b audit paths repaired; Wave-R suites green (`test/knowledge`, `findings-routes`, web)
 - [ ] §2/§3 of the plan updated per R7/R12/R13 outcomes
 - [ ] Every review ID (F1–F7, N1–N12) marked resolved or declined-with-reason
 
