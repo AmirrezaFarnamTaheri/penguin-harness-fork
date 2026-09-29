@@ -378,14 +378,17 @@ tool contract tests, including multibyte text and consumer compatibility tests. 
 `knowledge-graph.ts`, `types.ts`, tool/consumer tests.
 
 **R6 · code_graph resource discipline** · S · deps — · src N8
-Description: Single-flight scans per workspace (in-flight `Map<string, Promise<…>>`; concurrent
-callers await the same scan); watcher cache capped (LRU 8, `close()` on evict and on TTL refresh —
-the current code closes *then* scans, leaking on concurrency); `stats()` reports cache size/evictions;
-docs state the watcher answer explicitly (`scanWorkspace()` installs no fs watchers — only
-`init()` does, and the tool never calls it). Acceptance: ① 20 concurrent `index` calls → exactly
-one scan (counter) and zero leaked watchers; ② 10 workspaces with cap 8 → size ≤ 8 and 2 closes
-observed. Verification: `vitest run test/knowledge/code-graph-tool.test.ts` extended.
-Files: `code-graph.ts`, tests.
+Description: Single-flight scans per workspace (`inFlight` map; concurrent callers await the same
+scan); watcher cache capped (LRU 8, close after a replacement scan succeeds and on eviction).
+Keep a stale entry if refresh fails, close the failed replacement, and retry on the next request.
+`index` reports cache size/evictions and accurately distinguishes a cache hit from a scan.
+Documentation states the watcher boundary explicitly: `scanWorkspace()` installs no file
+watchers; only `init()` does, and the tool never calls it. Acceptance: ① 20 concurrent `index`
+calls → exactly one scan and no watcher initialization; ② 10 workspaces with cap 8 → size ≤ 8
+and 2 closes observed; ③ a TTL refresh keeps the old graph alive until its replacement succeeds.
+Verification: `test/knowledge/code-graph-cache.test.ts` and
+`test/knowledge/code-graph-tool.test.ts`. Files: `code-graph.ts`, `code-graph-cache.ts`, tests,
+English and Chinese tool docs.
 
 **R7 · Memory-plane honesty (Option B now)** · S · deps — · src F5,N9
 Description: Mark `retention.ts` experimental/unconsumed and correct `FindingsGraph.strength()`

@@ -120,9 +120,9 @@ SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK �
 
 ### 代码图谱
 
-`code_graph` 是原生代码智能入口（`packages/core/src/codegraph/*` 加上 watcher 的遍历器与符号索引器——与驾驶舱拓扑视图同一套引擎）。一次 `index` 遍历 Workspace（沿用标准忽略表：`node_modules`、`.git`、`dist`、`.venv` …）构建符号图，结果缓存 60 秒——一串查询只付一次遍历；`index` 带 `refresh: true` 可强制重扫。
+`code_graph` 是原生代码智能入口（`packages/core/src/codegraph/*` 加上 watcher 的遍历器与符号索引器——与驾驶舱拓扑视图同一套引擎）。一次 `index` 遍历 Workspace（沿用标准忽略表：`node_modules`、`.git`、`dist`、`.venv` …）构建符号图，结果缓存 60 秒——一串查询只付一次遍历；`index` 带 `refresh: true` 可强制重扫。对同一 Workspace 的并发 `index` 请求共享一次扫描；LRU 缓存最多保留 8 个 Workspace，`index` 会报告缓存大小和驱逐次数。工具只调用 `scanWorkspace()`（该方法不安装文件 watcher；只有 `init()` 会安装），因此不会创建 watcher 句柄。
 
-随后即可查询：`search` 按名字片段找符号与文件，`callers` / `callees` 以有界深度遍历调用图，`impact` 计算改动某节点的爆炸半径，`explore` 返回围绕某词条的小子图，`files` 列出已索引文件集，`hubs` 给出连接度最高的节点。该工具只读、不装文件 watcher——不写任何文件，也不泄漏 OS 句柄。
+随后即可查询：`search` 按名字片段找符号与文件，`callers` / `callees` 以有界深度遍历调用图，`impact` 计算改动某节点的爆炸半径，`explore` 返回围绕某词条的小子图，`files` 列出已索引文件集，`hubs` 给出连接度最高的节点。该工具只读，也不会写入文件。
 
 ### 命令会话
 

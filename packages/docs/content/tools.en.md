@@ -141,11 +141,15 @@ watcher's walker and symbol indexer — the same engines behind the cockpit topo
 `.venv`, …) and builds the symbol graph; the result is cached for 60 seconds, so a burst of
 queries costs one walk, and `index` with `refresh: true` forces a re-walk.
 
+Concurrent `index` calls for one Workspace share a single scan. The least-recently-used cache
+holds at most eight Workspaces; `index` reports its current size and eviction count. The tool calls
+`scanWorkspace()` only: that method does not install file watchers (`init()` does), so the tool
+does not allocate watcher handles.
+
 Queries follow from there: `search` finds symbols and files by name fragment, `callers` /
 `callees` walk the call graph to a bounded depth, `impact` computes the blast radius of changing
 a node, `explore` returns a small subgraph around a term, `files` lists the indexed file set, and
-`hubs` names the most-connected nodes. The tool is read-only and installs no file watchers — it
-never writes anywhere and never leaks OS handles.
+`hubs` names the most-connected nodes. The tool is read-only and never writes anywhere.
 
 ### Command sessions
 

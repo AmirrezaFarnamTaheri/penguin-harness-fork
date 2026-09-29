@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { CodeGraphWatcher } from "../../src/agent/code-graph-watcher.js";
 import { createCodeGraphTool } from "../../src/environment/tools/code-graph.js";
 import type { ToolExecutionContext } from "../../src/environment/tools/types.js";
 
@@ -69,6 +70,34 @@ describe("code_graph builtin tool", () => {
     expect(files.total).toBe(2);
     expect(files.files.join(" ")).not.toContain("node_modules");
     expect(files.files.join(" ")).toContain("helper.ts");
+  });
+
+  it("single-flights concurrent indexes, reports cache stats, and never starts file watchers", async () => {
+    const dir = makeWorkspace();
+    const scanWorkspace = vi.spyOn(CodeGraphWatcher.prototype, "scanWorkspace");
+    const init = vi.spyOn(CodeGraphWatcher.prototype, "init");
+
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 20 }, () => run({ action: "index" }, dir)),
+      );
+
+      expect(scanWorkspace).toHaveBeenCalledTimes(1);
+      expect(init).not.toHaveBeenCalled();
+      const stats = JSON.parse(results[0]!.output) as {
+        cacheSize: number;
+        cacheEvictions: number;
+        cached: boolean;
+      };
+      expect(stats.cacheSize).toBeGreaterThan(0);
+      expect(stats.cacheSize).toBeLessThanOrEqual(8);
+      expect(stats.cacheEvictions).toBeGreaterThanOrEqual(0);
+      expect(stats.cached).toBe(false);
+    } finally {
+      scanWorkspace.mockRestore();
+      init.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("searches symbols and answers callers/callees", async () => {

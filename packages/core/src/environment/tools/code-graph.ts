@@ -18,6 +18,7 @@ import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
 import type { ToolDefinitionConfig } from "../../interfaces/index.js";
 import { CodeGraphWatcher } from "../../agent/code-graph-watcher.js";
+import { WorkspaceGraphCache } from "./code-graph-cache.js";
 import type { BuiltinTool, ToolExecutionContext, ToolResult } from "./types.js";
 import { describeArgumentError } from "./tool-arguments.js";
 
@@ -25,14 +26,13 @@ export const CODE_GRAPH_NAME = "code_graph";
 
 const DEFAULT_OUTPUT_BUDGET = 6000;
 const CACHE_TTL_MS = 60_000;
+const CACHE_MAX_ENTRIES = 8;
 const DEFAULT_DEPTH = 2;
 
-interface CacheEntry {
-  watcher: CodeGraphWatcher;
-  scannedAt: number;
-}
-
-const cache = new Map<string, CacheEntry>();
+const cache = new WorkspaceGraphCache((workspaceDir) => new CodeGraphWatcher(workspaceDir), {
+  ttlMs: CACHE_TTL_MS,
+  maxEntries: CACHE_MAX_ENTRIES,
+});
 
 export const CODE_GRAPH_PARAMETERS = {
   type: "object",
@@ -80,18 +80,6 @@ function asDepth(value: unknown): number {
   return typeof value === "number" && value >= 1 ? Math.min(10, Math.floor(value)) : DEFAULT_DEPTH;
 }
 
-async function graphFor(workspaceDir: string, force: boolean): Promise<CodeGraphWatcher> {
-  const existing = cache.get(workspaceDir);
-  if (existing && !force && Date.now() - existing.scannedAt < CACHE_TTL_MS) {
-    return existing.watcher;
-  }
-  if (existing) existing.watcher.close();
-  const watcher = new CodeGraphWatcher(workspaceDir);
-  await watcher.scanWorkspace();
-  cache.set(workspaceDir, { watcher, scannedAt: Date.now() });
-  return watcher;
-}
-
 export function createCodeGraphTool(definition: ToolDefinitionConfig): BuiltinTool {
   return {
     name: definition.name,
@@ -119,7 +107,7 @@ export function createCodeGraphTool(definition: ToolDefinitionConfig): BuiltinTo
 
       try {
         const force = args["refresh"] === true;
-        const watcher = await graphFor(ctx.workspaceDir, force);
+        const { watcher, cached } = await cache.get(ctx.workspaceDir, force);
         if (signal?.aborted) return { stopReason: "aborted" };
         const graph = watcher.getGraph();
         const limit = typeof args["limit"] === "number" ? Math.max(1, args["limit"]) : 20;
@@ -127,7 +115,7 @@ export function createCodeGraphTool(definition: ToolDefinitionConfig): BuiltinTo
         let text: string;
         switch (action) {
           case "index": {
-            text = JSON.stringify({ ...watcher.getStats(), cached: !force }, null, 2);
+            text = JSON.stringify({ ...watcher.getStats(), ...cache.stats(), cached }, null, 2);
             break;
           }
           case "search": {
