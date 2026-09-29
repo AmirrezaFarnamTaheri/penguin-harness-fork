@@ -48,7 +48,7 @@ The ledger covers the 25-port inventory (collage §V.6), six clusters' candidate
 residuals, the named leaks and defects (§IV.5.5, §IV.8.2), the queue (§V.3), and review
 F1–F7/N1–N12. The checklist contains more than 100 items, including optional strategic bets;
 it is a **decision inventory**, not a promise to ship every external idea. Immediate work is the
-PR #12 CI gate and Wave R. Later waves start only after their stated product, quality, license,
+PR #12 CI and dependency-audit gates and Wave R. Later waves start only after their stated product, quality, license,
 and cost gates are met. Each independently useful slice must work in the active product path,
 have an observable failure mode, and be safe to revert.
 
@@ -56,7 +56,7 @@ have an observable failure mode, and be safe to revert.
 
 | Outcome | Baseline to capture | Promotion/stop decision |
 |---|---|---|
-| Findings correctness | Tool and route snapshots for one mapped project; concurrency and corruption fixtures | No lost acknowledged write, no cross-scope silent merge, no dangling live reference. Stop rollout on any violation. |
+| Findings correctness | Tool and route snapshots in separate authorities; concurrency and corruption fixtures; mapped-scope fixture only if R2d activates | No lost acknowledged write, no cross-scope silent merge, no dangling live reference. Stop rollout on any violation. |
 | Findings usefulness | Top-N retrieval relevance and false-positive rate on a fixed, reviewer-labelled fixture | Ship a briefing only when verified findings help the task and prompt injection probes stay inert. Otherwise keep query on demand. |
 | Code intelligence | Regex and AST output on the same frozen projects and goldens | Promote by precision/recall **and** latency/memory/package-size budgets; never trade invented edges for more coverage. |
 | Context economy | Raw bytes/tokens, failure preservation, recall success on a fixed tool-output corpus | Keep a strategy only when it saves ≥10% on its eligible corpus without losing failure evidence. |
@@ -446,8 +446,31 @@ are green on the PR head, and a per-job table with run links/commit SHA is recor
 waive an unexplained red because other platforms passed. Verification: targeted Playwright run,
 `gh pr checks 12`, and failed-job logs when needed.
 
+**R14a · Electron high-severity advisory repair** · S · deps — · src 2026-09-29 audit
+Description: Locked desktop `electron@43.2.0` is affected by four high-severity advisories
+([sandbox inheritance](https://github.com/advisories/GHSA-gr2m-v5gq-v685),
+[protocol CORS](https://github.com/advisories/GHSA-j84w-jfhq-vhvj),
+[webview worker integration](https://github.com/advisories/GHSA-9qh4-3jw8-366w), and
+[sandboxed preload cache](https://github.com/advisories/GHSA-qmv3-fv6v-rmhq)). Upgrade within
+the supported 43.x line to at least 43.5.0, update lockfile and verify the actual packaged
+binary. Acceptance: `pnpm audit --audit-level high` reports no Electron high advisory;
+desktop launch, utility process, same-origin window, installer and Windows/macOS/Linux runtime
+smokes pass on the exact candidate. Do not waive a high advisory solely because Electron is a
+devDependency in the package manifest: it becomes the shipped runtime. Rollback is the prior
+release artifact, not a vulnerable new build.
+
+**R14b · Undici moderate advisory repair** · S · deps — · src 2026-09-29 audit
+Description: Runtime server resolves `undici@7.29.0`, and the desktop build chain resolves
+`undici@6.28.0`; both are affected by
+[the WebSocket decompression advisory](https://github.com/advisories/GHSA-3wwx-pv8p-q78v).
+Move runtime to ≥7.29.1 and the build-chain path to ≥6.28.1 through compatible dependency
+updates or the narrowest documented resolution. Acceptance: audit JSON no longer reports
+either path; server WebSocket/HTTP and desktop packaging smokes pass, with a lockfile diff
+review. Do not apply a blanket major-version override across both dependency branches.
+
 ### Checkpoint: Wave R
-- [ ] R0 and R1–R13 acceptance criteria green; R2d remains deferred until a trusted binding exists; `test/knowledge` + `findings-routes` + web suite pass
+- [ ] R0 and R1–R14 acceptance criteria green; R2d remains deferred until a trusted binding exists; `test/knowledge` + `findings-routes` + web suite pass
+- [ ] Audit has zero high findings and both named `undici` paths are repaired or explicitly blocked from release with a dated owner
 - [ ] §2 Status Ledger updated wherever R7/R12 change the wording
 - [ ] Reviewer's F1–F7/N1–N12 all marked resolved/declined-with-reason in §3
 
