@@ -16,6 +16,10 @@ passed 155 browser cases and failed `packages/web/e2e/skills.spec.mjs:246`: an e
 matches the sidebar row, heading, and message paragraph. The aggregate `ci` job consequently
 failed; the other reported checks passed. R13 starts by repairing and rerunning that test. A
 subsequent run, not this snapshot, must establish merge readiness.
+The 2026-09-29 `pnpm audit --json` also reports four high-severity Electron advisories against
+locked `electron@43.2.0` and two moderate `undici` paths (`7.29.0` runtime, `6.28.0` build
+chain). R14a/R14b own the dependency repair; no release gate may claim a clean audit until
+the lockfile and packaged desktop are rechecked.
 
 ## 0. How to read this document
 
@@ -145,7 +149,8 @@ Node 22) are covered by the local runs in §2. Every verdict below lands as a ta
 ## 5. Dependency Graph
 
 ```
-Wave R:  R13 (repair PR #12 E2E)  ·  R0 ── R2a ─┬─ R2b
+Wave R:  R13 (repair PR #12 E2E) · R14a/R14b (dependency audit)
+         R0 ── R2a ─┬─ R2b
                                                  ├─ R2c
                                                  ├─ R1a ── R1b ── R1c
                                                  └─ R5 (revision-aware output)
