@@ -116,6 +116,8 @@ SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK �
 
 状态保存为每个 Workspace 一份 JSON 快照 `.penguin/knowledge/findings-graph.json`（原子写 + 0600），惰性加载、每次变更后保存；工具不写其他任何文件。强度在读取时衰减（按置信度加权、指数衰减、访问强化），而不是落盘存储，因此读取者永远不会改写历史。
 
+此存储仅属于工具上下文提供的 Workspace。服务端 HTTP findings 路由使用独立的 Project ID 文件（`.findings_graph.json`）；名称或路径相同也不会自动绑定或同步两个存储。
+
 ### 代码图谱
 
 `code_graph` 是原生代码智能入口（`packages/core/src/codegraph/*` 加上 watcher 的遍历器与符号索引器——与驾驶舱拓扑视图同一套引擎）。一次 `index` 遍历 Workspace（沿用标准忽略表：`node_modules`、`.git`、`dist`、`.venv` …）构建符号图，结果缓存 60 秒——一串查询只付一次遍历；`index` 带 `refresh: true` 可强制重扫。

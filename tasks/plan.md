@@ -10,16 +10,15 @@ investigation, but their source files are not versioned in this checkout. The co
 acceptance criteria here and in the execution cards are self-contained; an implementation must
 verify any historical assertion against current code before changing behavior.
 
-**Live release gate, 2026-09-29:** PR #12 is **red**, not merge-ready. CI run
-[`36563549648`](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/36563549648)
-passed 155 browser cases and failed `packages/web/e2e/skills.spec.mjs:246`: an exact-text locator
-matches the sidebar row, heading, and message paragraph. The aggregate `ci` job consequently
-failed; the other reported checks passed. R13 starts by repairing and rerunning that test. A
-subsequent run, not this snapshot, must establish merge readiness.
-The 2026-09-29 `pnpm audit --json` also reports four high-severity Electron advisories against
-locked `electron@43.2.0` and two moderate `undici` paths (`7.29.0` runtime, `6.28.0` build
-chain). R14a/R14b own the dependency repair; no release gate may claim a clean audit until
-the lockfile and packaged desktop are rechecked.
+**Live release gate, 2026-09-30:** the local branch contains unpushed R13/R14 changes after the
+remote PR head, so remote check results do not certify this exact candidate. The focused R13
+skills browser test passed locally after its locator was scoped; a full browser and operating
+system matrix has not been rerun on the current local head. R14a now locks Electron 43.5.0 and
+R14b moves the runtime and build-chain Undici paths to 7.29.1 and 6.28.1; `pnpm audit` reports no
+known vulnerabilities, and the full server suite/typecheck pass locally. The desktop suite and
+typecheck passed after R14a, but packaged installer/runtime and cross-platform checks remain
+unverified on the current candidate. Keep release blocked until exact-head CI and packaged desktop
+smokes pass; do not infer readiness from a previous remote SHA or local focused tests.
 
 ## 0. How to read this document
 
@@ -236,16 +235,17 @@ button · **R7/C1** += P14 memory transparency · **K4** += P13 rendered failure
 ### Wave R — PR #12 review absorptions (start here)
 
 **R0 · Findings scope and authority contract** · S · deps — · src F2 + current path probe
-Description: Inventory every findings reader/writer and key. The builtin tool currently uses
-`<workspace>/.penguin/knowledge/findings-graph.json`; HTTP routes use
-`projectDir(config.root, projectId)/.findings_graph.json`, and `ProjectRow` has no workspace-path
-mapping. **Decision:** keep scopes separate. Record owner, authority path, permission boundary,
-and the exact trusted binding data that would be required before any future migration. A display
-name, matching title, or guessed filesystem path is insufficient. Acceptance: a checked-in scope
-matrix and two-path fixture; no UI or docs imply shared findings; an authorized future binding
-design covers symlinks, renames, shared workspaces, inaccessible paths, and deletion. A rename
-does not silently bind either scope; path reassociation needs an explicit audited operation. Verification: focused
-tool/route identity tests. Files: `tasks/plan.md`, `packages/server/src/services/`, test fixtures.
+Description: Inventory every findings reader/writer and key. The builtin tool uses the
+realpath-canonicalized workspace scope at `<workspace>/.penguin/knowledge/findings-graph.json`;
+HTTP routes use `projectDir(config.root, projectId)/.findings_graph.json`, and `ProjectRow` has no
+workspace-path mapping. **Decision:** keep scopes separate. The checked-in
+`tasks/findings-scope-matrix.md` records owner, authority path, permission boundary, backup
+limitations, and the trusted binding proof required before migration. A display name, matching
+title, or guessed filesystem path is insufficient. Acceptance: the matrix and two-path fixture
+prove workspace/project independence, same-name project isolation, rename behavior, symlink alias
+cache convergence, and owner/member checks; no UI or docs imply shared findings. A future binding
+design covers symlinks, renames, shared workspaces, inaccessible paths, and deletion. Verification:
+focused core tool and server route tests. Files: the matrix, core tool/cache, server route tests.
 
 **R1a · Eviction policy truth & reference hygiene** · M · deps R2a · src F1,N1
 Description: Preserve the live cap while stating the **bounded** history guarantee honestly.

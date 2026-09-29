@@ -129,6 +129,10 @@ State lives in one JSON snapshot per Workspace at `.penguin/knowledge/findings-g
 else. Strength decays at read time (confidence-weighted, exponential, access-reinforced) rather
 than being stored, so history is never rewritten by a reader.
 
+This store belongs only to the Workspace supplied in the tool context. Server HTTP findings routes
+use an independent project-ID-scoped file (`.findings_graph.json`); matching names or paths do not
+bind or synchronize the two stores.
+
 ### Code graph
 
 `code_graph` is the native code-intelligence surface (`packages/core/src/codegraph/*` plus the

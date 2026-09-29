@@ -1,7 +1,38 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BUILTIN_TOOL_FACTORIES, projectDir } from "@prismshadow/penguin-core";
+import type { ToolExecutionContext } from "@prismshadow/penguin-core";
 import type { ProjectCreateResponse } from "../src/api/types.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
+
+async function runKnowledgeGraphTool(
+  args: Record<string, unknown>,
+  workspaceDir: string,
+): Promise<string> {
+  const factory = BUILTIN_TOOL_FACTORIES["knowledge_graph"];
+  if (!factory) throw new Error("knowledge_graph builtin tool is not registered");
+  const tool = factory({ name: "knowledge_graph", description: "test", parameters: {} });
+  const ctx: ToolExecutionContext = { workspaceDir, toolCallId: "findings-scope-test" };
+  let output = "";
+  const generator = tool.execute(args, ctx);
+  for (;;) {
+    const step = await generator.next();
+    if (step.done) return output;
+    const message = step.value as unknown as {
+      type?: string;
+      payload?: { type?: string; event_type?: string; output?: string };
+    };
+    if (
+      message.type === "model_msg" &&
+      message.payload?.type === "partial_tool_call_output" &&
+      message.payload.event_type === "delta"
+    ) {
+      output += message.payload.output ?? "";
+    }
+  }
+}
 
 describe("findings routes (persistent knowledge plane)", () => {
   let t: TestApp;
@@ -47,6 +78,86 @@ describe("findings routes (persistent knowledge plane)", () => {
     const queried = await client.get(`/api/projects/${projectId}/findings?text=node_modules`);
     const hits = (await queried.json()) as { findings: Array<{ id: string }> };
     expect(hits.findings.map((f) => f.id)).toContain(body.finding.id);
+  });
+
+  it("keeps workspace and project authorities separate across renames and name collisions", async () => {
+    const workspaceDir = path.join(t.root, "workspaces", "Findings routes");
+    const renamedWorkspaceDir = path.join(t.root, "workspaces", "renamed workspace");
+    await fs.mkdir(workspaceDir, { recursive: true });
+
+    const workspaceReport = JSON.parse(
+      await runKnowledgeGraphTool(
+        { action: "report", title: "Workspace-only finding" },
+        workspaceDir,
+      ),
+    ) as { id: string };
+    const beforeProjectWrite = await client.get(
+      `/api/projects/${projectId}/findings?text=${encodeURIComponent("Workspace-only finding")}`,
+    );
+    expect(((await beforeProjectWrite.json()) as { findings: unknown[] }).findings).toEqual([]);
+
+    const serverReport = await client.post(`/api/projects/${projectId}/findings`, {
+      title: "Project-only finding",
+    });
+    expect(serverReport.status).toBe(201);
+    const serverFinding = (await serverReport.json()) as { finding: { id: string } };
+
+    const secondProjectResponse = await client.post("/api/projects", {
+      projectId: "findings_routes-same_name",
+      name: "Findings routes",
+    });
+    expect(secondProjectResponse.status, await secondProjectResponse.clone().text()).toBe(201);
+    const secondProject = (await secondProjectResponse.json()) as ProjectCreateResponse;
+    expect(secondProject.project.projectId).not.toBe(projectId);
+    const secondProjectFindings = await client.get(
+      `/api/projects/${secondProject.project.projectId}/findings?text=${encodeURIComponent("Project-only finding")}`,
+    );
+    expect(((await secondProjectFindings.json()) as { findings: unknown[] }).findings).toEqual([]);
+
+    const workspacePath = path.join(workspaceDir, ".penguin", "knowledge", "findings-graph.json");
+    const projectPath = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    expect(await fs.readFile(workspacePath, "utf8")).toContain("Workspace-only finding");
+    expect(await fs.readFile(projectPath, "utf8")).toContain("Project-only finding");
+    expect(path.resolve(workspacePath)).not.toBe(path.resolve(projectPath));
+
+    await fs.rename(workspaceDir, renamedWorkspaceDir);
+    const renamedWorkspaceFindings = JSON.parse(
+      await runKnowledgeGraphTool({ action: "query" }, renamedWorkspaceDir),
+    ) as Array<{ id: string; title: string }>;
+    expect(renamedWorkspaceFindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: workspaceReport.id, title: "Workspace-only finding" }),
+      ]),
+    );
+
+    const projectFindings = await client.get(
+      `/api/projects/${projectId}/findings?text=${encodeURIComponent("Project-only finding")}`,
+    );
+    const projectRows = (await projectFindings.json()) as {
+      findings: Array<{ id: string; title: string }>;
+    };
+    expect(projectRows.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: serverFinding.finding.id, title: "Project-only finding" }),
+      ]),
+    );
+    expect(projectRows.findings.map((finding) => finding.title)).not.toContain(
+      "Workspace-only finding",
+    );
+
+    const outsider = await provisionUser(t.app, "findings_scope_outsider");
+    const outsiderClient = apiClient(t.app, outsider.cookie);
+    expect(
+      (
+        await outsiderClient.get(
+          `/api/projects/${projectId}/findings?text=${encodeURIComponent("Project-only finding")}`,
+        )
+      ).status,
+    ).toBe(404);
+    const unauthorizedWrite = await outsiderClient.post(`/api/projects/${projectId}/findings`, {
+      title: "Unauthorized project write",
+    });
+    expect(unauthorizedWrite.status).toBe(404);
   });
 
   it("merges a duplicate report instead of creating a second finding", async () => {

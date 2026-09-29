@@ -10,21 +10,24 @@ before implementation. `execution-cards-2.md` covers the later, risk-bearing wor
 
 ## R0 · Findings scope and authority contract
 
-**Inventory:** Tool writes `<workspace>/.penguin/knowledge/findings-graph.json`; server routes
-write `projectDir(config.root, projectId)/.findings_graph.json`. The project DB row has no
-workspace path. These remain separate authorities by default; a trusted mapping may later
-establish that they describe the same logical project. Use a table with columns `scope key`, `owner`, `path`, `reader/writer`,
-`auth check`, `backup`, `equivalence proof`, and `unmapped behavior`.
+**Inventory:** Tool writes `<realpath(workspace)>/.penguin/knowledge/findings-graph.json`; server
+routes write `projectDir(config.root, projectId)/.findings_graph.json`. The project DB row has no
+workspace path. These remain separate authorities by default; a trusted mapping may later establish
+that they describe the same logical project. The full matrix is
+`tasks/findings-scope-matrix.md`; it includes scope key, owner, path, readers/writers, auth check,
+backup, equivalence proof, and unmapped behavior. Core resolves existing workspace paths before
+keying its cache, preventing symlink aliases from creating competing in-memory graphs.
 
 **Decision:** Derive canonical scope ids from trusted project/workspace metadata, never a
 model-supplied path. Resolve and normalize symlinks before comparison; verify ownership on
 every HTTP read/write. A missing/ambiguous mapping keeps the two scopes separate with visible
 labels. Record a migration manifest fixture for same, different, corrupt, and missing files.
 
-**Exit:** The identity test proves that two projects sharing a display name are distinct and a
-workspace rename does not silently bind it to a server project; any path rebinding is explicit
-and audited. R2a must not start before this
-contract is approved in the PR.
+**Exit:** The cross-layer fixture proves that two projects sharing a display name are distinct,
+workspace and project stores remain independent, workspace rename does not bind either authority,
+symlink aliases converge on one graph, and an unrelated user cannot read or write the project
+scope. Any future path rebinding is explicit and audited. R2a must not start before this contract
+is approved in the PR; local implementation alone does not satisfy that review gate.
 
 ## R1a · Eviction policy truth & reference hygiene
 

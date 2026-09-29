@@ -1,5 +1,9 @@
 /**
- * Persistent findings-graph routes — the server home of the knowledge plane.
+ * Persistent findings-graph routes — the project-scoped HTTP authority for server findings.
+ *
+ * This project-id store is intentionally separate from the core knowledge_graph builtin's
+ * workspace-local store. ProjectRow has no trusted workspace mapping, so matching names or
+ * paths must never cause automatic reads, writes, or migration between the two.
  *
  * Mirrors the wiki routes exactly (same store pattern, same access model): the JSON snapshot
  * is the authority, every request hydrates a FindingsGraph from it, mutates, and writes back
