@@ -72,7 +72,7 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 
 ## 内置工具
 
-共 8 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
+共 12 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
 
 | 工具 | 权限 | 超时(ms) | 用途 |
 | --- | --- | --- | --- |
@@ -84,6 +84,10 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 | `write_file` | rw | 30000 | 新建或整体覆写文件，按需创建父目录 |
 | `run_subagent` | rw | 600000 | 把自包含子任务委派给同 Workspace 的子 Agent |
 | `input_subagent` | rw | 600000 | 轮询后台 Subagent、运行中插话、停止其当前轮，或在其空闲时追加后续 Prompt |
+| `environment_info` | r | 10000 | 报告宿主机的平台 / shell / 路径形态，可选解析单个路径字符串 |
+| `resource_pressure` | r | 10000 | 报告内存与各路径磁盘压力；只观测，不做拒绝 |
+| `knowledge_graph` | rw | 30000 | 记录带出处的 findings、按需检索，并管理其生命周期（confirm / refute / supersede / link） |
+| `code_graph` | r | 60000 | 一次索引 Workspace，随后查询符号、调用者/被调用、影响半径与结构——与驾驶舱拓扑视图同一套引擎 |
 
 注意：既有 Agent 已落盘的 `tools.builtin` 列表按原样冻结（设置页只能编辑行、不能增行）：较早创建的 Agent 不会自动获得后来新增的工具（如文件工具）与新增参数（`run_in_background`、`kill`、`abort`），已移除工具（`kill_command`、`kill_subagent`、`read_image`、`describe_image`）的存量条目则不再装配——模型按旧名调用得到标准的未知工具报错；读图之前落盘的 `read_file` 条目保留旧描述与旧超时（其背后的实现已能读图）。采纳当前定义需手工编辑该 Agent 的 `system_config.yaml`（可从 `packages/core/src/state/default-config.ts` 的默认定义复制），或走「更新内核」。
 
@@ -102,6 +106,21 @@ SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK �
 `EnvironmentServices.webSearch.endpoint` 覆盖、Agent Vault 中的 `SEARXNG_ENDPOINT`、
 进程环境中的 `SEARXNG_ENDPOINT`，最后是 `http://127.0.0.1:8080`。SearXNG 实例须在
 `search.formats` 中启用 `json`；HTTP 403 错误会给出这一诊断。
+
+### 知识图谱
+
+`knowledge_graph` 是 findings 平面（`packages/core/src/knowledge/`）面向 Agent 的入口。
+一次 `report` 记录一条耐久断言——标题、类型、正文、主题（文件 / 模块 / 符号）、带审计层级的证据、标签——其余交给图谱：重复上报会并入同一条 finding（先按确定性 id，再按 Jaccard 措辞相似度），近似断言变为 `related` 链接，同一 Agent 的再次上报**替换**其先前叙述而不是追加。出处来自宿主记录的 attribution 而非模型参数，Prompt 无法伪造"谁报的"。
+
+`query` 返回按 状态 → 严重度·置信度 → 新近度 排序的结果，可按文本、主题路径前缀、类型、标签、状态过滤；被驳回与被取代的断言默认不出现。`confirm` / `refute` / `supersede` 推动断言的生命周期——任何东西都不会被删除，`supersede` 会把旧断言链接到替代者。`events` 从某个序号起回放变更，`snapshot` 导出整个图谱。
+
+状态保存为每个 Workspace 一份 JSON 快照 `.penguin/knowledge/findings-graph.json`（原子写 + 0600），惰性加载、每次变更后保存；工具不写其他任何文件。强度在读取时衰减（按置信度加权、指数衰减、访问强化），而不是落盘存储，因此读取者永远不会改写历史。
+
+### 代码图谱
+
+`code_graph` 是原生代码智能入口（`packages/core/src/codegraph/*` 加上 watcher 的遍历器与符号索引器——与驾驶舱拓扑视图同一套引擎）。一次 `index` 遍历 Workspace（沿用标准忽略表：`node_modules`、`.git`、`dist`、`.venv` …）构建符号图，结果缓存 60 秒——一串查询只付一次遍历；`index` 带 `refresh: true` 可强制重扫。
+
+随后即可查询：`search` 按名字片段找符号与文件，`callers` / `callees` 以有界深度遍历调用图，`impact` 计算改动某节点的爆炸半径，`explore` 返回围绕某词条的小子图，`files` 列出已索引文件集，`hubs` 给出连接度最高的节点。该工具只读、不装文件 watcher——不写任何文件，也不泄漏 OS 句柄。
 
 ### 命令会话
 

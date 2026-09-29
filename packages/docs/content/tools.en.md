@@ -72,7 +72,7 @@ Each tool is described by one `ToolDefinitionConfig`:
 
 ## Built-in tools
 
-There are 8 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
+There are 12 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
 
 | Tool | Permission | Timeout (ms) | Purpose |
 | --- | --- | --- | --- |
@@ -84,6 +84,10 @@ There are 8 built-in tools (assembled via `packages/core/src/environment/tools/r
 | `write_file` | rw | 30000 | Create or overwrite a whole file, creating parent directories as needed |
 | `run_subagent` | rw | 600000 | Delegate a self-contained subtask to a child Agent in the same Workspace |
 | `input_subagent` | rw | 600000 | Poll a background subagent, steer it mid-run, stop its current run, or continue it with a follow-up prompt |
+| `environment_info` | r | 10000 | Report the host machine's platform/shell/path forms, optionally resolving one path string |
+| `resource_pressure` | r | 10000 | Report memory and per-path disk pressure; observes only, never refuses |
+| `knowledge_graph` | rw | 30000 | Record findings with provenance, query them back, and manage their lifecycle (confirm / refute / supersede / link) |
+| `code_graph` | r | 60000 | Index the workspace once, then query symbols, callers/callees, impact radius and structure — the same engines as the cockpit topology view |
 
 Note that an existing agent's persisted `tools.builtin` list is frozen as written (the settings UI edits rows but adds none): agents created before this toolset do not pick up newer tools (e.g. the file tools) or newer arguments (`run_in_background`, `kill`, `abort`) automatically — and entries for since-removed tools (`kill_command`, `kill_subagent`, `read_image`, `describe_image`) simply stop assembling: a model calling them gets the standard unknown-tool failure. A stored `read_file` entry from before it read images keeps its old description and timeout (the implementation behind it already reads images) — hand-edit the agent's `system_config.yaml` (copy the entries from the default definitions in `packages/core/src/state/default-config.ts`) or run the kernel update from the agent's settings page to adopt the current definitions.
 
@@ -103,6 +107,41 @@ The SearXNG endpoint is host configuration and never a tool argument. Resolution
 `EnvironmentServices.webSearch.endpoint` override, the Agent Vault's `SEARXNG_ENDPOINT`, the
 process environment's `SEARXNG_ENDPOINT`, then `http://127.0.0.1:8080`. The instance must include
 `json` in SearXNG's `search.formats`; an HTTP 403 response includes this diagnostic.
+
+### Knowledge graph
+
+`knowledge_graph` is the agent-facing surface of the findings plane (`packages/core/src/knowledge/`).
+One `report` records a durable claim — title, kind, body, subjects (paths/modules/symbols),
+evidence with an audit tier, tags — and the graph handles the rest: duplicate reports merge into
+one finding (deterministic id first, Jaccard wording match second), near-misses become `related`
+links, and a repeated report from the same agent *replaces* its earlier account instead of
+appending. Provenance comes from the host-recorded attribution, never from model arguments, so a
+prompt cannot forge who reported a claim.
+
+`query` returns ranked findings (status → severity·confidence → recency) filtered by text,
+subject path prefix, kind, tag or status; refuted and superseded claims are hidden unless asked
+for. `confirm` / `refute` / `supersede` move a claim through its lifecycle — nothing is ever
+deleted, and `supersede` links the old claim to its replacement. `events` replays changes since a
+sequence number, and `snapshot` exports the whole graph.
+
+State lives in one JSON snapshot per Workspace at `.penguin/knowledge/findings-graph.json`
+(atomic temp+rename, 0600), loaded lazily and saved after every mutation; the tool writes nothing
+else. Strength decays at read time (confidence-weighted, exponential, access-reinforced) rather
+than being stored, so history is never rewritten by a reader.
+
+### Code graph
+
+`code_graph` is the native code-intelligence surface (`packages/core/src/codegraph/*` plus the
+watcher's walker and symbol indexer — the same engines behind the cockpit topology view). One
+`index` walks the Workspace (with the standard ignore list: `node_modules`, `.git`, `dist`,
+`.venv`, …) and builds the symbol graph; the result is cached for 60 seconds, so a burst of
+queries costs one walk, and `index` with `refresh: true` forces a re-walk.
+
+Queries follow from there: `search` finds symbols and files by name fragment, `callers` /
+`callees` walk the call graph to a bounded depth, `impact` computes the blast radius of changing
+a node, `explore` returns a small subgraph around a term, `files` lists the indexed file set, and
+`hubs` names the most-connected nodes. The tool is read-only and installs no file watchers — it
+never writes anywhere and never leaks OS handles.
 
 ### Command sessions
 
