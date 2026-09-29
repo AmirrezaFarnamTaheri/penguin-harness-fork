@@ -406,10 +406,12 @@ Verification: tool/route tests and docs. Files: `knowledge-graph.ts`, knowledge 
 `packages/docs/content/tools.en.md`, `packages/docs/content/tools.zh.md`.
 
 **R9 · Bounded batch fan-out** · XS · deps — · src N11
-Description: Chunk `batchArchive`/`confirmBatchDelete` to 8 concurrent requests (simple promise
-pool), preserving the existing per-id failure semantics. Acceptance: a 200-marked batch completes
-with ≤8 in flight (test with a mocked endpoint counting concurrency) and the same partial-failure
-retention behavior. Verification: web unit test + existing e2e unchanged. Files: `sidebar.tsx`, test.
+Description: Run `batchArchive`/`confirmBatchDelete` through the shared ordered
+`allSettledBounded` worker pool with at most 8 requests in flight. Preserve each operation's
+per-id success, failure, selection-retention, and cleanup behavior. Acceptance: a 200-item batch
+peaks at 8 concurrent operations; results retain input order; rejection of one item does not stop
+the rest or reject the whole batch; invalid concurrency is rejected. Verification: web unit test,
+web suite, typecheck, and existing e2e unchanged. Files: `sidebar.tsx`, bounded helper, unit test.
 
 **R10 · Tool-schema token cost measurement** · S · deps — · src F7
 Description: Measure the actual serialized default tool payload before/after against the same

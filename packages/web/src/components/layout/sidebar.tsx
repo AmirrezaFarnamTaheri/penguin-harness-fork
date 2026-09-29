@@ -44,6 +44,7 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
+import { allSettledBounded } from "../../lib/all-settled-bounded";
 import { formatRelativeShort } from "../../lib/format";
 import { sessionBackgroundTasks, sessionRowActivity } from "../../lib/session-activity";
 import { forgetSession, noteSessionSeen, useSessionSeen } from "../../lib/session-seen";
@@ -1117,8 +1118,8 @@ export function Sidebar({
       }
     }
     try {
-      const results = await Promise.allSettled(
-        ids.map((id) => api.patchSession(id, { archived }).then((res) => res.session)),
+      const results = await allSettledBounded(ids, 8, (id) =>
+        api.patchSession(id, { archived }).then((res) => res.session),
       );
       const succeeded = new Set<string>();
       for (const [index, result] of results.entries()) {
@@ -1226,7 +1227,7 @@ export function Sidebar({
     batchDeleteBusy.current = true;
     setDeletingBusy(true);
     try {
-      const results = await Promise.allSettled(ids.map((id) => api.deleteSession(id)));
+      const results = await allSettledBounded(ids, 8, (id) => api.deleteSession(id));
       const succeeded = new Set<string>();
       for (const [index, result] of results.entries()) {
         if (result.status !== "fulfilled") continue;

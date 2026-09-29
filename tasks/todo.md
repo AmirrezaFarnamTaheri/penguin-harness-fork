@@ -28,7 +28,7 @@ strategic rows require design/measurement gates before implementation.
 | [ ] | **R6** code_graph resource discipline | S | `test/knowledge/code-graph-tool.test.ts` | single-flight scan (20 concurrent → 1 scan); LRU cap 8 with observed closes; watcher answer documented |
 | [ ] | **R7** Memory-plane honesty (Option B selected) | S | core memory tests + fixture run | experimental/unconsumed label; `strength()` docs match creation-recency math; default behavior unchanged |
 | [ ] | **R8** Accurate provenance on read-back | S | tool/route tests + docs | author inferred from trusted event, legacy unknown, free-form source cannot impersonate user |
-| [ ] | **R9** Bounded batch fan-out (8 concurrent) | S | web unit test | 200-marked batch ≤8 in flight; partial-failure semantics unchanged |
+| [x] | **R9** Bounded batch fan-out (8 concurrent) | S | `test/all-settled-bounded.test.ts` + full web suite/typecheck | 200-item batch peaks at 8; ordered all-settled results preserve partial failures |
 | [ ] | **R10** Tool-schema token measurement | S | `tools/measure-*` run | measured table in docs; >1,500 tokens → trimmed or justified |
 | [ ] | **R11** Findings-plane test battery | M | `vitest run test/knowledge` | lifecycle, byte-bound output, durable ack, corruption, stale cache, and separate-scope fixtures; conditional migration suite only if R2d activates |
 | [ ] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + axe | zero critical/serious on chat/sidebar/settings; keyboard-reachable with visible focus |
