@@ -2,18 +2,20 @@
 
 Index of `tasks/plan.md` (authority for acceptance, evidence, dependencies, rollback). Check a
 box only after its acceptance criteria and named checks pass on the exact commit. The Verify
-column names the required suite or evidence; use the owning package's actual script. Current
-PR #12 gate is red (browser skill-invocation locator, R13); the current dependency audit also
-finds Electron high advisories and two undici moderate paths (R14a/b). Sizing: XS / S / M; the broad
-strategic rows require design/measurement gates before implementation.
+column names the required suite or evidence; use the owning package's actual script. PR #12 head
+`68148d15baf95a941cc98a7d3b41086b1b2a6ae7` passed required CI, including browser E2E and the
+installer/runtime matrix; the dependency audit is clean. R13 and R14a/b are complete, with the
+[exact-head evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 remains open for manual
+review. Wave R is not complete: findings-plane dependencies and their suites remain outstanding.
+Sizing: XS / S / M; the broad strategic rows require design/measurement gates before implementation.
 
 ## Wave R — PR #12 review absorptions (first)
 
 | # | Task | Size | Verify | Acceptance (compressed) |
 |---|---|---|---|---|
-| [ ] | **R13** Repair PR #12 browser E2E and record exact-head CI | S | named Playwright case, full E2E, `gh pr checks 12` | `skills.spec.mjs:246` targets the intended message; aggregate CI and browser job green on same SHA |
-| [ ] | **R14a** Upgrade Electron past four high advisories | S | `pnpm audit --audit-level high` + desktop/installer matrix | lockfile and packaged runtime ≥43.5.0; no Electron high advisory; exact-head desktop smokes green |
-| [ ] | **R14b** Repair runtime/build undici advisory paths | S | `pnpm audit --json` + server/packaging smokes | runtime ≥7.29.1, build-chain ≥6.28.1; neither path in audit |
+| [x] | **R13** Repair PR #12 browser E2E and record exact-head CI | S | named Playwright case, full E2E, `gh pr checks 12` | `skills.spec.mjs:246` targets the intended message; aggregate CI and browser job green on same SHA; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
+| [x] | **R14a** Upgrade Electron past four high advisories | S | `pnpm audit --audit-level high` + desktop/installer matrix | lockfile and packaged runtime ≥43.5.0; no Electron high advisory; exact-head desktop smokes green; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
+| [x] | **R14b** Repair runtime/build undici advisory paths | S | `pnpm audit --json` + server/packaging smokes | runtime ≥7.29.1, build-chain ≥6.28.1; neither path in audit; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
 | [ ] | **R0** Findings scope and authority contract (implemented locally; PR review pending) | S | tool/route identity fixtures | `tasks/findings-scope-matrix.md`; cross-layer tests cover independent paths, name collisions, workspace rename, symlink alias cache, and server ownership checks; keep R2a blocked until PR review approves the contract |
 | [ ] | **R1a** Eviction policy truth & reference hygiene | M | eviction + store fault tests | bounded archive guarantee, fail-closed durable write, zero dangling live refs, rank-order/rotation/restart tests |
 | [ ] | **R1b** Lifecycle state machine + evidence gate + actor | M | engine+tool+route tests | `canTransition` table; `confirm` needs runtime/impl evidence (or user override); every event names actor |
@@ -34,8 +36,9 @@ strategic rows require design/measurement gates before implementation.
 | [x] | **R12** A11y verification pass (axe + keyboard/focus/dark/target) | S | `e2e/a11y.spec.mjs` + [audit report](../docs/audits/web-accessibility-2026-09-30.md) | zero axe violations on covered surfaces; every desktop and mobile stop reached with visible focus; mobile target-size and overflow checks pass; Axe manual-review items documented |
 
 ### Checkpoint R
-- [ ] R13 browser/aggregate CI green on the exact PR head; R14a/b audit paths repaired; Wave-R suites green (`test/knowledge`, `findings-routes`, web)
-- [ ] §2/§3 of the plan updated per R7/R12/R13 outcomes
+- [ ] R0 and R1–R12 acceptance criteria green; R2d remains deferred until a trusted binding exists; Wave-R suites green (`test/knowledge`, `findings-routes`, web)
+- [x] R13 browser/aggregate CI green on exact PR head; R14a/b audit paths repaired; see [evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md)
+- [x] §2/§3 of the plan updated per R7/R12/R13/R14 outcomes
 - [ ] Every review ID (F1–F7, N1–N12) marked resolved or declined-with-reason
 
 ## Wave 1 — Foundations & quick wins

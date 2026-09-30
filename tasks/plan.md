@@ -10,15 +10,14 @@ investigation, but their source files are not versioned in this checkout. The co
 acceptance criteria here and in the execution cards are self-contained; an implementation must
 verify any historical assertion against current code before changing behavior.
 
-**Live release gate, 2026-09-30:** the local branch contains unpushed R13/R14 changes after the
-remote PR head, so remote check results do not certify this exact candidate. The focused R13
-skills browser test passed locally after its locator was scoped; a full browser and operating
-system matrix has not been rerun on the current local head. R14a now locks Electron 43.5.0 and
-R14b moves the runtime and build-chain Undici paths to 7.29.1 and 6.28.1; `pnpm audit` reports no
-known vulnerabilities, and the full server suite/typecheck pass locally. The desktop suite and
-typecheck passed after R14a, but packaged installer/runtime and cross-platform checks remain
-unverified on the current candidate. Keep release blocked until exact-head CI and packaged desktop
-smokes pass; do not infer readiness from a previous remote SHA or local focused tests.
+**Live release gate, 2026-09-30:** R13, R14a, and R14b are complete on PR #12 head
+`68148d15baf95a941cc98a7d3b41086b1b2a6ae7`. All required exact-head CI jobs passed, including
+browser E2E, installer E2E, and Linux/macOS/Windows runtime jobs; `pnpm audit --json` reports zero
+findings. The per-job ledger and local verification are in
+[`docs/audits/pr-12-ci-2026-09-30.md`](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 remains open
+because its review status explicitly requires manual review. Wave R and release remain blocked by
+the unfinished findings-plane contract, implementation, and test battery; CI success does not
+resolve those dependencies or constitute review approval.
 
 ## 0. How to read this document
 
@@ -97,7 +96,7 @@ Node 22) are covered by the local runs in §2. Every verdict below lands as a ta
 | F3 | Report self-contradiction (Part 5 "unimplemented" vs Part 3 "DONE"); stale "No commits made"; root placement | **Confirmed; resolved by R3** | Dated audit baseline, current branch reconciliation, root pointer, corrected status and canonical policy | R3 |
 | F4 | GET query casts unchecked; `mutate()` maps all engine errors to 400; unused `_c`; duplicated `TIERS`; transitions record no actor | **Confirmed** | `findings.ts:38` TIERS dup of core, `:120-121` casts, `:191/206/221` bare `decodeURIComponent`, `mutate` catch-all `badRequest` | R4 (+R1b for actor) |
 | F5 | "Memory graph DONE" overstated; `strength()` docs vs `createdAt` math | **Confirmed** | `findings-graph.ts:397` computes reinforcement from `createdAt`; `retention.ts` consumers = 0 (grep hits are unrelated modules) | R7 |
-| F6 | PR too big to review/revert cleanly | **Qualified** — keep the coherent PR intact after R13 repair, then use narrow follow-up PRs | PR commit list and `git log --oneline` on the branch | Resolved decision Q1 |
+| F6 | PR too big to review/revert cleanly | **Qualified** — keep the coherent PR intact after R13's exact-head CI pass; ship remaining Wave-R work as narrow follow-up PRs | PR commit list, exact-head CI ledger, and `git log --oneline` on the branch | Resolved decision Q1 |
 | F7 | Default tool schemas: token cost unmeasured; frozen agents need kernel path | **Resolved** — direct and lazy payloads measured; the two added schemas cost 1,176 chars/4 estimated tokens, below the 1,500 threshold | `docs/audits/default-tool-schema-cost-2026-09-30.md`; frozen-config behavior remains documented in tools guides | R10 |
 | N1 | Eviction leaves dangling `related`/`supersededBy` refs | **Confirmed** | `evictIfNeeded` deletes map entries without pruning survivors | R1a |
 | N2 | Supersession cycles allowed; replacement liveness unchecked | **Confirmed** | `findings-graph.ts:309` guards only `id === replacementId` | R1c |
@@ -471,6 +470,11 @@ Acceptance: the named test proves the skill-invocation flow, full browser E2E an
 are green on the PR head, and a per-job table with run links/commit SHA is recorded. Never
 waive an unexplained red because other platforms passed. Verification: targeted Playwright run,
 `gh pr checks 12`, and failed-job logs when needed.
+Status: **Complete.** The assertion fix is in `980cdd89d`; both focused `skills.spec.mjs` cases
+passed locally. Full browser E2E and every required PR check passed on exact head
+`68148d15baf95a941cc98a7d3b41086b1b2a6ae7`. See the
+[per-job evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). CodeRabbit skipped review because
+manual review is required for this OSS repository; PR #12 remains open for that review.
 
 **R14a · Electron high-severity advisory repair** · S · deps — · src 2026-09-29 audit
 Description: Locked desktop `electron@43.2.0` is affected by four high-severity advisories
@@ -484,6 +488,9 @@ desktop launch, utility process, same-origin window, installer and Windows/macOS
 smokes pass on the exact candidate. Do not waive a high advisory solely because Electron is a
 devDependency in the package manifest: it becomes the shipped runtime. Rollback is the prior
 release artifact, not a vulnerable new build.
+Status: **Complete.** Electron is locked and executes at 43.5.0; the audit reports zero findings,
+and exact-head Windows installer plus Linux/macOS/Windows runtime jobs passed. The local desktop
+suite passed (196 tests); see the [verification ledger](../docs/audits/pr-12-ci-2026-09-30.md).
 
 **R14b · Undici moderate advisory repair** · S · deps — · src 2026-09-29 audit
 Description: Runtime server resolves `undici@7.29.0`, and the desktop build chain resolves
@@ -493,11 +500,14 @@ Move runtime to ≥7.29.1 and the build-chain path to ≥6.28.1 through compatib
 updates or the narrowest documented resolution. Acceptance: audit JSON no longer reports
 either path; server WebSocket/HTTP and desktop packaging smokes pass, with a lockfile diff
 review. Do not apply a blanket major-version override across both dependency branches.
+Status: **Complete.** Server runtime resolves Undici 7.29.1 and the desktop build chain resolves
+6.28.1. The audit is clean; local server tests and exact-head server, installer, and runtime jobs
+passed. See the [verification ledger](../docs/audits/pr-12-ci-2026-09-30.md).
 
 ### Checkpoint: Wave R
-- [ ] R0 and R1–R14 acceptance criteria green; R2d remains deferred until a trusted binding exists; `test/knowledge` + `findings-routes` + web suite pass
-- [ ] Audit has zero high findings and neither named `undici` path remains; otherwise Wave R and release remain blocked with a dated owner
-- [ ] §2 Status Ledger updated wherever R7/R12 change the wording
+- [ ] R0 and R1–R12 acceptance criteria green; R2d remains deferred until a trusted binding exists; `test/knowledge` + `findings-routes` + web suite pass
+- [x] Dependency audit is clean and neither named `undici` path remains; see exact-head evidence ledger. Wave R and release remain blocked on unfinished findings-plane work.
+- [x] §2 Status Ledger updated for R7/R12 and the current R13/R14 gate.
 - [ ] Reviewer's F1–F7/N1–N12 all marked resolved/declined-with-reason in §3
 
 ### Wave 1 — Foundations & quick wins
