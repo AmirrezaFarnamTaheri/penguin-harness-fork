@@ -37,6 +37,7 @@ export type {
   WeightedKeyRotatorOptions,
 } from "./key-rotator.js";
 export { KeyFleetMonitor, maskApiKey } from "./key-fleet-monitor.js";
+export { FailureStatusTracker } from "./failure-status.js";
 export type {
   KeyHealthStatus,
   KeyFleetRotationStrategy,
