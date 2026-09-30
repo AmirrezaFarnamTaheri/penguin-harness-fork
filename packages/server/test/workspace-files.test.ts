@@ -534,7 +534,11 @@ describe("files/stat route (batch existence check)", () => {
     });
     expect(stale.status).toBe(409);
     expect(await stale.json()).toEqual({
-      error: { code: "file_changed", message: expect.any(String) },
+      error: {
+        code: "file_changed",
+        message: expect.any(String),
+        i18nKey: "errors.byCode.file_changed",
+      },
     });
     expect(await fs.readFile(path.join(workspace, "a.txt"), "utf8")).toBe("written by the agent");
 
@@ -632,7 +636,11 @@ describe("files/move, files/search and the files/content delete", () => {
     const occupied = await owner.post(url, { from: "archive/notes/a.txt", to: "sub/b.md" });
     expect(occupied.status).toBe(409);
     expect(await occupied.json()).toEqual({
-      error: { code: "target_exists", message: expect.any(String) },
+      error: {
+        code: "target_exists",
+        message: expect.any(String),
+        i18nKey: "errors.byCode.target_exists",
+      },
     });
     expect(await fs.readFile(path.join(workspace, "sub", "b.md"), "utf8")).toBe("B");
 
@@ -658,7 +666,11 @@ describe("files/move, files/search and the files/content delete", () => {
     const stale = await owner.delete(`${url}&ifVersion=${encodeURIComponent(version)}`);
     expect(stale.status).toBe(409);
     expect(await stale.json()).toEqual({
-      error: { code: "file_changed", message: expect.any(String) },
+      error: {
+        code: "file_changed",
+        message: expect.any(String),
+        i18nKey: "errors.byCode.file_changed",
+      },
     });
     expect(await fs.readFile(path.join(workspace, "a.txt"), "utf8")).toBe("written by the agent");
 

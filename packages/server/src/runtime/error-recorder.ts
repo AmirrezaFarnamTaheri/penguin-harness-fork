@@ -7,13 +7,13 @@
  * the error originated:
  *
  * - `expected`: anticipated by the system, has a defined handling path, part of normal
- *   operation, no human needed — HTTP business errors (`HttpError`, mostly 4xx); LLM
+ *   operation, no human needed — HTTP business errors (`HttpError`, normally 4xx); LLM
  *   `timeout` / `malformed`, and an LLM `failed` the engine went on to retry (the engine
  *   reconnects on all three, so a request the ladder carried cost the user nothing); tool
  *   execution `failed` / `timeout` (the error is fed back to the model, and the Agent
  *   adjusts on its own).
  * - `unexpected`: shouldn't happen, usually a bug or a config/environment fault,
- *   **needs a human** — internal errors converged to 500; process crashes; runtime
+ *   **needs a human** — HTTP 5xx errors; process crashes; runtime
  *   errors escaping from background tasks (Session drive / usage persistence / title
  *   generation / subagent registration); LLM `auth` (the credential was rejected and only
  *   a human can replace it) and an LLM `failed` the retries did not recover (the run ended
@@ -133,7 +133,7 @@ export class ErrorRecorder {
         sessionId: args.ctx?.sessionId ?? null,
         source: args.source,
         // Explicit classification takes priority; otherwise infer from HttpError (business error = expected, else unexpected).
-        kind: args.kind ?? (http ? "expected" : "unexpected"),
+        kind: args.kind ?? http?.kind ?? "unexpected",
         code,
         // Unexpected errors from HTTP sources are converged to 500 externally (matches handleError's response).
         status: args.status ?? http?.status ?? (args.source === "http" ? 500 : null),

@@ -107,6 +107,8 @@ export interface FindingQuery {
   /** Subject match: exact or path-prefix (a directory query reaches its files). */
   subject?: string;
   tag?: string;
+  /** Every requested tag must be present. */
+  tags?: readonly string[];
   limit?: number;
 }
 

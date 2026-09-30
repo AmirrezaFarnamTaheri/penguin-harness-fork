@@ -179,6 +179,27 @@ describe("findings routes (persistent knowledge plane)", () => {
     expect(second.finding.confidence).toBe("high");
   });
 
+  it("keeps the original finding id usable after a longer-body merge", async () => {
+    const first = (await (
+      await client.post(`/api/projects/${projectId}/findings`, {
+        title: "The cache invalidates stale workspace graphs",
+        body: "Expiry prevents stale results.",
+      })
+    ).json()) as { finding: { id: string } };
+    const merged = await client.post(`/api/projects/${projectId}/findings`, {
+      title: "The cache invalidates stale workspace graphs",
+      body: "Expiry prevents stale results, and a forced refresh rebuilds the graph from current files.",
+    });
+    const mergeBody = (await merged.json()) as { finding: { id: string } };
+    expect(mergeBody.finding.id).toBe(first.finding.id);
+
+    const confirmed = await client.post(
+      `/api/projects/${projectId}/findings/${encodeURIComponent(first.finding.id)}/confirm`,
+      { note: "verified" },
+    );
+    expect(confirmed.status).toBe(200);
+  });
+
   it("runs the lifecycle: confirm, supersede, events replay", async () => {
     const old = (await (
       await client.post(`/api/projects/${projectId}/findings`, { title: "Old retry claim" })

@@ -45,7 +45,7 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 
 | # | Task | Size | Verify |
 |---|---|---|---|
-| [ ] | **A2** FailureStatusTracker + error taxonomy triple | S | `vitest run test/errors.test.ts` + `check:i18n` |
+| [x] | **A2** FailureStatusTracker + localized HttpError metadata/error rendering | S | Core tracker + findings suites; server error/findings suites; web API error tests; typechecks/build; `check:i18n`; Prettier |
 | [ ] | **A3** Retry-delay provenance + Retry-After | M | `vitest run test/llm*` |
 | [ ] | **B2** BoundedStreamCapture head+tail | S | `test/trace/bounded-capture.test.ts` |
 | [ ] | **F1** Input focus rings (3 sites) | S | web suite + R12 |

@@ -275,6 +275,28 @@ describe("error-recorder", () => {
     expect(r.date).toBe("2026-07-06");
   });
 
+  it("uses HttpError classification metadata and keeps English and translation fields", () => {
+    const internal = new HttpError(500, "internal", "Internal server error.");
+    expect(internal).toMatchObject({
+      kind: "unexpected",
+      english: "Internal server error.",
+      i18nKey: "errors.byCode.internal",
+    });
+
+    const explicitlyExpected = new HttpError(503, "maintenance", "Try again shortly.", {
+      kind: "expected",
+      i18nKey: "errors.byCode.shutting_down",
+    });
+    const rec = new ErrorRecorder(repo, now);
+    rec.record({ source: "http", err: internal, ctx: { projectId: "p1" } });
+    rec.record({ source: "http", err: explicitlyExpected, ctx: { projectId: "p1" } });
+
+    expect(repo.recent("p1").map((error) => [error.code, error.kind])).toEqual([
+      ["maintenance", "expected"],
+      ["internal", "unexpected"],
+    ]);
+  });
+
   it("non-HttpError → unexpected; HTTP source converges to 500, non-HTTP status is NULL", () => {
     const rec = new ErrorRecorder(repo, now);
     rec.record({ source: "http", err: new Error("boom") });
@@ -1078,6 +1100,12 @@ describe("HTTP onError persistence (integration)", () => {
   it("business error (HttpError 404) → expected, with code / status / projectId", async () => {
     const res = await api.get(`/api/projects/${projectId}/agents/agent-nope/sessions`);
     expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({
+      error: {
+        code: "agent_not_found",
+        i18nKey: "errors.byCode.agent_not_found",
+      },
+    });
 
     const rows = errorRows();
     expect(rows).toHaveLength(1);

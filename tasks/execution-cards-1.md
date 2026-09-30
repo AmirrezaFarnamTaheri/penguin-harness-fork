@@ -63,8 +63,15 @@ export type ActorKind = "user" | "agent" | "system" | "unknown";
 export interface Actor { kind: ActorKind; id: string }
 export interface FindingEvent { seq; type; findingId; at; note?; actor?: Actor;
                                 method?: "tool" | "route" | "engine" }   // optional only for legacy reads
+export type LifecycleErrorCode = "illegal_transition" | "evidence_gate" | "replacement_not_live"
+  | "cycle" | "dangling_replacement" | "chain_too_deep";
 export class LifecycleError extends Error {
-  code: "illegal_transition" | "evidence_gate" | "replacement_not_live" | "cycle";
+  readonly code: LifecycleErrorCode;
+  constructor(code: LifecycleErrorCode, message: string) {
+    super(message);
+    this.name = "LifecycleError";
+    this.code = code;
+  }
 }
 export function canTransition(from: FindingStatus, to: FindingStatus): boolean;
 ```
@@ -80,7 +87,10 @@ export function canTransition(from: FindingStatus, to: FindingStatus): boolean;
 
 **Evidence gate:** `confirm(id, opts)` where `opts = { note?, actor, override?: boolean }`;
 requires `finding.evidence.some((e) => e.tier === "runtime" || e.tier === "implementation")` —
-else `LifecycleError("evidence_gate")` unless `override === true && opts.actor.kind === "user"`.
+otherwise it rejects unless `override === true`, `opts.actor.kind === "user"`, and `note` is a
+non-empty string after trimming. Reject before mutating the finding or appending an event; the
+override reason is recorded as the transition note. A blank or missing reason never bypasses the
+evidence gate.
 
 **Actor plumbing:** routes build `actor = { kind: "user", id: c.var.user.userId }`; the tool
 uses host-attested `ctx.attribution`. If it is absent, record `legacy-unknown`/unattributed and
@@ -109,7 +119,10 @@ as a distinct user action; 7) keep an old-snapshot import fixture.
    - **cycle walk** (bounded and fail-closed):
      ```ts
      let cur = replacementId;
+     const visited = new Set<string>();
      for (let hops = 0; hops < 64; hops++) {
+       if (visited.has(cur)) throw new LifecycleError("cycle", "Replacement chain contains a cycle.");
+       visited.add(cur);
        const f = this.findings.get(cur);
        if (!f) throw new LifecycleError("dangling_replacement", …);
        if (f.id === id) throw new LifecycleError("cycle", …);
@@ -430,9 +443,12 @@ export class FailureStatusTracker {
 }
 ```
 Wire into the rotation loop (A1 owns the call site — A2 lands the class + unit tests first).
-Error triple: `HttpError` gains `kind` + `i18nKey`; strings gain `errors.<code>` entries (en+zh).
-Tests: `reports the interesting status not the last` (403→429→429 ⇒ 403) · `defaults to 502 with
-no failures` · `every HttpError code has an i18n key` (parity test) · `check:i18n` green.
+Error contract: `HttpError.kind` classifies expected/unexpected failures; `english` returns the
+message fallback; `i18nKey` defaults to `errors.byCode.<code>`. The response adds an optional
+`i18nKey`, and the web client prefers a known own-property key before falling back to code/message.
+The locale checker scans literal `new HttpError(..., "code", ...)` calls; dynamically constructed
+codes use the constructor fallback. Tests cover tracker branches, error metadata/serialization,
+client propagation, safe translation lookup, old-server fallback, and bilingual code parity.
 
 ### A3 · Retry-delay provenance + Retry-After
 `packages/core/src/llm/retry-delay.ts`:

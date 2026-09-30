@@ -14,8 +14,10 @@ PenguinHarness Server 提供一套同源 HTTP API，自带的 Web App 与其他 
 - 错误响应统一为：
 
 ```text
-{ "error": { "code": "<机器可读错误码>", "message": "<提示文案>" } }
+{ "error": { "code": "<机器可读错误码>", "message": "<英文回退文案>", "i18nKey": "errors.byCode.<code>" } }
 ```
+
+旧版服务器可能不返回 `i18nKey`。客户端应优先使用可识别的翻译键；否则回退到 `code` 和英文 `message`。
 
 ## 目录结构
 

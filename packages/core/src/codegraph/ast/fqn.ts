@@ -23,19 +23,22 @@ export interface FqnContext {
 const SEPARATOR = "::";
 
 /** Normalize a file path to the canonical forward-slash, workspace-relative form. */
-export function normalizePath(filePath: string): string {
+export function normalizeFqnPath(filePath: string): string {
   return filePath.replace(/\\/g, "/");
 }
 
 /** File-level identity root: `pkg` if a package exists, else the normalized file path. */
 export function fileScope(ctx: FqnContext): string {
   const pkg = ctx.packageName?.trim();
-  return pkg !== undefined && pkg !== "" ? pkg : normalizePath(ctx.filePath);
+  return pkg !== undefined && pkg !== "" ? pkg : normalizeFqnPath(ctx.filePath);
 }
 
 /** A top-level or nested declaration: `pkg.Name` or `filePath::Name`. */
 export function fqnOf(ctx: FqnContext, name: string): string {
-  return `${fileScope(ctx)}${SEPARATOR}${name}`;
+  const pkg = ctx.packageName?.trim();
+  return pkg !== undefined && pkg !== ""
+    ? `${pkg}.${name}`
+    : `${fileScope(ctx)}${SEPARATOR}${name}`;
 }
 
 /** A member of a container: `${containerFqn}.${name}`. */
@@ -87,7 +90,7 @@ export function parseEntityId(id: string): { kind: EntityKind; fqn: string } | n
 
 /** True when `candidate` is reachable from `scope` without escaping it (path containment). */
 export function isWithinScope(scope: string, candidate: string): boolean {
-  const s = normalizePath(scope).replace(/\/+$/, "");
-  const c = normalizePath(candidate);
+  const s = normalizeFqnPath(scope).replace(/\/+$/, "");
+  const c = normalizeFqnPath(candidate);
   return c === s || c.startsWith(`${s}/`);
 }

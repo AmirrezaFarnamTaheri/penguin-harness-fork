@@ -265,7 +265,7 @@ Description: Enumerate transitions and attribute them. Table: `open → confirme
 (falsification); `refuted | superseded` are terminal except R1c's explicit reopen. `confirm`
 requires ≥1 evidence with tier `runtime|`implementation`, else 409 with the missing-gate message
 (human override: `override: true` records actor kind `user`). Every transition appends
-`FindingEvent { actor: {kind: "user"|"agent"|"system"|"unknown", id?}, method: "tool"|"route"|"import", note? }`;
+`FindingEvent { actor: {kind: "user"|"agent"|"system"|"unknown", id: string}, method: "tool"|"route"|"engine", note? }`; imported legacy events may omit `actor` and `method` and display as `unknown`;
 routes fill actor from the authenticated user, the tool from `ctx.attribution`; missing tool
 attribution is recorded as `unknown`, never silently upgraded to a trusted system actor.
 Acceptance: ① the transition table is code (`canTransition(from,to)`) and every illegal move
@@ -513,12 +513,20 @@ passed. See the [verification ledger](../docs/audits/pr-12-ci-2026-09-30.md).
 ### Wave 1 — Foundations & quick wins
 
 **A2 · FailureStatusTracker + error taxonomy triple** · S · deps — · src collage §I.1.3.4/15
-Description: Track the *interesting* status in failover (last non-429; else 429 if any failure;
-else 502) so an exhausted rotation reports 403/400, not "rate limited"; server `HttpError` codes
-gain `(kind, english, i18n_key)` and strings gain the keys. Acceptance: rotation test with a 403
-mid-chain surfaces 403; every `HttpError` code has an i18n key (parity test). Verification:
-`vitest run test/errors.test.ts test/gateway*` server + `check:i18n`.
-Files: `packages/core/src/llm/failure-status.ts`, `packages/server/src/http/errors.ts`, `strings-*.ts`.
+Description: `FailureStatusTracker` records the last non-429 response, else 429 if any failure,
+else 502; A1 owns wiring it into the rotation loop. Server `HttpError` exposes `kind`, its English
+fallback, and `i18nKey`; serialized errors keep `message` as the English fallback and add the
+optional key. The web client carries that key and uses only valid own-property
+`errors.byCode.*` entries, then falls back safely for older servers and unknown codes. The i18n
+guard checks literal `HttpError` codes against both locale dictionaries; dynamically constructed
+codes rely on the constructor's default key and fallback. Acceptance: tracker branch table passes;
+HTTP classification and serialization are tested; every literal code has bilingual coverage and
+web selection/fallback is tested. Verification: core status tests, server `test/errors.test.ts`,
+web API error tests, typechecks, build, formatting, and `check:i18n`. A1 separately verifies the
+end-to-end exhausted-rotation status.
+Files: `packages/core/src/llm/failure-status.ts`, `packages/server/src/http/errors.ts`,
+`packages/web/src/api/client.ts`, `packages/web/src/lib/api-error.ts`, locale dictionaries, and
+`scripts/check-i18n.mjs`.
 
 **A3 · Retry-delay provenance + Retry-After** · M · deps — · src §I.1.3.2
 Description: `ParsedDelay { rawMs, source: header|structured|text }` with the confidence buffers
@@ -610,8 +618,9 @@ sequences → never invalid UTF-8, view==target at finalize. Files: `llm/stream-
 Acceptance: the reference's five test shapes (cross-chunk, astral, resync, EOF flush, marker≠length) pass.
 **B1 · Large-output spill + recall id** · M · deps B2 · src cluster-A #1
 Description: 40KB inline threshold (bytes/4 estimate), spill to the truncated-output archive,
-return `{path,sizeBytes,tokenCount}`; agent-origin calls stay inline; recall id fetches full
-output. Acceptance: failures (non-zero exits) always inline; recall round-trips byte-exact.
+return `{recallId,sizeBytes,tokenCount}`; agent-origin calls stay inline; the opaque recall ID
+fetches full output without exposing a filesystem path. Acceptance: failures (non-zero exits)
+always inline; recall round-trips byte-exact.
 **B3 · In-process tool-output compression** · M · deps B1 · src §IV.9
 Description: four strategies (filter/group/truncate/dedup-counts), test-runner failures-only
 collapse; the three non-negotiables as tests; measured savings table per strategy — **any strategy

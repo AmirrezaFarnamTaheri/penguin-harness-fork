@@ -157,12 +157,12 @@ export class ParserPool {
       const lang = await this.loadLanguage(language);
       const parser = new this.module!.Parser();
       parser.setLanguage(lang);
-      if (oldTree !== undefined && edits !== undefined) {
-        const tree = oldTree as { edit(delta: EditDelta): void };
+      const previous = oldTree ?? this.trees.get(uri)?.handle.tree;
+      if (previous !== undefined && edits !== undefined) {
+        const tree = previous as { edit(delta: EditDelta): void };
         for (const delta of edits) tree.edit(delta);
       }
-      const previous = oldTree ?? this.trees.get(uri)?.handle.tree;
-      const tree = parser.parse(text, previous);
+      const tree = edits === undefined ? parser.parse(text) : parser.parse(text, previous);
       const handle: ParsedTreeHandle = { language, tree, sourceLength: text.length };
       this.storeTree(uri, handle, text.length);
       return handle;

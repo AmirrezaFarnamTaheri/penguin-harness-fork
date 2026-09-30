@@ -14,7 +14,14 @@
  * The tool never touches anything outside that file — it is read-only with respect to the
  * codebase itself and safe under any approval mode that allows state writes.
  */
-import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
@@ -93,7 +100,11 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
       },
       description: "report: backing evidence, strongest tier first.",
     },
-    tags: { type: "array", items: { type: "string" }, description: "report/query: topic tags." },
+    tags: {
+      type: "array",
+      items: { type: "string" },
+      description: "report: topic tags; query: require all listed tags.",
+    },
     text: { type: "string", description: "query: free-text terms." },
     subject: { type: "string", description: "query: subject filter (exact or path prefix)." },
     status: {
@@ -111,7 +122,11 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
   required: ["action"],
 } as const;
 
-/** One graph per workspace, loaded from and saved to `.penguin/knowledge/` under it. */
+/**
+ * One graph per workspace, stored under `.penguin/knowledge/`. The server findings route is
+ * project-scoped and intentionally uses its own store: there is no trusted workspace-to-project
+ * mapping here, so the two authorities must not be joined by matching paths or names.
+ */
 const graphs = new Map<string, FindingsGraph>();
 
 function storePathFor(workspaceDir: string): string {
@@ -123,9 +138,29 @@ function canonicalWorkspaceDir(workspaceDir: string): string {
   try {
     return realpathSync(resolved);
   } catch (error) {
-    // A not-yet-created workspace still has a stable lexical identity. Other failures must
-    // surface instead of letting an inaccessible path become a second graph authority.
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") return resolved;
+    // Keep the canonical key stable if the workspace is temporarily absent. Resolve the
+    // nearest existing ancestor through symlinks, then append the missing suffix.
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      let ancestor = resolved;
+      const suffix: string[] = [];
+      for (;;) {
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) throw error;
+        suffix.unshift(path.basename(ancestor));
+        ancestor = parent;
+        try {
+          return path.join(realpathSync(ancestor), ...suffix);
+        } catch (ancestorError) {
+          if (!(
+            ancestorError instanceof Error &&
+            "code" in ancestorError &&
+            ancestorError.code === "ENOENT"
+          )) {
+            throw ancestorError;
+          }
+        }
+      }
+    }
     throw error;
   }
 }
@@ -146,13 +181,22 @@ function loadGraph(workspaceDir: string): FindingsGraph {
 
 function saveGraph(workspaceDir: string, graph: FindingsGraph): void {
   const target = storePathFor(workspaceDir);
+  const tmp = `${target}.tmp-${process.pid}`;
   try {
     mkdirSync(path.dirname(target), { recursive: true });
-    const tmp = `${target}.tmp-${process.pid}`;
     writeFileSync(tmp, JSON.stringify(graph.exportSnapshot(), null, 2), { mode: 0o600 });
     renameSync(tmp, target);
-  } catch {
-    // Persistence is best-effort: an unwritable workspace must not fail the report.
+  } catch (error) {
+    graphs.delete(workspaceDir);
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* preserve the original persistence failure */
+    }
+    throw new Error(
+      `Unable to persist knowledge graph at ${target}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }
 
@@ -291,7 +335,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
             const query: FindingQuery = {
               text: asString(args["text"]),
               subject: asString(args["subject"]),
-              tag: asString(args["tag"]),
+              tags: asStringArray(args["tags"]),
               kind: KINDS.includes(args["kind"] as FindingKind)
                 ? (args["kind"] as FindingKind)
                 : undefined,

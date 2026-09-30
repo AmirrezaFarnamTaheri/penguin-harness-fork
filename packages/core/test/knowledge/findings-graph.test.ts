@@ -172,6 +172,15 @@ describe("FindingsGraph query and strength", () => {
     expect(hits.map((f) => f.id)).toContain(open.finding.id);
   });
 
+  it("requires every requested tag when filtering with the plural tag contract", () => {
+    const { graph } = makeGraph();
+    graph.report({ title: "Tagged finding", tags: ["memory", "retention"] });
+    graph.report({ title: "Partially tagged finding", tags: ["memory"] });
+    expect(graph.query({ tags: ["memory", "retention"] }).map((finding) => finding.title)).toEqual([
+      "Tagged finding",
+    ]);
+  });
+
   it("decays strength at read time and never stores the decayed value", () => {
     const { graph, advance } = makeGraph();
     const f = graph.report({ title: "Decaying claim", confidence: "high" });
@@ -234,6 +243,100 @@ describe("FindingsGraph snapshot round-trip", () => {
     // Re-import is idempotent: no duplicates.
     fresh.importSnapshot(wire);
     expect(fresh.list()).toHaveLength(1);
+  });
+
+  it("preserves imported identities, provenance, timestamps, and lifecycle links", () => {
+    const source = new FindingsGraph();
+    source.importSnapshot({
+      version: 1,
+      findings: [
+        {
+          id: "original-id",
+          kind: "defect",
+          title: "Long body merge identity",
+          body: "A verified explanation.",
+          status: "superseded",
+          confidence: "high",
+          severity: "medium",
+          subjects: ["src/a.ts"],
+          evidence: [{ path: "src/a.ts", line: 8, tier: "runtime" }],
+          tags: ["state"],
+          sources: [
+            { agentId: "a1", report: "first source" },
+            { sessionId: "s2", report: "second source" },
+          ],
+          related: ["related-id"],
+          supersededBy: "replacement-id",
+          createdAt: 100,
+          updatedAt: 200,
+        },
+      ],
+    });
+    const restored = source.get("original-id");
+    expect(restored).toMatchObject({
+      id: "original-id",
+      status: "superseded",
+      sources: [{ agentId: "a1" }, { sessionId: "s2" }],
+      related: ["related-id"],
+      supersededBy: "replacement-id",
+      createdAt: 100,
+      updatedAt: 200,
+    });
+  });
+
+  it("round-trips a longer merged body without changing its id or losing sources", () => {
+    const source = new FindingsGraph();
+    const original = source.report({
+      title: "Persist merged explanation",
+      body: "Short explanation.",
+      source: { agentId: "agent-one", report: "Initial source." },
+    });
+    const merged = source.report({
+      title: "Persist merged explanation",
+      body: "A substantially longer explanation that should stay attached to the original finding.",
+      source: { agentId: "agent-two", report: "Expanded source." },
+    });
+
+    expect(merged.finding.id).toBe(original.finding.id);
+
+    const fresh = new FindingsGraph();
+    fresh.importSnapshot(source.exportSnapshot());
+    expect(fresh.get(original.finding.id)).toMatchObject({
+      id: original.finding.id,
+      body: "A substantially longer explanation that should stay attached to the original finding.",
+      sources: [
+        { agentId: "agent-one", report: "Initial source." },
+        { agentId: "agent-two", report: "Expanded source." },
+      ],
+    });
+  });
+
+  it("skips malformed enum and array fields without aborting later snapshot records", () => {
+    const graph = new FindingsGraph();
+    const result = graph.importSnapshot({
+      version: 1,
+      findings: [
+        { id: "bad", title: "Bad", subjects: "not-an-array" },
+        {
+          id: "good",
+          kind: "insight",
+          title: "Good",
+          body: "",
+          status: "open",
+          confidence: "medium",
+          severity: "info",
+          subjects: [],
+          evidence: [],
+          tags: [],
+          sources: [],
+          related: [],
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ] as never,
+    });
+    expect(result).toEqual({ imported: 1, skipped: 1 });
+    expect(graph.get("good")?.title).toBe("Good");
   });
 
   it("tolerates garbage instead of throwing", () => {

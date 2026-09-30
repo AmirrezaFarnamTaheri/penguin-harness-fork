@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -71,6 +71,43 @@ describe("knowledge_graph builtin tool", () => {
     }
   });
 
+  it("keeps the same graph identity through workspace deletion and recreation", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kg-tool-recreate-"));
+    const workspaceDir = path.join(root, "workspace");
+    const aliasRoot = path.join(root, "workspace-root-alias");
+    mkdirSync(workspaceDir);
+    symlinkSync(root, aliasRoot, process.platform === "win32" ? "junction" : "dir");
+    const aliasedWorkspace = path.join(aliasRoot, "workspace");
+    try {
+      await run({ action: "report", title: "Retained across recreation" }, workspaceDir);
+      rmSync(workspaceDir, { recursive: true, force: true });
+      await run({ action: "report", title: "Recreated workspace claim" }, aliasedWorkspace);
+      const queried = await run({ action: "query" }, workspaceDir);
+      const findings = JSON.parse(queried.output) as Array<{ title: string }>;
+      expect(findings.map((finding) => finding.title)).toEqual(
+        expect.arrayContaining(["Retained across recreation", "Recreated workspace claim"]),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a fatal tool result when snapshot persistence fails", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kg-tool-write-failure-"));
+    const workspaceFile = path.join(root, "workspace-file");
+    writeFileSync(workspaceFile, "not a directory");
+    const result = await run(
+      { action: "report", title: "Cannot persist this claim" },
+      workspaceFile,
+    );
+    expect(result.stopReason).toBe("fatal");
+    expect(result.output).toContain("Unable to persist knowledge graph");
+    const query = await run({ action: "query" }, workspaceFile);
+    expect(query.stopReason).toBe("completed");
+    expect(JSON.parse(query.output)).toEqual([]);
+    rmSync(root, { recursive: true, force: true });
+  });
+
   it("reports with host-attested provenance and queries the claim back", async () => {
     const workspaceDir = mkdtempSync(path.join(tmpdir(), "kg-tool-"));
     const reported = await run(
@@ -111,6 +148,19 @@ describe("knowledge_graph builtin tool", () => {
       "utf8",
     );
     expect(raw).toContain("The graph watcher skips node_modules");
+  });
+
+  it("applies the schema's tags array to query results", async () => {
+    const workspaceDir = mkdtempSync(path.join(tmpdir(), "kg-tool-tags-"));
+    await run(
+      { action: "report", title: "Both tags", tags: ["memory", "retention"] },
+      workspaceDir,
+    );
+    await run({ action: "report", title: "One tag", tags: ["memory"] }, workspaceDir);
+    const result = JSON.parse(
+      (await run({ action: "query", tags: ["memory", "retention"] }, workspaceDir)).output,
+    ) as Array<{ title: string }>;
+    expect(result.map((finding) => finding.title)).toEqual(["Both tags"]);
   });
 
   it("lifecycle actions update status and events replay the history", async () => {

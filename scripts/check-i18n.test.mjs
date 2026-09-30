@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkI18n } from "./check-i18n.mjs";
+import { checkHttpErrorTranslations, checkI18n } from "./check-i18n.mjs";
 
 const script = fileURLToPath(new URL("./check-i18n.mjs", import.meta.url));
 const fixtureDirs = [];
@@ -41,6 +41,25 @@ test("accepts translated strings, reordered keys, nested arrays, and callable le
       { nested: { format: neverCall, rows: [["{{NAME}}", "名字"]] }, title: "你好" },
     ),
     [],
+  );
+});
+
+test("requires literal server HttpError codes in both locale catalogs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "penguin-http-error-i18n-"));
+  fixtureDirs.push(dir);
+  const nested = join(dir, "nested");
+  mkdirSync(nested);
+  writeFileSync(
+    join(nested, "errors.ts"),
+    'throw new HttpError(422, "bad_input", "Invalid input");\\n',
+  );
+  const translated = {
+    errors: { byCode: { bad_input: "Invalid input" } },
+  };
+  assert.deepEqual(checkHttpErrorTranslations(dir, translated, translated), []);
+  assert.deepEqual(
+    checkHttpErrorTranslations(dir, { errors: { byCode: {} } }, { errors: { byCode: {} } }),
+    ["$.errors.byCode.bad_input: missing in en", "$.errors.byCode.bad_input: missing in zh"],
   );
 });
 

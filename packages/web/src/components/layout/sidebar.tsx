@@ -1273,7 +1273,7 @@ export function Sidebar({
         const open = sessions.find((x) => x.sessionId === activeSessionId);
         const rest = (open ? (byAgent.get(open.agentId) ?? []) : []).filter((s) => {
           const category = sessionCategory(s);
-          return !succeeded.has(s.sessionId) && (category === "active" || category === "schedule");
+          return !ids.includes(s.sessionId) && (category === "active" || category === "schedule");
         });
         navigate(rest[0] ? `/chat/${rest[0].sessionId}` : "/chat");
       }

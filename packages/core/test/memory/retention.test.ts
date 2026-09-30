@@ -40,6 +40,18 @@ describe("retention strength (agentmemory formula)", () => {
     expect(withAccess).toBeCloseTo(Math.exp(-0.1) + 0.3 * (1 / 10), 5);
   });
 
+  it("includes creation age in the decay anchor and ignores non-finite timestamps", () => {
+    const createdAfterUpdate = record({ createdAt: T0 + 10 * DAY, updatedAt: T0 });
+    expect(strengthAt(createdAfterUpdate, T0 + 10 * DAY)).toBeCloseTo(1, 5);
+    const malformed = record({
+      createdAt: Number.NaN,
+      updatedAt: Number.POSITIVE_INFINITY,
+      lastDecayedAt: Number.NaN,
+      accesses: [Number.NaN, Number.POSITIVE_INFINITY],
+    });
+    expect(Number.isFinite(strengthAt(malformed, T0 + 10 * DAY))).toBe(true);
+  });
+
   it("classifies tiers at the reference cutovers 0.7 / 0.4 / 0.15", () => {
     expect(retentionTier(0.7)).toBe("hot");
     expect(retentionTier(0.69)).toBe("warm");
@@ -126,5 +138,22 @@ describe("consolidation gates", () => {
     // Only `stale` changed under decay.
     expect(result.decayed.map((d) => d.id)).toEqual(["stale"]);
     expect(result.evicted).toHaveLength(2);
+  });
+
+  it("orders eviction by post-decay strength", () => {
+    const stale = record({
+      id: "stale-hot-before-decay",
+      strength: 0.9,
+      updatedAt: T0 - 300 * DAY,
+      createdAt: T0 - 300 * DAY,
+    });
+    const recentHot = record({ id: "recent-hot", strength: 0.8 });
+    const others = Array.from({ length: 3 }, (_, index) =>
+      record({ id: `warm-${index}`, strength: 0.5 }),
+    );
+    const result = consolidate({ summaries: [stale, recentHot, ...others] }, T0, { maxRecords: 4 });
+    expect(result.decayed.map((entry) => entry.id)).toContain(stale.id);
+    expect(result.evicted).toContain(stale.id);
+    expect(result.evicted).not.toContain(recentHot.id);
   });
 });

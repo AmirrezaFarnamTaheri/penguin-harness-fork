@@ -119,7 +119,7 @@ describe("qqScanStep", () => {
     const step = qqScanStep(failed(error), { failures: 2, refreshes: 0 });
     expect(step).toEqual({
       kind: "stop",
-      notice: S.qq.scanFailed("bad gateway"),
+      notice: S.qq.scanFailed(S.errors.byCode.qq_scan_failed),
       releaseTask: true,
     });
     // One answer that came back resets the run — the loop passes failures: 0 again.

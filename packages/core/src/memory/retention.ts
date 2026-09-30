@@ -85,11 +85,17 @@ export function strengthAt(
 ): number {
   const decayPerDay = options.decayPerDay ?? RETENTION_DEFAULTS.decayPerDay;
   const sigma = options.accessReinforcement ?? RETENTION_DEFAULTS.accessReinforcement;
-  const anchor = Math.max(record.updatedAt, record.lastDecayedAt ?? Number.NEGATIVE_INFINITY);
+  const anchor = Math.max(
+    ...[record.createdAt, record.updatedAt, record.lastDecayedAt].filter(
+      (value): value is number => typeof value === "number" && Number.isFinite(value),
+    ),
+    Number.NEGATIVE_INFINITY,
+  );
   const ageDays = Math.max(0, (at - anchor) / DAY_MS);
   const base = record.salience * Math.exp(-decayPerDay * ageDays);
   let reinforcement = 0;
   for (const access of record.accesses ?? []) {
+    if (!Number.isFinite(access)) continue;
     const sinceDays = Math.max(1, (at - access) / DAY_MS);
     reinforcement += 1 / sinceDays;
   }
@@ -183,9 +189,13 @@ export function consolidate<T extends RetentionRecord>(
 
   const all: T[] = [...semantic, ...procedural];
   const decayed: T[] = [];
+  const decayedById = new Map<string, T>();
   for (const record of all) {
     const result = applyDecay(record, at, options);
-    if (result !== null) decayed.push(result as T);
+    if (result !== null) {
+      decayed.push(result as T);
+      decayedById.set(record.id, result as T);
+    }
   }
 
   const evicted: string[] = [];
@@ -193,7 +203,9 @@ export function consolidate<T extends RetentionRecord>(
   if (budget !== undefined && all.length > budget) {
     const ordered = [...all].sort((a, b) => {
       const tier = (r: T): number =>
-        ({ hot: 3, warm: 2, cold: 1, expired: 0 })[retentionTier(r.strength)];
+        ({ hot: 3, warm: 2, cold: 1, expired: 0 })[
+          retentionTier(decayedById.get(r.id)?.strength ?? r.strength)
+        ];
       const byTier = tier(a) - tier(b);
       if (byTier !== 0) return byTier;
       return a.updatedAt - b.updatedAt;

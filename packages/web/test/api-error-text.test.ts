@@ -2,7 +2,7 @@
  * Server error → localized display text (`apiErrorText`).
  *
  * The server's error messages are English-only by design, so the UI derives its text from the
- * error **code**. Any code missing from the table falls through to the raw English message —
+ * stable **translation key**, falling back to the code for older servers. Any unmapped key falls through to the raw English message —
  * which is how English prose ends up in a Chinese UI. These tests pin the codes a user actually
  * meets, and pin that the three "cannot compact" reasons stay three distinct explanations
  * rather than collapsing into one.
@@ -15,8 +15,8 @@ import { zh as ZH } from "../src/lib/strings-zh";
 import { en as EN } from "../src/lib/strings-en";
 
 /** The English message the server actually sends, so an unmapped code is visibly distinguishable. */
-const serverError = (code: string): ApiError =>
-  new ApiError(409, code, "RAW ENGLISH SERVER MESSAGE");
+const serverError = (code: string, i18nKey?: string): ApiError =>
+  new ApiError(409, code, "RAW ENGLISH SERVER MESSAGE", i18nKey);
 
 afterEach(() => setActiveStrings(ZH));
 
@@ -62,6 +62,16 @@ describe("apiErrorText", () => {
   it("still falls back to the server message for a code nobody has mapped", () => {
     setActiveStrings(ZH);
     expect(apiErrorText(serverError("some_code_from_the_future"))).toBe(
+      "RAW ENGLISH SERVER MESSAGE",
+    );
+  });
+
+  it("prefers a valid translation key and rejects inherited dictionary properties", () => {
+    setActiveStrings(ZH);
+    expect(apiErrorText(serverError("different_wire_code", "errors.byCode.agent_not_found"))).toBe(
+      ZH.errors.byCode.agent_not_found,
+    );
+    expect(apiErrorText(serverError("constructor", "errors.byCode.constructor"))).toBe(
       "RAW ENGLISH SERVER MESSAGE",
     );
   });

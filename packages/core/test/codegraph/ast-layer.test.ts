@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   anonymousFqn,
   constructorFqn,
@@ -7,7 +7,7 @@ import {
   fqnOf,
   isWithinScope,
   memberFqn,
-  normalizePath,
+  normalizeFqnPath,
   parseEntityId,
 } from "../../src/codegraph/ast/fqn.js";
 import { clampWeight } from "../../src/codegraph/ast/ir.js";
@@ -19,7 +19,7 @@ describe("FQN scheme (filePath::Name, pkg.Name)", () => {
     expect(fileScope({ filePath: "src\\app\\util.ts" })).toBe("src/app/util.ts");
     expect(fqnOf({ filePath: "src/util.ts" }, "helper")).toBe("src/util.ts::helper");
     expect(fqnOf({ filePath: "A.java", packageName: "com.acme" }, "Widget")).toBe(
-      "com.acme::Widget",
+      "com.acme.Widget",
     );
   });
 
@@ -38,7 +38,7 @@ describe("FQN scheme (filePath::Name, pkg.Name)", () => {
   });
 
   it("normalizes Windows separators and contains paths without escaping", () => {
-    expect(normalizePath("a\\b\\c.ts")).toBe("a/b/c.ts");
+    expect(normalizeFqnPath("a\\b\\c.ts")).toBe("a/b/c.ts");
     expect(isWithinScope("src", "src/app.ts")).toBe(true);
     expect(isWithinScope("src", "src")).toBe(true);
     expect(isWithinScope("src", "src-other/app.ts")).toBe(false);
@@ -115,5 +115,42 @@ describe("ParserPool without grammars (fallback tier)", () => {
     expect(pool.stats().cachedBytes).toBeLessThanOrEqual(250);
     pool.evict("c.ts");
     expect(pool.cached("c.ts")).toBeNull();
+  });
+});
+
+describe("ParserPool incremental tree selection", () => {
+  it("edits the cached tree when edits are supplied and parses from scratch without edits", async () => {
+    const pool = new ParserPool();
+    const previousTree = { edit: vi.fn() };
+    const parse = vi.fn((text: string, oldTree?: unknown) => ({ text, oldTree }));
+    class TestParser {
+      static init = vi.fn(async () => undefined);
+      setLanguage = vi.fn();
+      parse = parse;
+    }
+    const module = {
+      Parser: TestParser,
+      Language: { load: vi.fn(async () => ({ language: "typescript" })) },
+    };
+    const internals = pool as unknown as {
+      module: typeof module | null;
+      initPromise: Promise<void> | null;
+      languages: Map<string, unknown>;
+    };
+    internals.module = module;
+    internals.initPromise = Promise.resolve();
+    internals.languages.set("typescript", { language: "typescript" });
+    pool.storeTree("src/a.ts", { language: "typescript", tree: previousTree, sourceLength: 3 }, 3);
+
+    const delta = editDelta("old", 0, 3, "new");
+    await pool.parse("src/a.ts", "typescript", "new", [delta]);
+    expect(previousTree.edit).toHaveBeenCalledWith(delta);
+    expect(parse).toHaveBeenLastCalledWith("new", previousTree);
+
+    parse.mockClear();
+    await pool.parse("src/a.ts", "typescript", "replacement");
+    expect(previousTree.edit).toHaveBeenCalledTimes(1);
+    expect(parse).toHaveBeenCalledTimes(1);
+    expect(parse.mock.calls[0]).toHaveLength(1);
   });
 });

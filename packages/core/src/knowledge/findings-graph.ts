@@ -84,6 +84,30 @@ const STATUS_RANK: Record<FindingStatus, number> = {
   superseded: 1,
   refuted: 0,
 };
+const FINDING_KINDS: readonly FindingKind[] = [
+  "defect",
+  "insight",
+  "decision",
+  "pattern",
+  "metric",
+  "hypothesis",
+];
+const FINDING_STATUSES: readonly FindingStatus[] = ["open", "confirmed", "refuted", "superseded"];
+const FINDING_CONFIDENCE: readonly FindingConfidence[] = ["low", "medium", "high"];
+const FINDING_SEVERITIES: readonly FindingSeverity[] = [
+  "info",
+  "low",
+  "medium",
+  "high",
+  "critical",
+];
+const EVIDENCE_TIERS = [
+  "runtime",
+  "implementation",
+  "history",
+  "documentation",
+  "anecdote",
+] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -182,8 +206,8 @@ export class FindingsGraph {
   }
 
   /**
-   * Report a finding. Merges into an existing claim when one matches (same id, or Jaccard at
-   * or above `mergeJaccard` over title+body); otherwise creates one and links near-misses.
+   * Report a finding. Merges into an existing claim when one matches (same id, exact title, or
+   * Jaccard at or above `mergeJaccard` over title+body); otherwise creates one and links near-misses.
    */
   report(input: ReportFindingInput): ReportFindingResult {
     const title = input.title.trim();
@@ -201,6 +225,9 @@ export class FindingsGraph {
     let best: { finding: InternalFinding; score: number } | null = null;
     for (const candidate of this.findings.values()) {
       if (candidate.status === "refuted") continue;
+      if (candidate.title.trim().toLowerCase() === title.toLowerCase()) {
+        return { finding: this.mergeInto(candidate, input, now), merged: true };
+      }
       const score = jaccard(claimed, tokens(`${candidate.title} ${candidate.body}`));
       if (score >= this.mergeJaccard && (best === null || score > best.score)) {
         best = { finding: candidate, score };
@@ -355,6 +382,7 @@ export class FindingsGraph {
       }
       if (q.kind !== undefined && finding.kind !== q.kind) continue;
       if (q.tag !== undefined && !finding.tags.includes(q.tag.toLowerCase())) continue;
+      if (q.tags?.some((tag) => !finding.tags.includes(tag.toLowerCase()))) continue;
       if (q.subject !== undefined) {
         const subject = q.subject.replace(/\\/g, "/");
         const hit = finding.subjects.some((s) => {
@@ -416,7 +444,6 @@ export class FindingsGraph {
   /**
    * Import a snapshot. Malformed records are skipped, not fatal — a hand-edited file degrades
    * one record instead of bricking the graph (the DurableRecordStore `revive` contract).
-   * Import merges record-by-record through `report`, so an import is idempotent.
    */
   importSnapshot(raw: string | FindingsGraphSnapshot): { imported: number; skipped: number } {
     let parsed: unknown;
@@ -436,44 +463,91 @@ export class FindingsGraph {
     let imported = 0;
     let skipped = 0;
     for (const record of snapshot.findings as unknown[]) {
-      const f = record as Partial<Finding>;
-      if (typeof f?.id !== "string" || typeof f?.title !== "string" || f.title.trim() === "") {
+      try {
+        if (record === null || typeof record !== "object") throw new Error("invalid record");
+        const f = record as Partial<Finding>;
+        if (
+          typeof f.id !== "string" ||
+          f.id.trim() === "" ||
+          typeof f.title !== "string" ||
+          f.title.trim() === "" ||
+          typeof f.body !== "string" ||
+          !FINDING_KINDS.includes(f.kind as FindingKind) ||
+          !FINDING_STATUSES.includes(f.status as FindingStatus) ||
+          !FINDING_CONFIDENCE.includes(f.confidence as FindingConfidence) ||
+          !FINDING_SEVERITIES.includes(f.severity as FindingSeverity) ||
+          !Array.isArray(f.subjects) ||
+          !f.subjects.every((value) => typeof value === "string") ||
+          !Array.isArray(f.tags) ||
+          !f.tags.every((value) => typeof value === "string") ||
+          !Array.isArray(f.related) ||
+          !f.related.every((value) => typeof value === "string") ||
+          !Array.isArray(f.evidence) ||
+          !f.evidence.every(
+            (value) =>
+              value !== null &&
+              typeof value === "object" &&
+              EVIDENCE_TIERS.includes((value as FindingEvidence).tier),
+          ) ||
+          !Array.isArray(f.sources) ||
+          !f.sources.every((value) => {
+            if (value === null || typeof value !== "object") return false;
+            const source = value as FindingSource;
+            return (
+              (source.agentId === undefined || typeof source.agentId === "string") &&
+              (source.sessionId === undefined || typeof source.sessionId === "string") &&
+              (source.report === undefined || typeof source.report === "string") &&
+              (source.at === undefined ||
+                (typeof source.at === "number" && Number.isFinite(source.at)))
+            );
+          }) ||
+          typeof f.createdAt !== "number" ||
+          !Number.isFinite(f.createdAt) ||
+          typeof f.updatedAt !== "number" ||
+          !Number.isFinite(f.updatedAt) ||
+          (f.supersededBy !== undefined && typeof f.supersededBy !== "string")
+        )
+          throw new Error("invalid record");
+
+        const sources = f.sources.map((source) => ({ ...source }));
+        const sourceNotes: Record<string, string> = {};
+        for (const source of sources) sourceNotes[sourceKey(source)] = source.report ?? "";
+        const restored: InternalFinding = {
+          id: f.id,
+          kind: f.kind as FindingKind,
+          title: f.title,
+          body: f.body,
+          status: f.status as FindingStatus,
+          confidence: f.confidence as FindingConfidence,
+          severity: f.severity as FindingSeverity,
+          subjects: [...f.subjects],
+          evidence: f.evidence.map((evidence) => ({ ...evidence })),
+          tags: [...f.tags],
+          sources,
+          related: [...f.related],
+          ...(f.supersededBy === undefined ? {} : { supersededBy: f.supersededBy }),
+          createdAt: f.createdAt,
+          updatedAt: f.updatedAt,
+          sourceNotes,
+        };
+        this.findings.set(restored.id, restored);
+        imported++;
+      } catch {
         skipped++;
-        continue;
       }
-      const result = this.report({
-        title: f.title,
-        kind: f.kind as FindingKind | undefined,
-        body: f.body,
-        confidence: f.confidence as FindingConfidence | undefined,
-        severity: f.severity as FindingSeverity | undefined,
-        subjects: f.subjects,
-        evidence: f.evidence,
-        tags: f.tags,
-        source: f.sources?.[0],
-      });
-      // Restore lifecycle state that `report` always starts at `open`.
-      const target = this.require(result.finding.id);
-      if (f.status === "confirmed" || f.status === "refuted" || f.status === "superseded") {
-        target.status = f.status;
-      }
-      if (typeof f.supersededBy === "string") target.supersededBy = f.supersededBy;
-      if (Array.isArray(f.related)) target.related = unionSorted(target.related, f.related);
-      if (typeof f.createdAt === "number")
-        target.createdAt = Math.min(target.createdAt, f.createdAt);
-      if (typeof f.updatedAt === "number") target.updatedAt = f.updatedAt;
-      imported++;
     }
     // Adopt the snapshot's log as the canonical history — AFTER the findings restore, so it
     // replaces the `ingest` events the `report()` calls above pushed. A snapshot without a log
     // (older format) keeps whatever the import produced.
-    const importedEvents = (snapshot.events ?? []).filter(
+    const importedEvents = (Array.isArray(snapshot.events) ? snapshot.events : []).filter(
       (e): e is FindingEvent =>
         e !== null &&
         typeof e === "object" &&
         typeof e.seq === "number" &&
+        Number.isFinite(e.seq) &&
         typeof e.findingId === "string" &&
         typeof e.at === "number" &&
+        Number.isFinite(e.at) &&
         (e.type === "ingest" ||
           e.type === "merge" ||
           e.type === "supersede" ||

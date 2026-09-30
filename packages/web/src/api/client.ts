@@ -9,16 +9,18 @@
  */
 import { s } from "../lib/strings";
 
-/** Unified API error: carries the HTTP status code and server error code (server error body {error:{code,message}}). */
+/** Unified API error: carries the HTTP status, server error code and optional translation key. */
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly i18nKey: string | undefined;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, i18nKey?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.i18nKey = i18nKey;
   }
 }
 
@@ -104,16 +106,20 @@ export async function apiFetchWithMeta<T>(
   if (!response.ok) {
     let code = "http_error";
     let message: string = s().common.unknownError;
+    let i18nKey: string | undefined;
     try {
-      const body = (await response.json()) as { error?: { code?: string; message?: string } };
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string; i18nKey?: unknown };
+      };
       if (body.error?.code) code = body.error.code;
       if (body.error?.message) message = body.error.message;
+      if (typeof body.error?.i18nKey === "string") i18nKey = body.error.i18nKey;
     } catch {
       // Non-JSON error body: fall back to the default message.
     }
     if (response.status === 401 && !isAuthEndpoint(path) && options.handleUnauthorized !== false)
       onUnauthorized?.();
-    throw new ApiError(response.status, code, message);
+    throw new ApiError(response.status, code, message, i18nKey);
   }
 
   const headerDate = Date.parse(response.headers.get("date") ?? "");
