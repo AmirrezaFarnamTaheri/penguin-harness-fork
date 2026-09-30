@@ -120,6 +120,7 @@ describe("project audit receipts route", () => {
     expect(await response.json()).toEqual({
       error: {
         code: "audit_unavailable",
+        i18nKey: "errors.byCode.audit_unavailable",
         message: "Audit receipts could not be read or verified.",
       },
     });
