@@ -442,11 +442,22 @@ function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: strin
   return deps.workspaceRoot ?? process.cwd();
 }
 
+/**
+ * One runtime per resolved workspace directory. The async factory and the sync seams must
+ * agree on this key: a bare `projectId` key ignored the root, so `getSharedCodeGraphWatcher`
+ * called twice with different roots silently kept the first root's watcher, and the sync
+ * seams never matched the async factory's runtimes (see the quorum workaround).
+ */
+function runtimeKeyFor(workspaceDir: string, projectId: string): string {
+  return JSON.stringify([path.resolve(workspaceDir), projectId]);
+}
+
 export async function getOrCreateProjectRuntime(
   projectId = DEFAULT_PROJECT_ID,
   deps: CockpitWebSocketDeps = {},
 ): Promise<ProjectCockpitRuntime> {
-  const runtimeKey = deps.root ? JSON.stringify([path.resolve(deps.root), projectId]) : projectId;
+  const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
+  const runtimeKey = runtimeKeyFor(workspaceDir, projectId);
   const existing = projectRuntimes.get(runtimeKey);
   if (existing) {
     if (existing.clients.size === 0) {
@@ -464,7 +475,6 @@ export async function getOrCreateProjectRuntime(
 
   const creationPromise = (async () => {
     try {
-      const workspaceDir = resolveProjectWorkspaceDir(deps, projectId);
       const codeGraphWatcher = new CodeGraphWatcher(workspaceDir);
 
       const shellGuardian = await createProjectShellGuardian(deps, projectId);
@@ -554,7 +564,8 @@ function getOrCreateProjectRuntimeSync(
   projectId = DEFAULT_PROJECT_ID,
   workspaceRoot = process.cwd(),
 ): ProjectCockpitRuntime {
-  let rt = projectRuntimes.get(projectId);
+  const runtimeKey = runtimeKeyFor(workspaceRoot, projectId);
+  let rt = projectRuntimes.get(runtimeKey);
   if (rt) {
     if (rt.clients.size === 0) {
       scheduleRuntimeReap(rt);
@@ -576,7 +587,7 @@ function getOrCreateProjectRuntimeSync(
     clients: new Set(),
     eventLog: new CockpitEventLog(),
   };
-  projectRuntimes.set(projectId, rt);
+  projectRuntimes.set(runtimeKey, rt);
   if (rt.clients.size === 0) {
     scheduleRuntimeReap(rt);
   }

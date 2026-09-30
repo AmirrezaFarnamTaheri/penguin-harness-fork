@@ -259,7 +259,7 @@ function SessionRowInner({
               active
                 ? "font-medium text-gray-900 dark:text-gray-100"
                 : s.archived
-                  ? "text-gray-400 dark:text-gray-500"
+                  ? "text-gray-500 dark:text-gray-400"
                   : "text-gray-700 dark:text-gray-300"
             }`}
           />
@@ -338,7 +338,7 @@ function SessionRowInner({
           {lastActive !== "" && (
             <span
               aria-hidden
-              className="pointer-events-none px-1 text-[11px] text-gray-400 transition-opacity duration-150 group-hover:opacity-0 peer-focus-within:opacity-0 dark:text-gray-500"
+              className="pointer-events-none px-1 text-[11px] text-gray-600 transition-opacity duration-150 group-hover:opacity-0 peer-focus-within:opacity-0 dark:text-gray-400"
             >
               {lastActive}
             </span>

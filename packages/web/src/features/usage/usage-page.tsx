@@ -544,7 +544,9 @@ export function UsagePage() {
           )}
         </div>
 
-        {hasUncostedRows && <p className="text-xs text-gray-400">{S.usage.uncostedNote}</p>}
+        {hasUncostedRows && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">{S.usage.uncostedNote}</p>
+        )}
       </div>
     </div>
   );

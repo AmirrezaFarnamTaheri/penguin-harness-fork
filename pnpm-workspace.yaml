@@ -25,6 +25,8 @@ overrides:
   "qs@^6": "^6.16.0"
   "@xmldom/xmldom@^0.8": "^0.8.15"
   "js-yaml@^4": "^4.3.2"
+  # Keep node-gyp's Undici 6.x edge on the patched release without changing the server's 7.x API line.
+  "node-gyp@12.4.0>undici": "6.28.1"
 injectWorkspacePackages: true
 syncInjectedDepsAfterScripts:
   - build

@@ -1,5 +1,7 @@
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 function kind(value) {
   if (value === null) return "null";
@@ -101,6 +103,53 @@ export function checkI18n(en, zh) {
   return issues;
 }
 
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
+  });
+}
+
+/** Every literal server HttpError code must have an English and Chinese UI message. */
+export function checkHttpErrorTranslations(serverSourceDir, en, zh) {
+  const codes = new Set();
+  for (const file of sourceFiles(serverSourceDir)) {
+    const source = ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    function visit(node) {
+      if (
+        ts.isNewExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "HttpError"
+      ) {
+        const code = node.arguments?.[1];
+        if (code && ts.isStringLiteralLike(code)) codes.add(code.text);
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+
+  const issues = [];
+  for (const code of [...codes].sort()) {
+    for (const [locale, dictionary] of [
+      ["en", en],
+      ["zh", zh],
+    ]) {
+      if (!Object.hasOwn(dictionary?.errors?.byCode ?? {}, code)) {
+        issues.push(`$.errors.byCode.${code}: missing in ${locale}`);
+      }
+    }
+  }
+  return issues;
+}
+
 async function main(args) {
   const paths = {
     en: new URL("../packages/web/src/lib/strings-en.ts", import.meta.url),
@@ -119,7 +168,19 @@ async function main(args) {
   // Node >=24 (the repository engine) loads erasable TypeScript natively. Paths
   // are trusted local source modules, not sandboxed input; imports execute code.
   const [enModule, zhModule] = await Promise.all([import(paths.en.href), import(paths.zh.href)]);
-  const issues = checkI18n(enModule.en, zhModule.zh);
+  const issues = [...checkI18n(enModule.en, zhModule.zh)];
+  // The literal server-code catalog belongs to the repository dictionaries. Custom locale
+  // files are supported for parity fixtures and should not be compared with this checkout's
+  // application source tree.
+  if (seen.size === 0) {
+    issues.push(
+      ...checkHttpErrorTranslations(
+        fileURLToPath(new URL("../packages/server/src/", import.meta.url)),
+        enModule.en,
+        zhModule.zh,
+      ),
+    );
+  }
   if (issues.length > 0) throw new Error(issues.join("\n"));
   console.log(
     "i18n parity check passed (en ↔ zh: recursive keys, kinds, arrays, arity, prompt tokens)",

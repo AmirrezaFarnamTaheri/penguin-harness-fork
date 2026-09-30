@@ -286,7 +286,7 @@ export function GatewayPage() {
                 <p className="font-semibold text-gray-700 dark:text-gray-300">
                   Quota Telemetry Unavailable
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   No active quota monitors configured for this project.
                 </p>
               </div>
@@ -311,7 +311,7 @@ export function GatewayPage() {
                     it is read. The honest unknown is the absence of the shape. */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
                       {S.gateway.sessionQuotaUsed}
                     </div>
                     <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
@@ -325,14 +325,14 @@ export function GatewayPage() {
                         />
                       </div>
                     ) : (
-                      <div className="mt-2 text-[11px] text-gray-400">
+                      <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                         {S.gateway.quotaNotReported}
                       </div>
                     )}
                   </div>
 
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
                       {S.gateway.weeklyQuotaUsed}
                     </div>
                     <div className="text-2xl font-bold font-mono text-gray-900 dark:text-gray-100 mt-1">
@@ -346,14 +346,14 @@ export function GatewayPage() {
                         />
                       </div>
                     ) : (
-                      <div className="mt-2 text-[11px] text-gray-400">
+                      <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                         {S.gateway.quotaNotReported}
                       </div>
                     )}
                   </div>
 
                   <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-                    <div className="text-[11px] text-gray-400 font-medium">
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">
                       {S.gateway.nextResetWindow}
                     </div>
                     {/* Green means "fine", and an unknown reset window is not fine — it is
@@ -372,7 +372,7 @@ export function GatewayPage() {
                     >
                       {quota.activeQuota.resetsIn ?? S.gateway.notAvailable}
                     </div>
-                    <div className="mt-2 text-[11px] text-gray-400">
+                    <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                       {S.gateway.resetReplenishment}
                     </div>
                   </div>
@@ -384,7 +384,7 @@ export function GatewayPage() {
                     <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                       Provider Model Health & Cooldown Circuit
                     </h3>
-                    <span className="text-[11px] text-gray-400 font-mono">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                       {quota.models.length} endpoints monitored
                     </span>
                   </div>
@@ -405,7 +405,7 @@ export function GatewayPage() {
                             <div className="font-semibold text-gray-800 dark:text-gray-200">
                               {m.modelId}
                             </div>
-                            <div className="text-[11px] text-gray-400 font-mono capitalize">
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400 font-mono capitalize">
                               Provider: {m.provider}
                             </div>
                           </div>
@@ -440,7 +440,7 @@ export function GatewayPage() {
                 <p className="font-semibold text-gray-700 dark:text-gray-300">
                   No Model Combos Configured
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Register a fallback chain above to enable automatic model failover.
                 </p>
               </div>
@@ -456,7 +456,9 @@ export function GatewayPage() {
                         <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                           {combo.name}
                         </div>
-                        <div className="font-mono text-[11px] text-gray-400">{combo.id}</div>
+                        <div className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                          {combo.id}
+                        </div>
                       </div>
                       <Button
                         variant="ghost"
@@ -476,7 +478,7 @@ export function GatewayPage() {
                             {target.modelId} ({target.provider})
                           </span>
                           {idx < (combo.targets || []).length - 1 && (
-                            <span className="text-gray-400">→</span>
+                            <span className="text-gray-500 dark:text-gray-400">→</span>
                           )}
                         </div>
                       ))}
@@ -497,7 +499,7 @@ export function GatewayPage() {
                 <p className="font-semibold text-gray-700 dark:text-gray-300">
                   Spend Flow Metrics Unavailable
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   No spend telemetry records are available for this project yet.
                 </p>
               </div>
@@ -515,7 +517,7 @@ export function GatewayPage() {
                 <p className="font-semibold text-gray-700 dark:text-gray-300">
                   Pricing Catalog Unavailable
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   No pricing data found for model endpoints.
                 </p>
               </div>
@@ -562,7 +564,7 @@ export function GatewayPage() {
                           <td
                             className={`p-3 ${
                               cacheRead === null
-                                ? "text-gray-400 dark:text-gray-500"
+                                ? "text-gray-500 dark:text-gray-400"
                                 : "text-emerald-600 dark:text-emerald-400"
                             }`}
                           >

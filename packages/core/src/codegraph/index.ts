@@ -120,3 +120,5 @@ export type {
   TopologyNode,
   VariableBinding,
 } from "./types.js";
+
+export * from "./ast/index.js";

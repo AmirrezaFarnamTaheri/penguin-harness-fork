@@ -72,7 +72,7 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 
 ## 内置工具
 
-共 8 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
+共 12 个内置工具(装配入口 `packages/core/src/environment/tools/registry.ts`):
 
 | 工具 | 权限 | 超时(ms) | 用途 |
 | --- | --- | --- | --- |
@@ -84,6 +84,10 @@ Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读�
 | `write_file` | rw | 30000 | 新建或整体覆写文件，按需创建父目录 |
 | `run_subagent` | rw | 600000 | 把自包含子任务委派给同 Workspace 的子 Agent |
 | `input_subagent` | rw | 600000 | 轮询后台 Subagent、运行中插话、停止其当前轮，或在其空闲时追加后续 Prompt |
+| `environment_info` | r | 10000 | 报告宿主机的平台 / shell / 路径形态，可选解析单个路径字符串 |
+| `resource_pressure` | r | 10000 | 报告内存与各路径磁盘压力；只观测，不做拒绝 |
+| `knowledge_graph` | rw | 30000 | 记录带出处的 findings、按需检索，并管理其生命周期（confirm / refute / supersede / link） |
+| `code_graph` | r | 60000 | 一次索引 Workspace，随后查询符号、调用者/被调用、影响半径与结构——与驾驶舱拓扑视图同一套引擎 |
 
 注意：既有 Agent 已落盘的 `tools.builtin` 列表按原样冻结（设置页只能编辑行、不能增行）：较早创建的 Agent 不会自动获得后来新增的工具（如文件工具）与新增参数（`run_in_background`、`kill`、`abort`），已移除工具（`kill_command`、`kill_subagent`、`read_image`、`describe_image`）的存量条目则不再装配——模型按旧名调用得到标准的未知工具报错；读图之前落盘的 `read_file` 条目保留旧描述与旧超时（其背后的实现已能读图）。采纳当前定义需手工编辑该 Agent 的 `system_config.yaml`（可从 `packages/core/src/state/default-config.ts` 的默认定义复制），或走「更新内核」。
 
@@ -102,6 +106,23 @@ SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK �
 `EnvironmentServices.webSearch.endpoint` 覆盖、Agent Vault 中的 `SEARXNG_ENDPOINT`、
 进程环境中的 `SEARXNG_ENDPOINT`，最后是 `http://127.0.0.1:8080`。SearXNG 实例须在
 `search.formats` 中启用 `json`；HTTP 403 错误会给出这一诊断。
+
+### 知识图谱
+
+`knowledge_graph` 是 findings 平面（`packages/core/src/knowledge/`）面向 Agent 的入口。
+一次 `report` 记录一条耐久断言——标题、类型、正文、主题（文件 / 模块 / 符号）、带审计层级的证据、标签——其余交给图谱：重复上报会并入同一条 finding（先按确定性 id，再按 Jaccard 措辞相似度），近似断言变为 `related` 链接，同一 Agent 的再次上报**替换**其先前叙述而不是追加。出处来自宿主记录的 attribution 而非模型参数，Prompt 无法伪造"谁报的"。
+
+`query` 返回按 状态 → 严重度·置信度 → 新近度 排序的结果，可按文本、主题路径前缀、类型、标签、状态过滤；被驳回与被取代的断言默认不出现。`confirm` / `refute` / `supersede` 推动断言的生命周期——任何东西都不会被删除，`supersede` 会把旧断言链接到替代者。`events` 从某个序号起回放变更，`snapshot` 导出整个图谱。
+
+状态保存为每个 Workspace 一份 JSON 快照 `.penguin/knowledge/findings-graph.json`（原子写 + 0600），惰性加载、每次变更后保存；工具不写其他任何文件。强度在读取时衰减（按置信度加权、指数衰减、访问强化），而不是落盘存储，因此读取者永远不会改写历史。
+
+此存储仅属于工具上下文提供的 Workspace。服务端 HTTP findings 路由使用独立的 Project ID 文件（`.findings_graph.json`）；名称或路径相同也不会自动绑定或同步两个存储。
+
+### 代码图谱
+
+`code_graph` 是原生代码智能入口（`packages/core/src/codegraph/*` 加上 watcher 的遍历器与符号索引器——与驾驶舱拓扑视图同一套引擎）。一次 `index` 遍历 Workspace（沿用标准忽略表：`node_modules`、`.git`、`dist`、`.venv` …）构建符号图，结果缓存 60 秒——一串查询只付一次遍历；`index` 带 `refresh: true` 可强制重扫。对同一 Workspace 的并发 `index` 请求共享一次扫描；LRU 缓存最多保留 8 个 Workspace，`index` 会报告缓存大小和驱逐次数。工具只调用 `scanWorkspace()`（该方法不安装文件 watcher；只有 `init()` 会安装），因此不会创建 watcher 句柄。
+
+随后即可查询：`search` 按名字片段找符号与文件，`callers` / `callees` 以有界深度遍历调用图，`impact` 计算改动某节点的爆炸半径，`explore` 返回围绕某词条的小子图，`files` 列出已索引文件集，`hubs` 给出连接度最高的节点。该工具只读，也不会写入文件。
 
 ### 命令会话
 
@@ -306,6 +327,7 @@ tools:
 - 三种暴露模式下，连接都采用**懒加载**：Session 创建即时返回，首个 `run()` 才并行连接全部 Server 并发现工具目录——连接期间流式发出一对 `mcp_connect_begin` / `mcp_connect_end` 事件（前端显示连接状态；end 带总体 status 与逐 Server 结果），完成后以 `tool_list_ready` 事件下发完整工具定义（见 [OmniMessage](/omni-message)）；这三条消息在 Trace 中写在本轮输入之后，归属新轮次。运行中打断即**取消**本次连接，下次 `run()` 重新连接。Direct 模式把首次发现结果作为 Session 生命周期内的快照；Auto 选中网关或使用 Lazy 时监听 `tools/list_changed`，只刷新私有目录；压缩开启下一个上下文时，Server 按当时的配置重新连接并调和（见[上下文压缩](/agent-loop)）。连接失败或条目非法只产生 stderr 警告并跳过该 Server，**不阻塞会话**。
 - `toolExposure: direct`（默认）在 `tool_list_ready` 和每次模型请求中携带全部内置工具及首次发现的 MCP 定义。`auto` 保留内置工具；当初始 MCP 定义达到 `toolExposureThresholdTokens`（默认 2,048）时，将 MCP 部分放入固定的 `search_tools` 和 `call_tool` 网关；设为 `0` 时始终启用网关。这个选择在 Session 内不再改变。`lazy` 把内置和 MCP 工具都放入私有目录，模型只看到同一组固定网关。模型显式搜索目录、选择返回的工具契约，再把引用和符合 Schema 的参数交给执行网关。网关模式下，MCP 工具新增、删除或更新只改变私有目录；相同契约沿用原引用，Schema、权限或描述变化会使旧引用失效并返回替代契约，删除则返回 `tool_removed`。网关会解析实际权限，并沿用目标工具的超时和输出限制。人工审批展示的是服务端按引用解析出的真实目标（`call_tool → mcp__server__tool (rw)`），不信任模型提交的展示名称。这样可以减少 Schema 上下文并避免工具列表变化导致前缀失效，代价是首次发现冷工具可能多一次模型请求。
 - 同一 Session 内不会随工具目录变化切换暴露模式。工具数量不能准确代表成本，因为不同 Schema 的体积差异很大；`auto` 因此按初始序列化 Schema 的估算体积决策，并在第一次模型请求前冻结。工具较少且会频繁使用时可选 `direct`；大多数场景可选 `auto`；只有明确希望内置工具也按需加载时才使用 `lazy`。
+- 2026-09-30 对 11 个默认配置 Schema 的测量（紧凑 JSON，不含 Provider 请求封装）：`direct` 为 18,405 个字符（约 4,602 个 chars/4）；新增的 `knowledge_graph` 与 `code_graph` 共 4,704 个字符（约 1,176 个 chars/4）。`lazy` 固定暴露两个网关 Schema，共 1,309 个字符（约 328 个 chars/4），加入这两个工具后不变；匹配的目录定义只会按需返回。这些是粗略估算，并非 Provider tokenizer 的实际计数。
 - Direct 模式会跳过不符合常见模型 API 函数命名限制的 MCP 工具；Lazy 模式把原生名称作为普通字符串传递，因此仍可通过网关调用这类工具。
 - 发现的工具以 `mcp__<server>__<tool>` 进入统一工具命名空间，与内置工具走同一条[执行契约](#执行契约)（超时、截断、打断）与[审批](#审批)流程。
 - 权限映射：缺省的 `permission: auto` 下，Server 注解 `readOnlyHint: true` 的工具为 `r`（read-only 审批模式自动放行），其余一律 `rw`——注解是未受信 hint，缺省取限制方向。把条目的 `permission` 设为 `r` 或 `rw`，则该 Server 的**全部**工具一律按此取值，覆盖注解——大量 Server 从不设置 `readOnlyHint`、因而整体落到 `rw`，这个字段就是为它们准备的。

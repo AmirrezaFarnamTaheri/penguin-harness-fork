@@ -14,8 +14,11 @@ The PenguinHarness server exposes a same-origin HTTP API used by the bundled Web
 - Errors share a single shape:
 
 ```text
-{ "error": { "code": "<machine-readable code>", "message": "<user-facing text>" } }
+{ "error": { "code": "<machine-readable code>", "message": "<English fallback>", "i18nKey": "errors.byCode.<code>" } }
 ```
+
+`i18nKey` is optional for compatibility with older servers. Clients should use it when they
+have a matching translation and otherwise fall back to `code` and the English `message`.
 
 ## Source layout
 

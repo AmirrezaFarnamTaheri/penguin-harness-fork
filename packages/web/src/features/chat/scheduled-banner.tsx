@@ -15,7 +15,7 @@ export function ScheduledBanner({ origin }: { origin: ScheduledOrigin }) {
     <p className={`anim-msg my-2 flex w-fit ${STREAM_BANNER_FRAME}`}>
       {S.chat.scheduledFrom(origin.name)}
       {origin.firedAt && (
-        <span className="text-gray-400 dark:text-gray-500">{formatDateTime(origin.firedAt)}</span>
+        <span className="text-gray-500 dark:text-gray-400">{formatDateTime(origin.firedAt)}</span>
       )}
     </p>
   );

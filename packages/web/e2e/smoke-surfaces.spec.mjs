@@ -118,11 +118,9 @@ test("smoke: every top-level route renders with no console or page error", async
     // The shell must render something with a heading — a blank frame is the failure this
     // is here to catch, and it is invisible to a unit test.
     await expect(page.locator("body")).toBeVisible();
-    const heading = await page
-      .locator("h1")
-      .first()
-      .textContent()
-      .catch(() => null);
+    const headingLocator = page.locator("h1").first();
+    await expect(headingLocator, `${route} rendered no <h1>`).toBeVisible();
+    const heading = await headingLocator.textContent();
     expect(heading, `${route} rendered no <h1>`).toBeTruthy();
     await shot(page, `route${route.replace(/\//g, "-")}`);
     // A 404 on one route must name that route, not surface as an unattributed list.

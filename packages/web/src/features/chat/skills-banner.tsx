@@ -12,7 +12,7 @@ import { BOOK_ICON } from "./skill-use";
 export function SkillsBanner({ names }: { names: string[] }) {
   return (
     <p className={`anim-msg my-2 flex w-fit ${STREAM_BANNER_FRAME}`}>
-      <GlyphIcon d={BOOK_ICON} className="text-gray-400 dark:text-gray-500" />
+      <GlyphIcon d={BOOK_ICON} className="text-gray-500 dark:text-gray-400" />
       {S.chat.skillsBanner(names)}
     </p>
   );

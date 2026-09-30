@@ -96,7 +96,9 @@ export function TrendChart({
             const p = series[i]!;
             return (
               <>
-                <p className="text-gray-400">{bucketFullLabel(granularity, p.bucket)}</p>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {bucketFullLabel(granularity, p.bucket)}
+                </p>
                 <p className="font-mono">{formatMoney(p.cost ?? 0, currency)}</p>
               </>
             );

@@ -28,6 +28,8 @@ const EN_ALIASES: Record<string, string> = {
   input_subagent: "communicate",
   environment_info: "environment",
   resource_pressure: "resources",
+  knowledge_graph: "findings",
+  code_graph: "graph",
 };
 
 const ZH_ALIASES: Record<string, string> = {
@@ -41,6 +43,8 @@ const ZH_ALIASES: Record<string, string> = {
   input_subagent: "交流",
   environment_info: "环境",
   resource_pressure: "资源",
+  knowledge_graph: "知识",
+  code_graph: "图谱",
 };
 
 /** Names that must pass through: an MCP tool, and tools no longer assembled but still in old Traces. */

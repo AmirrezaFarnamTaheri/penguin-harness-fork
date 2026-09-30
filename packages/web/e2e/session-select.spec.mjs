@@ -1,8 +1,9 @@
 /**
- * Multi-select over the conversation list, and the four reversible batch operations that
- * hang off it. The unit tests (session-selection.test.ts) pin the selection RULES; this
- * pins the wiring — that a click reaches the reducer, that the bar reports the marked count,
- * and that the batch actually lands on the server.
+ * Multi-select over the conversation list, and the batch operations that hang off it. The
+ * unit tests (session-selection.test.ts) pin the selection RULES; this pins the wiring —
+ * that a click reaches the reducer, that the bar reports the marked count, and that the
+ * batch actually lands on the server. Delete joins the reversible three behind a single
+ * confirmation that names the count.
  *
  * The safety property gets a test of its own, because it is the one the unit test cannot
  * reach: a marked row that has paged out of the list must not still be in the set a batch
@@ -244,4 +245,89 @@ test("batch archive reports a partial failure and keeps the failed row selected 
     )
   ).json();
   expect(listed.sessions.filter((s) => s.archived).length).toBe(2);
+});
+
+test("batch delete removes every marked conversation behind one confirmation", async ({ page }) => {
+  const { ids } = await seed(page, "seluser_batchdel", 3);
+  await page.goto(`${BASE}/chat/${ids[0]}`);
+  const rows = page.getByTestId("session-row");
+  await expect(rows).toHaveCount(3);
+
+  await rows.nth(0).click({ modifiers: ["ControlOrMeta"] });
+  await rows.nth(1).click();
+  // Which conversations these rows are depends on list order (newest first) — read the
+  // marked ids from the DOM rather than assuming they match seeding order.
+  const markedIds = await Promise.all([
+    rows.nth(0).getAttribute("data-session-id"),
+    rows.nth(1).getAttribute("data-session-id"),
+  ]);
+  const bar = page.getByTestId("selection-bar");
+  await expect(bar).toContainText("已选 2 项");
+
+  // The destructive batch states its scope up front: the dialog names how many go.
+  await bar.getByRole("button", { name: "删除所选" }).click();
+  const dialog = page.getByRole("dialog").filter({ hasText: "确定永久删除" });
+  await expect(dialog).toContainText("确定永久删除这 2 个对话？");
+
+  // Cancel keeps every marked row: nothing is destroyed until the dialog says so.
+  await dialog.getByRole("button", { name: "取消" }).click();
+  await expect(rows).toHaveCount(3);
+  await expect(bar).toContainText("已选 2 项");
+
+  // Confirm: both marked conversations leave the list and the server, the unmarked one
+  // stays, and the transient selection goes with the rows it held.
+  await bar.getByRole("button", { name: "删除所选" }).click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "确定永久删除" })
+    .getByRole("button", { name: "删除" })
+    .click();
+  await expect(page.getByTestId("session-row")).toHaveCount(1);
+  await expect(page.getByTestId("selection-bar")).toHaveCount(0);
+  for (const id of markedIds) {
+    const gone = await page.request.get(`${BASE}/api/sessions/${id}`);
+    expect(gone.status(), `session ${id} deleted`).toBe(404);
+  }
+  const survivor = ids.find((id) => !markedIds.includes(id));
+  const kept = await page.request.get(`${BASE}/api/sessions/${survivor}`);
+  expect(kept.status(), `session ${survivor} kept`).toBe(200);
+});
+
+test("a failed batch delete keeps only the failed conversation marked", async ({ page }) => {
+  const { ids } = await seed(page, "seluser_batchdel_fail", 3);
+  const failedId = ids[1];
+  await page.route(`**/api/sessions/${failedId}`, (route) => {
+    if (route.request().method() === "DELETE") {
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: '{"error":{"code":"internal","message":"injected failure"}}',
+      });
+    }
+    return route.continue();
+  });
+  await page.goto(`${BASE}/chat/${ids[0]}`);
+  const rows = page.getByTestId("session-row");
+  await expect(rows).toHaveCount(3);
+
+  await rows.nth(0).click({ modifiers: ["ControlOrMeta"] });
+  await rows.nth(1).click({ modifiers: ["ControlOrMeta"] });
+  await rows.nth(2).click({ modifiers: ["ControlOrMeta"] });
+  const bar = page.getByTestId("selection-bar");
+  await bar.getByRole("button", { name: "删除所选" }).click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "确定永久删除" })
+    .getByRole("button", { name: "删除" })
+    .click();
+
+  // The two successes vanish; the failure stays marked for retry and says so — the same
+  // contract batch archive holds.
+  await expect(page.getByRole("alert")).toContainText("删除失败");
+  await expect(page.getByTestId("session-row")).toHaveCount(1);
+  await expect(bar).toContainText("已选 1 项");
+  await expect(page.locator(`[data-session-id="${failedId}"]`)).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 });

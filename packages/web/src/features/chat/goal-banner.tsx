@@ -24,11 +24,11 @@ export function GoalStatusBanner({ goal }: { goal: GoalBannerState }) {
     // above the composer, so it spans the column and fades in place instead of sliding up as
     // a message does.
     <div className={`anim-fade mb-2 flex ${STREAM_BANNER_FRAME}`}>
-      <GlyphIcon d={GOAL_ICON} className="shrink-0 text-gray-400 dark:text-gray-500" />
+      <GlyphIcon d={GOAL_ICON} className="shrink-0 text-gray-500 dark:text-gray-400" />
       <span className="min-w-0 flex-1 truncate" title={goal.objective}>
         {goal.objective}
       </span>
-      <span className="shrink-0 text-gray-400 dark:text-gray-500">
+      <span className="shrink-0 text-gray-500 dark:text-gray-400">
         {S.chat.goalProgress(goal.rounds, tokens)}
       </span>
       <span

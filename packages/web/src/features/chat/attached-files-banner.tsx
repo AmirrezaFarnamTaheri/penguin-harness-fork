@@ -25,7 +25,7 @@ export function AttachedFilesBanner({ files }: { files: string[] }) {
     // it belongs to, which owns the vertical spacing and the entrance, so adding either
     // would double the gap and re-animate a notice that just arrived with its message.
     <p title={label} className={`flex w-fit max-w-full ${STREAM_BANNER_FRAME}`}>
-      <GlyphIcon d={PAPERCLIP_ICON} className="shrink-0 text-gray-400 dark:text-gray-500" />
+      <GlyphIcon d={PAPERCLIP_ICON} className="shrink-0 text-gray-500 dark:text-gray-400" />
       <span className="min-w-0 truncate">{label}</span>
     </p>
   );

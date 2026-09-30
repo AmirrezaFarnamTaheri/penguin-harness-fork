@@ -74,7 +74,7 @@ export function JevAdvisoryNote({ advisory }: { advisory: JevAdvisory }) {
             </span>
           )}
           <span className="min-w-0 flex-1" />
-          <Chevron open={open} className="shrink-0 text-gray-400" />
+          <Chevron open={open} className="shrink-0 text-gray-500 dark:text-gray-400" />
         </button>
       </div>
 

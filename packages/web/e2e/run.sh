@@ -4,7 +4,10 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-DATA="$(mktemp -d)"
+if ! DATA="$(mktemp -d)" || [ -z "$DATA" ] || [ ! -d "$DATA" ]; then
+  echo "Could not create the isolated e2e data directory; refusing to start the server." >&2
+  exit 1
+fi
 # The server is a native Windows binary, and it does not resolve a POSIX /tmp path to
 # the directory mktemp just created: PENGUIN_HOME and PENGUIN_WEB_DB then fall back to
 # the machine's real ~/.penguin data root. Every run shares one long-lived database, so

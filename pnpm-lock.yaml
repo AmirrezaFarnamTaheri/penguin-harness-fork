@@ -13,6 +13,7 @@ overrides:
   qs@^6: ^6.16.0
   '@xmldom/xmldom@^0.8': ^0.8.15
   js-yaml@^4: ^4.3.2
+  node-gyp@12.4.0>undici: 6.28.1
 
 importers:
 
@@ -292,8 +293,8 @@ importers:
         specifier: ^24.0.0
         version: 24.13.3
       electron:
-        specifier: ^43.2.0
-        version: 43.2.0(supports-color@10.2.2)
+        specifier: ^43.5.0
+        version: 43.5.0(supports-color@10.2.2)
       electron-builder:
         specifier: ^26.16.1
         version: 26.16.1(electron-builder-squirrel-windows@26.16.1)(supports-color@10.2.2)
@@ -450,8 +451,8 @@ importers:
         specifier: ^7.5.21
         version: 7.5.22
       undici:
-        specifier: ^7.29.0
-        version: 7.29.0
+        specifier: ^7.29.1
+        version: 7.29.1
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -541,6 +542,9 @@ importers:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.2.17)(react@19.2.7)
     devDependencies:
+      '@axe-core/playwright':
+        specifier: 4.13.0
+        version: 4.13.0(playwright-core@1.61.1)
       '@playwright/test':
         specifier: ^1.61.1
         version: 1.61.1
@@ -813,6 +817,11 @@ packages:
   '@aws/lambda-invoke-store@0.2.4':
     resolution: {integrity: sha512-iY8yvjE0y651BixKNPgmv1WrQc+GZ142sb0z4gYnChDDY2YqI4P/jsSopBWrKfAt7LOJAkOXt7rC/hms+WclQQ==}
     engines: {node: '>=18.0.0'}
+
+  '@axe-core/playwright@4.13.0':
+    resolution: {integrity: sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==}
+    peerDependencies:
+      playwright-core: '>= 1.0.0'
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2275,6 +2284,10 @@ packages:
   aws4@1.13.2:
     resolution: {integrity: sha512-lHe62zvbTB5eEABUVi/AwVh0ZKY9rMMDhmm+eeyuuUQbQ3+J+fONVQOZyj+DdrvD4BY33uYniyRJ4UJIaSKAfw==}
 
+  axe-core@4.13.0:
+    resolution: {integrity: sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==}
+    engines: {node: '>=4'}
+
   axios@1.19.0:
     resolution: {integrity: sha512-ht/iuYZXEjFxLH/Hkezgd7m6JKlHHXEUSneaDz8uZe1Gj5QZtCnpyDsckvAiEnT89OEbCLmnte4R4sn7P0EKFw==}
 
@@ -2646,8 +2659,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@43.2.0:
-    resolution: {integrity: sha512-80zvrgG7ZRXD+tD0IyLvrnN9n+veSxadMRsMaC9wKKP3iUbtC7rGM8+dVuCmOb0Rrwwv8ESW4awnUZh9Hbp1fA==}
+  electron@43.5.0:
+    resolution: {integrity: sha512-nV2aWuKatmUrxrAWP2pNIynNX7dy83TCAz+6KnsbK7hDVLE+6fa2iouOtir41AboZTa+J5w2UgicWHAqUaaUJw==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -4213,12 +4226,12 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@6.28.0:
-    resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
+  undici@6.28.1:
+    resolution: {integrity: sha512-zWpdTVD54H48CIybL0rWQ3ukpb9d23wM7eH5RtfdmeP70cWHNjtfo7P4vZX+5CoDcO53J4Pu5uXp7lNfjc6DRA==}
     engines: {node: '>=18.17'}
 
-  undici@7.29.0:
-    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+  undici@7.29.1:
+    resolution: {integrity: sha512-RYONW2MeafgYlkVOKYKkA/Ag7BmXqgIWCa8t1m0JcxrQg9pI9lEqRhAOruOBCbAohOa/gkCF+iPi9hrgvTzu6Q==}
     engines: {node: '>=20.18.1'}
 
   unified@11.0.5:
@@ -4819,6 +4832,11 @@ snapshots:
 
   '@aws/lambda-invoke-store@0.2.4': {}
 
+  '@axe-core/playwright@4.13.0(playwright-core@1.61.1)':
+    dependencies:
+      axe-core: 4.13.0
+      playwright-core: 1.61.1
+
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -5066,7 +5084,7 @@ snapshots:
       semver: 7.8.5
       sumchecker: 3.0.1(supports-color@10.2.2)
     optionalDependencies:
-      undici: 7.29.0
+      undici: 7.29.1
     transitivePeerDependencies:
       - supports-color
 
@@ -5702,7 +5720,7 @@ snapshots:
       remark-parse: 11.0.0(supports-color@10.2.2)
       smol-toml: 1.8.0
       tar: 7.5.22
-      undici: 7.29.0
+      undici: 7.29.1
       unified: 11.0.5
       ws: 8.21.0
       yaml: 2.9.0
@@ -5728,7 +5746,7 @@ snapshots:
       remark-parse: 11.0.0(supports-color@10.2.2)
       smol-toml: 1.8.0
       tar: 7.5.22
-      undici: 7.29.0
+      undici: 7.29.1
       unified: 11.0.5
       ws: 8.21.0
       yaml: 2.9.0
@@ -5754,7 +5772,7 @@ snapshots:
       remark-parse: 11.0.0(supports-color@10.2.2)
       smol-toml: 1.8.0
       tar: 7.5.22
-      undici: 7.29.0
+      undici: 7.29.1
       unified: 11.0.5
       ws: 8.21.0
       yaml: 2.9.0
@@ -6497,6 +6515,8 @@ snapshots:
 
   aws4@1.13.2: {}
 
+  axe-core@4.13.0: {}
+
   axios@1.19.0:
     dependencies:
       follow-redirects: 1.16.0(debug@4.4.3(supports-color@10.2.2))
@@ -6917,7 +6937,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@43.2.0(supports-color@10.2.2):
+  electron@43.5.0(supports-color@10.2.2):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0(supports-color@10.2.2)
@@ -8149,7 +8169,7 @@ snapshots:
       semver: 7.8.5
       tar: 7.5.22
       tinyglobby: 0.2.17
-      undici: 6.28.0
+      undici: 6.28.1
       which: 6.0.1
 
   node-int64@0.4.0: {}
@@ -8903,9 +8923,9 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@6.28.0: {}
+  undici@6.28.1: {}
 
-  undici@7.29.0: {}
+  undici@7.29.1: {}
 
   unified@11.0.5:
     dependencies:

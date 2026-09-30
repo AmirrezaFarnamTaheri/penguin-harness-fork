@@ -249,7 +249,7 @@ function SkillListRow({
         {localizedShortText(locale, row)}
       </p>
       {/* The owning plugin. It is also what tells two same-named skills apart in the list. */}
-      <p className="mt-1 truncate font-mono text-[10px] text-gray-400 dark:text-gray-500">
+      <p className="mt-1 truncate font-mono text-[10px] text-gray-500 dark:text-gray-400">
         {row.plugin}
       </p>
     </button>

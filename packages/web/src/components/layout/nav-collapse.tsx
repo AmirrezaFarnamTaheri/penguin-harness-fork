@@ -71,7 +71,7 @@ export function NavGroupCollapse({
         aria-expanded={!collapsed}
         aria-label={collapsed ? S.nav.expandAllGroups : S.nav.collapseAllGroups}
         title={collapsed ? S.nav.expandAllGroups : S.nav.collapseAllGroups}
-        className="flex h-4 max-md:min-h-11 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-400 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        className="flex h-4 max-md:min-h-11 w-full items-center justify-center rounded-md bg-gray-200/70 text-gray-500 transition-colors duration-150 hover:bg-gray-300/60 hover:text-gray-700 dark:bg-gray-800/70 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-300"
       >
         <ChevronDown
           size={12}

@@ -342,7 +342,7 @@ export function GroupHeader({
           {label}
         </span>
         {count !== undefined && (
-          <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-500">{count}</span>
+          <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">{count}</span>
         )}
         {/* Expand/collapse indicator sits right after the label */}
         <Chevron open={open} size={12} className="text-gray-500" />

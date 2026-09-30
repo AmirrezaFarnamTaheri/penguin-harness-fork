@@ -28,6 +28,8 @@ import type { CompactionMode } from "../omnimessage/types.js";
 // default and the cap cannot drift apart.
 import { DEFAULT_MAX_CONTEXT_LENGTH } from "../llm/context-limits.js";
 import { ENVIRONMENT_INFO_PARAMETERS } from "../environment/tools/environment-info.js";
+import { KNOWLEDGE_GRAPH_PARAMETERS } from "../environment/tools/knowledge-graph.js";
+import { CODE_GRAPH_PARAMETERS } from "../environment/tools/code-graph.js";
 import { KERNEL_VERSION } from "./kernel-history.js";
 
 /** Docs: /docs/configuration § "System prompt placeholders". */
@@ -986,6 +988,35 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
       permission: "r",
       timeoutMs: 10000,
       maxOutputLength: 4000,
+    },
+    {
+      name: "knowledge_graph",
+      description:
+        "Record what this project's work taught you as durable findings, and read them back " +
+        "later — the knowledge plane shared across sessions and agents. `report` a claim with its " +
+        "subjects and evidence (duplicates merge; your later report supersedes your earlier one), " +
+        "`query` finds claims by text/subject/status, `confirm`/`refute`/`supersede` move a claim " +
+        "through its lifecycle, `link` relates two claims, `events` replays what changed. Report " +
+        "findings as you go rather than at the end — a claim recorded with its evidence is " +
+        "re-verifiable, and the graph is what the next session will read instead of your " +
+        "now-expired context.",
+      parameters: KNOWLEDGE_GRAPH_PARAMETERS,
+      permission: "rw",
+      timeoutMs: 30000,
+      maxOutputLength: 6000,
+    },
+    {
+      name: "code_graph",
+      description:
+        "Code intelligence over this workspace: one `index` walk, then symbol search, " +
+        "callers/callees, change-impact radius and structure queries without re-reading files. " +
+        "Use graph tools before grep/read: `explore` for broad shape, `search` for names; if a " +
+        "search misses, try explore/files before falling back to grep — grep is for literal text. " +
+        "Read-only and cached, so bursts of queries cost one walk.",
+      parameters: CODE_GRAPH_PARAMETERS,
+      permission: "r",
+      timeoutMs: 60000,
+      maxOutputLength: 6000,
     },
   ];
 }

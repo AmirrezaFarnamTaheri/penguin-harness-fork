@@ -32,9 +32,9 @@ import type { HarnessInfo, VersionReport } from "@prismshadow/penguin-core";
 // General
 // ---------------------------------------------------------------------------
 
-/** Unified error response body; `code` is a machine-readable error code, `message` is a Chinese user-facing message. */
+/** Unified error response. `message` is the English fallback; `i18nKey` is optional for compatibility with older servers. */
 export interface ErrorBody {
-  error: { code: string; message: string };
+  error: { code: string; message: string; i18nKey?: string };
 }
 
 /** Verified audit metadata only; raw events, origins and signing material stay on the server. */

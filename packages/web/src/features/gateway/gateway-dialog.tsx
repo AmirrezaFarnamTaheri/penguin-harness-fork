@@ -49,7 +49,7 @@ function Meter({ label, value }: { label: string; value: number | null }) {
           style={{ width: `${bounded}%` }}
         />
       </div>
-      <div className="mt-1 text-[11px] text-gray-400">
+      <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
         {known ? "Provider-reported usage" : "No usage telemetry is available for this project."}
       </div>
     </div>
@@ -165,7 +165,7 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
                         <span className="font-medium text-gray-800 dark:text-gray-100">
                           {model.provider}
                         </span>
-                        <span className="text-gray-400"> / </span>
+                        <span className="text-gray-500 dark:text-gray-400"> / </span>
                         <span className="break-all text-gray-600 dark:text-gray-300">
                           {model.modelId}
                         </span>
@@ -214,7 +214,7 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
                         <div className="mt-1 text-xs text-gray-500">{combo.description}</div>
                       )}
                     </div>
-                    <code className="text-[11px] text-gray-400">{combo.id}</code>
+                    <code className="text-[11px] text-gray-500 dark:text-gray-400">{combo.id}</code>
                   </div>
                   <ol className="mt-3 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-300">
                     {combo.targets.map((target, index) => (
@@ -225,7 +225,9 @@ export function GatewayDialog({ open, onClose, projectId }: GatewayDialogProps) 
                     ))}
                   </ol>
                   {combo.updatedAt && (
-                    <div className="mt-2 text-[11px] text-gray-400">Updated {combo.updatedAt}</div>
+                    <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      Updated {combo.updatedAt}
+                    </div>
                   )}
                 </div>
               ))

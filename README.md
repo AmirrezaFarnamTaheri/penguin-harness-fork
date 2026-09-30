@@ -251,6 +251,8 @@ pnpm dev                     # backend + web app together (prefixed logs, deps b
 ```
 
 See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the full workspace guide: dev commands, quality gates, repo layout, and the changelog rule.
+See the [porting, absorption, and refusal policy](docs/policies/porting-and-refusals.md) before
+using or adapting external code, assets, reports, or reference repositories.
 
 ## Contributors
 

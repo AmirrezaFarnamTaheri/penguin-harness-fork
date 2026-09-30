@@ -2375,7 +2375,7 @@ export function ChatPage() {
                     <div className="relative min-h-0 flex-1">
                       {emptyChat ? (
                         <div className="flex h-full items-center justify-center px-4">
-                          <p className="text-lg font-medium text-gray-500 dark:text-gray-500">
+                          <p className="text-lg font-medium text-gray-500 dark:text-gray-400">
                             {S.chat.emptyGreeting}
                           </p>
                         </div>

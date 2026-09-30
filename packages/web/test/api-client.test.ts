@@ -86,3 +86,30 @@ describe("empty bodies", () => {
     await expect(apiFetch<unknown>("/api/agents")).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe("API error metadata", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("preserves a server translation key on ApiError", async () => {
+    vi.stubGlobal("fetch", async () =>
+      json(
+        {
+          error: {
+            code: "agent_not_found",
+            message: "Agent does not exist.",
+            i18nKey: "errors.byCode.agent_not_found",
+          },
+        },
+        404,
+      ),
+    );
+
+    await expect(apiFetchJson<unknown>("/api/agents/missing")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 404,
+      code: "agent_not_found",
+      message: "Agent does not exist.",
+      i18nKey: "errors.byCode.agent_not_found",
+    });
+  });
+});

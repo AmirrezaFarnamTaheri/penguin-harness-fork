@@ -1,12 +1,13 @@
 /**
- * The conversation list's batch bar: how many are marked, the four reversible things that
- * can be done to all of them, and the way out.
+ * The conversation list's batch bar: how many are marked, what can be done to all of them,
+ * and the way out.
  *
- * Only the REVERSIBLE operations are here. Delete is not, deliberately: it is the one batch
- * whose mistake cannot be undone, and a bar that puts it next to "Pin" invites the same
- * reflex that makes a drag-and-drop archive land on the wrong row. A user who wants four
- * conversations gone deletes four conversations, each with its own confirmation naming its
- * own title — the cost is four dialogs, and it buys certainty that the right one went.
+ * Delete is here too, behind one confirmation that names the count — the same stop the
+ * single-row delete takes, scaled to the marks. It sits behind that dialog precisely because
+ * it is the one batch whose mistake cannot be undone: the reflex-tap danger the old bar
+ * avoided is met by a dialog stating exactly how many conversations go, and by a marked
+ * row's own delete doing the same thing (the marks decide the scope there too), so every
+ * delete a user can reach while marking has one contract.
  *
  * Every control reports what it WOULD do, not what is available: "Unpin" appears whenever
  * the selection contains a pinned row, and unpinning a mixed selection leaves the already
@@ -14,7 +15,7 @@
  * make the mixed case — the common one — the one case you cannot do, which is backwards.
  */
 import { S } from "../../lib/strings";
-import { ARCHIVE_ICON, PIN_ICON, UNARCHIVE_ICON } from "../ui/session-row-menu";
+import { ARCHIVE_ICON, PIN_ICON, TRASH_ICON, UNARCHIVE_ICON } from "../ui/session-row-menu";
 import { Icon } from "../ui/group-list";
 import { BarAction } from "./bar-action";
 
@@ -31,6 +32,7 @@ export function SelectionBar({
   onUnpin,
   onArchive,
   onUnarchive,
+  onDelete,
   onClear,
 }: {
   count: number;
@@ -42,6 +44,7 @@ export function SelectionBar({
   onUnpin: () => void;
   onArchive: () => void;
   onUnarchive: () => void;
+  onDelete: () => void;
   onClear: () => void;
 }) {
   // role=status + aria-live: the count changes as rows are marked, and that number IS the
@@ -80,6 +83,12 @@ export function SelectionBar({
         icon={UNARCHIVE_ICON}
         onClick={onUnarchive}
         show={count > 0 && anyArchived}
+      />
+      <BarAction
+        label={S.chat.deleteSelected}
+        icon={TRASH_ICON}
+        onClick={onDelete}
+        show={count > 0}
       />
       <button
         type="button"

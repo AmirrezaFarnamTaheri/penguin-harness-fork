@@ -126,7 +126,7 @@ describe("wechatScanStep", () => {
     // resolved it, so the server would otherwise hold its handle until the sweep.
     expect(wechatScanStep(failed(error), { failures: 2, refreshes: 0 })).toEqual({
       kind: "stop",
-      notice: S.wechat.scanFailed("bad gateway"),
+      notice: S.wechat.scanFailed(S.errors.byCode.wechat_scan_failed),
       tone: "error",
       releaseTask: true,
     });

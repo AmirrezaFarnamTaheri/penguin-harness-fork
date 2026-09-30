@@ -25,7 +25,7 @@ export function GroupPinButton({ pinned, onToggle }: { pinned: boolean; onToggle
       className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-all duration-150 hover:bg-gray-200/70 hover:text-gray-800 dark:hover:bg-gray-800 dark:hover:text-gray-200 ${
         pinned
           ? "text-gray-500 dark:text-gray-400"
-          : "text-gray-400 opacity-0 focus-visible:opacity-100 group-hover/header:opacity-100 dark:text-gray-500"
+          : "text-gray-500 opacity-0 focus-visible:opacity-100 group-hover/header:opacity-100 dark:text-gray-400"
       }`}
     >
       <Icon d={PIN_ICON} size={ICON_SIZE.groupHeaderAction} />

@@ -72,7 +72,7 @@ Each tool is described by one `ToolDefinitionConfig`:
 
 ## Built-in tools
 
-There are 8 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
+There are 12 built-in tools (assembled via `packages/core/src/environment/tools/registry.ts`):
 
 | Tool | Permission | Timeout (ms) | Purpose |
 | --- | --- | --- | --- |
@@ -84,6 +84,10 @@ There are 8 built-in tools (assembled via `packages/core/src/environment/tools/r
 | `write_file` | rw | 30000 | Create or overwrite a whole file, creating parent directories as needed |
 | `run_subagent` | rw | 600000 | Delegate a self-contained subtask to a child Agent in the same Workspace |
 | `input_subagent` | rw | 600000 | Poll a background subagent, steer it mid-run, stop its current run, or continue it with a follow-up prompt |
+| `environment_info` | r | 10000 | Report the host machine's platform/shell/path forms, optionally resolving one path string |
+| `resource_pressure` | r | 10000 | Report memory and per-path disk pressure; observes only, never refuses |
+| `knowledge_graph` | rw | 30000 | Record findings with provenance, query them back, and manage their lifecycle (confirm / refute / supersede / link) |
+| `code_graph` | r | 60000 | Index the workspace once, then query symbols, callers/callees, impact radius and structure — the same engines as the cockpit topology view |
 
 Note that an existing agent's persisted `tools.builtin` list is frozen as written (the settings UI edits rows but adds none): agents created before this toolset do not pick up newer tools (e.g. the file tools) or newer arguments (`run_in_background`, `kill`, `abort`) automatically — and entries for since-removed tools (`kill_command`, `kill_subagent`, `read_image`, `describe_image`) simply stop assembling: a model calling them gets the standard unknown-tool failure. A stored `read_file` entry from before it read images keeps its old description and timeout (the implementation behind it already reads images) — hand-edit the agent's `system_config.yaml` (copy the entries from the default definitions in `packages/core/src/state/default-config.ts`) or run the kernel update from the agent's settings page to adopt the current definitions.
 
@@ -103,6 +107,49 @@ The SearXNG endpoint is host configuration and never a tool argument. Resolution
 `EnvironmentServices.webSearch.endpoint` override, the Agent Vault's `SEARXNG_ENDPOINT`, the
 process environment's `SEARXNG_ENDPOINT`, then `http://127.0.0.1:8080`. The instance must include
 `json` in SearXNG's `search.formats`; an HTTP 403 response includes this diagnostic.
+
+### Knowledge graph
+
+`knowledge_graph` is the agent-facing surface of the findings plane (`packages/core/src/knowledge/`).
+One `report` records a durable claim — title, kind, body, subjects (paths/modules/symbols),
+evidence with an audit tier, tags — and the graph handles the rest: duplicate reports merge into
+one finding (deterministic id first, Jaccard wording match second), near-misses become `related`
+links, and a repeated report from the same agent *replaces* its earlier account instead of
+appending. Provenance comes from the host-recorded attribution, never from model arguments, so a
+prompt cannot forge who reported a claim.
+
+`query` returns ranked findings (status → severity·confidence → recency) filtered by text,
+subject path prefix, kind, tag or status; refuted and superseded claims are hidden unless asked
+for. `confirm` / `refute` / `supersede` move a claim through its lifecycle — nothing is ever
+deleted, and `supersede` links the old claim to its replacement. `events` replays changes since a
+sequence number, and `snapshot` exports the whole graph.
+
+State lives in one JSON snapshot per Workspace at `.penguin/knowledge/findings-graph.json`
+(atomic temp+rename, 0600), loaded lazily and saved after every mutation; the tool writes nothing
+else. Strength decays at read time (confidence-weighted, exponential, access-reinforced) rather
+than being stored, so history is never rewritten by a reader.
+
+This store belongs only to the Workspace supplied in the tool context. Server HTTP findings routes
+use an independent project-ID-scoped file (`.findings_graph.json`); matching names or paths do not
+bind or synchronize the two stores.
+
+### Code graph
+
+`code_graph` is the native code-intelligence surface (`packages/core/src/codegraph/*` plus the
+watcher's walker and symbol indexer — the same engines behind the cockpit topology view). One
+`index` walks the Workspace (with the standard ignore list: `node_modules`, `.git`, `dist`,
+`.venv`, …) and builds the symbol graph; the result is cached for 60 seconds, so a burst of
+queries costs one walk, and `index` with `refresh: true` forces a re-walk.
+
+Concurrent `index` calls for one Workspace share a single scan. The least-recently-used cache
+holds at most eight Workspaces; `index` reports its current size and eviction count. The tool calls
+`scanWorkspace()` only: that method does not install file watchers (`init()` does), so the tool
+does not allocate watcher handles.
+
+Queries follow from there: `search` finds symbols and files by name fragment, `callers` /
+`callees` walk the call graph to a bounded depth, `impact` computes the blast radius of changing
+a node, `explore` returns a small subgraph around a term, `files` lists the indexed file set, and
+`hubs` names the most-connected nodes. The tool is read-only and never writes anywhere.
 
 ### Command sessions
 
@@ -311,6 +358,7 @@ Behavior:
 - Connecting is **lazy** in all three exposure modes: Session creation returns instantly, and the first `run()` connects all Servers in parallel and discovers their tools / catalog — the wait streams as one `mcp_connect_begin` / `mcp_connect_end` pair (frontends show a connecting status; the end carries the overall status plus per-Server results), and the full tool definitions follow as a `tool_list_ready` event (see [OmniMessage](/omni-message)); in the Trace all three land after the run's input, inside the new turn. Aborting mid-connect **cancels** the attempt — the next `run()` reconnects. Direct exposure keeps that initial catalog as a Session-lifetime snapshot. Auto listens for `tools/list_changed` only when it selected the gateway, while Lazy always refreshes only its private catalog. When a compaction opens the next context the Servers reconcile from the then-current config (see [Compaction](/agent-loop)). An unreachable Server or invalid entry only produces a stderr warning and is skipped — **the session is never blocked**.
 - `toolExposure: direct` (the default) puts every configured built-in and initially discovered MCP definition in `tool_list_ready` and each model Request. `auto` keeps built-ins native and, when the initial MCP definitions reach `toolExposureThresholdTokens` (default 2,048), replaces the MCP portion with fixed `search_tools` and `call_tool` gateways; `0` always selects the gateway. This decision is frozen for the Session. `lazy` keeps both built-in and MCP tools in the private catalog and exposes only the same two gateways. The model explicitly searches, selects a returned contract, and passes its reference and schema-valid arguments to the execution gateway. MCP additions, removals, and contract changes update only the private catalog in gateway modes. Unchanged contracts keep their references; Schema, permission, or description changes invalidate the old reference and return a replacement; removal returns `tool_removed`. The gateway resolves the effective permission and preserves the target's timeout and output policy. A manual approval shows the registry-resolved target (`call_tool → mcp__server__tool (rw)`) rather than trusting the model's display name. Gateway modes reduce schema context and avoid tool-list-driven prefix invalidation, while discovery of a cold tool can require an extra model round.
 - Exposure never switches when the catalog changes during a Session. Raw tool count is a poor cost proxy because schemas vary widely in size, so `auto` decides from the initial serialized-schema estimate and freezes the result before the first model Request. Prefer `direct` for a small, frequently used catalog, `auto` for most mixed workloads, and `lazy` only when built-in tools should also be loaded on demand.
+- Measured on 2026-09-30 from the 11 configured default schemas (compact JSON; provider envelope excluded): `direct` is 18,405 characters (~4,602 chars/4); adding `knowledge_graph` and `code_graph` accounts for 4,704 characters (~1,176 chars/4). `lazy` exposes two fixed gateway schemas at 1,309 characters (~328 chars/4), unchanged by those additions; matching catalog definitions are returned only on demand. These are rough estimates, not provider-tokenizer counts.
 - Direct exposure skips MCP names that violate common model API function-name restrictions. Lazy mode can dispatch those names because they are carried as string data rather than registered as native functions.
 - Discovered tools join the flat tool namespace as `mcp__<server>__<tool>` and go through the same [execution contract](#execution-contract) (timeout, truncation, interruption) and [approval](#approval) flow as builtin tools.
 - Permission mapping: under the default `permission: auto`, a tool the Server annotates `readOnlyHint: true` is `r` (auto-approved by the read-only approval mode); everything else is `rw` — annotations are untrusted hints, so the default takes the restrictive direction. Setting the entry's `permission` to `r` or `rw` overrides the annotation for **every** tool of that Server, which is the way in for the many Servers that never set `readOnlyHint` and so land on `rw` wholesale.

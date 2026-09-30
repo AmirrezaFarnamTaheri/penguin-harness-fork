@@ -243,8 +243,9 @@ test("skills: library groups and cards -> manage-install Modal -> quick-invoke p
   // prefilled body "使用 data-analysis 技能" still renders normally; the selection clears once
   // sending succeeds (the dropdown button's badge disappears).
   await expect(page.getByText(/使用技能.*data-analysis/)).toBeVisible();
-  await expect(page.getByText("使用 data-analysis 技能", { exact: true })).toBeVisible();
-  await expect(skillsBtn).not.toContainText("1");
+  const transcript = page.getByTestId("message-stream");
+  await expect(transcript.getByText("使用 data-analysis 技能", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("selected-skills-count")).toHaveCount(0);
 
   // The mock LLM's fallback reply completes a full round (allow-all auto-approves exec_command).
   await expect(page.getByText("Command finished; the result looks as expected.")).toBeVisible();

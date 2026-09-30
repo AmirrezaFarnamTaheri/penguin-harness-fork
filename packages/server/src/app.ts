@@ -161,6 +161,7 @@ import { gatewayRoutes } from "./http/routes/gateway.js";
 import { kanbanRoutes } from "./http/routes/kanban.js";
 import { auditRoutes } from "./http/routes/audit.js";
 import { wikiRoutes } from "./http/routes/wiki.js";
+import { findingsRoutes } from "./http/routes/findings.js";
 import { pipelineRoutes, personaRoutes } from "./http/routes/pipelines.js";
 import { ModelKeyHealthService } from "./services/model-key-health.js";
 import { ModelKeyNamesService } from "./services/model-key-names.js";
@@ -1437,6 +1438,7 @@ export function createApp(
   app.route("/api/projects/:projectId/kanban", kanbanRoutes(deps));
   app.route("/api/projects/:projectId/audit", auditRoutes(deps));
   app.route("/api/projects/:projectId/wiki", wikiRoutes(deps));
+  app.route("/api/projects/:projectId/findings", findingsRoutes(deps));
   app.route("/api/projects/:projectId/pipelines", pipelineRoutes(deps));
   app.route("/api/personas", personaRoutes());
   app.route("/api/projects/:projectId/model-oauth", modelOAuthRoutes(deps));

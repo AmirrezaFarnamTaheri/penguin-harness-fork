@@ -458,6 +458,7 @@ export function MessageStream({
   return (
     <div className="relative h-full min-h-0">
       <div
+        data-testid="message-stream"
         ref={(el) => {
           scrollRef.current = el;
           if (scrollElRef) scrollElRef.current = el;

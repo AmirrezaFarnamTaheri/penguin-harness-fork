@@ -26,6 +26,8 @@ import { INPUT_SUBAGENT_NAME, createInputSubagentTool } from "./input-subagent.j
 import { createResourcePressureTool, RESOURCE_PRESSURE_NAME } from "../../agent/resource/index.js";
 import { WEB_SEARCH_NAME, createWebSearchTool } from "./web-search.js";
 import { ENVIRONMENT_INFO_NAME, createEnvironmentInfoTool } from "./environment-info.js";
+import { KNOWLEDGE_GRAPH_NAME, createKnowledgeGraphTool } from "./knowledge-graph.js";
+import { CODE_GRAPH_NAME, createCodeGraphTool } from "./code-graph.js";
 
 /**
  * A factory that constructs a BuiltinTool instance from a tool config entry; optionally
@@ -58,4 +60,10 @@ export const BUILTIN_TOOL_FACTORIES: Record<string, BuiltinToolFactory> = {
   // environment_info detects the real host at construction; its optional `facts` override is for
   // tests posing as another machine, which call the factory directly. No service is injected.
   [ENVIRONMENT_INFO_NAME]: (definition) => createEnvironmentInfoTool(definition),
+  // The findings plane's agent surface: record claims with host-attested provenance, query
+  // them back, supersede and refute. Writes only its own `.penguin/knowledge/` snapshot.
+  [KNOWLEDGE_GRAPH_NAME]: (definition) => createKnowledgeGraphTool(definition),
+  // Native code intelligence over the same engines the cockpit topology view uses: one walk,
+  // then symbol/caller/impact queries without re-reading files. Read-only; no fs watchers.
+  [CODE_GRAPH_NAME]: (definition) => createCodeGraphTool(definition),
 };

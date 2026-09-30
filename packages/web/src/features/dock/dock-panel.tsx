@@ -114,7 +114,7 @@ function DockButton(props: {
       aria-label={props.label}
       data-testid={props.testId}
       onClick={props.onClick}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
     >
       {props.children}
     </button>
@@ -181,7 +181,7 @@ function DockTabButton(props: {
         aria-label={`${props.closeLabel}: ${props.label}`}
         data-testid="dock-tab-close"
         onClick={props.onClose}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-400 transition-colors duration-150 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded text-gray-500 transition-colors duration-150 hover:bg-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200"
       >
         <CloseIcon size={10} />
       </button>
@@ -291,7 +291,7 @@ function DockPicker({
               <GlyphIcon d={NAV_ICONS.terminal} size={ICON_SIZE.iconButton} />
             </span>
             <span className="min-w-0 flex-1 truncate">{S.terminal.title}</span>
-            <kbd className="shrink-0 font-mono text-[10px] text-gray-400 dark:text-gray-500">
+            <kbd className="shrink-0 font-mono text-[10px] text-gray-500 dark:text-gray-400">
               Ctrl+`
             </kbd>
           </button>
