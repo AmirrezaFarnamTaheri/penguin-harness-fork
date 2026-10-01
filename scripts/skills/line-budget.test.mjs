@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareLineBudget, MAX_SKILL_LINES, physicalLineCount } from "./line-budget.mjs";
+import {
+  compareLineBudget,
+  MAX_SKILL_LINES,
+  parseNameStatus,
+  physicalLineCount,
+} from "./line-budget.mjs";
 
 test("counts physical lines independent of newline style and final newline", () => {
   assert.equal(physicalLineCount("one\ntwo\n"), 2);
@@ -21,4 +26,43 @@ test("reports existing over-limit skills and rejects any further growth", () => 
 
 test("rejects invalid baseline counters", () => {
   assert.throws(() => compareLineBudget(1.5, 0), RangeError);
+});
+
+test("reads rename and copy baselines from the base path", () => {
+  const output = [
+    "M",
+    ".agents/skills/edited/SKILL.md",
+    "R100",
+    ".agents/skills/old-name/SKILL.md",
+    ".agents/skills/new-name/SKILL.md",
+    "C075",
+    ".agents/skills/source/SKILL.md",
+    ".agents/skills/copy/SKILL.md",
+    "A",
+    ".agents/skills/added/SKILL.md",
+    "",
+  ].join("\0");
+  assert.deepEqual(parseNameStatus(output), [
+    {
+      status: "M",
+      file: ".agents/skills/edited/SKILL.md",
+      baselineFile: ".agents/skills/edited/SKILL.md",
+    },
+    {
+      status: "R100",
+      file: ".agents/skills/new-name/SKILL.md",
+      baselineFile: ".agents/skills/old-name/SKILL.md",
+    },
+    {
+      status: "C075",
+      file: ".agents/skills/copy/SKILL.md",
+      baselineFile: ".agents/skills/source/SKILL.md",
+    },
+    {
+      status: "A",
+      file: ".agents/skills/added/SKILL.md",
+      baselineFile: ".agents/skills/added/SKILL.md",
+    },
+  ]);
+  assert.throws(() => parseNameStatus("R100\0.agents/skills/only-old/SKILL.md\0"), /Malformed/);
 });
