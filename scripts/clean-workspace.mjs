@@ -358,7 +358,8 @@ export function applyClean(root, report) {
 function parseArgs(argv) {
   const opts = { apply: false, json: false, includeDist: false, includeTarget: false, help: false };
   for (const arg of argv) {
-    if (arg === "--apply") opts.apply = true;
+    if (arg === "--") continue;
+    else if (arg === "--apply") opts.apply = true;
     else if (arg === "--json") opts.json = true;
     else if (arg === "--include-dist") opts.includeDist = true;
     else if (arg === "--include-target") opts.includeTarget = true;

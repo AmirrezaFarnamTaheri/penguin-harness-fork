@@ -26,27 +26,29 @@ labels. Record a migration manifest fixture for same, different, corrupt, and mi
 **Exit:** The cross-layer fixture proves that two projects sharing a display name are distinct,
 workspace and project stores remain independent, workspace rename does not bind either authority,
 symlink aliases converge on one graph, and an unrelated user cannot read or write the project
-scope. Any future path rebinding is explicit and audited. R2a must not start before this contract
-is approved in the PR; local implementation alone does not satisfy that review gate.
+scope. Any future path rebinding is explicit and audited. Local store work may proceed against this
+contract, but no authority binding or migration may be activated until the contract is approved in
+the PR; local implementation alone does not satisfy that review gate.
 
 ## R1a · Eviction policy truth & reference hygiene
 
 **Invariant:** Live graph is bounded; archived history is recoverable only within the published
-retention window. A 32 MiB archive rotated to one backup can discard older entries. Remove
+retention window. The archive is stored in the same authority snapshot, not as a separate 32 MiB
+backup; bounded rotation can discard older entries. Remove
 “nothing is lost” from comments and product copy.
 
 **Build:** Keep rank order `refuted → superseded → open → confirmed`, oldest `updatedAt` first
-inside a rank. Have the pure graph produce an eviction batch and a new snapshot without changing
-the previously committed store. Under R2a's lock, persist the archive batch with operation ids
-and then atomically commit the snapshot. If the required archive step fails, reject the report
-and retain the prior snapshot. A retry may see an archive record from a failed snapshot write;
-dedupe by `(scopeRevision, victimId)` on replay. Clean `related` and `supersededBy` live links;
-store enough tombstone metadata to explain a former replacement without inventing a live edge.
+inside a rank. Store the full victim, an operation id, and archive time in the same version-1
+snapshot as active records. Bound the archive to 1,000 entries, 4 MiB, and 90 days. One atomic
+snapshot replacement commits both collections; a failed write leaves both unchanged, so retries
+cannot create a duplicate archive operation. Clean `related` references and replace an archived
+`supersededBy` target with a resolvable tombstone id. Expose archived records through bounded
+archive pages and recall; report count, bytes, oldest time, and limits through recovery status.
 
-**Tests:** rank order and confirmed-last; linked eviction and snapshot import; disk-full/archive
-permission failure; snapshot-rename failure after archive append; restart/retry idempotency;
-rotation and documented recoverability limit; `maxFindings = 0` rejection. Use a small cap to
-force the branch without adding thousands of records.
+**Tests:** rank order and confirmed-last; linked eviction and snapshot import; disk-full or
+atomic-snapshot replacement failure after eviction; restart/retry idempotency; rotation and the
+documented recoverability limit; `maxFindings = 0` rejection. Use a small graph cap to force the
+branch without adding thousands of records; retain one full-cap fixture for the durable store.
 
 **Rollback:** Preserve the old snapshot and archive bytes; disabling the feature must not make
 new-format snapshots unreadable. Do not delete an archive while rolling back a code change.
@@ -278,18 +280,21 @@ finding ids are 400 not 500` · `confirm requires evidence (409)`.
 
 **Protocol:**
 ```ts
-type Page<T> = { schemaVersion: 2; items: T[]; scopeRevision: string;
-  nextCursor: string | null; truncated: boolean; omittedCount: number;
-  gap?: { earliestAvailableSeq: number } };
-// cursor = opaque, versioned encoding of scope + revision + filter hash + stable sort key
+type Page<T> = { version: 2; action: string; items: T[]; scopeRevision: string;
+  latestSequence: number; nextCursor: string | null; truncated: boolean;
+  omittedCount: number; highWater: boolean; error?: { code: string; restart: boolean } };
+// cursor = opaque, versioned encoding of hashed scope + revision + normalized filter hash + stable sort key
 ```
-- Sort `snapshot` by stable `(id)` and events by `seq`; use the same revision and filter on every
-  page. A mutation between pages returns `stale_cursor` with a restart hint. A cursor for another
-  scope/filter is invalid; bounded event history returns an explicit gap.
+- `query`, `snapshot`, `events`, and `archive` use the version-2 envelope. Sort snapshot by `id`,
+  events by `seq`, and archive by `(archivedAt,id)`; reuse identical filters, limit, scope, and
+  revision on every page. Scope/filter mismatch and stale revisions return typed restart errors.
+  Event gaps include the earliest retained sequence and the graph's latest sequence.
 - Enforce a UTF-8 byte budget **after** serialization; reserve envelope space. If one body or
-  event cannot fit, emit an id/title/size summary and recall id, never a cut JSON string.
-- Audit current consumers, then migrate them to `schemaVersion: 2`. Keep the old small-output
-  shape only behind a temporary, documented compatibility mode with a removal task.
+  event cannot fit, emit a summary and recall id. `recall` returns base64 chunks of the exact JSON
+  bytes; concatenate decoded bytes and parse once. Never cut JSON text.
+- `outputVersion: 1` is an explicit, small-output compatibility path for the legacy query,
+  snapshot, and events shapes. It has no cursor and returns a typed error when the full result
+  exceeds budget. Version 2 is the default.
 **Tests:** 500-record traversal without gaps/duplicates; mutation mid-page; wrong scope/filter;
 multibyte budget; single 50,000-char body; event-log truncation; JSON.parse for every variant;
 legacy consumer fixture. Roll back by selecting the compatibility mode, not by slicing JSON.
@@ -337,11 +342,13 @@ on the frozen fixture before C3 can use it.
 
 ## R8 · Agent-authored marking on read-back
 
-`query`/`snapshot` rows expose `authoredBy` from trusted R1b events and `sourceLabel` from
-untrusted report text as separate fields. An old snapshot is `legacy-unknown`; a user override
-is not retroactively an author change. Every row shows status and strongest evidence tier; the
-tool description says these are claims requiring verification. Tests cover agent, user, system,
-legacy, and a forged body actor. Update `packages/docs/content/tools.en.md` and `tools.zh.md`.
+`query`/`snapshot` rows expose `authoredBy` from host-attested creation context and `sourceLabel`
+from untrusted report text as separate fields. Persist the original actor on each new finding so
+bounded event-log rotation and archive eviction do not erase known authorship; old snapshots fall
+back to their trusted ingest event, then to `legacy-unknown`. A user override is not retroactively
+an author change. Every row shows status and strongest evidence tier; the tool description says
+these are claims requiring verification. Tests cover agent, user, system, legacy, event rotation,
+archive recall, and a forged body actor. Update `packages/docs/content/tools.en.md` and `tools.zh.md`.
 
 ---
 
@@ -496,22 +503,31 @@ Acceptance check = R12's axe run (zero focus-indicator violations).
   update importers (grep-driven).
 
 ### F6 · STREAM_BANNER_FRAME
-Constant lives beside `disclosure-row.tsx`'s exported frame strings; nine banner modules
-(`attached-files-banner`, `goal-banner`, `handoff-banner`, `harness-banner`, `mcp-connect-banner`,
-`org-trigger-banner`, `scheduled-banner`, `skills-banner`, `step-banner` — take the verbatim
-copies the III.5 audit listed) import it. Rendered-class strings must be byte-identical before
-and after (diff the joined class strings in a unit assertion).
+The shared compact notice frame lives beside `disclosure-row.tsx`'s exported frame strings and is
+used by the six components with that same shell: `attached-files-banner`, `goal-banner`,
+`handoff-banner`, `org-trigger-banner`, `scheduled-banner`, and `skills-banner`. The inherited
+nine-file list mixed three different disclosure surfaces into this task: `harness-banner` uses an
+expandable output card, `mcp-connect-banner` delegates to the process-step disclosure, and
+`step-banner` is that shared interactive process-step surface. They have different layout and
+interaction contracts and must not be forced into the compact notice frame. Preserve each
+component's own animation and layout prefix; the common frame token remains the single source of
+border, background, spacing, and text styling. Acceptance compares each compact banner's rendered
+class list before and after, and confirms all six use the shared token; the three disclosure
+surfaces remain unchanged.
 
 ### G5 · TLS verification fix
-`.agents/skills/bm…/bgm-library/scripts/downloader.js:12` — drop `rejectUnauthorized: false`
-(and any sibling: `grep -rn "rejectUnauthorized" .agents`). If a host genuinely needs a custom
-CA, the escape hatch is an explicit env var (`NODE_EXTRA_CA_CERTS`), not a disabled check.
+`.agents/skills/bm…/bgm-library/scripts/downloader.js` — use Node's built-in `fetch` so default
+certificate validation remains active; accept custom trust roots only through
+`NODE_EXTRA_CA_CERTS`. Sweep `.agents/` for executable `rejectUnauthorized: false` bypasses and
+smoke the downloader against a normal HTTPS endpoint. The CLI's Axios API client is separate.
 
 ### G7 · Anti-slop installer path fix
-`tools/oxlint/anti-slop/` ships `rules-src/`; the vendored skill's `install.mjs` expects
-`assets/anti-slop`. Fix `install.mjs` to resolve the existing `rules-src` layout, preserving the
-installer's destination contract. Acceptance: `node install.mjs --dry-run` resolves and copies
-the expected manifest without introducing a second source tree.
+The original report describes a vendored skill installer, but this checkout has no `install.mjs`,
+`rules-src/`, or `assets/anti-slop/`. The active `tools/oxlint/anti-slop/` tree contains plugin
+source under `rules/`; adding the absent installer or a second asset tree would invent a product
+surface. Re-audit applicability if the vendored skill is restored; then preserve its destination
+manifest while resolving the source that actually ships. Current disposition: not applicable to
+the checked-out source set; retain the evidence and do not fabricate an installer dry-run.
 
 ### J1 · Safe workspace clean command
 
@@ -546,6 +562,8 @@ integration test; a simple external-import count is insufficient for same-packag
 claim and a valid same-package consumer fixture; only the false claim fails with file/line and
 reason. Rollback: keep the evidence table and run checker as advisory while false positives are
 fixed, with an owner and expiry.
+The machine-checked JSON ledger is the only live claim source; plan §2 remains an explicitly
+historical inventory and must not be used as current runtime evidence.
 
 ---
 

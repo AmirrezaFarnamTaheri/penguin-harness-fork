@@ -4213,6 +4213,17 @@ Scenarios:
         "Invalid proxy address — use an http(s):// or socks5:// proxy URL, or host[:port].",
       invalid_attachment_limit:
         "Invalid upload limit — use a whole number of MB inside the allowed range, with the total no lower than the per-file limit.",
+      duplicate_zip_entry: "The ZIP contains duplicate file paths.",
+      findings_capacity_exceeded:
+        "The findings store is at capacity. Export or remove records before trying again.",
+      findings_recovery_required: "The findings store needs recovery before it can accept changes.",
+      findings_revision_conflict:
+        "The finding changed or its requested status transition is invalid.",
+      invalid_zip_archive: "The ZIP archive is invalid or unsupported.",
+      invalid_zip_entry_path: "The ZIP contains an unsafe or ambiguous file path.",
+      swarm_capacity: "The task queue is full. Try again after a task finishes.",
+      swarm_handler_missing: "No task handler is configured for this Project.",
+      zip_symlink_entry: "ZIP archives containing symbolic links are not accepted.",
       invalid_trace: "This file is not a valid Trace file.",
       trace_not_found: "This Trace file no longer exists.",
       trace_session_exists:

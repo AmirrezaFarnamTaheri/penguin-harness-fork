@@ -122,7 +122,7 @@ export function RulePolicyEditor({ projectId }: RulePolicyEditorProps) {
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
               disabled={loading || !!loadError || saving}
-              className="rounded bg-white dark:bg-gray-950 border-gray-700 text-cyan-500 focus:ring-0"
+              className="rounded bg-white dark:bg-gray-950 border-gray-700 text-cyan-500 focus-visible:ring-2 focus-visible:ring-[var(--accent-bg)]"
             />
           </label>
 

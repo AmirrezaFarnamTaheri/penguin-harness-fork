@@ -58,8 +58,12 @@ export interface Messages {
     missingOption(flags: string): string;
     /** An option that takes a value was given none. */
     optionMissingArgument(flags: string): string;
-    unknownOption(flag: string): string;
-    unknownCommand(name: string): string;
+    unknownOption(flag?: string): string;
+    unknownCommand(name?: string): string;
+    suggestion(candidate: string): string;
+    invalidArgument(): string;
+    excessArguments(): string;
+    conflictingOptions(): string;
     /** Everything else commander rejects: its own detail rides verbatim, so nothing is swallowed. */
     other(detail: string): string;
     /** Second line of a usage error: how the command is spelled, and where its full option list is. */
@@ -861,8 +865,12 @@ const en: Messages = {
     missingArgument: (name) => `missing required argument <${name}>`,
     missingOption: (flags) => `missing required option ${flags}`,
     optionMissingArgument: (flags) => `option ${flags} needs a value`,
-    unknownOption: (flag) => `unknown option ${flag}`,
-    unknownCommand: (name) => `unknown command ${name}`,
+    unknownOption: (flag) => (flag === undefined ? "unknown option" : `unknown option ${flag}`),
+    unknownCommand: (name) => (name === undefined ? "unknown command" : `unknown command ${name}`),
+    suggestion: (candidate) => `Did you mean ${candidate}?`,
+    invalidArgument: () => "invalid argument",
+    excessArguments: () => "unexpected extra argument",
+    conflictingOptions: () => "conflicting options",
     other: (detail) => detail,
     hint: (command, usage) =>
       `Usage: ${command} ${usage}  (run \`${command} --help\` for every option)`,
@@ -1639,8 +1647,12 @@ const zh: Messages = {
     missingArgument: (name) => `缺少必填参数 <${name}>`,
     missingOption: (flags) => `缺少必填选项 ${flags}`,
     optionMissingArgument: (flags) => `选项 ${flags} 缺少取值`,
-    unknownOption: (flag) => `未知选项 ${flag}`,
-    unknownCommand: (name) => `未知命令 ${name}`,
+    unknownOption: (flag) => (flag === undefined ? "未知选项" : `未知选项 ${flag}`),
+    unknownCommand: (name) => (name === undefined ? "未知命令" : `未知命令 ${name}`),
+    suggestion: (candidate) => `你是否想输入 ${candidate}？`,
+    invalidArgument: () => "参数无效",
+    excessArguments: () => "存在多余参数",
+    conflictingOptions: () => "选项冲突",
     other: (detail) => detail,
     hint: (command, usage) =>
       `用法：${command} ${usage}（运行 \`${command} --help\` 查看全部选项）`,

@@ -2,6 +2,7 @@
  * Gateway, Fallback Combos, Quota & Pricing Routes.
  */
 import { Hono } from "hono";
+import path from "node:path";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
@@ -123,15 +124,17 @@ function parseSpendSessions(value: unknown, projectId: string): SessionCostRecor
       throw badRequest(`sessions[${index}] must be an object.`);
     }
     const session = rawSession as Record<string, unknown>;
-    if (session.sessionId !== undefined && typeof session.sessionId !== "string") {
-      throw badRequest(`sessions[${index}].sessionId must be a string when provided.`);
+    for (const key of ["sessionId", "projectId"] as const) {
+      if (
+        session[key] !== undefined &&
+        (typeof session[key] !== "string" || session[key].length > 128 || !isValidId(session[key]))
+      ) {
+        throw badRequest(
+          `sessions[${index}].${key} must be a valid identifier of at most 128 characters.`,
+        );
+      }
     }
-    if (session.projectId !== undefined && typeof session.projectId !== "string") {
-      throw badRequest(`sessions[${index}].projectId must be a string when provided.`);
-    }
-    if (session.projectPath !== undefined && typeof session.projectPath !== "string") {
-      throw badRequest(`sessions[${index}].projectPath must be a string when provided.`);
-    }
+    if (session.projectPath !== undefined) validateDisplayPath(session.projectPath, index);
 
     return {
       sessionId: (session.sessionId as string | undefined) ?? "",
@@ -140,6 +143,32 @@ function parseSpendSessions(value: unknown, projectId: string): SessionCostRecor
       modelBreakdown: parseSpendModelBreakdown(session.modelBreakdown, index),
     };
   });
+}
+
+/** Display metadata stays inert; reject ambiguous paths at the HTTP boundary anyway. */
+function validateDisplayPath(value: unknown, index: number): asserts value is string {
+  const label = `sessions[${index}].projectPath`;
+  if (
+    typeof value !== "string" ||
+    !value ||
+    value.length > 4096 ||
+    value.trim() !== value ||
+    /[\x00-\x1f\x7f]|%[0-9a-f]{2}|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/iu.test(
+      value,
+    )
+  ) {
+    throw badRequest(`${label} must be a non-empty normalized path of at most 4096 characters.`);
+  }
+  const windows = /^[a-z]:\\|^\\\\/i.test(value);
+  const segments = value.split(/[\\/]/);
+  if (
+    segments.some((segment) => segment === "." || segment === "..") ||
+    (windows
+      ? value.includes("/") || path.win32.normalize(value) !== value
+      : value.includes("\\") || path.posix.normalize(value) !== value)
+  ) {
+    throw badRequest(`${label} must not contain traversal or non-normalized separators.`);
+  }
 }
 
 function spendFlowLimit(value: unknown): number {

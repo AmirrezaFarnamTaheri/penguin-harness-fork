@@ -9,7 +9,7 @@
  * As well as helper functions for token conversion, UniConfig construction, and retry
  * determination.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   EmptyResponseError,
   ThinkingLevel,
@@ -2556,6 +2556,7 @@ describe("GenerativeModel API key rotation & failover", () => {
     public recordedKeys: (string | undefined)[] = [];
     public failKeyWithAuth?: string;
     public failKeyWithRateLimit?: string;
+    public rateLimitRetryAfter?: string;
 
     constructor(opts: { apiKeys?: string[]; apiKey?: string }) {
       super({ modelId: "claude-sonnet-4-6", tools: [], ...opts });
@@ -2574,8 +2575,14 @@ describe("GenerativeModel API key rotation & failover", () => {
         throw err;
       }
       if (this.failKeyWithRateLimit && activeKey === this.failKeyWithRateLimit) {
-        const err = new Error("429 Rate Limit Exceeded") as Error & { status: number };
+        const err = new Error("429 Rate Limit Exceeded") as Error & {
+          status: number;
+          response?: { headers: Headers };
+        };
         err.status = 429;
+        if (this.rateLimitRetryAfter !== undefined) {
+          err.response = { headers: new Headers({ "retry-after": this.rateLimitRetryAfter }) };
+        }
         throw err;
       }
       return (async function* () {
@@ -2599,6 +2606,37 @@ describe("GenerativeModel API key rotation & failover", () => {
     while (!res.done) res = await gen.next();
     return res.value as LLMOutcome;
   }
+
+  it("routes grace to the same eligible account with opaque failure metadata", async () => {
+    vi.useFakeTimers();
+    try {
+      const model = new MockRotatingModel({ apiKeys: ["secret-key-1", "secret-key-2"] });
+      model.failKeyWithRateLimit = "secret-key-1";
+      model.rateLimitRetryAfter = "0.1";
+      const failure = await drain(model.streamGenerate({ newMessages: [userText("go")] }));
+      expect(model.retryPoolSize).toBe(2);
+      expect(failure.retryAccount).toEqual({ accountId: "account_0", rateLimited: true });
+      expect(JSON.stringify(failure.retryAccount)).not.toContain("secret-key");
+      await vi.advanceTimersByTimeAsync(300);
+      model.failKeyWithRateLimit = undefined;
+      model.retrySameAccount();
+      await drain(model.streamGenerate({ newMessages: [userText("retry")] }));
+      await drain(model.streamGenerate({ newMessages: [userText("next")] }));
+      expect(model.recordedKeys).toEqual(["secret-key-1", "secret-key-1", "secret-key-2"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not bypass account cooldown for a requested grace retry", async () => {
+    const model = new MockRotatingModel({ apiKeys: ["key-1", "key-2"] });
+    model.failKeyWithRateLimit = "key-1";
+    model.rateLimitRetryAfter = "60";
+    await drain(model.streamGenerate({ newMessages: [userText("go")] }));
+    model.retrySameAccount();
+    await drain(model.streamGenerate({ newMessages: [userText("retry")] }));
+    expect(model.recordedKeys).toEqual(["key-1", "key-2"]);
+  });
 
   it("rotates keys round-robin across consecutive requests", async () => {
     const model = new MockRotatingModel({ apiKeys: ["key-1", "key-2", "key-3"] });
@@ -2654,21 +2692,48 @@ describe("GenerativeModel API key rotation & failover", () => {
   it("handles 429 rate limit failure by entering cooldown and rotating to backup key", async () => {
     const model = new MockRotatingModel({ apiKeys: ["limited-key", "backup-key"] });
     model.failKeyWithRateLimit = "limited-key";
+    model.rateLimitRetryAfter = "1";
 
     // First request hits rate limit on limited-key
     const outcome1 = await drain(model.streamGenerate({ newMessages: [userText("try 1")] }));
     expect(outcome1.status).toBe("retryable");
     expect(outcome1.errorCode).toBe("network");
+    expect(outcome1.retryDelay).toMatchObject({
+      rawMs: 1000,
+      source: "header",
+      bufferedMs: 1200,
+    });
 
     // Key is in cooldown
     const rotator = model.getKeyRotator();
     const limitedStatus = rotator?.getKeyStatuses().find((s) => s.key === "limited-key");
     expect(limitedStatus?.status).toBe("cooldown");
+    const remainingCooldown = limitedStatus!.cooldownUntil - Date.now();
+    expect(remainingCooldown).toBeGreaterThan(1000);
+    expect(remainingCooldown).toBeLessThanOrEqual(1200);
 
     // Next request automatically picks backup-key and succeeds
     const outcome2 = await drain(model.streamGenerate({ newMessages: [userText("try 2")] }));
     expect(outcome2.status).toBe("completed");
     expect(model.recordedKeys).toEqual(["limited-key", "backup-key"]);
+  });
+
+  it("uses the default key cooldown when Retry-After is malformed", async () => {
+    const model = new MockRotatingModel({ apiKeys: ["limited-key", "backup-key"] });
+    model.failKeyWithRateLimit = "limited-key";
+    model.rateLimitRetryAfter = "tomorrow";
+
+    const outcome = await drain(model.streamGenerate({ newMessages: [userText("try")] }));
+    expect(outcome.status).toBe("retryable");
+    expect(outcome.retryDelay).toBeUndefined();
+
+    const limitedStatus = model
+      .getKeyRotator()
+      ?.getKeyStatuses()
+      .find((s) => s.key === "limited-key");
+    const remainingCooldown = limitedStatus!.cooldownUntil - Date.now();
+    expect(remainingCooldown).toBeGreaterThan(59_000);
+    expect(remainingCooldown).toBeLessThanOrEqual(60_000);
   });
 
   it("parses delimited single apiKey string into multiple rotating keys", async () => {

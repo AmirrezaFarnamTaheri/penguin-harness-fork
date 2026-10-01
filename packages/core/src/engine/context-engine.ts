@@ -62,6 +62,8 @@ import {
 } from "../omnimessage/markers/index.js";
 import { RepeatToolGuard } from "../agent/repeat-tool-guard.js";
 import type { RepeatToolReminder } from "../agent/repeat-tool-guard.js";
+import { graceWindow } from "../llm/retry-delay.js";
+import { PoolRetryPolicy, type RetryDecision } from "../llm/retry-policy.js";
 import type {
   ErrorCode,
   ApprovalDecision,
@@ -229,6 +231,8 @@ export interface ContextEngineDeps {
    * retry loop.
    */
   maxTurnAttempts?: number;
+  /** Local rollback switch for pool-aware providers; no persisted state changes. */
+  retryPolicyVersion?: "pool-v1" | "legacy";
   /**
    * Exponential backoff base (ms): the wait before reconnect retry N is
    * `base × 2^(N−1)`, capped at `reconnectBackoffMaxMs` (see reconnectDelayMs).
@@ -437,6 +441,7 @@ interface TurnResult {
   receivedContent: boolean;
   /** Terminal state of this turn's LLM request (completed / failed / aborted / timeout / malformed). */
   outcome: LLMOutcome;
+  retryPlan?: RetryDecision;
   /** Advisory repeat-guard reminders raised while dispatching this turn's approved tool calls. */
   reminders: RepeatToolReminder[];
 }
@@ -452,6 +457,7 @@ interface TurnResult {
 interface TurnRetryState {
   attempts: number;
   consecutive: number;
+  policy?: PoolRetryPolicy;
 }
 
 /**
@@ -515,13 +521,24 @@ function nextReconnectSeed(): number {
  * wait above the countdown minimum, and absorbing the jitter at the ceiling keeps the total
  * patience at the ~60s the schedule above promises rather than quietly growing past it.
  */
-export function reconnectDelayMs(base: number, max: number, attempt: number, seed = 0): number {
+export function reconnectDelayMs(
+  base: number,
+  max: number,
+  attempt: number,
+  seed = 0,
+  retryDelay?: LLMOutcome["retryDelay"],
+): number {
   const ladder = Math.min(base * 2 ** (attempt - 1), max);
   // Cheap integer mix of the seed and the attempt — FNV-style, no PRNG. The goal is spread
   // across engines, not unpredictability within one.
   const mixed = (Math.imul(seed ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(attempt, 0xc2b2ae35)) >>> 0;
   const jitter = (mixed % 1000) / 1000; // 0 .. 0.999
-  return Math.min(max, Math.round(ladder * (1 + 0.5 * jitter)));
+  const ladderMs = Math.min(max, Math.round(ladder * (1 + 0.5 * jitter)));
+  if (!retryDelay || !Number.isFinite(retryDelay.bufferedMs) || retryDelay.bufferedMs <= 0) {
+    return ladderMs;
+  }
+  const providerMs = Math.min(2_147_483_647, retryDelay.bufferedMs);
+  return graceWindow(retryDelay) ? providerMs : Math.max(ladderMs, providerMs);
 }
 
 export class ContextEngine {
@@ -533,6 +550,8 @@ export class ContextEngine {
   private compactionReadWarned = false;
   private readonly maxReconnects: number;
   private readonly maxTurnAttempts: number;
+  private readonly configuredRetryCeiling: number | undefined;
+  private readonly retryPolicyVersion: "pool-v1" | "legacy";
   private readonly reconnectBackoffMs: number;
   private readonly reconnectBackoffMaxMs: number;
   /**
@@ -543,6 +562,7 @@ export class ContextEngine {
    */
   private readonly reconnectSeed: number = nextReconnectSeed();
   private readonly compactionMaxReconnects: number;
+  private readonly configuredCompactionCeiling: number | undefined;
   /** Interruption cleanup: content to resend generated when the previous run was aborted, held on the engine across runs. */
   private pendingCarryOver: OmniMessage[] = [];
   /** Current LLM object; swapped for the one `openNextContext` returns after a successful compaction (a fresh model context). */
@@ -643,10 +663,17 @@ export class ContextEngine {
     this.pendingBootstrapRecords = deps.bootstrapRecords ?? null;
     this.maxTurns = deps.maxTurns ?? -1;
     this.maxReconnects = deps.maxReconnects ?? 5;
+    this.retryPolicyVersion = deps.retryPolicyVersion ?? "pool-v1";
+    this.configuredRetryCeiling =
+      deps.maxReconnects === undefined ? undefined : deps.maxReconnects + 1;
     this.maxTurnAttempts = deps.maxTurnAttempts ?? 20;
     this.reconnectBackoffMs = deps.reconnectBackoffMs ?? 2000;
     this.reconnectBackoffMaxMs = deps.reconnectBackoffMaxMs ?? 30_000;
     this.compactionMaxReconnects = deps.compactionMaxReconnects ?? this.maxReconnects;
+    this.configuredCompactionCeiling =
+      deps.compactionMaxReconnects === undefined
+        ? this.configuredRetryCeiling
+        : deps.compactionMaxReconnects + 1;
     this.compaction = deps.compaction;
     this.llm = deps.llm;
     this.contextMeta = deps.sessionMeta;
@@ -928,8 +955,19 @@ export class ContextEngine {
       let attempts = 0;
       let consecutive = 0;
       let turn: TurnResult;
+      const poolSize = this.llm.retryPoolSize;
+      const policy =
+        poolSize === undefined || this.retryPolicyVersion === "legacy"
+          ? undefined
+          : new PoolRetryPolicy(
+              poolSize,
+              Math.min(this.maxTurnAttempts, this.configuredRetryCeiling ?? Infinity),
+            );
 
       for (;;) {
+        // The preceding retry decision guarantees an available attempt. No content resets it.
+        if (policy && policy.startAttempt() === null)
+          throw new Error("Retry policy attempted to send after exhaustion");
         // Both LLM and Environment handle errors internally and guarantee a complete, closed
         // output with no thrown exceptions; the engine doesn't handle exceptions —
         // it decides retry/resend purely from `outcome`. The retry count so far is threaded
@@ -939,7 +977,7 @@ export class ContextEngine {
           attemptInput,
           approve,
           signal,
-          { attempts, consecutive },
+          { attempts, consecutive, policy },
           preToolUse,
         );
         attempts += 1;
@@ -995,7 +1033,11 @@ export class ContextEngine {
         // and the last failure's request_end (status `retryable` with no `retry_in_ms`,
         // since no retry is planned) is the terminal record frontends and observability
         // read; `attempt` and `error_message` ride on it.
-        if (consecutive >= this.maxReconnects || attempts >= this.maxTurnAttempts) {
+        if (
+          policy
+            ? turn.retryPlan?.kind !== "retry"
+            : consecutive >= this.maxReconnects || attempts >= this.maxTurnAttempts
+        ) {
           this.pendingCarryOver = attemptInput;
           return {
             kind: "llm_failure",
@@ -1006,11 +1048,20 @@ export class ContextEngine {
           };
         }
         consecutive += 1;
-        if (!(await this.backoff(consecutive, signal))) {
+        if (
+          !(await this.backoff(
+            consecutive,
+            signal,
+            turn.outcome.retryDelay,
+            turn.retryPlan?.kind === "retry" ? turn.retryPlan.delayMs : undefined,
+          ))
+        ) {
           this.pendingCarryOver = attemptInput;
           yield* this.emitAbort("backoff_interrupted");
           return { kind: "abort", errorCode: "backoff_interrupted" };
         }
+        if (turn.retryPlan?.kind === "retry" && turn.retryPlan.mode === "same_account")
+          this.llm.retrySameAccount?.();
       }
 
       // Compaction checkpoint: after every LLM Request produces token_usage. This also
@@ -1229,6 +1280,7 @@ export class ContextEngine {
       this.reconnectBackoffMaxMs,
       reconnectsSoFar + 1,
       this.reconnectSeed,
+      outcome.retryDelay,
     );
   }
 
@@ -1260,14 +1312,22 @@ export class ContextEngine {
    * cleanup. A "retry now" skip (`skipReconnectWait`) resolves the wait early as true,
    * proceeding straight to the retry.
    */
-  private backoff(attempt: number, signal?: AbortSignal): Promise<boolean> {
+  private backoff(
+    attempt: number,
+    signal?: AbortSignal,
+    retryDelay?: LLMOutcome["retryDelay"],
+    plannedMs?: number,
+  ): Promise<boolean> {
     // The same seed the announcement used, so the countdown and the sleep are one number.
-    const ms = reconnectDelayMs(
-      this.reconnectBackoffMs,
-      this.reconnectBackoffMaxMs,
-      attempt,
-      this.reconnectSeed,
-    );
+    const ms =
+      plannedMs ??
+      reconnectDelayMs(
+        this.reconnectBackoffMs,
+        this.reconnectBackoffMaxMs,
+        attempt,
+        this.reconnectSeed,
+        retryDelay,
+      );
     return new Promise<boolean>((resolve) => {
       if (signal?.aborted) {
         resolve(false);
@@ -1321,6 +1381,7 @@ export class ContextEngine {
     const assistantSegments: OmniMessage[] = [];
     // This turn's LLM terminal state: taken from streamGenerate's generator return value.
     let outcome: LLMOutcome = { status: "completed" };
+    let retryPlan: RetryDecision | undefined;
     // Set by the first message the stream yields (see TurnResult.receivedContent).
     let receivedContent = false;
 
@@ -1355,8 +1416,19 @@ export class ContextEngine {
             // Mirrors the reconnect loop exactly, or the announced countdown is a lie: an
             // attempt that received content restarts the ladder at its first rung, and either
             // budget running out means no retry is planned at all.
-            const retryInMs =
-              retry.attempts + 1 >= this.maxTurnAttempts
+            if (retry.policy && outcome.status === "retryable") {
+              retryPlan = retry.policy.afterFailure({
+                ...outcome.retryAccount,
+                rateLimited: outcome.retryAccount?.rateLimited ?? false,
+                delay: outcome.retryDelay,
+                cancelled: signal?.aborted,
+              });
+            }
+            const retryInMs = retry.policy
+              ? retryPlan?.kind === "retry"
+                ? retryPlan.delayMs
+                : undefined
+              : retry.attempts + 1 >= this.maxTurnAttempts
                 ? undefined
                 : this.plannedRetryDelayMs(
                     outcome,
@@ -1539,6 +1611,7 @@ export class ContextEngine {
       assistantSegments,
       receivedContent,
       outcome,
+      retryPlan,
       reminders,
     };
   }
@@ -1779,14 +1852,22 @@ export class ContextEngine {
     // the compaction be abandoned first (see stashRepairs).
     let pendingRepairs: OmniMessage[] = [];
     // One retry budget for every failure: an unusable committed response (empty summary /
-    // tool calls) counts exactly like a retryable failure (issue #170) — same counter, same
-    // exponential ladder — and only `fatal` stops without retrying.
+    // tool calls) counts exactly like a retryable failure (issue #170). The selected policy
+    // owns every attempt, including committed but rejected summaries.
     let reconnects = 0;
     // The compaction_end event's share of the RetryDetail block (also what the server's
     // error record carries): the final attempt ordinal, and the last failure's detail.
     let attempts = 0;
     let lastError: string | undefined;
     let lastErrorCode: ErrorCode | undefined;
+    const poolSize = this.llm.retryPoolSize;
+    const policy =
+      poolSize === undefined || this.retryPolicyVersion === "legacy"
+        ? undefined
+        : new PoolRetryPolicy(
+            poolSize,
+            Math.min(this.maxTurnAttempts, this.configuredCompactionCeiling ?? Infinity),
+          );
     for (;;) {
       if (signal?.aborted) {
         this.stashRepairs(pendingRepairs);
@@ -1798,7 +1879,9 @@ export class ContextEngine {
         );
         return { status: "aborted", committed };
       }
-      const attempt = yield* this.runCompactionRequest(input, signal, reconnects);
+      if (policy && policy.startAttempt() === null)
+        throw new Error("Compaction attempted to send after retry exhaustion");
+      const attempt = yield* this.runCompactionRequest(input, signal, reconnects, policy);
       attempts += 1;
       // Every attempt's token_usage is pushed to the Human output stream (already written to
       // Trace in runCompactionRequest, so it's only yielded here, never rewritten): the frontend
@@ -1884,11 +1967,11 @@ export class ContextEngine {
       }
       // One failure path for everything else — unusable summaries and retryable failures
       // (never committed by AgentHub) — treated like an
-      // ordinary LLM request's failures: the same budget (defaulting to the shared
-      // maxReconnects, issue #170) and the same exponential ladder. An unusable attempt's
-      // request_end carries status completed, for which no retry_in_ms is announced — the
-      // backoff wait still happens.
-      if (reconnects >= this.compactionMaxReconnects) {
+      // ordinary LLM request's failures. A pool policy owns the total attempt count;
+      // the legacy policy uses compactionMaxReconnects. Neither resets on a bad summary.
+      if (
+        policy ? attempt.retryPlan?.kind !== "retry" : reconnects >= this.compactionMaxReconnects
+      ) {
         // Retries exhausted on retryable failures (transport faults and unusable
         // summaries alike): the compaction ends `retryable` — abandoned this time, and
         // the standing trigger makes it up at the next opportunity.
@@ -1906,12 +1989,19 @@ export class ContextEngine {
         };
       }
       reconnects += 1;
-      const ok = await this.backoff(reconnects, signal);
+      const ok = await this.backoff(
+        reconnects,
+        signal,
+        attempt.retryDelay,
+        attempt.retryPlan?.kind === "retry" ? attempt.retryPlan.delayMs : undefined,
+      );
       if (!ok) {
         this.stashRepairs(pendingRepairs);
         yield* this.emitCompactionEnd(reason, "summarize", "aborted", { attempt: attempts });
         return { status: "aborted", committed };
       }
+      if (attempt.retryPlan?.kind === "retry" && attempt.retryPlan.mode === "same_account")
+        this.llm.retrySameAccount?.();
       if (unusable) {
         // Rebuild from the (shrunken) base rather than appending: everything the unusable
         // attempt's input carried is committed — the live object's history can only grow, so
@@ -1968,6 +2058,7 @@ export class ContextEngine {
     signal?: AbortSignal,
     /** Transport retries already performed by the compaction loop (its request_end announces the next planned backoff too). */
     reconnectsSoFar = 0,
+    policy?: PoolRetryPolicy,
   ): AsyncGenerator<
     OmniMessage,
     {
@@ -1978,6 +2069,8 @@ export class ContextEngine {
       /** Classified cause and error detail (LLMOutcome) on non-completed statuses — become compaction_end.error_code / error_message when this failure ends the compaction. */
       errorCode?: ErrorCode;
       errorMessage?: string;
+      retryDelay?: LLMOutcome["retryDelay"];
+      retryPlan?: RetryDecision;
     }
   > {
     // The compaction request is itself an ordinary Request, emitting paired request events —
@@ -2006,15 +2099,30 @@ export class ContextEngine {
         // request_end, under the compaction cap. Compaction request events are written to
         // the old Trace only (never streamed), so retry_in_ms lands in the Trace record —
         // no live countdown renders for compaction; the frontend only sees the
-        // compaction event pair. A rejected summary ends `completed`, for which
-        // plannedRetryDelayMs yields nothing — rejection resends are immediate (see
-        // summarizeContext), so no wait is ever announced for them.
-        const retryInMs = this.plannedRetryDelayMs(
-          res.value,
-          reconnectsSoFar,
-          this.compactionMaxReconnects,
-          RETRY_STATUSES,
-        );
+        // compaction event pair. A rejected summary ends `completed`; the pool policy still
+        // plans its retry here, while the legacy policy announces only transport retries.
+        const retryPlan =
+          policy &&
+          (res.value.status === "retryable" ||
+            (res.value.status === "completed" &&
+              (extractSummary(text) === "" || toolCalls.length > 0)))
+            ? policy.afterFailure({
+                ...res.value.retryAccount,
+                rateLimited: res.value.retryAccount?.rateLimited ?? false,
+                delay: res.value.retryDelay,
+                cancelled: signal?.aborted,
+              })
+            : undefined;
+        const retryInMs = policy
+          ? retryPlan?.kind === "retry"
+            ? retryPlan.delayMs
+            : undefined
+          : this.plannedRetryDelayMs(
+              res.value,
+              reconnectsSoFar,
+              this.compactionMaxReconnects,
+              RETRY_STATUSES,
+            );
         const end = requestEnd(res.value.status, {
           ...(res.value.usage !== undefined ? { usage: res.value.usage } : {}),
           ...(res.value.errorMessage !== undefined ? { errorMessage: res.value.errorMessage } : {}),
@@ -2035,6 +2143,8 @@ export class ContextEngine {
           usage,
           ...(res.value.errorCode !== undefined ? { errorCode: res.value.errorCode } : {}),
           ...(res.value.errorMessage !== undefined ? { errorMessage: res.value.errorMessage } : {}),
+          ...(res.value.retryDelay !== undefined ? { retryDelay: res.value.retryDelay } : {}),
+          retryPlan,
         };
       }
       const msg = res.value;

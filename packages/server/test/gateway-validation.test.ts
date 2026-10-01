@@ -148,6 +148,35 @@ describe("gateway input validation", () => {
     expect(badLimit.status).toBe(400);
   });
 
+  it("bounds spend-flow identifiers and refuses ambiguous display paths", async () => {
+    for (const session of [
+      { sessionId: "" },
+      { sessionId: "a".repeat(129) },
+      { sessionId: "../escape" },
+      { projectId: "%2e%2e" },
+      { projectId: "名前" },
+      { projectPath: "" },
+      { projectPath: "a".repeat(4097) },
+      { projectPath: "/repo/../secret" },
+      { projectPath: "/repo/%2e%2e/secret" },
+      { projectPath: "/repo//src" },
+      { projectPath: "C:\\repo/child" },
+      { projectPath: "/repo/\u0000secret" },
+      { projectPath: "/repo/\ud800" },
+    ]) {
+      const response = await client.post(`/api/projects/${projectId}/gateway/spend-flow`, {
+        sessions: [{ modelBreakdown: {}, ...session }],
+      });
+      expect(response.status, JSON.stringify(session)).toBe(400);
+    }
+    for (const projectPath of ["/repo/日本語😀", "C:\\repo\\src", "repo/src"]) {
+      const response = await client.post(`/api/projects/${projectId}/gateway/spend-flow`, {
+        sessions: [{ sessionId: "s1", projectId, projectPath, modelBreakdown: {} }],
+      });
+      expect(response.status, projectPath).toBe(200);
+    }
+  });
+
   it("accepts a well-formed spend-flow payload", async () => {
     const response = await client.post(`/api/projects/${projectId}/gateway/spend-flow`, {
       sessions: [

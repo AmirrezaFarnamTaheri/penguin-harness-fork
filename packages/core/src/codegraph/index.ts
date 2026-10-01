@@ -13,6 +13,25 @@
 export { TopologyEngine } from "./topology-engine.js";
 export type { BuildStats, TopologyQueryOptions, TopologySnapshot } from "./topology-engine.js";
 
+export {
+  CODEGRAPH_SCHEMA_VERSION,
+  DEFAULT_GRAPH_STORE_MAX_BYTES,
+  FileGraphStore,
+  createTopologyGraphStore,
+  isTopologySnapshot,
+} from "./graph-store.js";
+export type { FileGraphStoreOptions, GraphStore, GraphStoreRead } from "./graph-store.js";
+
+export { GitSnapshotReader, GitSnapshotError } from "./git-snapshot.js";
+export type {
+  GitCommitSnapshot,
+  GitSnapshotChange,
+  GitSnapshotEntry,
+  GitSnapshotErrorCode,
+  GitSnapshotPair,
+  GitSnapshotReaderLimits,
+} from "./git-snapshot.js";
+
 export { IncrementalGraphCache } from "./incremental-graph-cache.js";
 export type { CachedFileEntry, UpdateResult } from "./incremental-graph-cache.js";
 

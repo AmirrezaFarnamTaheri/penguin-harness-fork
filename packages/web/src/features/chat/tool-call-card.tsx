@@ -32,7 +32,7 @@ import { ZoomableImage } from "../../components/ui/image-zoom";
 import { toneInk } from "../../lib/tone";
 import { StatusIcon } from "../../components/ui/status-icon";
 import type { RunState } from "../../components/ui/status-icon";
-import { ToolBreakpointPanel } from "../cockpit/tool-breakpoint-panel";
+import { ToolBreakpointPanel } from "../cockpit-widgets/tool-breakpoint-panel";
 import { LiveDuration } from "./live-duration";
 import { JevAdvisoryNote } from "./jev-advisory-note";
 import { useTheme } from "../../state/theme";

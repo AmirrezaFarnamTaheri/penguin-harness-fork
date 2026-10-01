@@ -32,6 +32,7 @@ import { sessionShell } from "./shell.js";
 import { pathPrependPrefix } from "./path-prepend.js";
 import { ServiceUrlScanner } from "./service-url.js";
 import { probeGroupListenPorts } from "./port-probe.js";
+import { spawnCommandProcess } from "./spawn.js";
 
 /** Process-group semantics are available on POSIX; Windows falls back to signaling the child process directly. */
 const SUPPORTS_PROCESS_GROUP = process.platform !== "win32";
@@ -129,12 +130,11 @@ export class ManagedSession {
     if (program === undefined) {
       throw new Error("spawn confiner returned an empty argv");
     }
-    this.child = spawn(program, confined.slice(1), {
+    this.child = spawnCommandProcess(program, confined.slice(1), {
       cwd: opts.cwd,
       env: opts.env,
       detached: SUPPORTS_PROCESS_GROUP, // Become the process-group leader, so the whole group can be signaled
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true, // No flashing console window on Windows (ignored elsewhere)
     });
     this.child.stdout?.setEncoding("utf8");
     this.child.stderr?.setEncoding("utf8");

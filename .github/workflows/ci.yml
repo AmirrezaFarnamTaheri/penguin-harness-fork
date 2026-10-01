@@ -49,6 +49,11 @@ jobs:
       - name: i18n parity (en <-> zh)
         run: pnpm check:i18n
 
+      - name: Documentation status claims
+        run: |
+          node scripts/check-doc-claims.mjs
+          node --test scripts/check-doc-claims.test.mjs
+
       # The published benchmark claims are consistent with both blog tables but not
       # certified by run artifacts, so every row carries a `provisional` flag and the gate
       # reports each suite as a warning instead of blocking. That is the only green state
@@ -147,7 +152,7 @@ jobs:
           fi
           pnpm test:e2e
 
-  # The browser e2e: 75 specs over the real chat UI, driven by Playwright against a mock
+  # The browser e2e suite exercises the real chat UI with Playwright against a mock
   # Anthropic SSE stream. Nothing else in this workflow exercises the rendered frontend — a
   # regression that breaks the chat UI outright still passed every unit suite and shipped.
   # Linux only: the specs need a headless Chromium and the suite is not port-permitting

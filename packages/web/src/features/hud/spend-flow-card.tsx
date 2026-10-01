@@ -1,6 +1,6 @@
 import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
 import { mutedClass, panelClass } from "../kanban/work-tool-ui";
-import { SankeySpendChart } from "../cockpit/sankey-spend-chart";
+import { SankeySpendChart } from "../cockpit-widgets/sankey-spend-chart";
 
 export interface SpendFlowCardProps {
   report: SpendFlowReport;

@@ -1,10 +1,10 @@
 # Implementation Plan: Absorption & Hardening Master Plan (v3)
 
-**Target:** `D:/GitHub/penguin-harness-fork` · **Working branch:** PR #12
-`feat/knowledge-plane-native-tools`; review baseline `fd27e3d3c` (re-check HEAD before execution;
-older commit counts and line numbers are historical snapshots) · **Versioned evidence:**
+**Target:** `D:/GitHub/penguin-harness-fork` · **Working branch:** `codex/wave-1-2-hardening`,
+the follow-up branch after PR #12 merged · review baseline `fd27e3d3c` (re-check HEAD before
+execution; older commit counts and line numbers are historical snapshots) · **Versioned evidence:**
 `docs/audits/2026-09-29-unified.md`, current code/tests, and the
-[PR #12 review and checks](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/12).
+[merged PR #12 review and checks](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/12).
 Historical source labels (`cluster-A`–`F`, collage Parts I–V, prior audits) identify the earlier
 investigation, but their source files are not versioned in this checkout. The contracts and
 acceptance criteria here and in the execution cards are self-contained; an implementation must
@@ -14,10 +14,15 @@ verify any historical assertion against current code before changing behavior.
 `68148d15baf95a941cc98a7d3b41086b1b2a6ae7`. All required exact-head CI jobs passed, including
 browser E2E, installer E2E, and Linux/macOS/Windows runtime jobs; `pnpm audit --json` reports zero
 findings. The per-job ledger and local verification are in
-[`docs/audits/pr-12-ci-2026-09-30.md`](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 remains open
-because its review status explicitly requires manual review. Wave R and release remain blocked by
-the unfinished findings-plane contract, implementation, and test battery; CI success does not
-resolve those dependencies or constitute review approval.
+[`docs/audits/pr-12-ci-2026-09-30.md`](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 merged on
+2026-09-30 as `fc44861a4730a43c58d9accdbc9e15ee27003d8b`; its CI receipt applies only to the
+recorded PR head. Follow-up work is being reviewed separately. The local findings implementation
+passes the core `test/knowledge` suite (66 tests) and findings route suite (19 tests).
+The latest R11 regression pass adds randomized merge replay and event-log round-trip coverage;
+it exposed and fixed non-canonical tags, subjects, and source timestamps on first reports.
+Wave R and release remain blocked on review of these changes, exact-commit quality/CI evidence, and
+the broader wave gates. Touched-package typechecks, core lint/format, and docs-claims checks are
+green locally; the earlier PR-head CI receipt does not verify the current worktree.
 
 ## 0. How to read this document
 
@@ -65,6 +70,12 @@ are P1. Wave 3 promotions are conditional P2. Wave 4 and external-inspired subsy
 experiments until a named user journey, baseline, owner, and stop criterion justify them.
 
 ## 2. Status Ledger — DONE (do not rebuild)
+
+This table is a historical inventory snapshot from 2026-09-29, retained for investigation
+context; it is not the live claims ledger. Current shipped and experimental claims belong in
+[`docs/status-ledger.json`](../docs/status-ledger.json), the versioned source checked by J11 and
+CI. Update that file when a current claim changes; do not treat this historical table as proof
+of current runtime use or verification.
 
 | Item (OG naming) | State | Where |
 |---|---|---|
@@ -248,22 +259,23 @@ focused core tool and server route tests. Files: the matrix, core tool/cache, se
 
 **R1a · Eviction policy truth & reference hygiene** · M · deps R2a · src F1,N1
 Description: Preserve the live cap while stating the **bounded** history guarantee honestly.
-The durable store records each victim in an archive with a documented size/age retention window
-and an operation id; a required archive write failure rejects the durable mutation before it is
-acknowledged. In-memory graphs expose evicted records to callers but make no persistence claim.
-Prune `related` and `supersededBy` references to non-live ids, retaining a resolvable archive
-tombstone where needed. Rotation may discard old archived entries; never call that “nothing is
-lost.” Acceptance: ① rank order is refuted → superseded → open → confirmed-last; ② a linked
-eviction leaves no dangling live reference; ③ archive failure leaves the prior durable snapshot
-unchanged; ④ rotation/restart/retry tests show the documented recoverability window and no
-duplicate logical victim; ⑤ docs show counts and limitations. Verification: eviction + store
+The durable version-1 snapshot contains both live records and an archive bounded to 1,000 entries,
+4 MiB, and 90 days. Each victim has an operation id. One atomic snapshot replacement commits the
+archive and live graph together; a failed write leaves both unchanged. Standalone in-memory graphs
+provide only their exported bounded snapshot, not filesystem durability. Prune `related` and
+`supersededBy` references to non-live ids, retaining a resolvable archive tombstone for a former
+replacement. Rotation can discard old archived entries; never claim that nothing is lost.
+Acceptance: ① rank order is refuted → superseded → open → confirmed-last; ② a linked eviction
+leaves no dangling live reference; ③ write failure leaves the prior durable snapshot unchanged;
+④ rotation/restart/retry tests show the documented recoverability window and no duplicate
+logical victim; ⑤ docs expose counts and limits. Verification: eviction + store
 fault-injection tests in `test/knowledge`. Files: graph, store, tests, docs.
 
 **R1b · Lifecycle state machine, evidence gate, actor attribution** · M · deps R1a · src N3,F4
 Description: Enumerate transitions and attribute them. Table: `open → confirmed | refuted`;
 `open | confirmed → superseded` (replacement must be `open|confirmed`); `confirmed → refuted`
 (falsification); `refuted | superseded` are terminal except R1c's explicit reopen. `confirm`
-requires ≥1 evidence with tier `runtime|`implementation`, else 409 with the missing-gate message
+requires ≥1 evidence with tier `runtime|implementation`, else 409 with the missing-gate message
 (human override: `override: true` records actor kind `user`). Every transition appends
 `FindingEvent { actor: {kind: "user"|"agent"|"system"|"unknown", id: string}, method: "tool"|"route"|"engine", note? }`; imported legacy events may omit `actor` and `method` and display as `unknown`;
 routes fill actor from the authenticated user, the tool from `ctx.attribution`; missing tool
@@ -362,17 +374,19 @@ engine `TypeError` surfaces as 500, not 400; ③ `%zz` in a finding id → 400; 
 each enum. Verification: `vitest run test/findings-routes`. Files: `findings.ts`, tests.
 
 **R5 · Tool output integrity: revision-aware pagination** · M · deps R2a · src N6
-Description: Return a single versioned JSON envelope for `query`/`snapshot`/`events` with
-`items`, `scopeRevision`, `nextCursor`, `truncated`, and `omittedCount`. Encode cursor version,
-scope, revision, filter hash, and last stable sort key; reject mismatched/stale cursors with a
-typed restart response. Bound serialized **UTF-8 bytes**, not characters. If one record cannot
-fit, return a parseable summary with a recall id rather than slicing JSON. Event pagination
-reports a gap when the bounded event log no longer covers the requested cursor. Preserve the
-existing small-output shape only through a documented versioned compatibility mode for current
-consumers. Acceptance: ① 500 findings page with no duplicate/missing ids on a fixed revision;
-② concurrent mutation causes an explicit stale-cursor response; ③ every response parses as JSON
-and stays under the byte budget; ④ oversize record and event gap are explicit. Verification:
-tool contract tests, including multibyte text and consumer compatibility tests. Files:
+Description: Return one version-2 JSON envelope for `query`/`snapshot`/`events` and the R1a
+`archive` read surface, with `items`, `scopeRevision`, `latestSequence`, `nextCursor`,
+`truncated`, `omittedCount`, and `highWater`. Bind versioned cursors to hashed scope, revision,
+normalized filter hash, and stable key; mismatched/stale cursors return typed restart errors.
+Bound serialized **UTF-8 bytes**, not characters. Oversized records become summaries with recall
+ids; recall returns the complete JSON bytes in base64 chunks. Event pages report a gap and the
+earliest retained sequence. Keep the old small-output shape only behind explicit
+`outputVersion: 1` compatibility mode for query/snapshot/events; version 2 is the default.
+Acceptance: ① 500 findings page with no duplicate/missing ids on a fixed revision; ② concurrent
+mutation causes an explicit stale-cursor response; ③ every response parses as JSON and stays
+under the byte budget; ④ oversized record and event gap are explicit; ⑤ legacy consumer fixtures
+still receive the documented small shapes. Verification: tool contract tests, including
+multibyte text and consumer compatibility tests. Files:
 `knowledge-graph.ts`, `types.ts`, tool/consumer tests.
 
 **R6 · code_graph resource discipline** · S · deps — · src N8
@@ -401,8 +415,10 @@ findings graph, tests, fixture, plan ledger, unified report status.
 
 **R8 · Accurate provenance on read-back** · S · deps R1b · src N7
 Description: `query`/`snapshot` expose trusted actor provenance separately from a reporter's
-free-form label. Derive `authoredBy` (`agent|user|system|legacy-unknown`) from R1b's attested
-events rather than setting `agentAuthored: true` on every record. Mark legacy imports unknown.
+free-form label. Persist the original host-attested actor on each newly reported finding, using
+R1b's event actor for pre-change snapshots that still retain their ingest event. This keeps known
+authorship stable after bounded event-log rotation and archive eviction; otherwise mark legacy
+imports unknown. Never infer trust from source labels or set `agentAuthored: true` on every record.
 Descriptions state that findings are claims requiring verification; query bodies stay out of
 automatic briefings. Acceptance: agent, user, system, and legacy fixtures show distinct labels;
 malicious source text cannot impersonate a user; the UI/tool renders status and evidence tier.
@@ -473,8 +489,8 @@ waive an unexplained red because other platforms passed. Verification: targeted 
 Status: **Complete.** The assertion fix is in `980cdd89d`; both focused `skills.spec.mjs` cases
 passed locally. Full browser E2E and every required PR check passed on exact head
 `68148d15baf95a941cc98a7d3b41086b1b2a6ae7`. See the
-[per-job evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). CodeRabbit skipped review because
-manual review is required for this OSS repository; PR #12 remains open for that review.
+[per-job evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 received its required
+review and merged on 2026-09-30; later changes use a separate follow-up PR.
 
 **R14a · Electron high-severity advisory repair** · S · deps — · src 2026-09-29 audit
 Description: Locked desktop `electron@43.2.0` is affected by four high-severity advisories
@@ -555,17 +571,23 @@ Acceptance: zero behavior-contradicting comments in the touched files; the renam
 review before push. Verification: web suite + grep. Files: 4 sites.
 
 **F6 · STREAM_BANNER_FRAME dedup** · S · deps — · src III.5
-Acceptance: one definition beside `disclosure-row.tsx`'s constants; all nine listed banner
-call sites adopt it; rendered class bytes identical in a unit assertion. Files: constant owner
-plus nine banner modules.
+Acceptance: one definition beside `disclosure-row.tsx`'s constants; all six compact notice
+banners in this checkout (`attached-files`, `goal`, `handoff`, `org-trigger`, `scheduled`,
+`skills`) use it while retaining their own layout and animation prefixes. The harness,
+MCP-connect, and step banners are interactive disclosure surfaces with different shells and are
+outside this shared frame. Verify rendered class lists for the six compact banners. Files:
+constant owner and six banner modules.
 
 **G5 · TLS verification fix** · XS · deps — · src SEC-EXEC-04
 Acceptance: no `rejectUnauthorized:false` under `.agents/`; the downloader still works against a
 normal TLS endpoint. Files: `.agents/skills/bgm-library/scripts/downloader.js` + sweep.
 
 **G7 · Anti-slop installer path fix** · XS · deps — · src IV.6.7 #2
-Acceptance: `node install.mjs` dry-run resolves the existing `rules-src` asset layout and
-preserves the destination manifest; do not create a duplicate source tree.
+The source tree this card described is absent: no vendored `install.mjs`, `rules-src/`, or
+`assets/anti-slop/` exists in this checkout. The active `tools/oxlint/anti-slop/` plugin has
+`rules/`, not installer assets. Do not create an installer or duplicate tree to satisfy a stale
+path. Re-audit only if the vendored skill is restored; until then this item is not applicable to
+the checked-out source set.
 
 **J1 · `clean` script wiring** · XS · deps — · src IV.5.6
 Acceptance: `pnpm clean` matches `scripts/clean-workspace.mjs` report mode. Files: `package.json`.
@@ -617,10 +639,13 @@ sequences → never invalid UTF-8, view==target at finalize. Files: `llm/stream-
 **A6 · Length-prefixed frame parser** · S · deps — · src §I.4.3.1
 Acceptance: the reference's five test shapes (cross-chunk, astral, resync, EOF flush, marker≠length) pass.
 **B1 · Large-output spill + recall id** · M · deps B2 · src cluster-A #1
-Description: 40KB inline threshold (bytes/4 estimate), spill to the truncated-output archive,
-return `{recallId,sizeBytes,tokenCount}`; agent-origin calls stay inline; the opaque recall ID
-fetches full output without exposing a filesystem path. Acceptance: failures (non-zero exits)
-always inline; recall round-trips byte-exact.
+Description: spill tool text when its configured `maxOutputLength` is exceeded (the explicit
+boundary fixture is 40 KiB); persist it under the owning Session, redact recognized credentials,
+and return `{recallId,sizeBytes,tokenCount}` where `tokenCount` is a bytes/4 estimate. Agent-origin
+calls stay inline. The path-free `recall_output` tool reads bounded pages using an id accepted only
+by that Session. Acceptance: failures are not compressed and retain useful head/tail and terminal
+failure evidence inline; recall reproduces persisted UTF-8 text after credential redaction; capacity
+never deletes a still-valid issued id. Binary files are outside the tool-text contract.
 **B3 · In-process tool-output compression** · M · deps B1 · src §IV.9
 Description: four strategies (filter/group/truncate/dedup-counts), test-runner failures-only
 collapse; the three non-negotiables as tests; measured savings table per strategy — **any strategy
@@ -714,7 +739,7 @@ recursion `⇄`, fingerprint-seeded reverse-BFS entry inference.
 **D6 · git-snapshot reader** · M · deps — · src cluster-D §5
 Acceptance: two-commit fixture diffs without a worktree checkout; oid-deduped `cat-file --batch`.
 **D7 · GraphStore interface + snapshot versioning** · S · deps D4a · src cluster-D #9
-Acceptance: handlers hold no serialization; SCHEMA_VERSION drop-and-recreate proven by a migration test.
+Acceptance: handlers hold no serialization; SCHEMA_VERSION drop-and-recreate proven by a migration test. A schema mismatch or corrupt derived snapshot is an explicit rebuildable cache miss and is never returned as valid graph data. The current local implementation and evidence are recorded in the [2026-10-01 implementation review](../docs/audits/implementation-review-2026-10-01.md); exact-commit acceptance remains pending.
 **D8 · Seeded Louvain + god nodes** · S · deps D4b · src cluster-D #11
 Acceptance: two runs byte-identical (codepoint insertion order, seeded PRNG).
 **D9 · Tool-surface upgrade** · M · deps D5,D8 · src cluster-D #4/#10
@@ -778,6 +803,9 @@ preview/apply/rollback fixture suite on Windows and POSIX.
 **H5 · Tiered help** · M · deps — · src cluster-A §1 (simple/default/full)
 **H6 · Command-hint graph** · S · deps H5
 **H7 · Levenshtein arg suggestions** · S · deps — · src cluster-A #3
+Acceptance: bounded Levenshtein over registered commands/options only; suggest only a unique
+near match. Unknown spellings, paths and inline values are not echoed; ambiguous and distant
+tokens receive no suggestion.
 **I6 · Payload audit compaction** · S · deps I1 · src §I.1.2.5
 **J2 · Actions SHA pinning** · S · deps — · src infra F1
 **J3 · Coverage instrumentation** · M · deps — · src infra F2 (v8 coverage + thresholds on critical modules)
@@ -943,7 +971,7 @@ exception with measured evidence, owner, affected version, and rollback in the P
 
 | ID | Decision now | Reopen only if | Proof before rollout |
 |---|---|---|---|
-| Q1 · PR #12 | Keep the coherent current PR intact. Repair R13's browser locator, rerun the full required matrix on its exact head, and merge only after normal review gates. Ship later Wave-R slices as narrow, reversible PRs. | A reviewer identifies an independently revertible portion that blocks review, or the PR cannot pass a bounded gate without unrelated changes. | Changed-file ownership and exact-head CI evidence in the PR; no split hides a failure. |
+| Q1 · PR #12 | Keep the coherent PR intact through R13's browser repair and exact-head matrix; PR #12 merged on 2026-09-30. Ship subsequent Wave-R slices as narrow, reversible follow-up PRs. | A reviewer identifies an independently revertible portion that blocks a follow-up review, or a bounded gate cannot pass without unrelated changes. | [PR #12 merge](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/12), its exact-head evidence ledger, and changed-file ownership for follow-ups. |
 | Q2 · permission plane | K14's vocabulary is an adapter above the current approvals enforcement point. A single authoritative decision applies to direct, aliased, retried, resumed, and delegated tool calls. | A concrete action path cannot be represented by the existing approval decision without reducing safety or correctness. | Deny/allow matrix and one-enforcement trace for every action class; fail closed on missing context. |
 | Q3 · compression | B3 is off by default. Freeze the eligible output corpus; ship only deterministic, lossless-to-recall strategies that save at least 10% bytes on that corpus while preserving complete failures and original artifact access. Drop losing strategies. | A representative production corpus or output contract changes materially. | Raw input/output hashes, savings distribution, failure fixture, privacy and latency results; opt-in flag and immediate rollback. |
 | Q4 · grammar assets | D1 packages TS/JS only as a lazy opt-in tier. D10 requires the stated quality gate plus ≤5 MiB compressed delta, ≤2× regex and ≤2 s p95 indexing on the fixed 200-file fixture, and ≤256 MiB incremental peak RSS. D3 adds languages individually. | A measured language shows enough value to justify a reviewed budget change; no global 12-grammar payload is assumed. | Reproducible manifest and hashes, repeated two-tier table and missing-asset fallback. |

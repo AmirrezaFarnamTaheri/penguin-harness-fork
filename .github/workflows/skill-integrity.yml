@@ -13,8 +13,12 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    env:
+      SKILLS_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup
       - name: Verify normalized imported skill metadata
         run: pnpm skills:normalize:check
@@ -22,8 +26,12 @@ jobs:
         run: pnpm skills:names:check
       - name: Verify declarative and runtime aliases are synchronized
         run: pnpm skills:aliases:check
+      - name: Verify pinned skill sources and content
+        run: pnpm skills:lock:verify
       - name: Validate skill identities, metadata, resource closure and aliases
         run: pnpm skills:check -- --strict-resources --json=artifacts/skill-audit.json
+      - name: Enforce the skill length budget without expanding legacy exceptions
+        run: node scripts/skills/line-budget.mjs --json=artifacts/skill-line-budget.json
       - name: Build taxonomy and overlap report
         if: always()
         run: pnpm skills:catalog

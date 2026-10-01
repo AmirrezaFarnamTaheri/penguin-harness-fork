@@ -9,31 +9,49 @@
  * Design rules:
  * - **Claims, not notes**: every finding names its subject (paths/modules/symbols) and carries
  *   evidence with a tier, so a later reader can re-verify instead of trusting.
- * - **Merge, never fork**: two agents reporting the same claim produce ONE finding (see
- *   `fingerprint` in findings-graph.ts) with both agents in `sources`.
+ * - **Merge live claims**: two agents reporting the same live claim produce ONE finding
+ *   with both agents in `sources`. Refuted claims receive linked, deterministic revisions.
  * - **Supersession over deletion**: a refuted or outdated claim is marked and linked to the
- *   claim that replaced it. The graph keeps its history; nothing is silently rewritten.
+ *   claim that replaced it. Live findings and event history are bounded collections.
  * - **Local-first**: the engine is pure in-memory state with a JSON snapshot format, exactly
  *   like WikiEngine — the server persists the snapshot per project, no network anywhere.
  */
 
 /** What kind of claim a finding makes. */
-export type FindingKind = "defect" | "insight" | "decision" | "pattern" | "metric" | "hypothesis";
+export const FINDING_KINDS = [
+  "defect",
+  "insight",
+  "decision",
+  "pattern",
+  "metric",
+  "hypothesis",
+] as const;
+export type FindingKind = (typeof FINDING_KINDS)[number];
 
 /** Lifecycle of a claim. `superseded` keeps history; `refuted` keeps the falsification. */
-export type FindingStatus = "open" | "confirmed" | "refuted" | "superseded";
+export const FINDING_STATUSES = ["open", "confirmed", "refuted", "superseded"] as const;
+export type FindingStatus = (typeof FINDING_STATUSES)[number];
 
 /** How sure the reporter is. Merging two reports keeps the higher of the two. */
-export type FindingConfidence = "low" | "medium" | "high";
+export const FINDING_CONFIDENCE = ["low", "medium", "high"] as const;
+export type FindingConfidence = (typeof FINDING_CONFIDENCE)[number];
 
 /** Impact of the claim if true. Merging keeps the higher of the two. */
-export type FindingSeverity = "info" | "low" | "medium" | "high" | "critical";
+export const FINDING_SEVERITIES = ["info", "low", "medium", "high", "critical"] as const;
+export type FindingSeverity = (typeof FINDING_SEVERITIES)[number];
 
 /**
  * Strength of one piece of evidence, deliberately mirroring an audit's evidence ladder:
  * runtime proof beats source reading beats history beats documentation beats hearsay.
  */
-export type EvidenceTier = "runtime" | "implementation" | "history" | "documentation" | "anecdote";
+export const EVIDENCE_TIERS = [
+  "runtime",
+  "implementation",
+  "history",
+  "documentation",
+  "anecdote",
+] as const;
+export type EvidenceTier = (typeof EVIDENCE_TIERS)[number];
 
 /** One piece of backing evidence. `path` is workspace-relative so snapshots stay portable. */
 export interface FindingEvidence {
@@ -71,10 +89,16 @@ export interface Finding {
   tags: string[];
   /** Every reporter of this claim, oldest first. */
   sources: FindingSource[];
+  /** Host-attested actor that first created the claim; absent only in legacy snapshots. */
+  createdBy?: FindingActor;
   /** Ids of related findings (`relates` links, symmetric). */
   related: string[];
+  /** Symmetric contradiction links, including a new report of a refuted claim. */
+  contradicts?: string[];
   /** Set when status is `superseded`: the finding that replaced this one. */
   supersededBy?: string;
+  /** Replacement retained as a tombstone after its live record is archived. */
+  supersededByArchived?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -113,15 +137,61 @@ export interface FindingQuery {
 }
 
 /** One event in the findings log. `seq` is monotonic within one graph instance. */
+export interface FindingActor {
+  kind: "user" | "agent" | "system" | "unknown";
+  id: string;
+}
+
+/** Host-supplied mutation metadata; never populated from model or request-body identities. */
+export interface FindingMutationContext {
+  actor?: FindingActor;
+  method?: "tool" | "route" | "engine";
+  /** Only an authenticated human may bypass the confirmation evidence gate. */
+  override?: boolean;
+}
+
+export type FindingAuthoredBy = "agent" | "user" | "system" | "legacy-unknown";
+
+/** Read projection. Reporter labels in sources remain separate from attested authorship. */
+export interface FindingReadback extends Omit<Finding, "createdBy"> {
+  authoredBy: FindingAuthoredBy;
+  author: FindingActor;
+  evidenceTiers: EvidenceTier[];
+}
+
+export type FindingsPageAction = "query" | "snapshot" | "events" | "archive" | "recall";
+export interface FindingsPageEnvelope {
+  version: 2;
+  action: FindingsPageAction;
+  items: unknown[];
+  scopeRevision: string;
+  latestSequence: number;
+  nextCursor: string | null;
+  truncated: boolean;
+  omittedCount: number;
+  highWater: boolean;
+  error?: {
+    code: string;
+    message: string;
+    restart: boolean;
+    earliestSequence?: number;
+    latestSequence?: number;
+  };
+}
+
 export interface FindingEvent {
   seq: number;
-  type: "ingest" | "merge" | "supersede" | "refute" | "update";
+  type: "ingest" | "merge" | "supersede" | "refute" | "reopen" | "update";
   findingId: string;
   at: number;
   note?: string;
+  /** Optional only for snapshots created before actor attribution was introduced. */
+  actor?: FindingActor;
+  method?: "tool" | "route" | "engine";
+  override?: true;
 }
 
-/** Snapshot wire format (what the server persists per project). */
+/** Version-1 snapshot wire format shared by the workspace tool and project routes. */
 export interface FindingsGraphSnapshot {
   version: 1;
   findings: Finding[];
@@ -131,4 +201,12 @@ export interface FindingsGraphSnapshot {
    * importing graph already had.
    */
   events?: FindingEvent[];
+  /** Finite eviction history committed atomically with the live graph. */
+  archive?: FindingArchiveEntry[];
+}
+
+export interface FindingArchiveEntry {
+  operationId: string;
+  archivedAt: number;
+  finding: Finding;
 }

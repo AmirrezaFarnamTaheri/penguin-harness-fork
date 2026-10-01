@@ -11,8 +11,10 @@
  * 1. **One claim, many reporters.** `report()` merges by id first (re-reporting the same claim
  *    lands on the same finding) and by Jaccard title+body similarity second (two wordings of
  *    one claim collapse); near-misses below the threshold are linked, never merged.
- * 2. **Nothing is deleted.** A refuted or outdated claim is marked and chained to its
- *    replacement (`supersededBy`). History is the point.
+ * 2. **Terminal claims retain their lifecycle.** Re-reporting a refuted claim creates a
+ *    contradiction revision; superseded claims cannot be reopened. Live findings, the event
+ *    log, and the exportable eviction archive are bounded; filesystem durability belongs to
+ *    the store that commits snapshots.
  * 3. **Strength is a read-only display score.** `strength(finding, now)` combines a
  *    confidence-weighted base decayed since `updatedAt` with an additive term decayed by age
  *    since `createdAt`. That second term is a creation-age heuristic, not access tracking. The
@@ -22,13 +24,22 @@
  * 5. **Every mutation appends to the event log** (bounded), so a consumer can ask "what
  *    changed since seq N" — the findings plane's own replay story.
  */
+import { createHash, randomUUID } from "node:crypto";
 import {
+  FINDING_KINDS,
+  FINDING_STATUSES,
+  FINDING_CONFIDENCE,
+  FINDING_SEVERITIES,
+  EVIDENCE_TIERS,
   type Finding,
+  type FindingArchiveEntry,
   type FindingConfidence,
   type FindingEvidence,
   type FindingEvent,
   type FindingKind,
+  type FindingMutationContext,
   type FindingQuery,
+  type FindingReadback,
   type FindingSeverity,
   type FindingSource,
   type FindingStatus,
@@ -57,8 +68,11 @@ export interface FindingsGraphOptions {
   relateJaccard?: number;
   /** Event log bound. */
   maxEvents?: number;
-  /** Finding bound; oldest *superseded* findings go first, then oldest refuted. */
+  /** Finding bound; refuted, superseded, open, then confirmed, oldest within each status. */
   maxFindings?: number;
+  maxArchiveEntries?: number;
+  maxArchiveBytes?: number;
+  maxArchiveAgeMs?: number;
 }
 
 const DEFAULTS = {
@@ -68,6 +82,9 @@ const DEFAULTS = {
   relateJaccard: 0.4,
   maxEvents: 2000,
   maxFindings: 5000,
+  maxArchiveEntries: 1000,
+  maxArchiveBytes: 4 * 1024 * 1024,
+  maxArchiveAgeMs: 90 * 24 * 60 * 60 * 1000,
 };
 
 const CONFIDENCE_WEIGHT: Record<FindingConfidence, number> = { low: 0.5, medium: 0.75, high: 1 };
@@ -84,32 +101,60 @@ const STATUS_RANK: Record<FindingStatus, number> = {
   superseded: 1,
   refuted: 0,
 };
-const FINDING_KINDS: readonly FindingKind[] = [
-  "defect",
-  "insight",
-  "decision",
-  "pattern",
-  "metric",
-  "hypothesis",
-];
-const FINDING_STATUSES: readonly FindingStatus[] = ["open", "confirmed", "refuted", "superseded"];
-const FINDING_CONFIDENCE: readonly FindingConfidence[] = ["low", "medium", "high"];
-const FINDING_SEVERITIES: readonly FindingSeverity[] = [
-  "info",
-  "low",
-  "medium",
-  "high",
-  "critical",
-];
-const EVIDENCE_TIERS = [
-  "runtime",
-  "implementation",
-  "history",
-  "documentation",
-  "anecdote",
-] as const;
+export class UnknownFindingError extends Error {
+  constructor(readonly findingId: string) {
+    super(`Unknown finding: ${findingId}`);
+    this.name = "UnknownFindingError";
+  }
+}
+
+export class FindingsArchiveCapacityError extends Error {
+  constructor() {
+    super("The finding cannot be archived within the configured retention limits.");
+    this.name = "FindingsArchiveCapacityError";
+  }
+}
+
+/** Expected lifecycle rejection; programming and persistence errors retain their own types. */
+export class LifecycleError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 409 = 409,
+  ) {
+    super(message);
+    this.name = "LifecycleError";
+  }
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const utf8Bytes = (value: unknown): number =>
+  new TextEncoder().encode(JSON.stringify(value)).byteLength;
+
+export class SupersessionError extends LifecycleError {
+  constructor(
+    readonly code:
+      | "replacement_not_live"
+      | "supersession_cycle"
+      | "supersession_depth"
+      | "supersession_missing_target",
+    message: string,
+  ) {
+    super(message);
+    this.name = "SupersessionError";
+  }
+}
+
+/** Same-state operations are rejected too: every accepted transition changes lifecycle. */
+export function canTransition(from: FindingStatus, to: FindingStatus): boolean {
+  return (
+    (from === "open" && (to === "confirmed" || to === "refuted" || to === "superseded")) ||
+    (from === "confirmed" && (to === "refuted" || to === "superseded"))
+  );
+}
+
+function cloneEvent(event: FindingEvent): FindingEvent {
+  return { ...event, actor: event.actor ? { ...event.actor } : { kind: "unknown", id: "unknown" } };
+}
 
 function slugify(title: string): string {
   return (
@@ -154,7 +199,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 }
 
 function evidenceKey(e: FindingEvidence): string {
-  return `${e.path ?? ""}:${e.line ?? ""}#${(e.quote ?? e.note ?? "").slice(0, 80)}`;
+  return JSON.stringify([e.tier, e.path, e.line, e.quote, e.note]);
 }
 
 function sourceKey(s: FindingSource): string {
@@ -174,6 +219,7 @@ function unionSorted(a: readonly string[], b: readonly string[]): string[] {
  */
 export class FindingsGraph {
   private readonly findings = new Map<string, InternalFinding>();
+  private archive = new Map<string, FindingArchiveEntry>();
   private readonly events: FindingEvent[] = [];
   private seq = 0;
   private readonly now: () => number;
@@ -183,6 +229,9 @@ export class FindingsGraph {
   private readonly relateJaccard: number;
   private readonly maxEvents: number;
   private readonly maxFindings: number;
+  private readonly maxArchiveEntries: number;
+  private readonly maxArchiveBytes: number;
+  private readonly maxArchiveAgeMs: number;
 
   constructor(options: FindingsGraphOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -192,6 +241,20 @@ export class FindingsGraph {
     this.relateJaccard = options.relateJaccard ?? DEFAULTS.relateJaccard;
     this.maxEvents = options.maxEvents ?? DEFAULTS.maxEvents;
     this.maxFindings = options.maxFindings ?? DEFAULTS.maxFindings;
+    this.maxArchiveEntries = options.maxArchiveEntries ?? DEFAULTS.maxArchiveEntries;
+    this.maxArchiveBytes = options.maxArchiveBytes ?? DEFAULTS.maxArchiveBytes;
+    this.maxArchiveAgeMs = options.maxArchiveAgeMs ?? DEFAULTS.maxArchiveAgeMs;
+    if (
+      ![
+        this.maxEvents,
+        this.maxFindings,
+        this.maxArchiveEntries,
+        this.maxArchiveBytes,
+        this.maxArchiveAgeMs,
+      ].every((value) => Number.isSafeInteger(value) && value > 0)
+    ) {
+      throw new RangeError("Findings and archive limits must be positive safe integers.");
+    }
   }
 
   /** Deterministic id for a claim: slug of the title + a fingerprint of its normalized text. */
@@ -200,8 +263,22 @@ export class FindingsGraph {
     return `${slugify(title)}-${fingerprint}`;
   }
 
-  private pushEvent(type: FindingEvent["type"], findingId: string, note?: string): void {
-    this.events.push({ seq: ++this.seq, type, findingId, at: this.now(), note });
+  private pushEvent(
+    type: FindingEvent["type"],
+    findingId: string,
+    note?: string,
+    context: FindingMutationContext = {},
+  ): void {
+    this.events.push({
+      seq: ++this.seq,
+      type,
+      findingId,
+      at: this.now(),
+      note,
+      actor: context.actor ? { ...context.actor } : { kind: "unknown", id: "unknown" },
+      method: context.method ?? "engine",
+      ...(context.override === true ? { override: true as const } : {}),
+    });
     while (this.events.length > this.maxEvents) this.events.shift();
   }
 
@@ -209,31 +286,68 @@ export class FindingsGraph {
    * Report a finding. Merges into an existing claim when one matches (same id, exact title, or
    * Jaccard at or above `mergeJaccard` over title+body); otherwise creates one and links near-misses.
    */
-  report(input: ReportFindingInput): ReportFindingResult {
+  report(input: ReportFindingInput, context: FindingMutationContext = {}): ReportFindingResult {
     const title = input.title.trim();
     if (title === "") throw new Error("Finding title must not be empty.");
     const body = (input.body ?? "").trim();
     const now = this.now();
 
     // Line 1 of dedupe: the deterministic id. Re-reporting the same claim lands here.
-    const id = this.makeId(title, body);
+    let id = this.makeId(title, body);
     const existing = this.findings.get(id);
-    if (existing) return { finding: this.mergeInto(existing, input, now), merged: true };
+    let contradicted: InternalFinding | undefined;
+    if (existing?.status === "superseded") return { finding: this.clone(existing), merged: true };
+    if (existing?.status === "refuted") contradicted = existing;
+    else if (existing)
+      return { finding: this.mergeInto(existing, input, now, context), merged: true };
 
     // Line 2: wording-level duplicate of an existing claim.
     const claimed = tokens(`${title} ${body}`);
     let best: { finding: InternalFinding; score: number } | null = null;
     for (const candidate of this.findings.values()) {
-      if (candidate.status === "refuted") continue;
+      if (contradicted) break;
+      if (candidate.status === "superseded") {
+        if (candidate.title.trim().toLowerCase() === title.toLowerCase())
+          return { finding: this.clone(candidate), merged: true };
+        continue;
+      }
       if (candidate.title.trim().toLowerCase() === title.toLowerCase()) {
-        return { finding: this.mergeInto(candidate, input, now), merged: true };
+        if (candidate.status === "refuted") {
+          contradicted = candidate;
+          break;
+        }
+        return { finding: this.mergeInto(candidate, input, now, context), merged: true };
       }
       const score = jaccard(claimed, tokens(`${candidate.title} ${candidate.body}`));
       if (score >= this.mergeJaccard && (best === null || score > best.score)) {
         best = { finding: candidate, score };
       }
     }
-    if (best) return { finding: this.mergeInto(best.finding, input, now), merged: true };
+    if (!contradicted && best?.finding.status === "refuted") contradicted = best.finding;
+    if (!contradicted && best)
+      return { finding: this.mergeInto(best.finding, input, now, context), merged: true };
+
+    if (contradicted) {
+      const identity = JSON.stringify([
+        contradicted.id,
+        title.toLowerCase(),
+        body.toLowerCase(),
+        input.kind ?? "insight",
+        [...new Set((input.subjects ?? []).map((s) => s.trim()))].sort(),
+        [...new Set((input.evidence ?? []).map(evidenceKey))].sort(),
+      ]);
+      id = `${slugify(title)}-revision-${createHash("sha256").update(identity).digest("hex")}`;
+      const revision = this.findings.get(id);
+      // A replay never mutates the original falsification or a terminal revision.
+      if (revision)
+        return {
+          finding:
+            revision.status === "refuted" || revision.status === "superseded"
+              ? this.clone(revision)
+              : this.mergeInto(revision, input, now, context),
+          merged: true,
+        };
+    }
 
     const finding: InternalFinding = {
       id,
@@ -243,40 +357,74 @@ export class FindingsGraph {
       status: "open",
       confidence: input.confidence ?? "medium",
       severity: input.severity ?? "info",
-      subjects: [...(input.subjects ?? [])].map((s) => s.trim()).filter((s) => s !== ""),
-      evidence: [...(input.evidence ?? [])],
-      tags: [...(input.tags ?? [])].map((t) => t.trim().toLowerCase()).filter((t) => t !== ""),
-      sources: input.source ? [input.source] : [],
+      subjects: unionSorted(
+        [],
+        (input.subjects ?? []).map((s) => s.trim()).filter((s) => s !== ""),
+      ),
+      evidence: (input.evidence ?? []).map((e) => ({ ...e })),
+      tags: unionSorted(
+        [],
+        (input.tags ?? []).map((tag) => tag.trim().toLowerCase()).filter((tag) => tag !== ""),
+      ),
+      sources: input.source ? [{ ...input.source, at: input.source.at ?? now }] : [],
+      ...(context.actor ? { createdBy: { ...context.actor } } : {}),
       related: [],
+      ...(contradicted ? { contradicts: [contradicted.id] } : {}),
       createdAt: now,
       updatedAt: now,
       sourceNotes: {},
     };
     if (input.source) finding.sourceNotes[sourceKey(input.source)] = input.source.report ?? "";
-    this.findings.set(id, finding);
+    const relatedTargets = new Set<string>();
+    if (contradicted) {
+      finding.related = [contradicted.id];
+      relatedTargets.add(contradicted.id);
+    }
 
     // Near-misses become `related` links (symmetric), never merges.
     for (const candidate of this.findings.values()) {
-      if (candidate.id === id) continue;
+      if (candidate.id === id || candidate.status === "superseded") continue;
       const score = jaccard(claimed, tokens(`${candidate.title} ${candidate.body}`));
       if (score >= this.relateJaccard) {
         finding.related = unionSorted(finding.related, [candidate.id]);
-        candidate.related = unionSorted(candidate.related, [id]);
+        relatedTargets.add(candidate.id);
       }
     }
 
-    this.pushEvent("ingest", id);
-    this.evictIfNeeded();
+    // Check archive capacity before touching the graph. An oversized victim must not leave
+    // behind a partially inserted finding or prune links when the archive cannot accept it.
+    const evictionPlan = this.planEvictions(finding, [...relatedTargets], contradicted?.id);
+    this.archive = evictionPlan.archive;
+    for (const candidate of this.findings.values()) {
+      if (candidate.supersededByArchived === id) {
+        delete candidate.supersededByArchived;
+        candidate.supersededBy = id;
+      }
+      if (relatedTargets.has(candidate.id))
+        candidate.related = unionSorted(candidate.related, [id]);
+    }
+    if (contradicted) {
+      contradicted.contradicts = unionSorted(contradicted.contradicts ?? [], [id]);
+      contradicted.related = unionSorted(contradicted.related, [id]);
+    }
+    this.findings.set(id, finding);
+    this.pushEvent("ingest", id, undefined, context);
+    this.applyEvictionPlan(evictionPlan);
     return { finding: this.clone(finding), merged: false };
   }
 
   /** Absorb one more report into an existing claim (evidence union, source accounting). */
-  private mergeInto(target: InternalFinding, input: ReportFindingInput, now: number): Finding {
+  private mergeInto(
+    target: InternalFinding,
+    input: ReportFindingInput,
+    now: number,
+    context: FindingMutationContext,
+  ): Finding {
     const evidenceKeys = new Set(target.evidence.map(evidenceKey));
     for (const e of input.evidence ?? []) {
       const key = evidenceKey(e);
       if (!evidenceKeys.has(key)) {
-        target.evidence.push(e);
+        target.evidence.push({ ...e });
         evidenceKeys.add(key);
       }
     }
@@ -303,59 +451,208 @@ export class FindingsGraph {
         existing.at = input.source.at ?? now;
         existing.report = input.source.report ?? existing.report;
       } else {
-        target.sources.push(input.source);
+        target.sources.push({ ...input.source, at: input.source.at ?? now });
       }
       target.sourceNotes[key] = input.source.report ?? target.sourceNotes[key] ?? "";
     }
     target.updatedAt = now;
-    this.pushEvent("merge", target.id);
+    this.pushEvent("merge", target.id, undefined, context);
     return this.clone(target);
   }
 
   /** Confirm a claim (an agent verified it). */
-  confirm(id: string, note?: string): Finding {
+  confirm(id: string, note?: string, context: FindingMutationContext = {}): Finding {
     const finding = this.require(id);
+    this.requireTransition(finding, "confirmed");
+    if (context.override === true) {
+      if (
+        context.actor?.kind !== "user" ||
+        !context.actor.id.trim() ||
+        context.method === "tool" ||
+        !note?.trim()
+      ) {
+        throw new LifecycleError(
+          "Confirmation override requires an authenticated user and a non-empty reason.",
+          400,
+        );
+      }
+    } else if (!finding.evidence.some((e) => e.tier === "runtime" || e.tier === "implementation")) {
+      throw new LifecycleError(
+        "Confirmation requires runtime or implementation evidence, or an authenticated human override with a reason.",
+      );
+    }
     finding.status = "confirmed";
     finding.updatedAt = this.now();
-    this.pushEvent("update", id, note);
+    this.pushEvent("update", id, note, context);
     return this.clone(finding);
   }
 
   /** Refute a claim. Kept in the graph — the falsification is knowledge too. */
-  refute(id: string, note?: string): Finding {
+  refute(id: string, note?: string, context: FindingMutationContext = {}): Finding {
     const finding = this.require(id);
+    this.requireTransition(finding, "refuted");
     finding.status = "refuted";
     finding.updatedAt = this.now();
-    this.pushEvent("refute", id, note);
+    this.pushEvent("refute", id, note, context);
     return this.clone(finding);
   }
 
   /** Supersede `id` with a replacement claim (usually freshly reported). */
-  supersede(id: string, replacementId: string, note?: string): Finding {
+  supersede(
+    id: string,
+    replacementId: string,
+    note?: string,
+    context: FindingMutationContext = {},
+  ): Finding {
     const finding = this.require(id);
     const replacement = this.require(replacementId);
-    if (id === replacementId) throw new Error("A finding cannot supersede itself.");
+    if (id === replacementId) throw new LifecycleError("A finding cannot supersede itself.", 400);
+    this.requireTransition(finding, "superseded");
+    this.validateSupersessionChain(finding.id);
+    this.validateSupersessionChain(replacementId, id);
+    if (replacement.status !== "open" && replacement.status !== "confirmed") {
+      throw new SupersessionError(
+        "replacement_not_live",
+        "A replacement finding must be open or confirmed.",
+      );
+    }
     finding.status = "superseded";
     finding.supersededBy = replacementId;
     finding.updatedAt = this.now();
     replacement.related = unionSorted(replacement.related, [id]);
     finding.related = unionSorted(finding.related, [replacementId]);
-    this.pushEvent("supersede", id, note ?? replacementId);
+    this.pushEvent("supersede", id, note ?? replacementId, context);
     return this.clone(finding);
   }
 
+  /** Reopening is a separate host-authorized human action; superseded claims stay terminal. */
+  reopen(id: string, note: string, context: FindingMutationContext): Finding {
+    const finding = this.require(id);
+    if (
+      context.actor?.kind !== "user" ||
+      !context.actor.id.trim() ||
+      context.method === "tool" ||
+      !note.trim()
+    ) {
+      throw new LifecycleError(
+        "Reopening requires an authenticated user and a non-empty reason.",
+        400,
+      );
+    }
+    if (finding.status !== "refuted")
+      throw new LifecycleError("Only a refuted finding can be reopened.");
+    finding.status = "open";
+    finding.updatedAt = this.now();
+    this.pushEvent("reopen", id, note, context);
+    return this.clone(finding);
+  }
+
+  private validateSupersessionChain(startId: string, forbiddenId?: string): void {
+    const visited = new Set<string>();
+    let currentId: string | undefined = startId;
+    let hops = 0;
+    while (currentId !== undefined) {
+      if (currentId === forbiddenId || visited.has(currentId)) {
+        throw new SupersessionError("supersession_cycle", "Supersession chain contains a cycle.");
+      }
+      visited.add(currentId);
+      const current = this.findings.get(currentId);
+      if (!current)
+        throw new SupersessionError(
+          "supersession_missing_target",
+          "Supersession chain references a missing finding.",
+        );
+      currentId = current.supersededBy;
+      if (currentId !== undefined && ++hops > 64) {
+        throw new SupersessionError("supersession_depth", "Supersession chain exceeds 64 hops.");
+      }
+    }
+  }
+
   /** Add a symmetric relation between two findings. */
-  link(aId: string, bId: string): void {
+  link(aId: string, bId: string, context: FindingMutationContext = {}): void {
     const a = this.require(aId);
     const b = this.require(bId);
     a.related = unionSorted(a.related, [bId]);
     b.related = unionSorted(b.related, [aId]);
-    this.pushEvent("update", aId, `link:${bId}`);
+    this.pushEvent("update", aId, `link:${bId}`, context);
   }
 
   get(id: string): Finding | null {
     const finding = this.findings.get(id);
     return finding ? this.clone(finding) : null;
+  }
+
+  /** Prefer persisted host-attested authorship; use the ingest event for older snapshots. */
+  readback(id: string): FindingReadback {
+    const finding = this.clone(this.require(id));
+    const { createdBy, ...readableFinding } = finding;
+    const origin = this.events.find((event) => event.type === "ingest" && event.findingId === id);
+    const author =
+      createdBy ??
+      (origin?.actor ? { ...origin.actor } : { kind: "unknown" as const, id: "unknown" });
+    return {
+      ...readableFinding,
+      authoredBy: author.kind === "unknown" ? "legacy-unknown" : author.kind,
+      author,
+      evidenceTiers: [...new Set(finding.evidence.map((e) => e.tier))],
+    };
+  }
+
+  exportReadbackSnapshot(): Omit<FindingsGraphSnapshot, "findings"> & {
+    findings: FindingReadback[];
+  } {
+    const snapshot = this.exportSnapshot();
+    return { ...snapshot, findings: snapshot.findings.map((finding) => this.readback(finding.id)) };
+  }
+
+  archived(id?: string): FindingArchiveEntry[] {
+    const cutoff = this.now() - this.maxArchiveAgeMs;
+    const entries = (
+      id === undefined ? [...this.archive.values()] : [this.archive.get(id)].filter(Boolean)
+    ).filter((entry) => entry!.archivedAt >= cutoff);
+    return entries.map((entry) => this.cloneArchiveEntry(entry!));
+  }
+
+  archivedReadback(
+    id: string,
+  ): (Omit<FindingArchiveEntry, "finding"> & { finding: FindingReadback }) | null {
+    const entry = this.archived(id)[0];
+    if (!entry) return null;
+    const { createdBy, ...readableFinding } = entry.finding;
+    const origin = this.events.find((event) => event.type === "ingest" && event.findingId === id);
+    const author =
+      createdBy ??
+      (origin?.actor ? { ...origin.actor } : { kind: "unknown" as const, id: "unknown" });
+    return {
+      operationId: entry.operationId,
+      archivedAt: entry.archivedAt,
+      finding: {
+        ...readableFinding,
+        authoredBy: author.kind === "unknown" ? "legacy-unknown" : author.kind,
+        author,
+        evidenceTiers: [...new Set(entry.finding.evidence.map((evidence) => evidence.tier))],
+      },
+    };
+  }
+
+  archiveStats(): {
+    count: number;
+    bytes: number;
+    oldestAt: number | null;
+    maxEntries: number;
+    maxBytes: number;
+    maxAgeMs: number;
+  } {
+    const entries = this.archived();
+    return {
+      count: entries.length,
+      bytes: utf8Bytes(entries),
+      oldestAt: entries.length ? Math.min(...entries.map((entry) => entry.archivedAt)) : null,
+      maxEntries: this.maxArchiveEntries,
+      maxBytes: this.maxArchiveBytes,
+      maxAgeMs: this.maxArchiveAgeMs,
+    };
   }
 
   /** All findings, newest first. */
@@ -430,14 +727,22 @@ export class FindingsGraph {
 
   /** Events since a sequence number (0 = everything), for consumers that replay changes. */
   since(seq = 0): FindingEvent[] {
-    return this.events.filter((e) => e.seq > seq).map((e) => ({ ...e }));
+    return this.events.filter((e) => e.seq > seq).map(cloneEvent);
+  }
+
+  eventHighWater(): number {
+    return this.seq;
   }
 
   exportSnapshot(): FindingsGraphSnapshot {
+    this.rotateArchive();
     return {
       version: 1,
       findings: [...this.findings.values()].map((f) => this.clone(f)),
-      events: this.events.map((e) => ({ ...e })),
+      events: this.events.map(cloneEvent),
+      ...(this.archive.size === 0
+        ? {}
+        : { archive: [...this.archive.values()].map((entry) => this.cloneArchiveEntry(entry)) }),
     };
   }
 
@@ -482,6 +787,9 @@ export class FindingsGraph {
           !f.tags.every((value) => typeof value === "string") ||
           !Array.isArray(f.related) ||
           !f.related.every((value) => typeof value === "string") ||
+          (f.contradicts !== undefined &&
+            (!Array.isArray(f.contradicts) ||
+              !f.contradicts.every((value) => typeof value === "string"))) ||
           !Array.isArray(f.evidence) ||
           !f.evidence.every(
             (value) =>
@@ -501,11 +809,17 @@ export class FindingsGraph {
                 (typeof source.at === "number" && Number.isFinite(source.at)))
             );
           }) ||
+          (f.createdBy !== undefined &&
+            (f.createdBy === null ||
+              typeof f.createdBy !== "object" ||
+              !["user", "agent", "system", "unknown"].includes(f.createdBy.kind) ||
+              typeof f.createdBy.id !== "string")) ||
           typeof f.createdAt !== "number" ||
           !Number.isFinite(f.createdAt) ||
           typeof f.updatedAt !== "number" ||
           !Number.isFinite(f.updatedAt) ||
-          (f.supersededBy !== undefined && typeof f.supersededBy !== "string")
+          (f.supersededBy !== undefined && typeof f.supersededBy !== "string") ||
+          (f.supersededByArchived !== undefined && typeof f.supersededByArchived !== "string")
         )
           throw new Error("invalid record");
 
@@ -524,8 +838,13 @@ export class FindingsGraph {
           evidence: f.evidence.map((evidence) => ({ ...evidence })),
           tags: [...f.tags],
           sources,
+          ...(f.createdBy === undefined ? {} : { createdBy: { ...f.createdBy } }),
           related: [...f.related],
+          ...(f.contradicts === undefined ? {} : { contradicts: [...f.contradicts] }),
           ...(f.supersededBy === undefined ? {} : { supersededBy: f.supersededBy }),
+          ...(f.supersededByArchived === undefined
+            ? {}
+            : { supersededByArchived: f.supersededByArchived }),
           createdAt: f.createdAt,
           updatedAt: f.updatedAt,
           sourceNotes,
@@ -535,6 +854,56 @@ export class FindingsGraph {
       } catch {
         skipped++;
       }
+    }
+    if (snapshot.archive !== undefined && !Array.isArray(snapshot.archive)) skipped++;
+    const archivedOperations = new Set<string>();
+    for (const candidate of (Array.isArray(snapshot.archive)
+      ? snapshot.archive
+      : []) as unknown[]) {
+      try {
+        if (candidate === null || typeof candidate !== "object")
+          throw new Error("invalid archive entry");
+        const entry = candidate as FindingArchiveEntry;
+        if (
+          typeof entry.operationId !== "string" ||
+          !entry.operationId.trim() ||
+          archivedOperations.has(entry.operationId) ||
+          typeof entry.archivedAt !== "number" ||
+          !Number.isFinite(entry.archivedAt)
+        )
+          throw new Error("invalid archive metadata");
+        const restoredGraph = new FindingsGraph({ now: this.now });
+        const restored = restoredGraph.importSnapshot({ version: 1, findings: [entry.finding] });
+        const finding = restoredGraph.list()[0];
+        if (
+          restored.imported !== 1 ||
+          restored.skipped !== 0 ||
+          !finding ||
+          this.archive.has(finding.id) ||
+          this.findings.has(finding.id)
+        )
+          throw new Error("invalid or duplicate archive finding");
+        this.archive.set(finding.id, {
+          operationId: entry.operationId,
+          archivedAt: entry.archivedAt,
+          finding,
+        });
+        archivedOperations.add(entry.operationId);
+      } catch {
+        skipped++;
+      }
+    }
+    for (const finding of this.findings.values()) {
+      finding.related = finding.related.filter((id) => this.findings.has(id));
+      if (finding.contradicts)
+        finding.contradicts = finding.contradicts.filter((id) => this.findings.has(id));
+      if (finding.supersededBy && !this.findings.has(finding.supersededBy)) {
+        if (this.archive.has(finding.supersededBy))
+          finding.supersededByArchived = finding.supersededBy;
+        delete finding.supersededBy;
+      }
+      if (finding.supersededByArchived && !this.archive.has(finding.supersededByArchived))
+        delete finding.supersededByArchived;
     }
     // Adopt the snapshot's log as the canonical history — AFTER the findings restore, so it
     // replaces the `ingest` events the `report()` calls above pushed. A snapshot without a log
@@ -548,49 +917,152 @@ export class FindingsGraph {
         typeof e.findingId === "string" &&
         typeof e.at === "number" &&
         Number.isFinite(e.at) &&
+        (e.note === undefined || typeof e.note === "string") &&
+        (e.actor === undefined ||
+          (e.actor !== null &&
+            typeof e.actor === "object" &&
+            ["user", "agent", "system", "unknown"].includes(e.actor.kind) &&
+            typeof e.actor.id === "string")) &&
+        (e.method === undefined || ["tool", "route", "engine"].includes(e.method)) &&
+        (e.override === undefined || e.override === true) &&
         (e.type === "ingest" ||
           e.type === "merge" ||
           e.type === "supersede" ||
           e.type === "refute" ||
+          e.type === "reopen" ||
           e.type === "update"),
     );
     if (importedEvents.length > 0) {
       this.events.length = 0;
-      for (const event of importedEvents) this.events.push({ ...event });
+      for (const event of importedEvents.slice(-this.maxEvents))
+        this.events.push(cloneEvent(event));
       this.seq = importedEvents.reduce((max, e) => Math.max(max, e.seq), 0);
     }
+    this.rotateArchive();
     return { imported, skipped };
   }
 
   private require(id: string): InternalFinding {
     const finding = this.findings.get(id);
-    if (!finding) throw new Error(`Unknown finding: ${id}`);
+    if (!finding) throw new UnknownFindingError(id);
     return finding;
+  }
+
+  private requireTransition(finding: Finding, to: FindingStatus): void {
+    if (!canTransition(finding.status, to)) {
+      throw new LifecycleError(`Cannot transition a finding from ${finding.status} to ${to}.`);
+    }
   }
 
   private clone(finding: InternalFinding): Finding {
     const { sourceNotes: _sourceNotes, ...wire } = finding;
     return {
       ...wire,
+      ...(wire.createdBy === undefined ? {} : { createdBy: { ...wire.createdBy } }),
       subjects: [...wire.subjects],
       evidence: wire.evidence.map((e) => ({ ...e })),
       tags: [...wire.tags],
       sources: wire.sources.map((s) => ({ ...s })),
       related: [...wire.related],
+      ...(wire.contradicts === undefined ? {} : { contradicts: [...wire.contradicts] }),
     };
   }
 
-  /** Bounded store: evict superseded-then-refuted-then-oldest once past `maxFindings`. */
-  private evictIfNeeded(): void {
-    if (this.findings.size <= this.maxFindings) return;
-    const ordered = [...this.findings.values()].sort((a, b) => {
+  private cloneArchiveEntry(entry: FindingArchiveEntry): FindingArchiveEntry {
+    return {
+      operationId: entry.operationId,
+      archivedAt: entry.archivedAt,
+      finding: {
+        ...entry.finding,
+        ...(entry.finding.createdBy === undefined
+          ? {}
+          : { createdBy: { ...entry.finding.createdBy } }),
+        subjects: [...entry.finding.subjects],
+        evidence: entry.finding.evidence.map((item) => ({ ...item })),
+        tags: [...entry.finding.tags],
+        sources: entry.finding.sources.map((item) => ({ ...item })),
+        related: [...entry.finding.related],
+        ...(entry.finding.contradicts === undefined
+          ? {}
+          : { contradicts: [...entry.finding.contradicts] }),
+      },
+    };
+  }
+
+  private rotateArchive(): void {
+    this.rotateArchiveEntries(this.archive, this.now());
+  }
+
+  /** Plan and validate every archive write before any live graph mutation is committed. */
+  private planEvictions(
+    additional: InternalFinding,
+    relatedTargets: readonly string[],
+    contradictedId?: string,
+  ): { victims: InternalFinding[]; archive: Map<string, FindingArchiveEntry> } {
+    const ordered = [...this.findings.values(), additional].sort((a, b) => {
       const rank = STATUS_RANK[a.status] - STATUS_RANK[b.status];
       if (rank !== 0) return rank;
       return a.updatedAt - b.updatedAt;
     });
-    while (this.findings.size > this.maxFindings && ordered.length > 0) {
-      const victim = ordered.shift();
-      if (victim) this.findings.delete(victim.id);
+    const victimCount = Math.max(0, ordered.length - this.maxFindings);
+    const victims = ordered.slice(0, victimCount);
+    const archive = new Map(this.archive);
+    archive.delete(additional.id);
+    const archivedAt = this.now();
+    this.rotateArchiveEntries(archive, archivedAt);
+    for (const victim of victims) {
+      const finding = this.clone(victim as InternalFinding);
+      if (victim.id !== additional.id && relatedTargets.includes(victim.id)) {
+        finding.related = unionSorted(finding.related, [additional.id]);
+        if (victim.id === contradictedId)
+          finding.contradicts = unionSorted(finding.contradicts ?? [], [additional.id]);
+      }
+      const entry: FindingArchiveEntry = {
+        operationId: randomUUID(),
+        archivedAt,
+        finding,
+      };
+      archive.set(victim.id, entry);
+      this.rotateArchiveEntries(archive, archivedAt);
+      if (!archive.has(victim.id)) throw new FindingsArchiveCapacityError();
+    }
+    return { victims, archive };
+  }
+
+  /** Commit a preflighted eviction plan and remove links only from records that remain live. */
+  private applyEvictionPlan(plan: {
+    victims: readonly InternalFinding[];
+    archive: Map<string, FindingArchiveEntry>;
+  }): void {
+    for (const victim of plan.victims) {
+      this.findings.delete(victim.id);
+      for (const finding of this.findings.values()) {
+        finding.related = finding.related.filter((id) => id !== victim.id);
+        if (finding.contradicts)
+          finding.contradicts = finding.contradicts.filter((id) => id !== victim.id);
+        if (finding.supersededBy === victim.id) {
+          delete finding.supersededBy;
+          finding.supersededByArchived = victim.id;
+        }
+      }
+    }
+    this.archive = plan.archive;
+  }
+
+  private rotateArchiveEntries(archive: Map<string, FindingArchiveEntry>, at: number): void {
+    const cutoff = at - this.maxArchiveAgeMs;
+    for (const [id, entry] of archive) if (entry.archivedAt < cutoff) archive.delete(id);
+    const oldestFirst = [...archive.values()].sort((a, b) => a.archivedAt - b.archivedAt);
+    let bytes = 2 + oldestFirst.reduce((sum, entry) => sum + utf8Bytes(entry), 0);
+    bytes += Math.max(0, oldestFirst.length - 1);
+    while (
+      oldestFirst.length > this.maxArchiveEntries ||
+      (oldestFirst.length > 0 && bytes > this.maxArchiveBytes)
+    ) {
+      const oldest = oldestFirst.shift();
+      if (!oldest) break;
+      archive.delete(oldest.finding.id);
+      bytes -= utf8Bytes(oldest) + (oldestFirst.length > 0 ? 1 : 0);
     }
   }
 }

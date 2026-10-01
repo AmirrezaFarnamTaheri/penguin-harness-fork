@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { toolCall } from "@prismshadow/penguin-core";
 import { ApprovalRegistry, makeApprove } from "../../server/src/runtime/approvals";
 import { ApprovalButtons } from "../src/features/chat/approval-buttons";
-import { ToolBreakpointPanel } from "../src/features/cockpit/tool-breakpoint-panel";
+import { ToolBreakpointPanel } from "../src/features/cockpit-widgets/tool-breakpoint-panel";
 import type { PendingApproval } from "../src/lib/omni/stream-controller";
 import { S } from "../src/lib/strings";
 

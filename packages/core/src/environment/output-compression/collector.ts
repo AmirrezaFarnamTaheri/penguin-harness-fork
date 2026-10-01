@@ -22,7 +22,6 @@ import type {
 } from "../truncated-tool-output-archive.js";
 import type { CompressionResult, OutputKind } from "./strategies.js";
 import { compressOutput } from "./strategies.js";
-import { modelVisiblePath } from "../../internal/model-visible-path.js";
 
 /** Human-readable name of each strategy, for the note that tells the model what it is holding. */
 const KIND_LABEL: Record<OutputKind, string> = {
@@ -47,11 +46,11 @@ const KIND_LABEL: Record<OutputKind, string> = {
 export function formatCompressionNote(
   kind: OutputKind,
   result: CompressionResult,
-  recall: { id: string; path: string; lines: number },
+  recall: { id: string; bytes: number; lines: number },
 ): string {
   return [
     `[output compressed (${KIND_LABEL[kind]}): a summary, not the full output — ${result.hiddenLines} of ${result.originalLines} lines collapsed, ${result.originalChars} → ${result.text.length} chars]`,
-    `[full output (${recall.lines} lines) is recoverable — recall id ${recall.id}: ${modelVisiblePath(recall.path)} — read that path when the summary is not enough]`,
+    `[full output (${recall.lines} lines) is recoverable in this Session — {"recallId":"${recall.id}","sizeBytes":${recall.bytes},"tokenCount":${Math.ceil(recall.bytes / 4)}} (tokenCount is a bytes/4 estimate); call recall_output with recall_id "${recall.id}" and offset 0, then continue with each next_offset]`,
   ].join("\n");
 }
 

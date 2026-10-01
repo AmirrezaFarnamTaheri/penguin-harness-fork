@@ -17,7 +17,7 @@ import type { AuthService } from "../src/auth/service.js";
 describe("Cockpit Telemetry and Swarm Routes", () => {
   it("serves initial telemetry snapshot via GET /telemetry", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/telemetry");
     expect(res.status).toBe(200);
@@ -34,7 +34,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("executes an autonomous swarm task via POST /swarm/run with simulate flag", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/swarm/run", {
       method: "POST",
@@ -55,9 +55,9 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(json.result.artifacts.length).toBeGreaterThan(0);
   });
 
-  it("returns 400 with unhandled status when POST /swarm/run has no handler and simulate is false", async () => {
+  it("rejects a non-simulated task before execution when no handler is configured", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/swarm/run", {
       method: "POST",
@@ -71,13 +71,55 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     expect(res.status).toBe(400);
     const json = (await res.json()) as any;
     expect(json.success).toBe(false);
-    expect(json.result.status).toBe("unhandled");
-    expect(json.error).toContain("no task handler configured");
+    expect(json.result).toBeUndefined();
+    expect(json.error.code).toBe("swarm_handler_missing");
+    expect(json.error.message).toContain("No task handler configured");
+    const asyncResponse = await app.request("/api/cockpit/swarm/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ simulate: false, async: true }),
+    });
+    expect(asyncResponse.status).toBe(400);
+  });
+
+  it("executes a real task through configured trusted handlers", async () => {
+    let executions = 0;
+    await getOrCreateProjectRuntime("configured-handler", {
+      workspaceRoot: process.cwd(),
+      swarmHandlers: {
+        onPlan: async () => ({ steps: ["produce artifact"] }),
+        onExecute: async () => {
+          executions++;
+          return {
+            artifacts: [{ path: "result.txt", content: "real handler output", summary: "created" }],
+            summary: "complete",
+          };
+        },
+        onReview: async () => ({ approved: true, grounds: "fixture output verified" }),
+      },
+    });
+    const app = new Hono().route(
+      "/api/cockpit",
+      cockpitRoutes(undefined, { workspaceRoot: process.cwd() }),
+    );
+    const response = await app.request("/api/cockpit/swarm/run?project=configured-handler", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal: "Test trusted handler", simulate: false }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      success: boolean;
+      result: { artifacts: Array<{ content: string }> };
+    };
+    expect(body.success).toBe(true);
+    expect(executions).toBe(1);
+    expect(body.result.artifacts[0]?.content).toBe("real handler output");
   });
 
   it("reports a refuted swarm task as success false", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
     const response = await app.request("/api/cockpit/swarm/run?project=failed-status-regression", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -91,15 +133,16 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     const result = (await response.json()) as {
       success: boolean;
       result: { status: string };
-      error?: string;
+      error?: { code: string; message: string };
     };
     expect(result.result.status).toBe("refuted");
     expect(result.success).toBe(false);
-    expect(result.error).toContain("refuted");
+    expect(result.error?.code).toBe("swarm_task_failed");
+    expect(result.error?.message).toContain("refuted");
   });
 
   it("serves registered key fleet metrics and handles real probes", async () => {
-    const monitor = getSharedKeyFleetMonitor();
+    const monitor = getSharedKeyFleetMonitor(undefined, process.cwd());
     monitor.registerProvider({
       provider: "anthropic",
       modelId: "claude-3-7-sonnet",
@@ -110,7 +153,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     });
 
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/keys");
     expect(res.status).toBe(200);
@@ -136,7 +179,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("serves live code graph topology snapshot via GET /topology", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/topology");
     expect(res.status).toBe(200);
@@ -148,7 +191,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("dispatches live inter-agent directives via POST /mailbox/send", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/mailbox/send", {
       method: "POST",
@@ -170,7 +213,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
   });
 
   it("modifies key states via POST /keys/action", async () => {
-    const monitor = getSharedKeyFleetMonitor();
+    const monitor = getSharedKeyFleetMonitor(undefined, process.cwd());
     monitor.registerProvider({
       provider: "openai",
       modelId: "gpt-4o",
@@ -180,7 +223,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     });
 
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/keys/action", {
       method: "POST",
@@ -203,7 +246,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("returns 400 for invalid action or missing parameters in POST /keys/action", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const badActionRes = await app.request("/api/cockpit/keys/action", {
       method: "POST",
@@ -222,7 +265,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("returns 404 for unknown provider or key in POST /keys/action", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const notFoundRes = await app.request("/api/cockpit/keys/action", {
       method: "POST",
@@ -238,7 +281,7 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
 
   it("rejects directive to unregistered agent in POST /mailbox/send with 400", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     const res = await app.request("/api/cockpit/mailbox/send", {
       method: "POST",
@@ -251,7 +294,8 @@ describe("Cockpit Telemetry and Swarm Routes", () => {
     });
     expect(res.status).toBe(400);
     const json = (await res.json()) as any;
-    expect(json.error).toContain("Recipient agent 'nonexistent_agent' is not registered");
+    expect(json.error.code).toBe("recipient_not_found");
+    expect(json.error.message).toContain("Recipient agent is not registered");
   });
 });
 
@@ -275,6 +319,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
   beforeAll(async () => {
     server = createServer();
     attachCockpitWebSocket(server, {
+      workspaceRoot: process.cwd(),
       authService: mockAuthService as AuthService,
     });
     await new Promise<void>((resolve) => {
@@ -384,6 +429,31 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     });
   });
 
+  it("rejects trigger_swarm without a handler before acknowledging a task", async () => {
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit?project=no-handler-boundary`, {
+        headers: { Cookie: "penguin_session=valid-session-secret" },
+      });
+      ws.on("open", () =>
+        ws.send(JSON.stringify({ type: "trigger_swarm", id: "rejected-task", simulate: false })),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(raw.toString());
+        if (message.type === "swarm_task_accepted") {
+          ws.close();
+          reject(new Error("Task was accepted without a handler"));
+        } else if (message.type === "swarm_task_rejected") {
+          expect(message.code).toBe("swarm_handler_missing");
+          expect(message.status).toBe(400);
+          expect(message.taskId).toBe("rejected-task");
+          ws.close();
+          resolve();
+        }
+      });
+      ws.on("error", reject);
+    });
+  });
+
   it("rejects directives exceeding 8192 characters with directive_rejected", async () => {
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/cockpit`, {
@@ -476,7 +546,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
 
   it("synchronizes taskId on async /swarm/run and returns reports on /keys/action", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     // 1. Async swarm run taskId synchronization
     const customTaskId = "custom-task-sync-id-12345";
@@ -487,6 +557,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
         id: customTaskId,
         goal: "Synchronized async task",
         async: true,
+        simulate: true,
       }),
     });
     expect(asyncRes.status).toBe(202);
@@ -531,7 +602,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
       ws.on("error", reject);
     });
 
-    const rt = await getOrCreateProjectRuntime("proj-reap");
+    const rt = await getOrCreateProjectRuntime("proj-reap", { workspaceRoot: process.cwd() });
     expect(rt).toBeDefined();
     expect(rt.clients.size).toBe(0);
 
@@ -546,13 +617,13 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
     expect(cleanedUp).toBe(true);
 
     // After reap, getOrCreateProjectRuntime instantiates a fresh runtime
-    const rtFresh = await getOrCreateProjectRuntime("proj-reap");
+    const rtFresh = await getOrCreateProjectRuntime("proj-reap", { workspaceRoot: process.cwd() });
     expect(rtFresh).not.toBe(rt);
   });
 
   it("proves complete project isolation on A -> B project switching", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     // 1. Dispatch directive into project-A mailbox
     const resA = await app.request("/api/cockpit/mailbox/send?project=project-A", {
@@ -588,7 +659,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
 
   it("normalizes mailbox recipient 'to' and prevents backpressure bypass", async () => {
     const app = new Hono();
-    app.route("/api/cockpit", cockpitRoutes());
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
 
     // Dispatching to "Coder " or "CODER" normalizes to "coder"
     const resUpper = await app.request("/api/cockpit/mailbox/send?project=norm-test", {
@@ -607,7 +678,7 @@ describe("Cockpit WebSocket Transport & Authentication", () => {
   });
 
   it("postpones runtime reaping when swarm tasks are active or pending", async () => {
-    const rt = await getOrCreateProjectRuntime("proj-swarm-reap");
+    const rt = await getOrCreateProjectRuntime("proj-swarm-reap", { workspaceRoot: process.cwd() });
     let cleanedUp = false;
     rt.cleanup = () => {
       cleanedUp = true;

@@ -3,7 +3,7 @@ import type { AuditReceiptsResponse } from "@prismshadow/penguin-server/api";
 import { apiFetchJson } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { S } from "../../lib/strings";
-import { SignalChainGraph } from "../cockpit/signal-chain-graph";
+import { SignalChainGraph } from "../cockpit-widgets/signal-chain-graph";
 
 export function AuditReceipts({ projectId }: { projectId: string }) {
   // Remount on project change so old project data never flashes in the new scope.

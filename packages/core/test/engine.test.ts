@@ -2167,7 +2167,12 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     const llm: LLMInterface = {
       async *streamGenerate() {
         calls += 1;
-        if (calls === 1) return { status: "retryable" };
+        if (calls === 1) {
+          return {
+            status: "retryable",
+            retryDelay: { rawMs: 1000, source: "header", bufferedMs: 1200 },
+          };
+        }
         yield assistantText("ok");
         yield tokenUsage(emptyTokenCounts(), {
           cache_read: 0,
@@ -2209,6 +2214,7 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
       "retryable",
       "completed",
     ]);
+    expect((ends[0]?.payload as { retry_in_ms?: number }).retry_in_ms).toBe(1200);
     expect(all.map((m) => (m.payload as { type?: string }).type)).not.toContain("abort");
     // The wait settled (skip won the race): further skips are no-ops again.
     expect(engine.skipReconnectWait()).toBe(false);
@@ -2256,6 +2262,19 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
       Array.from({ length: 12 }, (_, s) => reconnectDelayMs(2000, 30_000, 1, s + 1)),
     );
     expect(firstRungs.size).toBeGreaterThan(1);
+  });
+
+  it("reconnectDelayMs honors short grace hints and longer provider retry windows", () => {
+    const shortHint = { rawMs: 1000, source: "header" as const, bufferedMs: 1200 };
+    expect(reconnectDelayMs(2000, 30_000, 5, 1, shortHint)).toBe(1200);
+
+    const longHint = { rawMs: 45_000, source: "structured" as const, bufferedMs: 45_200 };
+    expect(reconnectDelayMs(2000, 30_000, 1, 1, longHint)).toBe(45_200);
+
+    const invalidHint = { rawMs: 1000, source: "text" as const, bufferedMs: Number.NaN };
+    expect(reconnectDelayMs(2000, 30_000, 1, 1, invalidHint)).toBe(
+      reconnectDelayMs(2000, 30_000, 1, 1),
+    );
   });
 
   it("request_end carries the outcome's failure detail on non-completed statuses only", async () => {

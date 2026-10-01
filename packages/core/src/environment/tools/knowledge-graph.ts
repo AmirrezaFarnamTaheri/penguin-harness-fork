@@ -9,45 +9,33 @@
  * Provenance rule: `source` is filled from `ctx.attribution` (host-recorded identity), never
  * from model-supplied arguments, so a prompt cannot forge who reported a claim.
  *
- * Persistence: one JSON snapshot per workspace at `<workspaceDir>/.penguin/knowledge/
- * findings-graph.json`, loaded lazily and saved after every mutation (atomic temp+rename).
- * The tool never touches anything outside that file — it is read-only with respect to the
- * codebase itself and safe under any approval mode that allows state writes.
+ * Persistence: one authority per workspace at `<workspaceDir>/.penguin/knowledge/
+ * findings-graph.json`. The shared store locks updates, validates revisions and acknowledges
+ * only atomic writes. Its lock/recovery files stay beside the authority; corrupt snapshots
+ * enter read-only recovery with preserved raw bytes. The tool cannot reset or prune state.
  */
-import {
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  renameSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { partialToolCallOutput } from "../../omnimessage/index.js";
 import type { OmniMessage } from "../../omnimessage/index.js";
 import type { ToolDefinitionConfig } from "../../interfaces/index.js";
-import { FindingsGraph } from "../../knowledge/findings-graph.js";
-import type {
-  FindingEvidence,
-  FindingKind,
-  FindingQuery,
-  FindingSeverity,
+import { FindingsStore, FindingsRecoveryError } from "../../knowledge/store.js";
+import { validateReportInput } from "../../knowledge/validation.js";
+import { findingsPage, boundedFindingsJson } from "../../knowledge/paging.js";
+import {
+  FINDING_KINDS as KINDS,
+  FINDING_SEVERITIES as SEVERITIES,
+  FINDING_STATUSES,
+  FINDING_CONFIDENCE,
+  EVIDENCE_TIERS,
 } from "../../knowledge/types.js";
+import type { FindingMutationContext } from "../../knowledge/types.js";
 import type { BuiltinTool, ToolExecutionContext, ToolResult } from "./types.js";
 import { describeArgumentError } from "./tool-arguments.js";
 
 export const KNOWLEDGE_GRAPH_NAME = "knowledge_graph";
 
 const DEFAULT_OUTPUT_BUDGET = 6000;
-const KINDS: readonly FindingKind[] = [
-  "defect",
-  "insight",
-  "decision",
-  "pattern",
-  "metric",
-  "hypothesis",
-];
-const SEVERITIES: readonly FindingSeverity[] = ["info", "low", "medium", "high", "critical"];
 
 export const KNOWLEDGE_GRAPH_PARAMETERS = {
   type: "object",
@@ -55,9 +43,22 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
   properties: {
     action: {
       type: "string",
-      enum: ["report", "query", "confirm", "refute", "supersede", "link", "events", "snapshot"],
+      enum: [
+        "report",
+        "query",
+        "confirm",
+        "refute",
+        "supersede",
+        "link",
+        "events",
+        "snapshot",
+        "archive",
+        "recovery",
+        "raw",
+        "recall",
+      ],
       description:
-        "report: record a finding (merges duplicates, keeps provenance). query: ranked search over findings. confirm/refute: update a claim's lifecycle. supersede: mark a claim replaced by a new one. link: relate two findings. events: what changed since a sequence number. snapshot: full export.",
+        "report: record a claim requiring verification (merges live duplicates, keeps provenance). query: paged ranked findings with evidence tiers and attested authorship. confirm: requires runtime or implementation evidence. refute: falsify a claim. supersede: replace a live claim. link: relate two findings. events: paged changes since a sequence number. snapshot: paged live finding readback. archive: page through bounded eviction history. recall: retrieve a full finding, archived record, or event in base64 JSON chunks. recovery: inspect authority and archive health. raw: export bounded original-byte pages. Read actions default to outputVersion 2; continue with nextCursor and identical filters.",
     },
     title: { type: "string", description: "report: the one-line claim. Required for report." },
     body: { type: "string", description: "report: the full claim text." },
@@ -68,7 +69,7 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
     },
     confidence: {
       type: "string",
-      enum: ["low", "medium", "high"],
+      enum: FINDING_CONFIDENCE,
       description: "report: reporter confidence (default medium).",
     },
     severity: {
@@ -92,7 +93,7 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
           quote: { type: "string" },
           tier: {
             type: "string",
-            enum: ["runtime", "implementation", "history", "documentation", "anecdote"],
+            enum: EVIDENCE_TIERS,
           },
           note: { type: "string" },
         },
@@ -109,13 +110,32 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
     subject: { type: "string", description: "query: subject filter (exact or path prefix)." },
     status: {
       type: "string",
-      enum: ["open", "confirmed", "refuted", "superseded"],
+      enum: FINDING_STATUSES,
       description: "query: lifecycle filter (default hides refuted and superseded).",
     },
-    id: { type: "string", description: "confirm/refute/supersede/link/events target finding id." },
+    id: {
+      type: "string",
+      description: "Lifecycle target, or snapshot/archive/recall finding ID or recall ID.",
+    },
     replacement_id: { type: "string", description: "supersede: the finding that replaces id." },
     link_id: { type: "string", description: "link: the second finding id." },
     note: { type: "string", description: "confirm/refute/supersede: why the status changed." },
+    cursor: {
+      type: "string",
+      description:
+        "query/snapshot/events/archive/recall: opaque continuation cursor; reuse the same filters.",
+    },
+    outputVersion: {
+      type: "number",
+      enum: [1, 2],
+      description:
+        "Read response version (default 2). Version 1 preserves only small legacy responses.",
+    },
+    offset: { type: "number", description: "raw: byte offset for a base64 recovery export page." },
+    revision: {
+      type: "string",
+      description: "mutation: expected revision from recovery; stale writes fail.",
+    },
     since: { type: "number", description: "events: return events with seq greater than this." },
     limit: { type: "number", description: "query: maximum results." },
   },
@@ -127,12 +147,6 @@ export const KNOWLEDGE_GRAPH_PARAMETERS = {
  * project-scoped and intentionally uses its own store: there is no trusted workspace-to-project
  * mapping here, so the two authorities must not be joined by matching paths or names.
  */
-const graphs = new Map<string, FindingsGraph>();
-
-function storePathFor(workspaceDir: string): string {
-  return path.join(workspaceDir, ".penguin", "knowledge", "findings-graph.json");
-}
-
 function canonicalWorkspaceDir(workspaceDir: string): string {
   const resolved = path.resolve(workspaceDir);
   try {
@@ -165,83 +179,8 @@ function canonicalWorkspaceDir(workspaceDir: string): string {
   }
 }
 
-function loadGraph(workspaceDir: string): FindingsGraph {
-  const cached = graphs.get(workspaceDir);
-  if (cached) return cached;
-  const graph = new FindingsGraph();
-  try {
-    const raw = readFileSync(storePathFor(workspaceDir), "utf8");
-    graph.importSnapshot(raw);
-  } catch {
-    // No store yet (or unreadable): start empty. importSnapshot already degrades record-wise.
-  }
-  graphs.set(workspaceDir, graph);
-  return graph;
-}
-
-function saveGraph(workspaceDir: string, graph: FindingsGraph): void {
-  const target = storePathFor(workspaceDir);
-  const tmp = `${target}.tmp-${process.pid}`;
-  try {
-    mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(tmp, JSON.stringify(graph.exportSnapshot(), null, 2), { mode: 0o600 });
-    renameSync(tmp, target);
-  } catch (error) {
-    graphs.delete(workspaceDir);
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* preserve the original persistence failure */
-    }
-    throw new Error(
-      `Unable to persist knowledge graph at ${target}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    );
-  }
-}
-
-function safeSlice(text: string, limit: number): string {
-  if (limit <= 0) return "";
-  if (text.length <= limit) return text;
-  const last = text.charCodeAt(limit - 1);
-  if (last >= 0xd800 && last <= 0xdbff) return text.slice(0, limit - 1);
-  return text.slice(0, limit);
-}
-
 function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.filter((v): v is string => typeof v === "string" && v.trim() !== "");
-}
-
-function asEvidence(value: unknown): FindingEvidence[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const out: FindingEvidence[] = [];
-  for (const entry of value) {
-    if (entry === null || typeof entry !== "object") continue;
-    const e = entry as Record<string, unknown>;
-    const tier = asString(e["tier"]);
-    if (
-      tier !== "runtime" &&
-      tier !== "implementation" &&
-      tier !== "history" &&
-      tier !== "documentation" &&
-      tier !== "anecdote"
-    ) {
-      continue;
-    }
-    out.push({
-      tier,
-      path: asString(e["path"]),
-      line: typeof e["line"] === "number" ? e["line"] : undefined,
-      quote: asString(e["quote"]),
-      note: asString(e["note"]),
-    });
-  }
-  return out.length > 0 ? out : undefined;
 }
 
 export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): BuiltinTool {
@@ -254,10 +193,23 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
     ): AsyncGenerator<OmniMessage, ToolResult | void> {
       const { toolCallId, signal } = ctx;
       const delta = (output: string): OmniMessage =>
-        partialToolCallOutput({ eventType: "delta", output, toolCallId });
+        partialToolCallOutput({
+          eventType: "delta",
+          toolCallId,
+          output: boundedFindingsJson(
+            (() => {
+              try {
+                return JSON.parse(output);
+              } catch {
+                return { error: { code: "knowledge_graph_error", message: output } };
+              }
+            })(),
+            budget,
+          ),
+        });
       const budget =
         definition.maxOutputLength !== undefined && definition.maxOutputLength > 0
-          ? definition.maxOutputLength
+          ? Math.max(1, Math.floor(definition.maxOutputLength))
           : DEFAULT_OUTPUT_BUDGET;
 
       const action = asString(args["action"]);
@@ -273,10 +225,62 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
       if (signal?.aborted) return { stopReason: "aborted" };
 
       const workspaceDir = canonicalWorkspaceDir(ctx.workspaceDir);
-      const graph = loadGraph(workspaceDir);
+      const store = new FindingsStore({
+        id: `workspace:${workspaceDir}`,
+        kind: "workspace",
+        filePath: path.join(workspaceDir, ".penguin", "knowledge", "findings-graph.json"),
+      });
 
       let text: string;
       try {
+        // These fields are host authority, never tool arguments (including direct execution).
+        if (
+          args.revision !== undefined &&
+          (typeof args.revision !== "string" || !args.revision.trim())
+        )
+          throw new Error("revision must be a non-empty string.");
+        for (const field of ["actor", "method", "override", "reopen"]) {
+          if (Object.hasOwn(args, field))
+            throw new Error(`${field} cannot be supplied by an agent.`);
+        }
+        const read = await store.read();
+        if (action === "recovery") {
+          yield delta(
+            JSON.stringify({
+              scope: read.scope,
+              revision: read.revision,
+              recovery: read.recovery,
+              bytes: read.bytes,
+              highWater: read.highWater,
+              archive: read.graph?.archiveStats() ?? null,
+            }),
+          );
+          return;
+        }
+        if (action === "raw") {
+          yield delta(
+            JSON.stringify(await store.rawPage(typeof args.offset === "number" ? args.offset : 0)),
+          );
+          return;
+        }
+        if (!read.graph || read.recovery) throw new FindingsRecoveryError(read);
+        if (
+          action === "query" ||
+          action === "snapshot" ||
+          action === "events" ||
+          action === "archive" ||
+          action === "recall"
+        ) {
+          const page = findingsPage(read, action, args, budget);
+          yield delta(page.text);
+          return page.failed ? { stopReason: "fatal" } : undefined;
+        }
+        const context: FindingMutationContext = {
+          method: "tool",
+          actor: ctx.attribution?.agentId
+            ? { kind: "agent", id: ctx.attribution.agentId }
+            : { kind: "unknown", id: "unknown" },
+        };
         switch (action) {
           case "report": {
             const title = asString(args["title"]);
@@ -289,77 +293,32 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               );
               return { stopReason: "fatal" };
             }
-            const result = graph.report({
-              title,
-              body: asString(args["body"]),
-              kind: KINDS.includes(args["kind"] as FindingKind)
-                ? (args["kind"] as FindingKind)
-                : undefined,
-              confidence:
-                args["confidence"] === "low" || args["confidence"] === "high"
-                  ? args["confidence"]
-                  : args["confidence"] === "medium"
-                    ? "medium"
-                    : undefined,
-              severity: SEVERITIES.includes(args["severity"] as FindingSeverity)
-                ? (args["severity"] as FindingSeverity)
-                : undefined,
-              subjects: asStringArray(args["subjects"]),
-              evidence: asEvidence(args["evidence"]),
-              tags: asStringArray(args["tags"]),
-              // Host-recorded identity: a prompt cannot forge who reported this.
-              source: ctx.attribution
+            const input = validateReportInput(
+              args,
+              ctx.attribution
                 ? {
                     agentId: ctx.attribution.agentId,
                     sessionId: ctx.attribution.sessionId,
                     report: asString(args["note"]),
                   }
                 : undefined,
+            );
+            const result = await store.update(asString(args["revision"]), (current) => {
+              const report = current.report(input, context);
+              return {
+                ...report,
+                strength: Number(current.strength(report.finding.id).toFixed(3)),
+              };
             });
-            saveGraph(workspaceDir, graph);
             text = JSON.stringify(
               {
                 merged: result.merged,
                 id: result.finding.id,
                 status: result.finding.status,
-                strength: Number(graph.strength(result.finding.id).toFixed(3)),
+                strength: result.strength,
                 subjects: result.finding.subjects,
-                sources: result.finding.sources.map((s) => s.agentId ?? s.sessionId ?? "host"),
+                sources: result.finding.sources.map((s) => s.agentId ?? s.sessionId ?? "unknown"),
               },
-              null,
-              2,
-            );
-            break;
-          }
-          case "query": {
-            const query: FindingQuery = {
-              text: asString(args["text"]),
-              subject: asString(args["subject"]),
-              tags: asStringArray(args["tags"]),
-              kind: KINDS.includes(args["kind"] as FindingKind)
-                ? (args["kind"] as FindingKind)
-                : undefined,
-              status:
-                args["status"] === "open" ||
-                args["status"] === "confirmed" ||
-                args["status"] === "refuted" ||
-                args["status"] === "superseded"
-                  ? args["status"]
-                  : undefined,
-              limit: typeof args["limit"] === "number" ? args["limit"] : 20,
-            };
-            const hits = graph.query(query);
-            text = JSON.stringify(
-              hits.map((f) => ({
-                id: f.id,
-                title: f.title,
-                kind: f.kind,
-                status: f.status,
-                confidence: f.confidence,
-                severity: f.severity,
-                subjects: f.subjects,
-                strength: Number(graph.strength(f.id).toFixed(3)),
-              })),
               null,
               2,
             );
@@ -374,11 +333,11 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               );
               return { stopReason: "fatal" };
             }
-            const finding =
+            const finding = await store.update(asString(args["revision"]), (current) =>
               action === "confirm"
-                ? graph.confirm(id, asString(args["note"]))
-                : graph.refute(id, asString(args["note"]));
-            saveGraph(workspaceDir, graph);
+                ? current.confirm(id, asString(args["note"]), context)
+                : current.refute(id, asString(args["note"]), context),
+            );
             text = JSON.stringify({ id: finding.id, status: finding.status }, null, 2);
             break;
           }
@@ -394,8 +353,10 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               );
               return { stopReason: "fatal" };
             }
-            const finding = graph.supersede(id, replacementId, asString(args["note"]));
-            saveGraph(workspaceDir, graph);
+            const finding = await store.update(asString(args["revision"]), (current) =>
+              current.supersede(id, replacementId, asString(args["note"]), context),
+            );
+
             text = JSON.stringify(
               { id: finding.id, status: finding.status, supersededBy: finding.supersededBy },
               null,
@@ -415,18 +376,11 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
               );
               return { stopReason: "fatal" };
             }
-            graph.link(id, linkId);
-            saveGraph(workspaceDir, graph);
+            await store.update(asString(args["revision"]), (current) =>
+              current.link(id, linkId, context),
+            );
+
             text = JSON.stringify({ linked: [id, linkId] }, null, 2);
-            break;
-          }
-          case "events": {
-            const since = typeof args["since"] === "number" ? args["since"] : 0;
-            text = JSON.stringify(graph.since(since), null, 2);
-            break;
-          }
-          case "snapshot": {
-            text = JSON.stringify(graph.exportSnapshot(), null, 2);
             break;
           }
           default: {
@@ -440,12 +394,27 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
                 "link",
                 "events",
                 "snapshot",
+                "archive",
+                "recall",
+                "recovery",
+                "raw",
               ].join(", ")}.`,
             );
             return { stopReason: "fatal" };
           }
         }
       } catch (err) {
+        if (err instanceof FindingsRecoveryError) {
+          yield delta(
+            JSON.stringify({
+              error: "findings_recovery_required",
+              scope: err.read.scope,
+              revision: err.read.revision,
+              recovery: err.read.recovery,
+            }),
+          );
+          return { stopReason: "fatal" };
+        }
         yield delta(
           `knowledge_graph ${action} failed: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -453,7 +422,7 @@ export function createKnowledgeGraphTool(definition: ToolDefinitionConfig): Buil
       }
 
       if (signal?.aborted) return { stopReason: "aborted" };
-      yield delta(text.length > budget ? safeSlice(text, budget) : text);
+      yield delta(text);
       return;
     },
   };

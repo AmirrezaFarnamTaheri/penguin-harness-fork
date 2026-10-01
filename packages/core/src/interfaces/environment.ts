@@ -344,11 +344,13 @@ export interface EnvironmentConfig {
   /**
    * This Session's private scratchpad directory (`scratchpad/<sessionId>`), the generic
    * Session-scoped storage root for Environment by-products. Currently it backs
-   * truncated-tool-output recovery: output beyond an entry's `maxOutputLength` is saved under
+   * path-free `recall_output`: output beyond the inline budget is stored under
    * `<sessionScratchpadDir>/truncated-tool-output/`. Agent Sessions always pass it; standalone
    * embedders without a stable Session directory omit it and keep truncation-only behavior.
    */
   sessionScratchpadDir?: string;
+  /** Disable new compression/spill writes while keeping the Session's existing recall ids readable. */
+  outputSpillEnabled?: boolean;
   /**
    * Who is running this Session, recorded verbatim into file-edit attribution receipts
    * (`[editor attribution: …]` lines edit_file appends to its output; option A — runtime

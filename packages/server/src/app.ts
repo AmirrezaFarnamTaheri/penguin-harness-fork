@@ -190,6 +190,7 @@ import { usageRoutes } from "./http/routes/usage.js";
 import { agentSessionsRoutes, sessionsRoutes } from "./http/routes/sessions.js";
 import { sessionMessagingRoutes } from "./http/routes/messaging.js";
 import { versionRoutes } from "./http/routes/version.js";
+import { healthRoutes } from "./http/routes/health.js";
 import { machinesRoutes } from "./http/routes/machines.js";
 import { AuditRecorder } from "./sandbox/audit.js";
 import { UsageRecorder } from "./runtime/usage-recorder.js";
@@ -200,6 +201,10 @@ import { SERVER_PROXY_PREFIX, machinesProxy } from "./machines/proxy.js";
 export interface AppDeps {
   config: ServerConfig;
   db: DatabaseSync;
+  /** Fast in-memory dependency status probes; readiness must not initiate network work. */
+  readinessChecks?: readonly (() => boolean)[];
+  /** Trusted host handlers for real cockpit swarm execution; absent means simulation only. */
+  cockpitSwarmHandlers?: import("@prismshadow/penguin-core").SwarmRoleHandlers;
   sessionsRepo: SessionsRepo;
   prefsRepo: UiPrefsRepo;
   /** Admin-level server-global settings (currently the proxy switches and address). */
@@ -1419,6 +1424,10 @@ export function createApp(
       return answer ?? c.notFound();
     },
   );
+
+  // Probes run before cookie lookup so a closed DB cannot also break liveness.
+  app.route("/api/health", healthRoutes(deps));
+  app.route("/health", healthRoutes(deps));
 
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
   app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));

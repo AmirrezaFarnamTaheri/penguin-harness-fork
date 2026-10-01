@@ -96,6 +96,7 @@ export { modelVisiblePath } from "./internal/model-visible-path.js";
 // both sides of the same file (core's saveProjectConfig, the server's writeRaw) replace it the
 // same way.
 export { atomicWriteFile } from "./internal/atomic-write.js";
+export { withFileLock } from "./internal/file-lock.js";
 export type { AtomicWriteOptions } from "./internal/atomic-write.js";
 // SSRF-safe HTTP client and URL validator for web fetch and tool execution.
 export {

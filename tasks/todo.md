@@ -5,9 +5,46 @@ box only after its acceptance criteria and named checks pass on the exact commit
 column names the required suite or evidence; use the owning package's actual script. PR #12 head
 `68148d15baf95a941cc98a7d3b41086b1b2a6ae7` passed required CI, including browser E2E and the
 installer/runtime matrix; the dependency audit is clean. R13 and R14a/b are complete, with the
-[exact-head evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 remains open for manual
-review. Wave R is not complete: findings-plane dependencies and their suites remain outstanding.
+[exact-head evidence ledger](../docs/audits/pr-12-ci-2026-09-30.md). PR #12 merged on 2026-09-30 as
+`fc44861a4730a43c58d9accdbc9e15ee27003d8b`; that receipt applies only to its recorded head.
+The focused findings suites now pass locally, but follow-up Wave R acceptance remains open for
+exact-head quality/CI evidence and the broader web integration gate.
 Sizing: XS / S / M; the broad strategic rows require design/measurement gates before implementation.
+
+Local review and continuation on 2026-10-01 added the R1b/R1c lifecycle, R4 route hygiene, and
+R8 authorship read-back implementations, and corrected G3/I2/D6 boundaries. See the
+[implementation review](../docs/audits/implementation-review-2026-10-01.md) for source paths,
+coverage, and remaining acceptance work. These local changes do not close wave checkpoints
+or replace the exact-commit evidence required by this list.
+
+The Wave 3 D7 continuation adds a checksummed, versioned `GraphStore`, strict topology snapshot
+validation, bounded reads/writes, and atomic replacement through the shared writer. Schema
+mismatch is an explicit rebuildable cache miss; malformed snapshots are never returned. Focused
+store and atomic-write checks pass locally. The D7 checkbox remains open until exact-commit review.
+H7 now suggests a unique nearby command or option from registered CLI vocabulary. Registered
+option arity prevents an unknown flag's value from redirecting command lookup. Parser errors do
+not echo unknown tokens or inline values; paths, ambiguous matches and distant tokens receive no
+suggestion. Its focused CLI suite and typecheck pass locally; exact-commit review remains.
+
+The R2a–R2c store continuation is connected to tool and HTTP paths, with local concurrency,
+capacity, corruption and recovery receipts in the
+[findings-store ledger](../docs/audits/findings-store-2026-10-01.md). Checkboxes remain open for
+the plan's dependency/review and exact-commit gates. The latest continuation adds the bounded
+atomic eviction archive, durable creator provenance, and revision-bound paged output. The full
+core `test/knowledge` suite passes 66/66, the focused findings HTTP routes pass 19/19, and core
+typecheck/build are green; server typecheck, core lint/format, and docs-claims checks pass. Full web
+acceptance, remaining wave suites, workspace-wide static-quality gates, exact-commit CI, and
+required review remain open.
+
+R11's eleven named graph/store/output cases and engine/tool/route lifecycle mapping are now present
+in the current worktree. Its focused core and HTTP checks pass; the exact-commit evidence rule still
+keeps the tracker checkbox open until the changes land on the reviewed head.
+
+The 2026-10-02 workspace audit initially found 22 advisories after the registry added new Axios,
+fast-uri, and brace-expansion findings. The lockfile now resolves patched Axios/fast-uri versions
+and version-aware brace-expansion overrides; the follow-up `pnpm audit --json` reports zero
+findings. This is worktree evidence, not exact-commit or CI acceptance; details are in the
+[follow-up audit note](../docs/audits/dependency-audit-followup-2026-10-02.md).
 
 ## Wave R — PR #12 review absorptions (first)
 
@@ -16,8 +53,8 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | [x] | **R13** Repair PR #12 browser E2E and record exact-head CI | S | named Playwright case, full E2E, `gh pr checks 12` | `skills.spec.mjs:246` targets the intended message; aggregate CI and browser job green on same SHA; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
 | [x] | **R14a** Upgrade Electron past four high advisories | S | `pnpm audit --audit-level high` + desktop/installer matrix | lockfile and packaged runtime ≥43.5.0; no Electron high advisory; exact-head desktop smokes green; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
 | [x] | **R14b** Repair runtime/build undici advisory paths | S | `pnpm audit --json` + server/packaging smokes | runtime ≥7.29.1, build-chain ≥6.28.1; neither path in audit; [evidence](../docs/audits/pr-12-ci-2026-09-30.md) |
-| [ ] | **R0** Findings scope and authority contract (implemented locally; PR review pending) | S | tool/route identity fixtures | `tasks/findings-scope-matrix.md`; cross-layer tests cover independent paths, name collisions, workspace rename, symlink alias cache, and server ownership checks; keep R2a blocked until PR review approves the contract |
-| [ ] | **R1a** Eviction policy truth & reference hygiene | M | eviction + store fault tests | bounded archive guarantee, fail-closed durable write, zero dangling live refs, rank-order/rotation/restart tests |
+| [ ] | **R0** Findings scope and authority contract (implemented locally; PR review pending) | S | tool/route identity fixtures | `tasks/findings-scope-matrix.md`; cross-layer tests cover independent paths, name collisions, workspace rename, symlink alias cache, and server ownership checks; keep any authority binding or migration blocked until review approves the contract |
+| [ ] | **R1a** Eviction policy truth & reference hygiene | M | graph eviction + store fault/restart tests | 1,000 entries / 4 MiB / 90 days in the same atomic snapshot; fail-closed write, zero dangling live refs, confirmed-last rank, rotation and restart |
 | [ ] | **R1b** Lifecycle state machine + evidence gate + actor | M | engine+tool+route tests | `canTransition` table; `confirm` needs runtime/impl evidence (or user override); every event names actor |
 | [ ] | **R1c** Transition guards: cycles, liveness, dead-claim re-reports | S | engine+route/tool negative tests | imported cycles/depth fail closed; replayed re-report is idempotent; only authenticated user reopens |
 | [ ] | **R2a** Scope-aware store + acknowledged writes | M | `test/knowledge/findings-store.test.ts` + integration | 50 cross-path updates survive restart; stale cache and write/rename failure cannot return success |
@@ -26,7 +63,7 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | [ ] | **R2d** Conditional migration after trusted workspace↔project binding | M | binding proof + migration fixture matrix | deferred under today's model; dry-run conflicts, idempotent apply and byte-exact rollback only after binding exists |
 | [x] | **R3** Report & governance reconciliation | S | docs suite + contradiction/path grep | dated report reconciled under `docs/audits/`; root pointer; canonical policy exists and is linked by plan + README |
 | [ ] | **R4** Route hygiene | S | `vitest run test/findings-routes` | GET enums validated (400); engine TypeError → 500; `%zz` → 400; one definition of TIERS; `_c` gone |
-| [ ] | **R5** Revision-aware, byte-bounded output | M | tool/consumer contract tests | stable cursor bound to scope/filter/revision; parseable UTF-8 bounded pages; stale/gap/oversize explicit |
+| [ ] | **R5** Revision-aware, byte-bounded output | M | tool/consumer contract tests | v2 query/snapshot/events/archive envelopes; stable scope/filter/revision cursors; latest event sequence and explicit gaps; UTF-8 budget, oversize recall, and v1 compatibility |
 | [x] | **R6** code_graph resource discipline | S | cache/tool tests + full core suite/typecheck | single-flight scan (20 concurrent → 1 scan); LRU cap 8 with observed closes; TTL refresh closes old only after success; cache stats + watcher boundary documented |
 | [x] | **R7** Memory-plane honesty (Option B selected) | S | core memory/findings tests + frozen recall fixture | retention module is exported but has no in-repo production callers; strength formula documents/tests createdAt term; frozen RecallStore ranking/tokens; no new eviction behavior |
 | [ ] | **R8** Accurate provenance on read-back | S | tool/route tests + docs | author inferred from trusted event, legacy unknown, free-form source cannot impersonate user |
@@ -46,17 +83,46 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | # | Task | Size | Verify |
 |---|---|---|---|
 | [x] | **A2** FailureStatusTracker + localized HttpError metadata/error rendering | S | Core tracker + findings suites; server error/findings suites; web API error tests; typechecks/build; `check:i18n`; Prettier |
-| [ ] | **A3** Retry-delay provenance + Retry-After | M | `vitest run test/llm*` |
-| [ ] | **B2** BoundedStreamCapture head+tail | S | `test/trace/bounded-capture.test.ts` |
-| [ ] | **F1** Input focus rings (3 sites) | S | web suite + R12 |
+| [x] | **A3** Retry-delay provenance + Retry-After | M | `vitest run test/llm*` |
+| [x] | **B2** BoundedStreamCapture head+tail | S | `test/trace/bounded-capture.test.ts` — four focused cases passed; core typecheck passed |
+| [ ] | **F1** Input focus rings (3 sites) | S | local web 2,533/2,533 + R12 pass; exact-commit gate pending |
 | [ ] | **F3** Comment-lies + `features/canvas` removal + cockpit dir rename | S | web suite + grep (human-reviewed deletion) |
-| [ ] | **F6** STREAM_BANNER_FRAME dedup across nine banner modules | S | web suite + rendered-class unit assertion |
-| [ ] | **G5** TLS verification fix + sweep | XS | `grep -r rejectUnauthorized .agents` |
-| [ ] | **G7** Anti-slop installer path fix | XS | installer dry-run |
-| [ ] | **J1** `clean` npm script wiring | XS | `pnpm clean` |
-| [ ] | **J6** CI/docs drift sweep ("75 specs") | XS | docs suite |
-| [ ] | **T0.3** Workspace dependency freshness guard | S | clean-checkout fixture: stale fails, supported reinstall passes |
-| [ ] | **J11** Docs-claims consistency gate | S | `node scripts/check-doc-claims.mjs` |
+| [ ] | **F6** STREAM_BANNER_FRAME dedup across six compact notice modules | S | local rendered classes + web 2,533/2,533; exact-commit gate pending |
+| [ ] | **G5** TLS verification fix + sweep (implemented locally; exact-commit gate pending) | XS | no active bypass; direct downloader smoke against `https://example.com/` passed with TLS verification enabled |
+| [ ] | **G7** Anti-slop installer path fix — N/A disposition | XS | source audit recorded locally; exact-commit gate pending |
+| [x] | **J1** `clean` npm script wiring | XS | `pnpm clean` report passed; cleaner fixture suite passed |
+| [x] | **J6** CI/docs drift sweep ("75 specs") | XS | docs suite passed; workflow parsed; numeric claim removed |
+| [x] | **T0.3** Workspace dependency freshness guard | S | injected-snapshot fixture: stale fails, supported reinstall + build sync passes |
+| [ ] | **J11** Docs-claims consistency gate | S | local fixtures/checker/CI step pass; exact-commit gate pending |
+
+Implementation progress (2026-10-01, local changes): F1's three focus fixes now use solid accent
+rings; the full web suite passes 2,533/2,533 and the R12 browser rerun has zero axe violations and
+zero missing keyboard-focus indicators. These are local receipts; exact-commit gates still apply.
+F3's comments and canvas removal were already present; the widget
+directory is now `cockpit-widgets`, with importers updated; 24 focused component checks, web
+typecheck and the full web suite pass; human review of the deletion remains. G5 has no executable `.agents`
+TLS-verification bypass remaining. The downloader now uses Node's built-in `fetch` with default TLS
+verification and passed a direct 713-byte HTTPS download smoke; the temporary file was removed.
+`bgm.js` still uses its declared Axios dependency for the ccMixter API path, which was not part of
+the downloader smoke.
+J11's versioned ledger, runtime-chain checker and CI step are implemented; same-package and
+false-claim fixtures pass. Plan §2 is explicitly retained as a historical inventory, while
+`docs/status-ledger.json` is the only current machine-checked claim ledger.
+F6's scope is reconciled against the current source: six compact notice modules share the frame;
+the harness, MCP-connect, and step banners are distinct interactive disclosures and stay on their
+own shell. `packages/web/test/stream-banner-frame.test.ts` now pins rendered classes for all six
+modules (including handoff/model-switch variants) and verifies the three interactive disclosure
+shells stay independent. Its focused run passed 3/3; the full web suite passed 2,533/2,533, and
+web typecheck, scoped oxlint and Prettier pass. F6 acceptance is complete locally; the task stays
+unchecked until the current commit meets this ledger's exact-head rule, and the Wave 1 checkpoint
+remains open for its other gates.
+The Wave 1 web integration run found nine literal server error codes missing from both locale
+dictionaries. English and Chinese messages are now present, and the focused i18n parity suite
+passes 2/2; after the fix, the full web suite passes 2,533/2,533 across 207 files.
+G7's referenced `install.mjs`, `rules-src` and `assets/anti-slop` are absent from this checkout;
+`tools/oxlint/anti-slop/` contains the active plugin's `rules/` instead. The execution card and
+plan record the applicability finding and prohibit fabricating a second source tree. G7 is closed
+as not applicable to this checkout; reopen only if the vendored installer artifact is restored.
 
 ### Checkpoint 1
 - [ ] Named suites green; prettier / oxlint / tsc clean
@@ -66,10 +132,10 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | # | Task | Size | Deps | Verify |
 |---|---|---|---|---|
 | [ ] | **A1** Classifier flip shadow→active (attach the `agrees=false` scan) | M | A2,A3 | core llm + fleet tests |
-| [ ] | **A4** Pool-shape-aware retry budget + once-per-account grace | M | A3 | `test/llm/retry-policy.test.ts` branch table |
-| [ ] | **A5** Snapshot→delta stream reassembler | M | — | 500-sequence property test |
-| [ ] | **A6** Length-prefixed frame parser | S | — | 5 reference test shapes |
-| [ ] | **B1** Large-output spill + recall id | M | B2 | failures always inline; recall byte-exact |
+| [ ] | **A4** Pool-shape-aware retry budget + once-per-account grace (implemented locally; exact-commit gate pending) | M | A3 | policy branch table + fake-timer runtime checks; see Wave 1–2 evidence |
+| [ ] | **A5** Snapshot→delta stream reassembler (implemented locally; exact-commit gate pending) | M | — | 500-sequence property test; see Wave 1–2 evidence |
+| [x] | **A6** Length-prefixed frame parser | S | — | Five reference shapes pass; core typecheck passes; exported primitive awaits provider integration |
+| [ ] | **B1** Large-output spill + recall id (implemented locally; exact-commit gate pending) | M | B2 | failures remain useful inline; Session-scoped paged recall reproduces persisted UTF-8 text after redaction |
 | [ ] | **B3** Tool-output compression + honest savings table | M | B1 | 3 non-negotiable tests + table (losers dropped) |
 | [ ] | **B4** Transactional compaction + prune frontier | M | — | byte-identical on failure; frontier no-reread |
 | [ ] | **C8** Offline e2e | S | — | CI e2e job green |
@@ -93,6 +159,36 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | [ ] | **I4** effective_auth_mode matrix | S | — | auth matrix test |
 
 ### Checkpoint 2
+Local implementation progress (2026-10-01): A5's exported snapshot utility passes the
+500-sequence property check; it is not yet consumed by a provider adapter. A6 additionally
+passes bounded-frame and terminal-error checks (seven focused cases). E5–E8 are implemented
+with focused route/socket checks and server typecheck. A4 now connects the policy to ordinary
+engine turns and model account selection, with bounded attempts, grace, cooldown waiting,
+cancellation and a legacy rollback switch. Compaction now applies the selected policy to one
+shared budget for unusable summaries and transport failures. E1's implicit cwd roots are removed,
+with roots injected explicitly by production and test hosts. Final acceptance audits remain.
+The unchecked rows retain their broader acceptance and exact-commit requirements.
+H3 now uses exclusive 0600 temporary creation, permission inheritance, descriptor chmod,
+sync-before-rename and owned-temp cleanup, with fault fixtures at every post-create step.
+Native platform permission receipts remain. I3 now rejects symlink metadata, unsafe paths and
+normalized collisions before skill/hook decompression; grouped import checks and unchanged-
+destination overwrite fixtures pass. Its final platform and wave gates remain open.
+G1's existing Skill Integrity workflow already runs strict corpus/resource validation and
+publishes taxonomy/readiness reports. It now also checks changed skills against the 80-line
+limit: existing long skills are individually inventoried with line counts and SHA-256 in the
+CI artifact, while new over-limit skills and growth in grandfathered skills fail the gate.
+The current corpus has 2,120 long skills to triage; this gate prevents increasing that debt.
+Four line-budget behavior cases pass locally; the full workflow result remains pending.
+G3 now has an offline resolver and a deterministic source-path/SHA-256 lock for the skill
+corpus. Skill Integrity verifies the lock before accepting a change; pin→verify→drift,
+un-pinned/missing source, and path-shaped-name cases are covered locally. Its exact-head CI
+gate remains pending.
+I2 now validates the final executable argument after sandbox rewriting and refuses dangerous
+shell characters before launch. Ordinary paths with spaces, Unicode, drive letters, Windows
+separators and `(x86)` remain valid; the launch helper always supplies Node's `windowsHide`
+flag. The three focused spawn checks and core typecheck pass on this Windows host; exact-head
+CI evidence remains pending.
+
 - [ ] Full suites green (core ≈4.9k · web ≈2.5k · server split · cli/docs/landing)
 - [ ] A1 evidence attached · B3 table reviewed · E2 per-item table in PR
 
@@ -107,7 +203,7 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | [ ] | **D4b** Call-resolution ladder + overload scoring | M | D4a | fixture per step; zero fake edges |
 | [ ] | **D5** callstack-diff + graph_diff tool | M | D4b | LCS/entry-inference tests |
 | [ ] | **D6** git-snapshot reader | M | — | two-commit fixture |
-| [ ] | **D7** GraphStore interface + versioning | S | D4a | migration test |
+| [ ] | **D7** GraphStore interface + versioning (implemented locally; exact-commit gate pending) | S | D4a | migration, corruption, interruption and concurrent-reader fixtures |
 | [ ] | **D8** Seeded Louvain + god nodes | S | D4b | byte-identical runs |
 | [ ] | **D9** Tool-surface upgrade (explore-first/budgets/formatters/hints) | M | D5,D8 | budget + hint tests |
 | [ ] | **D10** Benchmark: AST vs regex (quality/resource gate) | M | D9 | frozen five-scenario corpus, false-edge/precision/recall and resource table |
@@ -134,7 +230,7 @@ Sizing: XS / S / M; the broad strategic rows require design/measurement gates be
 | [ ] | **H4** Redacted config preview and reversible apply | M | H1,H2,H3 | dry-run, secret-safe diff, fault rollback on Windows/POSIX |
 | [ ] | **H5** Tiered help | M | — | CLI snapshot tests |
 | [ ] | **H6** Command-hint graph | S | H5 | hint rendering tests |
-| [ ] | **H7** Levenshtein arg suggestions | S | — | suggestion unit tests |
+| [ ] | **H7** Levenshtein arg suggestions (implemented locally; exact-commit gate pending) | S | — | `test/usage-error.test.ts`: typo, ambiguity, distance and no-echo cases |
 | [ ] | **I6** Payload audit compaction | S | I1 | redaction tests |
 | [ ] | **J2** Actions SHA pinning | S | — | workflow review |
 | [ ] | **J3** Coverage instrumentation | M | — | threshold gate green |

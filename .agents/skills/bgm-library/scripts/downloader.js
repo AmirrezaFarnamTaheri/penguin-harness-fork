@@ -3,13 +3,10 @@
  * Handles MP3 download from ccMixter with referer, manifest, and attribution generation.
  */
 
-import axios from 'axios';
-import https from 'https';
 import fs from 'fs/promises';
 import path from 'path';
 
-// ccMixter SSL certificate chain is incomplete — tolerate it.
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+// Custom trust roots can be supplied through NODE_EXTRA_CA_CERTS.
 
 const MANIFEST_FILE = 'music_manifest.json';
 const ATTRIBUTION_FILE = 'ATTRIBUTION.txt';
@@ -41,28 +38,28 @@ export async function downloadTrack(track, outputDir, options = {}) {
     }
   }
 
-  const response = await axios({
-    method: 'get',
-    url: track.download_url,
-    responseType: 'arraybuffer',
-    httpsAgent,
+  const response = await fetch(track.download_url, {
+    method: 'GET',
     headers: {
-      'Referer': track.file_page_url,
+      Referer: track.file_page_url,
       'User-Agent': 'bgm-library/1.0 (CodeBuddy Remotion Plugin)',
     },
-    timeout: 60000,
+    signal: AbortSignal.timeout(60000),
+    redirect: 'follow',
   });
 
   if (response.status !== 200) {
+    await response.body?.cancel().catch(() => undefined);
     throw new Error(`Download failed: HTTP ${response.status}`);
   }
 
-  await fs.writeFile(filePath, Buffer.from(response.data));
+  const data = Buffer.from(await response.arrayBuffer());
+  await fs.writeFile(filePath, data);
 
   return {
     filePath,
     fileName,
-    size: response.data.byteLength,
+    size: data.byteLength,
     skipped: false,
   };
 }

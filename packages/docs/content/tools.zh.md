@@ -47,13 +47,13 @@ interface ToolResult {
 
 ### 过长输出恢复
 
-Agent Session 中的工具文本超过 `maxOutputLength` 时，模型与 Web/CLI 仍收到相同的头尾窗口、带计数的截断标记与终止标记，「用户所见 = 模型所见」的流式契约也保持不变。Environment 还会在该可见输出上限之外追加一条简短的归档状态/路径 note，并保存归该 Session 所有的 recovery 文件：单次归档预算内保存完整文本，超出预算则保存有界头尾。这里的「完整」特指 **Environment 实际收到的文本**：命令或子 Agent Session 等生产者可能已在自身的有界未读缓冲区中用 `[..., N chars of earlier output dropped ...]` 标记替换溢出内容，下游归档无法恢复在此之前已经丢失的原文。
+工具文本超过 `maxOutputLength`，或符合条件的成功结果被压缩时，Environment 会保留可用的可见内容并附上 Session 级 recall id。fatal 结果不会被压缩；其头尾窗口与终止失败标记仍直接显示。这里的原文仅指 **Environment 实际收到的文本**：命令或子 Agent Session 等生产者可能已在自身的有界未读缓冲区中用 `[..., N chars of earlier output dropped ...]` 标记替换溢出内容，下游归档无法恢复此前已经丢失的文本。
 
-普通多行归档可用现有 `read_file`（`offset` / `limit`）查看；若要读取字节级尾部或超长单行，Agent 必须自行构造定向的 `rg` / `tail` 等 Shell 命令，不新增专用读取工具。note 中的路径是普通绝对路径，恒为括号内最后一个元素。Windows 上统一写成正斜杠：`exec_command` 经 (Git) Bash 执行、Node 的 fs API 也接受正斜杠，同一拼写在 JSON 工具参数与 Shell 命令中通用；POSIX 路径原样透传，且 Session 路径都是普通绝对路径（不会带 `\\?\` 前缀），分隔符替换无损。含空格的路径在 Shell 命令中照常引用即可。同一拼写规则覆盖 core 产出给模型的全部路径——系统提示词的 App Data Dir / CWD 行、`[attached image/file: …]` 行与 Goal file 行（SDK 中的 `modelVisiblePath`）。
+Session 有 scratchpad 时，`recall_output` 会自动加入该 Session 的工具列表。使用结果中的 id 和 `offset: 0` 调用，再按返回的 `next_offset` 读取后续页面。id 只在所属 Session 中有效，工具不会返回文件系统路径。新 id 长 32 个十六进制字符；为兼容，已有的 12 字符 id 仍可读取。每页最多 12,000 个 UTF-16 代码单元，页面边界不会拆开代理项；依次拼接页面正文即可还原归档文本。
 
-Recovery 文件位于该 Session 的 `scratchpad/<session-id>/truncated-tool-output/`，仅在确实发生截断时创建；平台支持时使用仅当前用户可读写的私有权限。单次调用最多保存 8 MiB（生产字节上限少 1 byte，以保持低于 `read_file` 的 8 MiB 扫描上限）；更大的输出在文件中保留有界头尾并写明中间被截。该限制仅针对单次调用：一个 Session 没有归档总字节数或文件数配额，并发捕获也各自最多保留一份单调用预算。文件跨 Task、运行时释放和 Session 恢复保持可读，直到用户明确删除 Session 时由现有路径连同整个 scratchpad 一起移除；不新增单独的归档清理生命周期。
+提示中的 JSON 元数据为 `{recallId,sizeBytes,tokenCount}`。`tokenCount` 仅按 `ceil(sizeBytes / 4)` 粗略估算，并非模型提供方的 token 计数。recall 返回凭据脱敏后的 UTF-8 文本，不会恢复归档时移除的秘密。
 
-Recovery 文件保存 Environment 收到的未经脱敏的工具文本。误读凭据或其他敏感数据会使本地静态留存量从可见窗口扩大到归档预算。Trace 不重复保存这些正文，但会记录模型与 Web/CLI 看到的同一个绝对 Session 路径，因此会暴露宿主的数据根目录布局。归档写入失败不改变原工具的 `stop_reason`；双方可见的 note 与 stderr 警告只携带简短错误码（stderr 另含工具名），不携带路径或原始错误消息。
+归档存放于 `scratchpad/<session-id>/truncated-tool-output/recall/`，平台支持时使用私有目录与文件权限。写入前会脱敏可识别的凭据格式。单次捕获上限略低于 8 MiB；超限时只保留有界头尾，并明确标出中间缺失。每个 Session 最多保存 200 条、合计 64 MiB，条目最长保留 30 天。达到容量时拒绝新保存，不会提前驱逐已经发给模型的 id；过期条目及 Session 删除会清除文件。相同 Session scratchpad 可在重新创建 Environment 后继续解析 id。保存失败时仍保留有界的内联输出，并且只报告简短错误码。
 
 ## 配置字段
 
@@ -112,11 +112,19 @@ SearXNG 端点属于宿主配置，不是工具参数。优先级依次为 SDK �
 `knowledge_graph` 是 findings 平面（`packages/core/src/knowledge/`）面向 Agent 的入口。
 一次 `report` 记录一条耐久断言——标题、类型、正文、主题（文件 / 模块 / 符号）、带审计层级的证据、标签——其余交给图谱：重复上报会并入同一条 finding（先按确定性 id，再按 Jaccard 措辞相似度），近似断言变为 `related` 链接，同一 Agent 的再次上报**替换**其先前叙述而不是追加。出处来自宿主记录的 attribution 而非模型参数，Prompt 无法伪造"谁报的"。
 
-`query` 返回按 状态 → 严重度·置信度 → 新近度 排序的结果，可按文本、主题路径前缀、类型、标签、状态过滤；被驳回与被取代的断言默认不出现。`confirm` / `refute` / `supersede` 推动断言的生命周期——任何东西都不会被删除，`supersede` 会把旧断言链接到替代者。`events` 从某个序号起回放变更，`snapshot` 导出整个图谱。
+`query` 返回按 状态 → 严重度·置信度 → 新近度 排序的结果，可按文本、主题路径前缀、类型、标签、状态过滤；被驳回与被取代的断言默认不出现。Findings 是需要核实的断言。`query` 与 `snapshot` 返回 `authoredBy`（`agent`、`user`、`system` 或 `legacy-unknown`）、宿主认证的作者、状态及证据层级。新记录会保存首次创建时由宿主认证的作者，即使事件日志轮换或记录移入有限归档，作者信息仍会保留。旧快照优先使用仍保留的 ingest 事件；两者都没有时显示为 `legacy-unknown`。作者与来源中的自由文本标签分开。查询正文不会自动加入简报。
 
-状态保存为每个 Workspace 一份 JSON 快照 `.penguin/knowledge/findings-graph.json`（原子写 + 0600），惰性加载、每次变更后保存；工具不写其他任何文件。强度在读取时衰减（按置信度加权、指数衰减、访问强化），而不是落盘存储，因此读取者永远不会改写历史。
+生命周期允许 open → confirmed/refuted/superseded，以及 confirmed → refuted/superseded。确认必须有 runtime 或 implementation 证据；已认证的 HTTP 用户可用 `override: true` 和非空 `note` 明确豁免证据门槛，Agent 工具不能豁免。取代操作要求替代断言仍为 open 或 confirmed，并拒绝环路及超过 64 跳的链。重新上报已驳回的断言会建立确定性的矛盾修订，而不会改写原有证伪。只有用户能通过单独的 HTTP `reopen` 操作并填写理由重新打开已驳回的断言；已取代的断言保持终态。`events` 记录宿主提供的身份、操作入口与理由；`snapshot` 导出当前保留的图谱和有上限的事件日志。
+
+状态保存为每个 Workspace 一份权威快照 `.penguin/knowledge/findings-graph.json`。工具与 HTTP 路由使用同一存储实现，但作用域路径独立。变更通过跨进程锁串行处理，只有原子写入成功后才返回成功；工具的可选 `revision` 与 HTTP `If-Match` 可拒绝旧版本变更。内容指纹能检测长度相同的外部替换，读取缓存最多保留八个作用域。锁与恢复文件位于权威快照旁。保留的 finding 上限为 5,000 条，UTF-8 JSON 写入上限为 32 MiB；达到 24 MiB 时恢复状态标记高水位，HTTP 读取返回 `X-Findings-High-Water: 1`。淘汰顺序为 refuted、superseded、open，最后才是 confirmed，同一状态按最久未更新优先。完整被淘汰记录与 operation ID 和活动 finding 保存在同一份原子快照里。归档上限为 1,000 条、4 MiB、90 天；轮换可能丢弃更早记录。快照写入失败时活动图谱与归档同时保持原状。活动 related 链接会移除已淘汰 ID；替代 finding 被归档时保留可解析的归档墓碑 ID。恢复状态会返回归档数量、字节数、最早时间与限制。`archive` 可分页读取墓碑，`recall` 可取回完整记录。单独的内存图谱不保证文件持久性。事件日志最多保留 2,000 条，并公开最新序号供客户端判断缺口。强度仅用于读取时展示，由自最近更新起的置信度加权指数衰减，以及基于创建时间的附加项构成。它不追踪访问，也不决定查询排序或淘汰顺序。
+
+工具的 `recovery` 操作返回作用域、版本、容量、归档与恢复状态；`raw` 通过 `offset` / `nextOffset` 分页导出原始字节的 base64。损坏、版本不受支持或无法读取的快照拒绝正常变更。损坏字节保存在唯一命名且保留权限的隔离副本中；隔离失败仍然拒绝写入。文件不存在时可以从空图谱开始，已删除文件的内容不会从缓存重新出现。
+
+已认证的 HTTP 操作者可向 `/api/projects/:projectId/findings/recovery/reset`、`/restore` 或 `/prune` 提交 `acknowledge: true`、当前 `revision` 与非空 `reason`。恢复还需要 JSON 字符串 `snapshot`；裁剪需要终态 finding 的 `ids`。操作会保留完整备份，并将身份、理由、先前版本及备份路径写入审计日志。Agent 内建工具不能执行重置、恢复或裁剪。已超出字节上限的文件仍可分页导出原始字节，再用较小的已核实快照替换，或在明确确认后重置。
 
 此存储仅属于工具上下文提供的 Workspace。服务端 HTTP findings 路由使用独立的 Project ID 文件（`.findings_graph.json`）；名称或路径相同也不会自动绑定或同步两个存储。
+
+`query`、`snapshot`、`events` 与 `archive` 默认返回 version 2 JSON 分页信封，包含作用域版本、最新事件序号、续页游标、截断标记、剩余数量与高水位状态。游标绑定哈希作用域、规范化过滤条件、版本和稳定排序键；续页时须保持过滤条件与 limit 不变。版本变化或游标不匹配会给出明确重启错误；事件缺口会报告最早保留序号。输出上限按 UTF-8 字节计算。单条过大的内容会缩为摘要并附 recall ID；`recall` 以 base64 分块返回原始 JSON 字节，客户端拼接后再解码。`outputVersion: 1` 可显式选择旧版 query、snapshot 或 events 形状，仅在完整结果放得下时返回；它不支持游标，结果过大时会报错。默认使用 version 2。
 
 ### 代码图谱
 

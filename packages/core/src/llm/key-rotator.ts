@@ -254,6 +254,12 @@ export class ApiKeyRotator {
     return this.nextKey(now);
   }
 
+  /** Stable opaque identity within this rotator; never exposes the credential. */
+  accountIdentity(key?: string): string | undefined {
+    const index = this.keys.findIndex((candidate) => candidate.key === key);
+    return index < 0 ? undefined : `account_${index}`;
+  }
+
   /**
    * Records a successful request with `key`, clearing any cooldown and incrementing success count.
    */
