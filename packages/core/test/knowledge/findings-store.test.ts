@@ -185,9 +185,21 @@ describe("scope-aware findings store", () => {
       expect(await fs.readFile(s.scope.filePath, "utf8")).toBe(raw);
       const page = await s.rawPage(0, 5);
       expect(Buffer.from(page.data, "base64").toString()).toBe(raw.slice(0, 5));
+      // Repeated reads and rejected mutations of one damaged revision keep one bounded copy.
       const second = await s.read();
-      expect(second.recovery!.quarantinePath).not.toBe(read.recovery!.quarantinePath);
+      expect(second.recovery!.quarantinePath).toBe(read.recovery!.quarantinePath);
       expect(await fs.readFile(read.recovery!.quarantinePath!, "utf8")).toBe(raw);
+      const quarantined = async () =>
+        (await fs.readdir(path.dirname(s.scope.filePath))).filter((entry) =>
+          entry.includes(".quarantine-"),
+        );
+      expect(await quarantined()).toHaveLength(1);
+      // A tampered copy is never trusted as the preserved original.
+      await fs.writeFile(read.recovery!.quarantinePath!, "tampered");
+      const third = await s.read();
+      expect(third.recovery!.quarantinePath).not.toBe(read.recovery!.quarantinePath);
+      expect(await fs.readFile(third.recovery!.quarantinePath!, "utf8")).toBe(raw);
+      expect(await quarantined()).toHaveLength(2);
     }
   });
 
