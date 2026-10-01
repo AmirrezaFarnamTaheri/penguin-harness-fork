@@ -163,6 +163,50 @@ export class FindingsStore {
     return backup;
   }
 
+  /**
+   * One quarantine copy per damaged revision. Reads of a corrupt authority repeat, so a fresh
+   * copy per read would let ordinary queries consume unbounded disk. A pre-existing copy is
+   * reused only when it is a regular file holding the same bytes; otherwise a unique copy is
+   * written so the original bytes are always preserved.
+   */
+  private async quarantine(
+    target: string,
+    bytes: Uint8Array,
+    mode: number,
+    revision: string,
+  ): Promise<string> {
+    const quarantinePath = `${target}.quarantine-${revision.slice(0, 32)}`;
+    let handle;
+    try {
+      handle = await fs.open(quarantinePath, "wx", 0o600);
+    } catch (error) {
+      if (!errno(error, "EEXIST")) throw error;
+    }
+    if (handle) {
+      let written = false;
+      try {
+        await handle.writeFile(bytes);
+        await handle.chmod(mode & 0o777);
+        await handle.sync();
+        written = true;
+      } finally {
+        await handle.close();
+        if (!written) await fs.rm(quarantinePath, { force: true });
+      }
+      return quarantinePath;
+    }
+    try {
+      const existing = await fs.lstat(quarantinePath);
+      if (existing.isFile() && !existing.isSymbolicLink()) {
+        const preserved = await fs.readFile(quarantinePath);
+        if (fingerprint(preserved, this.scope.id) === revision) return quarantinePath;
+      }
+    } catch (error) {
+      if (!errno(error, "ENOENT")) throw error;
+    }
+    return this.preserve(target, bytes, mode, "quarantine");
+  }
+
   private async preserveFile(target: string, mode: number, label: string): Promise<string> {
     const backup = `${target}.${label}-${Date.now()}-${randomUUID()}`;
     await fs.copyFile(target, backup, constants.COPYFILE_EXCL);
@@ -282,7 +326,7 @@ export class FindingsStore {
         message: `Findings require recovery; normal mutations are disabled: ${describe(error)}`,
       };
       try {
-        recovery.quarantinePath = await this.preserve(target, bytes, mode, "quarantine");
+        recovery.quarantinePath = await this.quarantine(target, bytes, mode, revision);
       } catch (failure) {
         recovery.quarantineError = describe(failure);
       }
