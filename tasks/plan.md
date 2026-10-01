@@ -667,7 +667,9 @@ Acceptance: `sessionId/projectId/projectPath` bounded at the boundary (defense-i
 **E8 · /health + readiness** · S · deps — · src II.4 gap
 Acceptance: 200 serving / 503 DB-closed; mounted beside `versionRoutes`; tested.
 **E9 · Structured logger + rejection counter** · M · deps — · src II.4 gap
-Acceptance: zero `console.*` in server src; `unhandledRejection` rate visible (health/telemetry).
+Acceptance: zero executable `console.*` calls in server src; JSON log records preserve request and
+Session correlation, redact credentials, and stay bounded; one process-level handler pair counts
+unhandled rejections and exposes the total and rolling-minute rate at `/health/metrics`.
 **E10 · Leak fixes** · M · deps — · src §IV.5.5
 Description: (a) orphan reaping beyond `exit` hook (parent-pid watchdog / Job Object), (b)
 `disposeRemoved` timeout on never-settling `entry.running`, (c) wire `SwarmCoordinator.abort()`

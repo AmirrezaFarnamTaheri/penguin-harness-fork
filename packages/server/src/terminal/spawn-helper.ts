@@ -19,6 +19,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { serverLogger } from "../runtime/logger.js";
 
 /** Exec bits for user/group/other. */
 const EXEC_BITS = 0o111;
@@ -72,7 +73,7 @@ export function ensureSpawnHelperExecutable(): void {
   const pkgDir = nodePtyDir();
   if (pkgDir === null) return;
   for (const fixed of repairSpawnHelpers(pkgDir)) {
-    console.log(`[terminal] restored the exec bit on ${fixed} (node-pty ships it as 0644)`);
+    serverLogger.info("Restored the terminal spawn helper execute bit.", { path: fixed });
   }
 }
 

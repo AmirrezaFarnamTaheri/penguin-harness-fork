@@ -197,6 +197,14 @@ import { UsageRecorder } from "./runtime/usage-recorder.js";
 import { previewRoutes } from "./http/routes/preview.js";
 import { MachinesService } from "./machines/service.js";
 import { SERVER_PROXY_PREFIX, machinesProxy } from "./machines/proxy.js";
+import { requestLogContext, serverLogger, withLogContext } from "./runtime/logger.js";
+
+export interface RequestLogFields extends Record<string, unknown> {
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+}
 
 export interface AppDeps {
   config: ServerConfig;
@@ -278,6 +286,8 @@ export interface AppDeps {
   proxyControl: ProxyControl;
   /** Request log output (minimal one-liner); tests inject a noop. */
   log: (line: string) => void;
+  /** Structured request event; derives from the same adapter as `log` for test/host overrides. */
+  requestLog?: (fields: RequestLogFields) => void;
 }
 
 export interface BuildDepsOverrides {
@@ -379,7 +389,7 @@ export async function bootAppDeps(
   // Here rather than per App, for the same reason the two above are: it is a fact about
   // this PROCESS's installation, and a hot-pushed platform — compiled somewhere else
   // entirely — has no way to work out where the CLI it should point at lives.
-  const shimLog = overrides.log ?? ((line: string) => console.log(line));
+  const shimLog = overrides.log ?? ((line: string) => serverLogger.line(line));
   const shim = ensureCliShim(config.root, config.cliEntry);
   if (shim.kind === "written") {
     shimLog(`Agent CLI: ${path.join(shim.dir, "penguin")} -> ${shim.entry}`);
@@ -388,7 +398,7 @@ export async function bootAppDeps(
       "Agent CLI: no CLI entry found; commands an Agent runs resolve `penguin` on their own PATH.",
     );
   } else {
-    console.warn(`[server] could not write the penguin CLI shim: ${shim.reason}`);
+    serverLogger.warn("Could not write the penguin CLI shim.", { reason: shim.reason });
   }
 
   // The capability set buildAppDeps claims (see hmr/capabilities.ts) — every
@@ -448,12 +458,23 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
   });
   app.notFound((c) => c.json(errorBody("not_found", "Endpoint does not exist."), 404));
 
-  // Request logging: a minimal one-liner (method path status ms).
+  // Request context follows async work so logs and errors can be correlated to the request.
   app.use("*", async (c, next) => {
-    const start = performance.now();
-    await next();
-    const ms = Math.round(performance.now() - start);
-    deps.log(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
+    const context = requestLogContext(c.req.raw);
+    return withLogContext(context, async () => {
+      const start = performance.now();
+      await next();
+      c.header("x-request-id", context.requestId);
+      const ms = Math.round(performance.now() - start);
+      const fields = {
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        durationMs: ms,
+      };
+      if (deps.requestLog) deps.requestLog(fields);
+      else deps.log(`${fields.method} ${fields.path} ${fields.status} ${fields.durationMs}ms`);
+    });
   });
 
   // Canonical-host guard (loopback binds only): the App is served on one loopback name and
@@ -899,7 +920,11 @@ export function buildAppDeps(
   confineSpawn: () => SpawnConfiner | null = () => null,
 ): AppDeps {
   const { config, db, authState, channels, hmr } = caps;
-  const log = overrides.log ?? ((line: string) => console.log(line));
+  const log = overrides.log ?? ((line: string) => serverLogger.line(line));
+  const requestLog: NonNullable<AppDeps["requestLog"]> = overrides.log
+    ? ({ method, path: requestPath, status, durationMs }) =>
+        log(`${method} ${requestPath} ${status} ${durationMs}ms`)
+    : (fields) => serverLogger.info("HTTP request completed.", fields);
   const jevAdvisor = overrides.jevAdvisor ?? jevAdvisorFromEnv(log);
 
   // A pushed platform carries its own migrations, which is the only way the tables its
@@ -1319,6 +1344,7 @@ export function buildAppDeps(
     hmr,
     proxyControl: caps.proxyControl,
     log,
+    requestLog,
   };
 }
 

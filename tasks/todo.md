@@ -144,7 +144,7 @@ as not applicable to this checkout; reopen only if the vendored installer artifa
 | [ ] | **E6** Cockpit error-shape unification | XS | — | server route tests |
 | [ ] | **E7** Gateway input validation | XS | — | gateway tests |
 | [ ] | **E8** /health + readiness | S | — | route test (200/503) |
-| [ ] | **E9** Structured logger + rejection counter | M | — | zero `console.*` in server src |
+| [ ] | **E9** Structured logger + rejection counter | M | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
 | [ ] | **E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap) | M | — | revert-and-see tests ×4 |
 | [ ] | **E2** acp.ts 8-defect sweep (verified/refuted table) | M | — | `test/kernel/acp.test.ts` |
 | [ ] | **E3** ACP connection resume | M | E2 | kill-mid-stream replay test |

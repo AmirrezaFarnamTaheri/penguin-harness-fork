@@ -37,6 +37,7 @@ import type {
 } from "@prismshadow/penguin-core/plugin";
 import { SandboxService } from "../sandbox/index.js";
 import { buildAppDeps, createApp, type AppDeps, type BuildDepsOverrides } from "../app.js";
+import { serverLogger } from "../runtime/logger.js";
 import { seamHttp } from "./hono-seam.js";
 import {
   PENGUIN_FAMILY,
@@ -264,7 +265,7 @@ export const platformImpl: Impl<PlatformApi, PlatformCtx> = {
     // every other capability-less host was refused above.
     let deps: AppDeps | null = null;
     if (caps === null) {
-      console.warn("[platform] bare kernel: terminals only, no business surface");
+      serverLogger.warn("Bare kernel has terminals only and no business surface.");
     } else {
       deps = buildAppDeps(caps, caps.overrides, () => sandbox.confiner());
       // Schedule scheduler: startup reconciliation (missed, don't backfill) + periodic

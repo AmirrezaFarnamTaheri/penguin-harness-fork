@@ -13,7 +13,20 @@ describe("health and readiness", () => {
   it("serves public probes through the application without cookie authentication", async () => {
     const app = await createTestApp();
     cleanup.push(() => app.cleanup());
-    expect((await app.app.request("/api/health")).status).toBe(200);
+    const alive = await app.app.request("/api/health", {
+      headers: { "x-request-id": "health-probe-1" },
+    });
+    expect(alive.status).toBe(200);
+    expect(alive.headers.get("x-request-id")).toBe("health-probe-1");
+    const metrics = await app.app.request("/api/health/metrics");
+    expect(metrics.status).toBe(200);
+    expect(await metrics.json()).toMatchObject({
+      unhandledRejections: {
+        total: expect.any(Number),
+        lastMinute: expect.any(Number),
+        perMinute: expect.any(Number),
+      },
+    });
     expect((await app.app.request("/health")).status).toBe(200);
     expect((await app.app.request("/health/ready")).status).toBe(200);
     const ready = await app.app.request("/api/health/ready");

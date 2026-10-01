@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../../auth/middleware.js";
 import type { AppDeps } from "../../app.js";
+import { unhandledRejectionMetrics } from "../../runtime/logger.js";
 
 /** Public probes expose only serving state, never configuration or dependency errors. */
 export function healthRoutes(deps: Pick<AppDeps, "db" | "readinessChecks">): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   app.get("/", (c) => c.json({ status: "alive" }));
+  app.get("/metrics", (c) => c.json({ unhandledRejections: unhandledRejectionMetrics() }));
   app.get("/ready", (c) => {
     try {
       deps.db.prepare("SELECT 1").get();

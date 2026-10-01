@@ -31,6 +31,8 @@
  * - a 404 on an info/kill call is surfaced as `MicrovmNotFoundError`, never as a
  *   generic error a caller might retry blindly.
  */
+import { serverLogger } from "../../runtime/logger.js";
+
 /** A line-oriented diagnostic sink, matching the rest of this server's runtime. */
 export type MicrovmLogger = (line: string) => void;
 
@@ -437,7 +439,7 @@ export class MicrovmSandboxClient {
     this.defaultTemplate = config.defaultTemplate;
     this.retries = resolveRetries(config.retries ?? DEFAULT_RETRIES);
     this.requestTimeoutMs = config.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
-    this.logger = config.logger ?? ((line) => console.error(line));
+    this.logger = config.logger ?? ((line) => serverLogger.line(line, "error"));
     this.fetchWithRetry = withRateLimitRetry(
       fetchImpl,
       this.retries,

@@ -169,6 +169,21 @@ failure stays uncompressed with bounded head/tail and its terminal reason inline
 does not replace that evidence. The focused B1 pair passes 44/44 tests, and the core typecheck
 passes on 2026-10-02. The task remains unchecked until review and exact-commit acceptance pass.
 
+## Wave 2 structured logging and rejection count
+
+E9 now has one JSON-line logger with bounded records, credential redaction, and AsyncLocalStorage
+request/session context. HTTP responses return their request id; session routes attach their
+session id to logs. Process errors use one listener pair per process, update a saturating
+unhandled-rejection total and rolling-minute rate, and persist only the sanitized error summary.
+`/health/metrics` exposes those values without changing the liveness or readiness response shapes. A failing primary
+sink produces one fixed, bounded emergency record and never logs the rejected secret or recursively
+calls the failed sink. The first-login URL remains an operator notice written outside diagnostic
+logs because it contains the one-time sign-in credential.
+
+Focused verification on 2026-10-02: server package typecheck passed; `structured-logger.test.ts`
+and `health.test.ts` passed 5/5. The Wave 2 row remains open until the PR head and required CI
+checks satisfy the repository's exact-commit gate.
+
 ## PR #12 status
 
 The repository's PR #12 merged into `main` on 2026-09-30 at
