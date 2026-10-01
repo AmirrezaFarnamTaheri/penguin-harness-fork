@@ -195,10 +195,11 @@ describe("gateway input validation", () => {
     const approvalSpy = vi.spyOn(t.deps.manager, "decideApproval");
     try {
       for (const sessionId of ["", "a".repeat(129), "../escape", "名前"]) {
-        const response = await client.post(
-          `/api/projects/${projectId}/gateway/webhooks/approval`,
-          { approvalId: "tool-call", action: "approve", sessionId },
-        );
+        const response = await client.post(`/api/projects/${projectId}/gateway/webhooks/approval`, {
+          approvalId: "tool-call",
+          action: "approve",
+          sessionId,
+        });
         expect(response.status, JSON.stringify(sessionId)).toBe(400);
       }
 
