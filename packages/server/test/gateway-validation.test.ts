@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectCreateResponse } from "../src/api/types.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
@@ -174,6 +174,44 @@ describe("gateway input validation", () => {
         sessions: [{ sessionId: "s1", projectId, projectPath, modelBreakdown: {} }],
       });
       expect(response.status, projectPath).toBe(200);
+    }
+  });
+
+  it("rejects malformed gateway project path ids before project access", async () => {
+    const accessSpy = vi.spyOn(t.deps.projectService, "requireProjectAccess");
+    try {
+      for (const pathId of ["", "a".repeat(129), "%2e%2e", "part%2fchild", "名前"]) {
+        const response = await client.get(`/api/projects/${pathId}/gateway/combos`);
+        expect(response.status, JSON.stringify(pathId)).toBe(404);
+      }
+      expect(accessSpy).not.toHaveBeenCalled();
+    } finally {
+      accessSpy.mockRestore();
+    }
+  });
+
+  it("rejects malformed approval session ids before session lookup or approval", async () => {
+    const sessionLookupSpy = vi.spyOn(t.deps.sessionsRepo, "findById");
+    const approvalSpy = vi.spyOn(t.deps.manager, "decideApproval");
+    try {
+      for (const sessionId of ["", "a".repeat(129), "../escape", "名前"]) {
+        const response = await client.post(
+          `/api/projects/${projectId}/gateway/webhooks/approval`,
+          { approvalId: "tool-call", action: "approve", sessionId },
+        );
+        expect(response.status, JSON.stringify(sessionId)).toBe(400);
+      }
+
+      const derivedSessionId = await client.post(
+        `/api/projects/${projectId}/gateway/webhooks/approval`,
+        { approvalId: "../escape:tool-call", action: "approve" },
+      );
+      expect(derivedSessionId.status).toBe(400);
+      expect(sessionLookupSpy).not.toHaveBeenCalled();
+      expect(approvalSpy).not.toHaveBeenCalled();
+    } finally {
+      sessionLookupSpy.mockRestore();
+      approvalSpy.mockRestore();
     }
   });
 

@@ -663,7 +663,7 @@ Acceptance: non-simulate either executes (handler wired) or 400s at the boundary
 **E6 · Cockpit error-shape unification** · XS · deps — · src backend F5
 Acceptance: every cockpit route error is `{error:{code,message}}` (+ additive `success`), tests updated.
 **E7 · Gateway input validation** · XS · deps — · src backend F6
-Acceptance: `sessionId/projectId/projectPath` bounded at the boundary (defense-in-depth; sink stays display-only).
+Acceptance: gateway URL/body `projectId` and `sessionId` are bounded and validated at the first trusted boundary; `projectPath` is bounded and normalized while remaining display-only.
 **E8 · /health + readiness** · S · deps — · src II.4 gap
 Acceptance: 200 serving / 503 DB-closed; mounted beside `versionRoutes`; tested.
 **E9 · Structured logger + rejection counter** · M · deps — · src II.4 gap

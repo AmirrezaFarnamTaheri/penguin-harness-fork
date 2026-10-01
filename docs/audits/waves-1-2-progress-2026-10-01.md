@@ -10,13 +10,18 @@ separate gates; focused checks do not establish those broader results.
 |---|---|---|
 | E5 | HTTP sync/async and WebSocket swarm requests reject non-simulation when no trusted execution handler exists. Configured handlers are passed into the coordinator. | `test/cockpit-ws.test.ts`: real configured execution, sync/async rejection and socket rejection before acknowledgement; focused cockpit suites passed. |
 | E6 | Cockpit errors carry `{error:{code,message}}`, with `success:false`; unexpected exceptions use the shared safe error serializer. Successful response fields remain intact. | `test/cockpit-integrity.test.ts`: malformed JSON, invalid project id, and five unsuccessful task outcomes; existing key/mailbox success and failure coverage. Frontend `readResponse` already accepts structured errors. |
-| E7 | Spend-flow session/project identifiers are limited to valid ids of at most 128 characters. Display paths have a 4,096-character cap and reject controls, malformed surrogates, encoded bytes, traversal and non-normalized separators. | `test/gateway-validation.test.ts`: invalid/overlong identifiers, Windows/POSIX path cases and valid Unicode display paths. The sink remains display metadata. |
+| E7 | Every gateway URL project id is capped at 128 characters before project access. Spend-flow session/project ids and approval-webhook session ids are validated as bounded identifiers before repository lookup or approval dispatch. Display paths have a 4,096-character cap and reject controls, malformed surrogates, encoded bytes, traversal and non-normalized separators while remaining inert display metadata. | `test/gateway-validation.test.ts`: URL ids cover empty, overlong, encoded traversal/separator and Unicode cases before project access; approval session ids cover malformed, overlong and traversal values before lookup/dispatch; spend-flow covers path edge cases and valid Unicode. Focused suite passed 9/9 and server typecheck passed on 2026-10-02. Exact-head acceptance remains pending. |
 | E8 | Public `/health` and `/api/health` liveness, with `/ready` under both aliases, run before cookie authentication. Readiness checks SQLite and optional fast dependency-status callbacks without exposing errors or config. | `test/health.test.ts`: both application mounts, serving database, closed database, dependency degradation and recovery. |
 | E1 | Both factories construct a guarded coordinator with session identity. Async and sync factories require explicit absolute roots; snapshot construction requires supplied instances, and WebSocket attachment validates its root before registering listeners. | Missing/relative-root rejection, independent roots, shared async/sync identity, reap/recreate, HTTP and socket/resume checks: 75 passed across five suites. Test hosts now explicitly inject their workspace roots. |
 
 Commands: `pnpm --filter @prismshadow/penguin-server exec vitest run
 test/health.test.ts test/gateway-validation.test.ts test/cockpit-ws.test.ts
 test/cockpit-integrity.test.ts`; server typecheck is recorded separately in the task tracker.
+
+E7 focused command: `pnpm --filter @prismshadow/penguin-server exec vitest run
+test/gateway-validation.test.ts` (9/9); `pnpm --filter @prismshadow/penguin-server typecheck`
+passed. `pnpm audit --audit-level high` reported no known vulnerabilities. The E7 task remains
+unchecked until the reviewed PR head satisfies the exact-commit gate.
 
 ## Retry policy integration in progress
 

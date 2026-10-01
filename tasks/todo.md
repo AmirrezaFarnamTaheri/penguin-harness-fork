@@ -142,7 +142,7 @@ as not applicable to this checkout; reopen only if the vendored installer artifa
 | [ ] | **E1** Cockpit sync-seam residuals | S | — | `vitest run test/cockpit*` |
 | [ ] | **E5** trigger_swarm non-simulate | S | — | cockpit ws tests |
 | [ ] | **E6** Cockpit error-shape unification | XS | — | server route tests |
-| [ ] | **E7** Gateway input validation | XS | — | gateway tests |
+| [ ] | **E7** Gateway input validation (implemented locally; exact-head gate pending) | XS | — | gateway tests; URL/body identifiers and approval session IDs bounded before lookup |
 | [ ] | **E8** /health + readiness | S | — | route test (200/503) |
 | [ ] | **E9** Structured logger + rejection counter | M | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
 | [ ] | **E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap) | M | — | revert-and-see tests ×4 |
