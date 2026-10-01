@@ -458,16 +458,20 @@ function requireWorkspaceRoot(root: string | undefined): string {
  * Project ids become a directory under the data root when no ProjectService owns resolution.
  * Accept exactly one bounded path segment: no separators, drive/stream colons, dot segments,
  * or control characters, so a query-string id can never leave the configured root.
+ *
+ * Checked per UTF-16 unit rather than with a character class: a control-character range is easy
+ * to get wrong silently, and an invalid one is a SyntaxError that stops this module loading.
  */
 export function isSafeCockpitProjectId(projectId: string): boolean {
-  return (
-    projectId.length > 0 &&
-    projectId.length <= 128 &&
-    projectId !== "." &&
-    projectId !== ".." &&
-    !/[\\/:-\u001f\u007f]/.test(projectId) &&
-    !path.isAbsolute(projectId)
-  );
+  if (projectId.length === 0 || projectId.length > 128) return false;
+  if (projectId === "." || projectId === ".." || path.isAbsolute(projectId)) return false;
+  for (let index = 0; index < projectId.length; index++) {
+    const code = projectId.charCodeAt(index);
+    // C0 controls (NUL included), DEL, `/`, `\` and `:` (drive letters and NTFS streams).
+    if (code <= 0x1f || code === 0x7f || code === 0x2f || code === 0x5c || code === 0x3a)
+      return false;
+  }
+  return true;
 }
 
 /**

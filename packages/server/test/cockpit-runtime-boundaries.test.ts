@@ -37,6 +37,10 @@ describe("cockpit project runtime boundaries", () => {
   });
 
   it("refuses project ids that are not one bounded path segment before creating a runtime", async () => {
+    // Built from code points so an editor or transport cannot silently strip the controls.
+    const nul = String.fromCharCode(0x00);
+    const unitSeparator = String.fromCharCode(0x1f);
+    const del = String.fromCharCode(0x7f);
     for (const projectId of [
       "",
       ".",
@@ -46,7 +50,9 @@ describe("cockpit project runtime boundaries", () => {
       "nested\\project",
       "C:outside",
       "line\nbreak",
-      "nulbyte",
+      `nul${nul}byte`,
+      `unit${unitSeparator}separator`,
+      `del${del}byte`,
       "p".repeat(129),
     ]) {
       expect(isSafeCockpitProjectId(projectId)).toBe(false);
@@ -57,6 +63,7 @@ describe("cockpit project runtime boundaries", () => {
     expect(await fs.readdir(path.dirname(root))).toContain(path.basename(root));
     expect(isSafeCockpitProjectId("default_project")).toBe(true);
     expect(isSafeCockpitProjectId("项目-1.v2")).toBe(true);
+    expect(isSafeCockpitProjectId("nulbyte")).toBe(true);
     expect(isSafeCockpitProjectId("p".repeat(128))).toBe(true);
   });
 });
