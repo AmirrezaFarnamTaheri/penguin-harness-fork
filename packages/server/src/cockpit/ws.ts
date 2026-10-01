@@ -441,6 +441,8 @@ export async function createProjectShellGuardian(
 function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: string): string {
   if (deps.root) {
     requireWorkspaceRoot(deps.root);
+    if (!isSafeCockpitProjectId(projectId))
+      throw new Error("Cockpit project id must be a single bounded path segment");
     return projectDir(deps.root, projectId);
   }
   return requireWorkspaceRoot(deps.workspaceRoot);
@@ -450,6 +452,22 @@ function requireWorkspaceRoot(root: string | undefined): string {
   if (!root || !path.isAbsolute(root) || root.includes("\0"))
     throw new Error("Cockpit runtime requires an explicit absolute project or workspace root");
   return path.resolve(root);
+}
+
+/**
+ * Project ids become a directory under the data root when no ProjectService owns resolution.
+ * Accept exactly one bounded path segment: no separators, drive/stream colons, dot segments,
+ * or control characters, so a query-string id can never leave the configured root.
+ */
+export function isSafeCockpitProjectId(projectId: string): boolean {
+  return (
+    projectId.length > 0 &&
+    projectId.length <= 128 &&
+    projectId !== "." &&
+    projectId !== ".." &&
+    !/[\\/:-\u001f\u007f]/.test(projectId) &&
+    !path.isAbsolute(projectId)
+  );
 }
 
 /**
@@ -470,6 +488,9 @@ export async function getOrCreateProjectRuntime(
   const runtimeKey = runtimeKeyFor(workspaceDir, projectId);
   const existing = projectRuntimes.get(runtimeKey);
   if (existing) {
+    // A runtime first created by a caller without trusted handlers (for example the quorum
+    // route) must adopt them when a configured host supplies them later.
+    if (deps.swarmHandlers !== undefined) existing.swarmHandlers = deps.swarmHandlers;
     if (existing.clients.size === 0) {
       scheduleRuntimeReap(existing, deps);
     } else {
@@ -480,7 +501,11 @@ export async function getOrCreateProjectRuntime(
 
   const inFlight = projectRuntimePromises.get(runtimeKey);
   if (inFlight) {
-    return inFlight;
+    if (deps.swarmHandlers === undefined) return inFlight;
+    return inFlight.then((runtime) => {
+      runtime.swarmHandlers = deps.swarmHandlers;
+      return runtime;
+    });
   }
 
   const creationPromise = (async () => {
@@ -658,6 +683,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const since = parseSince(url);
     const requestedGeneration = url.searchParams.get("generation");
 
+    // Refuse before any project lookup or runtime creation; the id may become a path segment.
+    if (!isSafeCockpitProjectId(projectId)) {
+      return refuse(socket, 404, "Project Not Found");
+    }
+
     if (deps.projectService && authedUser) {
       try {
         deps.projectService.requireProjectAccess(authedUser.userId, projectId);
@@ -666,7 +696,15 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       }
     }
 
-    const runtime = await getOrCreateProjectRuntime(projectId, deps);
+    let runtime: ProjectCockpitRuntime;
+    try {
+      runtime = await getOrCreateProjectRuntime(projectId, deps);
+    } catch (err) {
+      deps.log?.(
+        `[cockpit-ws][${projectId}] runtime unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return refuse(socket, 500, "Internal Server Error");
+    }
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
       cancelRuntimeReap(runtime);
