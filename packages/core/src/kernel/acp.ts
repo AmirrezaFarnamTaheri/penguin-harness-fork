@@ -780,6 +780,8 @@ export class AcpConnection {
     if (this.state === "closed") return;
     this.state = "closed";
     this.failure = null;
+    this.lastFailureAt = null;
+    this.lastFailureMessage = null;
     this.lineBuffer = "";
     this.lineBufferBytes = 0;
     this.resyncing = false;

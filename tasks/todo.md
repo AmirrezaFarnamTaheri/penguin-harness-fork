@@ -143,7 +143,7 @@ as not applicable to this checkout; reopen only if the vendored installer artifa
 | [ ] | **E5** trigger_swarm non-simulate | S | — | cockpit ws tests |
 | [ ] | **E6** Cockpit error-shape unification | XS | — | server route tests |
 | [ ] | **E7** Gateway input validation (implemented locally; exact-head gate pending) | XS | — | gateway tests; URL/body identifiers and approval session IDs bounded before lookup |
-| [ ] | **E8** /health + readiness | S | — | route test (200/503) |
+| [ ] | **E8** /health + readiness (implemented locally; exact-head gate pending) | S | — | `health.test.ts` covers serving, DB-closed, degradation, and recovery |
 | [ ] | **E9** Structured logger + rejection counter | M | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
 | [ ] | **E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap) | M | — | revert-and-see tests ×4 |
 | [ ] | **E2** acp.ts 8-defect sweep (verified/refuted table) | M | — | `test/kernel/acp.test.ts` |
