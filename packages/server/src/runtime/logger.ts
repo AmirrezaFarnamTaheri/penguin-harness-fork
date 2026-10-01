@@ -1,5 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import {
+  maskEmail,
+  redactSessionHeaders,
+  sanitizeErrorForLog,
+  type SanitizedError,
+  type SessionHeaderInput,
+} from "@prismshadow/penguin-core";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -41,6 +48,7 @@ if (!Array.isArray(state.rejectionBuckets) || state.rejectionBuckets.length !== 
 const MAX_MESSAGE_LENGTH = 1200;
 const MAX_RECORD_LENGTH = 4096;
 const MAX_FIELD_STRING_LENGTH = 512;
+const MAX_CAUSE_STRING_LENGTH = 256;
 const SENSITIVE_ENV_NAME =
   /(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSPHRASE|PASSWD|CREDENTIAL|AUTHORIZATION|PRIVATE[_-]?KEY)/i;
 // Any key ending in `token` (token, authToken, x-auth-token, session_token) carries a credential;
@@ -61,13 +69,32 @@ function knownSecretValues(): string[] {
 function redact(text: string): string {
   let result = text;
   for (const secret of knownSecretValues()) result = result.split(secret).join("[REDACTED]");
-  return result
+  result = result
     .replace(/(\b(?:authorization\s*[:=]\s*)?bearer\s+)[^\s,;]+/gi, "$1[REDACTED]")
     .replace(
       /(\b(?:api[_-]?key|(?:access|refresh|auth|session|id|csrf)?[_-]?token|client[_-]?secret|password|passphrase|passwd|secret|credential|private[_-]?key)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
       "$1[REDACTED]",
     )
     .replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[REDACTED]@");
+  // I1: personal addresses are masked to their first local character and domain.
+  return maskEmail(result);
+}
+
+/**
+ * I1: the shared core sanitizer supplies the code and a bounded, cycle-safe cause chain without
+ * stacks; this logger's environment-secret and assignment rules are applied on top of it.
+ */
+function safeError(error: unknown): SanitizedError {
+  const visit = (summary: SanitizedError, limit: number): SanitizedError => {
+    const safe: SanitizedError = {
+      name: redact(summary.name).slice(0, 80),
+      message: redact(summary.message).slice(0, limit),
+    };
+    if (summary.code !== undefined) safe.code = redact(summary.code).slice(0, 80);
+    if (summary.cause !== undefined) safe.cause = visit(summary.cause, MAX_CAUSE_STRING_LENGTH);
+    return safe;
+  };
+  return visit(sanitizeErrorForLog(error), MAX_FIELD_STRING_LENGTH);
 }
 
 function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknown {
@@ -76,33 +103,34 @@ function safeValue(value: unknown, depth: number, seen: WeakSet<object>): unknow
   if (typeof value === "boolean" || value === null) return value;
   if (typeof value === "bigint") return value.toString();
   if (value === undefined) return undefined;
-  if (value instanceof Error) {
-    return {
-      name: redact(value.name || "Error").slice(0, 80),
-      message: redact(value.message).slice(0, MAX_FIELD_STRING_LENGTH),
-    };
-  }
+  if (value instanceof Error) return safeError(value);
   if (typeof value !== "object") return `[${typeof value}]`;
   if (depth <= 0) return "[depth-limit]";
   if (seen.has(value)) return "[circular]";
   seen.add(value);
-  if (Array.isArray(value))
-    return value.slice(0, 16).map((item) => safeValue(item, depth - 1, seen));
-  const result: Record<string, unknown> = {};
   try {
+    // I1: header collections keep only allowlisted values; every other value is replaced.
+    if (value instanceof Headers) return safeValue(redactSessionHeaders(value), depth, seen);
+    if (Array.isArray(value))
+      return value.slice(0, 16).map((item) => safeValue(item, depth - 1, seen));
+    const result: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value).slice(0, 24)) {
       if (/^(?:stack|authorization|cookie|set-cookie)$/i.test(key)) continue;
       if (SENSITIVE_FIELD_NAME.test(key)) {
         result[redact(key).slice(0, 80)] = "[REDACTED]";
         continue;
       }
-      const safe = safeValue(item, depth - 1, seen);
+      const headers =
+        /^headers$/i.test(key) && item !== null && typeof item === "object"
+          ? redactSessionHeaders(item as SessionHeaderInput)
+          : item;
+      const safe = safeValue(headers, depth - 1, seen);
       if (safe !== undefined) result[redact(key).slice(0, 80)] = safe;
     }
+    return result;
   } catch {
     return "[unavailable]";
   }
-  return result;
 }
 
 function boundedRecord(record: StructuredLogRecord): string {
@@ -233,16 +261,16 @@ export function unhandledRejectionMetrics(nowMs = Date.now()): {
   return { total: state.unhandledRejections, lastMinute, perMinute: lastMinute };
 }
 
-/** Error summaries intentionally omit stacks: stacks can contain request data or credentials. */
-export function safeErrorSummary(reason: unknown): { name: string; message: string } {
+/**
+ * Error summaries intentionally omit stacks: stacks can contain request data or credentials.
+ * The summary keeps a string/number `code` and a bounded, redacted `cause` chain (I1).
+ */
+export function safeErrorSummary(reason: unknown): SanitizedError {
   let error: Error;
   try {
     error = reason instanceof Error ? reason : new Error(String(reason));
   } catch {
     error = new Error("Non-Error rejection reason could not be converted safely.");
   }
-  return {
-    name: redact(error.name || "Error").slice(0, 80),
-    message: redact(error.message).slice(0, MAX_FIELD_STRING_LENGTH),
-  };
+  return safeError(error);
 }

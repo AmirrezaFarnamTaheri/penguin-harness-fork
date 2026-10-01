@@ -58,6 +58,39 @@ describe("structured server logging", () => {
     expect(record).toMatchObject({ tokenCount: 42, maxTokens: 1024 });
   });
 
+  it("masks e-mail, allowlists session headers, and keeps a redacted cause chain (I1)", () => {
+    const lines: string[] = [];
+    const logger = createStructuredLogger({ sink: (line) => lines.push(line) });
+    const root = new Error("db login failed for dba@corp.example");
+    Object.assign(root, { code: "EAUTH" });
+    const failure = new Error("upstream rejected api_key=cause-secret-value", { cause: root });
+
+    logger.error("request from ops@example.com failed", {
+      error: failure,
+      headers: {
+        "User-Agent": "cli/1.0 (ops@example.com)",
+        "X-Vendor-Session": "vendor-secret",
+        Accept: "application/json",
+      },
+    });
+
+    const record = JSON.parse(lines[0]!) as Record<string, unknown>;
+    const text = JSON.stringify(record);
+    expect(record.message).toBe("request from o***@example.com failed");
+    expect(record.error).toMatchObject({
+      name: "Error",
+      cause: { code: "EAUTH", message: "db login failed for d***@corp.example" },
+    });
+    expect(record.headers).toEqual({
+      "user-agent": "cli/1.0 (o***@example.com)",
+      "x-vendor-session": "<redacted>",
+      accept: "application/json",
+    });
+    expect(text).not.toContain("stack");
+    const secrets = ["ops@example.com", "dba@corp.example", "cause-secret-value", "vendor-secret"];
+    for (const secret of secrets) expect(text).not.toContain(secret);
+  });
+
   it("turns one rejection into one bounded record when the primary logger sink fails", () => {
     const emitter = new EventEmitter();
     const emergency: string[] = [];

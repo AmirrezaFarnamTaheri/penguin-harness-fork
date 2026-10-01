@@ -107,14 +107,24 @@ export {
   isSafeIpAddress,
 } from "./internal/safe-http.js";
 export type { SafeHttpOptions, SafeHttpResponse } from "./internal/safe-http.js";
+// Credential redaction plus the I1 log-safety helpers (session-header allowlist, e-mail masking,
+// bounded error summaries) shared by every host that writes logs, traces or exports.
 export {
   redactCredentials,
   containsCredentials,
   redactObject,
   REDACTED_MARKER,
   CREDENTIAL_RULES,
+  LOGGABLE_SESSION_HEADERS,
+  maskEmail,
+  redactSessionHeaders,
+  sanitizeErrorForLog,
 } from "./internal/credential-redactor.js";
-export type { RedactionRule } from "./internal/credential-redactor.js";
+export type {
+  RedactionRule,
+  SanitizedError,
+  SessionHeaderInput,
+} from "./internal/credential-redactor.js";
 
 export { InferenceProxyPool, parseProxyUrl } from "./llm/proxy-pool.js";
 export type {
