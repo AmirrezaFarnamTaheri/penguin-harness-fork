@@ -34,6 +34,30 @@ describe("structured server logging", () => {
     expect(Buffer.byteLength(lines[1]!, "utf8")).toBeLessThanOrEqual(4096);
   });
 
+  it("redacts token-named fields and token assignments without hiding token counters", () => {
+    const lines: string[] = [];
+    const logger = createStructuredLogger({ sink: (line) => lines.push(line) });
+    logger.info("refresh failed token=message-secret session_token=other-secret", {
+      token: "plain-token-secret",
+      authToken: "auth-token-secret",
+      headers: { "x-auth-token": "header-token-secret" },
+      tokenCount: 42,
+      maxTokens: 1024,
+    });
+
+    const record = JSON.parse(lines[0]!) as Record<string, unknown>;
+    const text = JSON.stringify(record);
+    for (const secret of [
+      "message-secret",
+      "other-secret",
+      "plain-token-secret",
+      "auth-token-secret",
+      "header-token-secret",
+    ])
+      expect(text).not.toContain(secret);
+    expect(record).toMatchObject({ tokenCount: 42, maxTokens: 1024 });
+  });
+
   it("turns one rejection into one bounded record when the primary logger sink fails", () => {
     const emitter = new EventEmitter();
     const emergency: string[] = [];

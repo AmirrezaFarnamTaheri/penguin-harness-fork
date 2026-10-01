@@ -43,8 +43,10 @@ const MAX_RECORD_LENGTH = 4096;
 const MAX_FIELD_STRING_LENGTH = 512;
 const SENSITIVE_ENV_NAME =
   /(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSPHRASE|PASSWD|CREDENTIAL|AUTHORIZATION|PRIVATE[_-]?KEY)/i;
+// Any key ending in `token` (token, authToken, x-auth-token, session_token) carries a credential;
+// counters such as `tokenCount` or `maxTokens` do not end in `token` and stay readable.
 const SENSITIVE_FIELD_NAME =
-  /(?:API[_-]?KEY|ACCESS[_-]?TOKEN|REFRESH[_-]?TOKEN|SECRET|PASSWORD|PASSPHRASE|PASSWD|CREDENTIAL|AUTHORIZATION|COOKIE|PRIVATE[_-]?KEY)/i;
+  /(?:API[_-]?KEY|ACCESS[_-]?TOKEN|REFRESH[_-]?TOKEN|SECRET|PASSWORD|PASSPHRASE|PASSWD|CREDENTIAL|AUTHORIZATION|COOKIE|PRIVATE[_-]?KEY)|TOKEN$/i;
 
 function knownSecretValues(): string[] {
   return Object.entries(process.env)
@@ -62,7 +64,7 @@ function redact(text: string): string {
   return result
     .replace(/(\b(?:authorization\s*[:=]\s*)?bearer\s+)[^\s,;]+/gi, "$1[REDACTED]")
     .replace(
-      /(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passphrase|passwd|secret|credential|private[_-]?key)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      /(\b(?:api[_-]?key|(?:access|refresh|auth|session|id|csrf)?[_-]?token|client[_-]?secret|password|passphrase|passwd|secret|credential|private[_-]?key)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
       "$1[REDACTED]",
     )
     .replace(/([a-z][a-z\d+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[REDACTED]@");
