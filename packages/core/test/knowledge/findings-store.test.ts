@@ -189,10 +189,10 @@ describe("scope-aware findings store", () => {
       const second = await s.read();
       expect(second.recovery!.quarantinePath).toBe(read.recovery!.quarantinePath);
       expect(await fs.readFile(read.recovery!.quarantinePath!, "utf8")).toBe(raw);
-      const quarantined = async () =>
-        (await fs.readdir(path.dirname(s.scope.filePath))).filter((entry) =>
-          entry.includes(".quarantine-"),
-        );
+      const quarantined = async () => {
+        const entries = await fs.readdir(path.dirname(s.scope.filePath));
+        return entries.filter((entry) => entry.includes(".quarantine-"));
+      };
       expect(await quarantined()).toHaveLength(1);
       // A tampered copy is never trusted as the preserved original.
       await fs.writeFile(read.recovery!.quarantinePath!, "tampered");

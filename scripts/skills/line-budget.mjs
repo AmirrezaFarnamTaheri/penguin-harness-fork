@@ -45,7 +45,8 @@ export function compareLineBudget(currentLines, baselineLines, limit = MAX_SKILL
 export function parseNameStatus(output) {
   const rows = output.split("\0");
   const entries = [];
-  for (let i = 0; i < rows.length; ) {
+  let i = 0;
+  while (i < rows.length) {
     const status = rows[i++];
     if (!status) continue;
     const first = rows[i++];
@@ -85,11 +86,8 @@ export async function runLineBudget(baseRef, reportPath) {
   if (!baseRef || /^0+$/.test(baseRef))
     throw new Error("Provide a non-zero base commit with SKILLS_BASE_REF.");
   git(["rev-parse", "--verify", `${baseRef}^{commit}`]);
-  const entries = parseNameStatus(
-    git(["diff", "--name-status", "-z", baseRef, "--", ".agents/skills/*/SKILL.md"]).toString(
-      "utf8",
-    ),
-  );
+  const diffArgs = ["diff", "--name-status", "-z", baseRef, "--", ".agents/skills/*/SKILL.md"];
+  const entries = parseNameStatus(git(diffArgs).toString("utf8"));
   let changed = 0;
   let grandfathered = 0;
   const failures = [];
@@ -100,9 +98,8 @@ export async function runLineBudget(baseRef, reportPath) {
     const currentLines = physicalLineCount(await fs.readFile(absolute, "utf8"));
     let baselineLines = 0;
     try {
-      baselineLines = physicalLineCount(
-        git(["show", `${baseRef}:${baselineFile}`]).toString("utf8"),
-      );
+      const baseline = git(["show", `${baseRef}:${baselineFile}`]).toString("utf8");
+      baselineLines = physicalLineCount(baseline);
     } catch (error) {
       // A new skill has no baseline entry. Other git/read failures must be visible.
       if (!String(error?.stderr ?? "").includes("does not exist in")) throw error;
