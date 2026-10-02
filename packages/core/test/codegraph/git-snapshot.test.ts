@@ -1,6 +1,14 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +21,17 @@ afterEach(() => {
   for (const repository of repositories.splice(0))
     rmSync(repository, { recursive: true, force: true });
 });
+
+function createBareRepository(): string {
+  const repository = mkdtempSync(path.join(os.tmpdir(), "penguin-git-snapshot-bare-"));
+  repositories.push(repository);
+  git(repository, "init", "--quiet", "--bare");
+  return repository;
+}
+
+function tag(repository: string, name: string, revision: string): void {
+  git(repository, "tag", name, revision);
+}
 
 function createRepository(): string {
   const repository = mkdtempSync(path.join(os.tmpdir(), "penguin-git-snapshot-"));
@@ -146,6 +165,124 @@ describe("GitSnapshotReader", () => {
     process.nextTick(() => controller.abort());
     await expect(read).rejects.toBeInstanceOf(GitSnapshotError);
     await expect(read).rejects.toMatchObject({ code: "interrupted" });
+  });
+
+  it("rejects an invalid revision with a typed error before spawning Git", async () => {
+    const repository = createRepository();
+    writeFileSync(path.join(repository, "file.ts"), "export const value = 1;\n");
+    const head = commit(repository, "base");
+    const reader = new GitSnapshotReader(repository);
+    await expect(reader.readPair("no-such-revision", head)).rejects.toMatchObject({
+      name: "GitSnapshotError",
+      code: "invalid-revision",
+      revision: "no-such-revision",
+    });
+    await expect(reader.readPair("a".repeat(1025), head)).rejects.toMatchObject({
+      code: "invalid-revision",
+    });
+    await expect(reader.readPair("bad\0revision", head)).rejects.toMatchObject({
+      code: "invalid-revision",
+    });
+    // The rejected reads did not disturb the repository.
+    expect(git(repository, "rev-parse", "HEAD").toString("ascii").trim()).toBe(head);
+  });
+
+  it("bounds the tree entry count with a typed snapshot-too-large error", async () => {
+    const repository = createRepository();
+    for (const name of ["a.ts", "b.ts", "c.ts"]) writeFileSync(path.join(repository, name), name);
+    const head = commit(repository, "three files");
+    await expect(
+      new GitSnapshotReader(repository, { maxEntries: 2 }).readPair(head, head),
+    ).rejects.toMatchObject({ name: "GitSnapshotError", code: "snapshot-too-large" });
+  });
+
+  it("bounds ls-tree output bytes with a typed snapshot-too-large error", async () => {
+    const repository = createRepository();
+    for (let index = 0; index < 40; index++) {
+      writeFileSync(path.join(repository, `file-${index}.ts`), `export const value = ${index};\n`);
+    }
+    const head = commit(repository, "many files");
+    // The stream bound is what fires here, not the entry count: 40 entries pass maxEntries, and
+    // the subprocess output exceeds the tree byte limit before the count is ever consulted.
+    await expect(
+      new GitSnapshotReader(repository, { maxEntries: 1000, maxTreeBytes: 64 }).readPair(
+        head,
+        head,
+      ),
+    ).rejects.toMatchObject({ name: "GitSnapshotError", code: "snapshot-too-large" });
+  });
+
+  it("ignores every inherited Git location/namespace override, not just GIT_DIR", async () => {
+    const repository = createRepository();
+    writeFileSync(path.join(repository, "file.ts"), "real content\n");
+    const base = commit(repository, "real base");
+    writeFileSync(path.join(repository, "file.ts"), "real head\n");
+    const head = commit(repository, "real head");
+    tag(repository, "snapshot-base", base);
+    tag(repository, "snapshot-head", head);
+
+    const decoy = createRepository();
+    writeFileSync(path.join(decoy, "file.ts"), "decoy content\n");
+    commit(decoy, "decoy");
+    const decoyObjects = path.join(decoy, ".git", "objects");
+    // Every override Git accepts for redirecting a read: with any one of them honoured, either
+    // the tag would not resolve (namespace) or the content/staging area would come from the decoy.
+    vi.stubEnv("GIT_DIR", path.join(decoy, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", decoy);
+    vi.stubEnv("GIT_COMMON_DIR", path.join(decoy, ".git"));
+    vi.stubEnv("GIT_INDEX_FILE", path.join(decoy, ".git", "index"));
+    vi.stubEnv("GIT_OBJECT_DIRECTORY", decoyObjects);
+    vi.stubEnv("GIT_ALTERNATE_OBJECT_DIRECTORIES", decoyObjects);
+    vi.stubEnv("GIT_NAMESPACE", "decoy-namespace");
+
+    const pair = await new GitSnapshotReader(repository).readPair("snapshot-base", "snapshot-head");
+    expect(pair.base.entries.get("file.ts")?.content.toString()).toBe("real content\n");
+    expect(pair.head.entries.get("file.ts")?.content.toString()).toBe("real head\n");
+    expect(pair.changes.map((change) => change.status)).toEqual(["modified"]);
+  });
+
+  it("reads a bare repository: no checkout, no worktree, no index needed", async () => {
+    const origin = createRepository();
+    writeFileSync(path.join(origin, "file.ts"), "export const value = 1;\n");
+    const base = commit(origin, "base");
+    writeFileSync(path.join(origin, "file.ts"), "export const value = 2;\n");
+    const head = commit(origin, "head");
+
+    // A clone without a worktree: the reader's whole contract is "committed objects only", so it
+    // must work with no files on disk and no index to consult.
+    const bare = createBareRepository();
+    git(origin, "push", "--quiet", bare, `${base}:refs/heads/base`, `${head}:refs/heads/head`);
+
+    const pair = await new GitSnapshotReader(bare).readPair("base", "head");
+    expect(pair.base.entries.get("file.ts")?.content.toString()).toBe("export const value = 1;\n");
+    expect(pair.head.entries.get("file.ts")?.content.toString()).toBe("export const value = 2;\n");
+    expect(pair.changes.map((change) => `${change.status}:${change.path}`)).toEqual([
+      "modified:file.ts",
+    ]);
+    // Nothing was checked out: the bare directory holds only Git's own files, and the revisions
+    // resolve by ref as well as by object id.
+    expect(existsSync(path.join(bare, "file.ts"))).toBe(false);
+    expect(readdirSync(bare)).toContain("objects");
+    const byObjectId = await new GitSnapshotReader(bare).readPair(base, head);
+    expect(byObjectId.changes.map((change) => change.status)).toEqual(["modified"]);
+  });
+
+  it("does not rewrite the index or the worktree of the repository it reads", async () => {
+    const repository = createRepository();
+    writeFileSync(path.join(repository, "file.ts"), "export const value = 1;\n");
+    const base = commit(repository, "base");
+    writeFileSync(path.join(repository, "file.ts"), "export const value = 2;\n");
+    const head = commit(repository, "head");
+    const indexPath = path.join(repository, ".git", "index");
+    const indexBefore = readFileSync(indexPath);
+    const statusBefore = git(repository, "status", "--porcelain=v1", "-z");
+
+    await new GitSnapshotReader(repository).readPair(base, head);
+
+    // `git status` refreshes stat information in the index; the reader is not allowed to: the
+    // index bytes and the porcelain output must both be exactly as they were.
+    expect(readFileSync(indexPath)).toEqual(indexBefore);
+    expect(git(repository, "status", "--porcelain=v1", "-z")).toEqual(statusBefore);
   });
 
   it("selects source files before fetching unrelated binary assets", async () => {
