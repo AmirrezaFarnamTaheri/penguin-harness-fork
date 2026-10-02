@@ -137,10 +137,27 @@ copy — never committed):
 
 ## CI
 
-Candidate head: the receipt commit on this branch. The exact-commit run will be created behind the
-branch's concurrency group, which is currently held by the stuck aggregate `ci` job recorded in
-[ci-repair-2026-10-02.md](ci-repair-2026-10-02.md#ci); historical run/job URLs stay in that
-receipt. E4 is `IMPLEMENTED`, not `VERIFIED`, until its own head has a required-check verdict.
+Candidate head `85b6799c`. The long-stuck aggregate `ci` job (run 37038239523) was cancelled at
+18:00:19 UTC, which released the branch concurrency group; the first exact-commit runs for this
+head then executed:
+
+- [37047995122](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37047995122)
+  (`CI`, head `85b6799c`): **19/20 jobs success**, including `typecheck`, `style (prettier)`,
+  `test (server)`, `test (rest)`, `test (core)`, `test (web-cli)`, both macOS server shards, all
+  four Windows server shards, `installer-e2e`, `installer-windows` and the three `runtime`
+  lanes. `e2e-browser` (job 110974077981, step "Browser e2e (Playwright + mock LLM)") failed
+  with exit 1 after ~8.5 minutes; the aggregate `ci` job then reported the failure.
+- [37047995309](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37047995309)
+  (`Skill Integrity`, head `85b6799c`): success.
+
+The browser lane's log is not retrievable from this environment (the Actions log download
+redirects to a host this sandbox cannot reach, and the check-run annotation carries only the exit
+code), so the failing spec is not yet identified. The lane has no retries and runs with
+`workers: 1`, i.e. one timing-sensitive expectation fails the whole job; the specs that exercise
+the cockpit stream mock the socket in the browser, so none of them can see the server-side
+durability changes directly. The lane is re-triggered on the follow-up docs head, and this row
+stays `IMPLEMENTED` rather than `VERIFIED` until an exact-commit browser verdict is green — see
+Residual work.
 
 ## Compatibility
 
@@ -173,4 +190,8 @@ receipt. E4 is `IMPLEMENTED`, not `VERIFIED`, until its own head has a required-
 - **Compaction changes the file's base.** After a rewrite the file may start above seq 1; a client
   older than the base is told `outside_replay_window` with `missed: null`. This is intended and
   documented, but it means the durable window is bounded by the file, not by the whole history.
-- Exact-commit CI gate remains pending (see CI).
+- **Exact-commit CI gate.** The first exact-commit run on this head is green in 19/20 lanes and
+  red in `e2e-browser` (exit 1, spec unidentified because the log is unreachable from this
+  environment). Reopen condition: a browser verdict on a head that contains this work; if the
+  lane is red again, the failing spec must be read from the run page (only the user or a
+  network-enabled environment can fetch the log) and fixed as its own package.
