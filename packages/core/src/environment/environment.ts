@@ -225,6 +225,12 @@ export class Environment implements EnvironmentInterface {
       ...(config.pathPrepend !== undefined ? { pathPrepend: config.pathPrepend } : {}),
       ...(config.confineSpawn !== undefined ? { confineSpawn: config.confineSpawn } : {}),
       workspaceDir: config.workspaceDir,
+      // The parent-death watchdog's pid file lives in the Session scratchpad (E10.1): the host
+      // already removes that directory with the Session, and its absence is the watchdog's own
+      // signal to exit, so nothing here outlives the Session.
+      ...(config.sessionScratchpadDir !== undefined
+        ? { guardianDir: config.sessionScratchpadDir }
+        : {}),
     });
     this.subagentSessions = new SubagentSessionManager();
     // Background-task liveness fans in from both registries and from the subagent run-state

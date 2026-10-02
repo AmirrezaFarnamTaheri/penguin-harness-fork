@@ -224,6 +224,7 @@ describe("TruncatedToolOutputArchive", () => {
     const first = new TruncatedToolOutputArchive({ rootDir: dir, fileLimitBytes: 64 });
     const recall = await first.saveRecallEntry("tool", "recall me later");
     expect(recall.status).toBe("saved");
+    if (recall.status !== "saved") throw new Error("recall entry was not saved");
     for (let index = 0; index < 3; index += 1) {
       const capture = first.startCapture();
       capture.append(`output-${index}`);

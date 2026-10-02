@@ -13,6 +13,16 @@ import { statSync } from "node:fs";
 import { ManagedSession } from "./session.js";
 import { prependPathEnv } from "./path-prepend.js";
 import { BackgroundRegistry } from "../background/index.js";
+import {
+  clearGuardedPids,
+  guardianPidFile,
+  guardianSupported,
+  parseGuardedPids,
+  readGuardedPids,
+  startParentDeathGuardian,
+  writeGuardedPids,
+  type ParentDeathGuardianHandle,
+} from "./parent-death-guardian.js";
 import type { ProxyEnvPolicy, SpawnConfiner } from "../../../interfaces/index.js";
 
 /** Concurrent managed-session cap: evicts once exceeded (exited sessions first, otherwise LRU — killing a background process has bounded cost). */
@@ -236,6 +246,19 @@ export class CommandSessionManager {
    * those fall back to the spawn cwd.
    */
   private readonly workspaceDir: string | undefined;
+  /**
+   * Session scratchpad directory used for the parent-death watchdog's pid file (E10.1). Absent
+   * means the watchdog is not started — a standalone embedder without a scratchpad keeps
+   * today's behavior, and the leak this guards against is documented rather than hidden.
+   */
+  private readonly guardianDir: string | undefined;
+  /** Test seam for the watchdog launch; production uses the real node child. */
+  private readonly guardianSpawn: typeof startParentDeathGuardian;
+  private guardian: ParentDeathGuardianHandle | null = null;
+  /** Group leader pids the watchdog is told to sweep; rewritten on every spawn/kill. */
+  private guardedPids = new Set<number>();
+  /** Sessions spawned but not yet registered, so the spawn→register window is never unguarded. */
+  private readonly pendingGuarded = new Map<ManagedSession, number>();
 
   constructor(opts?: {
     vault?: Record<string, string>;
@@ -244,6 +267,8 @@ export class CommandSessionManager {
     pathPrepend?: () => string[];
     confineSpawn?: () => SpawnConfiner | null;
     workspaceDir?: string;
+    guardianDir?: string;
+    guardianSpawn?: typeof startParentDeathGuardian;
   }) {
     this.vault = opts?.vault ?? {};
     this.proxyEnv = opts?.proxyEnv;
@@ -251,6 +276,8 @@ export class CommandSessionManager {
     this.pathPrepend = opts?.pathPrepend;
     this.confineSpawn = opts?.confineSpawn;
     this.workspaceDir = opts?.workspaceDir;
+    this.guardianDir = opts?.guardianDir;
+    this.guardianSpawn = opts?.guardianSpawn ?? startParentDeathGuardian;
     this.registry.onChange(() => this.changeListener?.());
   }
 
@@ -288,7 +315,7 @@ export class CommandSessionManager {
     const prepend = this.pathPrepend?.() ?? [];
     const hostEnv = prependPathEnv(hostEnvForChild(this.proxyEnv?.() ?? null), prepend);
     const confiner = this.confineSpawn?.() ?? null;
-    return new ManagedSession({
+    const running = new ManagedSession({
       cmd: opts.cmd,
       cwd: opts.cwd,
       ...(prepend.length > 0 ? { pathPrepend: prepend } : {}),
@@ -322,6 +349,58 @@ export class CommandSessionManager {
         ...HARDENED_ENV,
       },
     });
+    this.guardSession(running);
+    return running;
+  }
+
+  /**
+   * Hands one spawned session's process-group id to the Session's parent-death watchdog (E10.1).
+   * Called at spawn time, before registration, because the process is already running: the
+   * window between spawn and register must not be a window where a crash orphans it.
+   */
+  private guardSession(session: ManagedSession): void {
+    if (this.guardianDir === undefined || !guardianSupported()) return;
+    const pid = session.pid;
+    if (pid === null) return;
+    this.pendingGuarded.set(session, pid);
+    this.refreshGuardian();
+  }
+
+  /**
+   * Rewrites the watchdog's pid file from the live registry plus any session spawned since the
+   * last update, starting the watchdog on first use and stopping it once nothing is left to
+   * sweep. Synchronous on purpose: the file must never list a group the harness has already
+   * disposed of, nor omit one it has just started.
+   */
+  private refreshGuardian(): void {
+    if (this.guardianDir === undefined) return;
+    const registered = new Set<ManagedSession>();
+    const live = new Set<number>(this.pendingGuarded.values());
+    for (const { session } of this.list()) {
+      registered.add(session);
+      const pid = session.pid;
+      if (pid !== null) live.add(pid);
+    }
+    this.guardedPids = live;
+    // A session that is no longer pending once it is registered; one that left the registry
+    // without registering was removed or killed, and its refresh already dropped it here.
+    for (const session of [...this.pendingGuarded.keys()]) {
+      if (registered.has(session)) this.pendingGuarded.delete(session);
+    }
+    const pidFile = guardianPidFile(this.guardianDir);
+    if (live.size === 0) {
+      this.guardian?.stop();
+      this.guardian = null;
+      clearGuardedPids(pidFile);
+      return;
+    }
+    writeGuardedPids(pidFile, [...live]);
+    this.guardian ??= this.guardianSpawn({ pidFile });
+  }
+
+  /** The process-group ids the Session's watchdog would sweep; exposed for the host's own diagnostics. */
+  guardedProcessGroupIds(): number[] {
+    return [...this.guardedPids];
   }
 
   /** Registers a still-running session as a background process, allocating and returning a unique `process_id`. */
@@ -331,6 +410,7 @@ export class CommandSessionManager {
     // A registered process that exits on its own leaves the running set without leaving the
     // registry (its row stays listed as exited until removed), so the exit itself is reported.
     session.setExitListener(() => this.changeListener?.());
+    this.refreshGuardian();
     return id;
   }
 
@@ -342,6 +422,7 @@ export class CommandSessionManager {
   /** Removes from the registry and cleans up the process group (called after the session exits). */
   remove(processId: string): void {
     this.registry.remove(processId);
+    this.refreshGuardian();
   }
 
   /** Snapshot of the registered background command sessions (id + session), registration order. */
@@ -353,11 +434,19 @@ export class CommandSessionManager {
   kill(processId: string): boolean {
     if (this.registry.get(processId) === undefined) return false;
     this.registry.remove(processId);
+    this.refreshGuardian();
     return true;
   }
 
   /** Disposes: removes the fallback registration and kills all sessions (the process 'exit' fallback is hooked up by the registry itself). Idempotent. */
   dispose(): void {
+    // The registry kills every group synchronously; a watchdog left behind would only be a
+    // process with nothing to watch, so it is stopped and its file removed (E10.1).
     this.registry.dispose();
+    this.pendingGuarded.clear();
+    this.guardedPids = new Set();
+    this.guardian?.stop();
+    this.guardian = null;
+    if (this.guardianDir !== undefined) clearGuardedPids(guardianPidFile(this.guardianDir));
   }
 }

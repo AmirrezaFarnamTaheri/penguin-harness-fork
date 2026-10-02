@@ -316,9 +316,14 @@ export class ManagedSession {
   get stopRequested(): boolean {
     return this.killed;
   }
-  /** OS pid of the shell leading the process group; null when the spawn itself failed. */
+  /**
+   * OS pid of the shell leading the process group; null when the spawn itself failed.
+   *
+   * The pid IS the group id on POSIX (the detached spawn makes the shell a group leader), which
+   * is what `signalGroup` and the parent-death watchdog (E10.1) act on.
+   */
   get pid(): number | null {
-    return typeof this.child.pid === "number" ? this.child.pid : null;
+    return typeof this.child.pid === "number" && this.child.pid > 0 ? this.child.pid : null;
   }
   get exit(): ProcessExit | null {
     return this.exitInfo;
