@@ -113,6 +113,8 @@ export {
   redactCredentials,
   containsCredentials,
   redactObject,
+  redactTraceRecord,
+  redactTraceContent,
   REDACTED_MARKER,
   CREDENTIAL_RULES,
   LOGGABLE_SESSION_HEADERS,

@@ -240,6 +240,67 @@ export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T 
 }
 
 /**
+ * I1: deep-copy redaction for recorded diagnostic content — one Trace record, one API response
+ * entry, one export fragment.
+ *
+ * It is deliberately separate from {@link redactObject} in one respect: it also applies
+ * {@link maskEmail}. A Trace is model-authored text, and personal addresses reach it through
+ * tool output, prompts and arguments; those are identity-adjacent even when they are not
+ * credentials. Everything else shares the same rules — credential patterns inside every string,
+ * and whole-value removal for credential-named fields, so `{"apiKey":"..."}` (which the text
+ * rules cannot see, because the JSON quote sits between the name and the colon) is still
+ * redacted.
+ *
+ * The value returned is a copy: callers serialize the copy and keep the live object (a Session's
+ * config, a replay-critical `fidelity` blob) byte-identical. Redaction must never mutate the
+ * object it is protecting.
+ */
+export function redactTraceRecord<T>(record: T): T {
+  const sensitive = buildSensitiveFieldSet();
+  const visit = (value: unknown): unknown => {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") return maskEmail(redactCredentials(value));
+    if (typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map(visit);
+    const copy: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      copy[key] = isSensitiveField(key, sensitive) ? redactSensitiveValue(child) : visit(child);
+    }
+    return copy;
+  };
+  return visit(record) as T;
+}
+
+/**
+ * I1: JSONL-level redaction for Trace download/export.
+ *
+ * Line-preserving on purpose. A line that needs no redaction is emitted byte-for-byte as it was
+ * read (whitespace, key order, number formatting), so an export of ordinary content is still the
+ * file's content and re-imports exactly; only a line that actually carries a credential, an
+ * address or a credential-named field is re-serialized from its redacted copy. A line that is
+ * not JSON at all (a torn tail) is still passed through the text rules rather than returned raw.
+ */
+export function redactTraceContent(content: string): string {
+  if (!content || typeof content !== "string") return content;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (line === "") return line;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return maskEmail(redactCredentials(line));
+      }
+      const redacted = redactTraceRecord(parsed);
+      const before = JSON.stringify(parsed);
+      const after = JSON.stringify(redacted);
+      return after === before ? line : after;
+    })
+    .join("\n");
+}
+
+/**
  * Session/request headers whose values are routine protocol metadata and may be recorded in
  * logs, traces and exports. This is an allowlist on purpose: every other header value is
  * replaced in full, so a vendor credential header nobody has named yet still fails closed.

@@ -4,6 +4,8 @@ import {
   REDACTED_MARKER,
   maskEmail,
   redactSessionHeaders,
+  redactTraceContent,
+  redactTraceRecord,
   sanitizeErrorForLog,
 } from "../src/internal/credential-redactor.js";
 
@@ -146,5 +148,69 @@ describe("I1 sanitizeErrorForLog", () => {
       message: `api_key=${REDACTED_MARKER}`,
     });
     expect(sanitizeErrorForLog(undefined)).toEqual({ name: "NonError", message: "undefined" });
+  });
+});
+
+describe("I1 trace/export redaction", () => {
+  it("redacts credential variants and addresses inside recorded records, by value and by field", () => {
+    const record = {
+      timestamp: "2026-10-02T00:00:00.000Z",
+      type: "event_msg",
+      payload: {
+        type: "tool_call",
+        // A JSON-quoted credential-named field: the text rules cannot see through the quote
+        // between the name and the colon, so only the structural pass catches this one.
+        apiKey: "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        headers: "Authorization: Basic dXNlcjpwYXNzd29yZA==\r\nX-Trace: keep",
+        url: "https://user:sup3r-secret@internal.test/v1",
+        note: "contact ops@example.com or rotate the password=hunter2-swordfish",
+        nested: [{ access_token: "opaque-token-value" }, "Bearer abcdefghijklmnopqrstuvwxyz"],
+        // Non-secret fields must survive: a viewer still has to be able to read the Trace.
+        model_id: "m",
+        status: "completed",
+        durationMs: 12,
+        tool_name: "read_file",
+        key: "ordinary-map-key",
+      },
+    };
+
+    const safe = redactTraceRecord(record);
+    const text = JSON.stringify(safe);
+    expect(text).not.toContain("sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    expect(text).not.toContain("dXNlcjpwYXNzd29yZA==");
+    expect(text).not.toContain("sup3r-secret");
+    expect(text).not.toContain("hunter2-swordfish");
+    expect(text).not.toContain("opaque-token-value");
+    expect(text).not.toContain("abcdefghijklmnopqrstuvwxyz");
+    expect(text).not.toContain("ops@example.com");
+    expect(text).toContain("o***@example.com");
+    // Structure and safe detail survive; the source object is untouched.
+    expect(safe.payload).toMatchObject({
+      model_id: "m",
+      status: "completed",
+      durationMs: 12,
+      tool_name: "read_file",
+    });
+    expect(Array.isArray((safe.payload as { nested: unknown[] }).nested)).toBe(true);
+    // The documented trade-off: the shared field rule fails closed on a bare `key`, so a
+    // non-secret field with that exact name is redacted in diagnostics. That is the price of
+    // never emitting `{"key": "<credential>"}`; dashboards should name fields descriptively.
+    expect((safe.payload as { key: unknown }).key).toBe(REDACTED_MARKER);
+    expect(record.payload.apiKey).toBe("sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    expect(record.payload.note).toContain("hunter2-swordfish");
+  });
+
+  it("preserves clean JSONL lines byte-for-byte and only re-serializes changed ones", () => {
+    const clean = JSON.stringify({ a: 1, text: "plain", list: [1, 2, 3] });
+    const dirty = JSON.stringify({ password: "value-of-secret" });
+    const torn = '{"a":1,"torn"';
+    const content = `${clean}\n${dirty}\n${torn}\n`;
+    const safe = redactTraceContent(content);
+    const lines = safe.split("\n");
+    expect(lines[0]).toBe(clean);
+    expect(lines[1]).not.toContain("value-of-secret");
+    expect(JSON.parse(lines[1]!)).toEqual({ password: REDACTED_MARKER });
+    expect(lines[2]).toBe(torn);
+    expect(lines[3]).toBe("");
   });
 });
