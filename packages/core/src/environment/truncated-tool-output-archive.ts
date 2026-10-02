@@ -665,20 +665,29 @@ export class TruncatedToolOutputArchive {
       return false;
     }
     const byName = new Map(entries.map((entry) => [entry.name, entry]));
+    let removed = 0;
     for (const name of plan.drops) {
       const entry = byName.get(name);
       if (entry === undefined) continue;
       try {
         await unlink(entry.path);
-      } catch {
-        // Another writer (or the host's Session deletion) won the race: the bound is served
-        // either way, and the file is gone.
+      } catch (error) {
+        // Only ENOENT means another writer (or the host's Session deletion) already removed the
+        // file, in which case the bound is served and the entry counts as dropped. Anything else
+        // -- EACCES, EPERM, EBUSY -- leaves the file on disk, so counting it would lower
+        // `totalBytes`/`count` for a file that is still there and let `makeRoomFor` report room
+        // that does not exist, and the drop log would name a file a reader can still open.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
       }
+      removed += 1;
       this.archiveDropped.push({ name: entry.name, reason: "capacity", at: this.now() });
       while (this.archiveDropped.length > RECALL_DROPPED_LOG_LIMIT) this.archiveDropped.shift();
     }
     await this.persistPruneFrontier();
-    return plan.decision === "fits" || plan.decision === "drop";
+    // Room exists only if the plan's drops actually happened. A file the operating system would
+    // not let go of is still consuming the bound, so reporting "made room" would let the caller
+    // write past `maxEntries`/`maxTotalBytes` while the drop log named a file that is still there.
+    return plan.decision === "fits" || removed === plan.drops.length;
   }
 
   /** Loads a persisted frontier once; a missing or corrupt one is simply a fresh frontier. */

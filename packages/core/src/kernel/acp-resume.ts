@@ -32,10 +32,12 @@
  *
  * Eviction of *unacknowledged* records is real loss, and it is never silent: the log counts
  * every evicted record (`droppedRecords`), remembers the highest seq it evicted
- * (`droppedBeforeSeq`), and answers any resume whose cursor fell at or below that watermark
- * with `fresh`/`expired`. The caller then asks for an authoritative snapshot instead of
- * receiving a suffix that would look continuous. A single record larger than `maxBytes` can
- * never be retained and is dropped the same way, at once.
+ * (`droppedBeforeSeq`), and answers any resume whose cursor fell *below* that watermark with
+ * `fresh`/`expired`. A cursor sitting exactly on the watermark is still served: a consumer at
+ * seq N has everything up to N, so it is missing nothing and needs no snapshot. The caller
+ * whose cursor is below it asks for an authoritative snapshot instead of receiving a suffix
+ * that would look continuous. A single record larger than `maxBytes` can never be retained and
+ * is dropped the same way, at once.
  *
  * Ack timing belongs to the consumer: acknowledge once 64 records are pending or every
  * 250 ms, whichever comes first, and always immediately before a reconnect. Acks are
@@ -197,7 +199,7 @@ export class AcpReplayLog {
     return this.evicted;
   }
 
-  /** Highest evicted seq; a resume at or below it cannot be served. */
+  /** Highest evicted seq; a resume *below* it cannot be served (at it, nothing is missing). */
   get droppedBeforeSeq(): number {
     return this.evictedThrough;
   }

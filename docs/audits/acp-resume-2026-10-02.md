@@ -46,8 +46,8 @@ stream is refused without changing state.
 
 **Expiry and old generations.** Acknowledged records are dropped at once (an ack is
 processing evidence). Evicting an unacknowledged record is counted (`droppedRecords`), and the
-highest evicted seq is remembered (`droppedBeforeSeq`). A resume whose cursor falls at or
-below that watermark — or whose cursor is malformed, foreign, or ahead of anything produced —
+highest evicted seq is remembered (`droppedBeforeSeq`). A resume whose cursor falls below
+that watermark — or whose cursor is malformed, foreign, or ahead of anything produced —
 is answered with `fresh` and a reason (`expired`, `unknown-stream`, `unknown-cursor`,
 `no-cursor`). A short suffix is never substituted for a lost prefix. A record larger than the
 byte bound is dropped immediately and counted the same way, so the hole is at the record's own

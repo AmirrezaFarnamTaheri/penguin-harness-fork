@@ -67,7 +67,7 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "aws_secret_key",
-    pattern: /((?:aws_secret_access_key|aws_secret_key)\s*[:=]\s*)[A-Za-z0-9/+=]{40}/gi,
+    pattern: /((?:aws_secret_access_key|aws_secret_key)"?\s*[:=]\s*)[A-Za-z0-9/+=]{40}/gi,
     replace: (_match, prefix) => `${prefix}${REDACTED_MARKER}`,
   },
   {
@@ -84,7 +84,10 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   {
     name: "generic_assignment",
     pattern:
-      /((?:api[_-]?key|api[_-]?secret|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*)("(?:[^"\\]|\\.){8,}"|'(?:[^'\\]|\\.){8,}'|[^\s"';,]{8,})/gi,
+      // `"?` after the name is what makes a JSON-serialized assignment match at all: the field
+      // name is followed by its closing quote (`"apiKey":"..."`), and without it the rules see
+      // `apiKey"` and fail, which is exactly the shape a torn JSONL tail has.
+      /((?:api[_-]?key|api[_-]?secret|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)"?\s*[:=]\s*)("(?:[^"\\]|\\.){8,}"|'(?:[^'\\]|\\.){8,}'|[^\s"';,]{8,})/gi,
     replace: (_match, prefix: string, value: string) => {
       const head = value[0];
       if (head !== '"' && head !== "'") return `${prefix}${REDACTED_MARKER}`;
@@ -264,7 +267,17 @@ export function redactTraceRecord<T>(record: T): T {
     if (Array.isArray(value)) return value.map(visit);
     const copy: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      copy[key] = isSensitiveField(key, sensitive) ? redactSensitiveValue(child) : visit(child);
+      // The key is content too: a Trace record can carry `"Authorization: Bearer …"` as a field
+      // name, and redacting only the value would leave the credential in the exported event.
+      // Redacting a key can collide with another, so a collision keeps both under a suffix
+      // rather than silently dropping one.
+      let safeKey = maskEmail(redactCredentials(key));
+      if (safeKey !== key) {
+        let suffix = 2;
+        while (Object.hasOwn(copy, safeKey))
+          safeKey = `${maskEmail(redactCredentials(key))}#${suffix++}`;
+      }
+      copy[safeKey] = isSensitiveField(key, sensitive) ? redactSensitiveValue(child) : visit(child);
     }
     return copy;
   };

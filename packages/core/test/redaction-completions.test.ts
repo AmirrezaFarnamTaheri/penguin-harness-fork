@@ -200,6 +200,44 @@ describe("I1 trace/export redaction", () => {
     expect(record.payload.note).toContain("hunter2-swordfish");
   });
 
+  it("redacts a credential that appears in a field name, not just in a value", () => {
+    const record = {
+      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz": "carried as a key",
+      "ops@example.com": "carried as a key as well",
+      kept: { "sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA": 1 },
+    };
+    const safe = redactTraceRecord(record);
+    const text = JSON.stringify(safe);
+    // The key is content: redacting the value alone would still export the credential.
+    expect(text).not.toContain("abcdefghijklmnopqrstuvwxyz");
+    expect(text).not.toContain("ops@example.com");
+    expect(text).not.toContain("sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    expect(Object.keys(safe)).toContain("kept");
+    // Two different keys that redact to the same name both survive, under distinct names. The
+    // keys are not credential-shaped themselves (so their values pass through), but both mask to
+    // the same address -- which is the collision the suffix exists for.
+    const colliding = redactTraceRecord({
+      "contact ops@example.com": 1,
+      "contact ops@example.com ": 2,
+    });
+    expect(Object.keys(colliding)).toHaveLength(2);
+    expect(Object.values(colliding).sort()).toEqual([1, 2]);
+    expect(Object.keys(colliding).every((key) => key.includes("o***@example.com"))).toBe(true);
+  });
+
+  it("redacts a quoted credential field in a torn JSONL tail", () => {
+    // The line never parses, so the object path cannot help: this is the text path's job, and a
+    // JSON-quoted field name (`"apiKey":`) puts a quote between the name and the colon.
+    const torn = '{"apiKey":"my-secret-value",';
+    const safe = redactTraceContent(`${torn}\n`);
+    expect(safe).not.toContain("my-secret-value");
+    expect(safe).toContain("<redacted>");
+    // The same shape inside a complete line still works, and a quoted AWS secret too.
+    expect(
+      redactTraceContent('{"aws_secret_access_key":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd"}'),
+    ).not.toContain("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd");
+  });
+
   it("preserves clean JSONL lines byte-for-byte and only re-serializes changed ones", () => {
     const clean = JSON.stringify({ a: 1, text: "plain", list: [1, 2, 3] });
     const dirty = JSON.stringify({ password: "value-of-secret" });
