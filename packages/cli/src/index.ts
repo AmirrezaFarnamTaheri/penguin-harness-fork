@@ -25,6 +25,13 @@ import { registerServeCommands } from "./commands/serve.js";
 import { registerUpdateCommand } from "./commands/update.js";
 import { registerVersionCommand } from "./commands/version.js";
 import { reportCommanderError } from "./usage-error.js";
+import {
+  applyHelpMode,
+  HELP_MODE_FLAG,
+  helpModeFromArgv,
+  helpWidth,
+  isMalformedHelpMode,
+} from "./help-modes.js";
 import { defaultMessages } from "./i18n.js";
 
 /**
@@ -34,6 +41,14 @@ import { defaultMessages } from "./i18n.js";
  */
 export async function cli(argv: string[]): Promise<number> {
   const t = defaultMessages();
+  // H5: a malformed `--help-mode` is a typed-wrong command line, so it takes the same localized
+  // sentence + usage path as every other usage error (and never echoes the value back).
+  const requested = helpModeFromArgv(argv);
+  if (isMalformedHelpMode(requested.raw)) {
+    process.stderr.write(`${t.error(t.help.invalidMode())}\n`);
+    process.stderr.write(`${t.usage.hint("penguin", "[options] [command]")}\n`);
+    return 1;
+  }
   const program = new Command();
   program
     .name("penguin")
@@ -42,6 +57,9 @@ export async function cli(argv: string[]): Promise<number> {
     // disagree. Commander stores it eagerly, which costs a source build its two git calls on
     // every startup; a release build reads stamped constants and spawns nothing.
     .version(buildInfo().describe, "-v, --version", t.versionDesc)
+    // The mode flag is registered as a real option so it appears in help and commander owns its
+    // parsing/validation surface; the *rendering* decision is made before parse (see below).
+    .option(`${HELP_MODE_FLAG} <mode>`, t.help.modeDesc)
     .exitOverride()
     // Commander writes its English `error: ...` line before throwing; drop that channel
     // and report the failure localized from the catch below (see usage-error.ts). Both
@@ -70,6 +88,10 @@ export async function cli(argv: string[]): Promise<number> {
   program.action(() => {
     program.outputHelp();
   });
+
+  // Tiered help (H5): configure the whole tree before commander parses, because `--help` writes
+  // its output and exits from inside the parse. The width is the terminal's, clamped.
+  applyHelpMode(program, requested.mode, helpWidth(process.stdout.columns), t);
 
   const priorExitCode = process.exitCode;
   process.exitCode = undefined;

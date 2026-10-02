@@ -26,6 +26,20 @@ export function resolveLanguage(): Language {
 }
 
 export interface Messages {
+  /** Tiered help (H5): the three modes and the width policy live in help-modes.ts. */
+  help: {
+    modeDesc: string;
+    usageLabel: string;
+    commandsLabel: string;
+    subcommandsLabel: string;
+    optionsLabel: string;
+    /** Options declared on ancestor commands, shown in `full` where a subcommand accepts them. */
+    globalOptionsLabel: string;
+    /** Shown at the end of the concise inventories: where the rest of the commands are. */
+    moreCommands: string;
+    /** A `--help-mode` value that is not simple/default/full. Never echoes the value. */
+    invalidMode(): string;
+  };
   // —— Command/option help descriptions ——
   cliDescription: string;
   versionDesc: string;
@@ -857,6 +871,16 @@ function headerZh(
 }
 
 const en: Messages = {
+  help: {
+    modeDesc: "help detail: simple, default, or full",
+    usageLabel: "Usage:",
+    commandsLabel: "Commands:",
+    subcommandsLabel: "Subcommands:",
+    optionsLabel: "Options:",
+    globalOptionsLabel: "Global options:",
+    moreCommands: "Run `penguin --help-mode full` for every command and option.",
+    invalidMode: () => "help mode must be one of: simple, default, full",
+  },
   cliDescription: "PenguinHarness CLI",
   versionDesc: "output the version number",
   common: {
@@ -1657,6 +1681,16 @@ const en: Messages = {
 };
 
 const zh: Messages = {
+  help: {
+    modeDesc: "帮助详细程度：simple、default 或 full",
+    usageLabel: "用法：",
+    commandsLabel: "命令：",
+    subcommandsLabel: "子命令：",
+    optionsLabel: "选项：",
+    globalOptionsLabel: "全局选项：",
+    moreCommands: "运行 `penguin --help-mode full` 查看全部命令与选项。",
+    invalidMode: () => "帮助模式必须是 simple、default 或 full 之一",
+  },
   cliDescription: "PenguinHarness CLI",
   versionDesc: "输出版本号",
   common: {

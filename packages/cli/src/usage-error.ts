@@ -102,8 +102,19 @@ function commandOptions(command: Command): string[] {
 
 function unknownCommandToken(program: Command, argv: string[]): string | undefined {
   let current = program;
-  for (const token of argv) {
-    if (token.startsWith("-")) continue;
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index]!;
+    if (token.startsWith("-")) {
+      // A registered flag that takes a value consumes the next token: `--help-mode simple` must
+      // not make "simple" the unknown command, or the real typo after it loses its suggestion.
+      const inlineValue = token.includes("=");
+      const option = optionForCommand(current, token.split("=", 1)[0]!);
+      if (!inlineValue && option !== undefined) {
+        const value = argv[index + 1];
+        if (value !== undefined && (option.required || !value.startsWith("-"))) index += 1;
+      }
+      continue;
+    }
     const child = current.commands.find(
       (candidate) => candidate.name() === token || candidate.aliases().includes(token),
     );

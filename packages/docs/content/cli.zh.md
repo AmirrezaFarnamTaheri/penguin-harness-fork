@@ -27,6 +27,7 @@ CLI 是服务端的瘦客户端：所有会话相关命令（`run`、`chat`、`l
 - `--json` 输出原始 JSON 而非渲染 / 表格形式；`--server <url>` 指定目标服务器（见上）。
 - 调用方上下文缺省值：在 harness Agent 内部（环境里存在 `PENGUIN_SESSION_ID`）时，`run` / `chat` 新建会话的每个**未指定**字段都缺省取调用方会话的实时值——Workspace、模型对、审批模式与思考等级——与 `run_subagent` 派生子会话的继承是同一条约定，两个入口因此读作一套规则。逐字段优先级为显式选项 > 调用方值 > 普通缺省；查询失败打印一行暗色警告并回落普通缺省；不在 Agent 内时一切不变。（`--project-id` / `--agent-id` 保持上文的环境变量缺省。）
 - `--timeout <duration>`（`run`、`input` 与 `logs -f` 上）以软让出语义限定等待——即 `exec_command` yield 窗口的模型应用在 CLI 的等待上：到时命令干净脱开并以 0 退出，任务继续在服务端运行，之后可用 `penguin input` / `penguin logs` 接续。接受形式：`30s`、`5m`、`2h`，或表示秒数的纯整数；其余形式一律拒绝。`--timeout 0` 是窗口的退化形式——送达后立即返回（`--json` 下为 `{sessionId, status: "running"}`）：一个旋钮同时覆盖「不等待」。不带该选项 = 无限等待。（`run --background` 仍是**新建任务**的惯用「发完即走」：它为脚本打印裸 session id，在创建时刻即脱开。）
+- 帮助有三个深度。`penguin --help` 打印默认清单：一次普通会话会用到的命令，外加 `-h, --help`、`-v, --version` 与 `--help-mode`——由于说明按整词缩短、绝不截断单词，窄终端下也保持简短。`--help-mode simple` 进一步收窄到入门子集（`auth`、`server`、`chat`、`run`、`logs`、`recall`、`version`）；`--help-mode full` 展示全部已注册命令（含别名）与全部全局选项，在子命令页上还会列出该命令可接受的祖先选项。命令清单取自实时注册表——新增命令即便未分级也仍会出现在默认与 full 清单中，而不会消失；取值不属于这三种模式时，按普通用法错误处理。`--help`、裸 `penguin` 与 `-v, --version` 均以 0 退出。
 - 参数错误按界面语言呈现：缺少参数、缺少必填选项、未知选项或命令拼错时，打印一行本地化说明，附上该命令自身的用法与 `--help` 指引，并以非零码退出。
 - 数据根目录（仅 `config`）：`--root <dir>` 覆盖数据根目录，优先级为 `--root` > 环境变量 `PENGUIN_HOME` > `~/.penguin/data`。
 
