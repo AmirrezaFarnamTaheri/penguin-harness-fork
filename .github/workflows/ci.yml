@@ -61,6 +61,15 @@ jobs:
           node scripts/check-actions-pins.mjs
           node --test scripts/check-actions-pins.test.mjs
 
+      # J4: the scheduled retry:0 lane (flake-lane.yml) is only a guarantee if nothing can turn
+      # its retries back on — the required lanes absorb first-attempt failures on purpose, so this
+      # is the one place a flake must show up red. The checker refuses an inherited retry, a shell
+      # re-run, a dropped repetition pin and a missing artifact step.
+      - name: Flake lane (retry zero)
+        run: |
+          node scripts/check-flake-lane.mjs
+          node --test scripts/check-flake-lane.test.mjs
+
       # The published benchmark claims are consistent with both blog tables but not
       # certified by run artifacts, so every row carries a `provisional` flag and the gate
       # reports each suite as a warning instead of blocking. That is the only green state

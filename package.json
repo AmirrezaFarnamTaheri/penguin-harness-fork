@@ -46,7 +46,8 @@
     "dev:landing": "node scripts/dev-prebuild.mjs --install-only && pnpm --filter @prismshadow/penguin-landing dev",
     "build:site": "node scripts/build-site.mjs",
     "desktop": "pnpm -r build && node scripts/run-with-env.mjs PENGUIN_HOME=~/.penguin/dev-data -- pnpm --dir packages/desktop start",
-    "check:actions-pins": "node scripts/check-actions-pins.mjs"
+    "check:actions-pins": "node scripts/check-actions-pins.mjs",
+    "check:flake-lane": "node scripts/check-flake-lane.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
