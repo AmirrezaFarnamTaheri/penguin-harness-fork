@@ -13,7 +13,7 @@ jobs:
     environment:
       name: oss-staging
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
 
       - name: Validate OSS environment configuration
         env:
@@ -40,7 +40,7 @@ jobs:
 
       - name: Exchange GitHub OIDC token for Alibaba Cloud credentials
         id: aliyun
-        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1.1.0
         with:
           oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
           role-to-assume: ${{ vars.ALIYUN_ROLE_ARN }}

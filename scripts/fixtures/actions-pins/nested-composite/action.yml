@@ -1,0 +1,10 @@
+# A composite action is scanned exactly like a workflow: the ref it uses runs with the caller's
+# token, so a mutable ref hidden one level down is the same risk as one at the top.
+name: Nested composite
+description: Fixture — a composite action whose nested external ref is mutable.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+    - run: echo nested
+      shell: bash

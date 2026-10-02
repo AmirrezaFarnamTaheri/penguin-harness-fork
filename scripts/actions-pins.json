@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "note": "J2 allow-list: every external action this repository may use, with the commit its tag resolved to at pinning time. Update procedure: resolve the new tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (dereference annotated tags via git/tags/<sha>), replace the pin and its comment in the workflow, then update this entry in the same PR \u2014 the scanner rejects a pin that disagrees with the list.",
+  "actions": {
+    "actions/checkout": {
+      "tag": "v5.0.0",
+      "commit": "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+      "verified": "gh api repos/actions/checkout/git/ref/tags/v5"
+    },
+    "actions/setup-node": {
+      "tag": "v5.0.0",
+      "commit": "a0853c24544627f65ddf259abe73b1d18a591444",
+      "verified": "gh api repos/actions/setup-node/git/ref/tags/v5"
+    },
+    "actions/upload-artifact": {
+      "tag": "v4.6.2",
+      "commit": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "verified": "gh api repos/actions/upload-artifact/git/ref/tags/v4"
+    },
+    "actions/download-artifact": {
+      "tag": "v4.3.0",
+      "commit": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "verified": "gh api repos/actions/download-artifact/git/ref/tags/v4"
+    },
+    "actions/cache": {
+      "tag": "v4.3.0",
+      "commit": "0057852bfaa89a56745cba8c7296529d2fc39830",
+      "verified": "gh api repos/actions/cache/git/ref/tags/v4"
+    },
+    "actions/upload-pages-artifact": {
+      "tag": "v3.0.1",
+      "commit": "56afc609e74202658d3ffba0e8f6dda462b719fa",
+      "verified": "gh api repos/actions/upload-pages-artifact/git/ref/tags/v3"
+    },
+    "actions/deploy-pages": {
+      "tag": "v4.0.5",
+      "commit": "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
+      "verified": "gh api repos/actions/deploy-pages/git/ref/tags/v4"
+    },
+    "pnpm/action-setup": {
+      "tag": "v6",
+      "commit": "0977fd99725f1db4007ccb2928dbb4e90d06cc86",
+      "verified": "gh api repos/pnpm/action-setup/git/ref/tags/v6"
+    },
+    "docker/setup-buildx-action": {
+      "tag": "v3.10.0",
+      "commit": "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f",
+      "verified": "gh api repos/docker/setup-buildx-action/git/ref/tags/v3"
+    },
+    "docker/build-push-action": {
+      "tag": "v6.18.0",
+      "commit": "10e90e3645eae34f1e60eeb005ba3a3d33f178e8",
+      "verified": "gh api repos/docker/build-push-action/git/ref/tags/v6"
+    },
+    "docker/setup-qemu-action": {
+      "tag": "v3.6.0",
+      "commit": "c7c53464625b32c7a7e944ae62b3e17d2b600130",
+      "verified": "gh api repos/docker/setup-qemu-action/git/ref/tags/v3"
+    },
+    "docker/login-action": {
+      "tag": "v3.4.0",
+      "commit": "c94ce9fb468520275223c153574b00df6fe4bcc9",
+      "verified": "gh api repos/docker/login-action/git/ref/tags/v3"
+    },
+    "docker/metadata-action": {
+      "tag": "v5.8.0",
+      "commit": "c299e40c65443455700f0fdfc63efafe5b349051",
+      "verified": "gh api repos/docker/metadata-action/git/ref/tags/v5"
+    },
+    "softprops/action-gh-release": {
+      "tag": "v3",
+      "commit": "efb35369e0ad2afab669f228072c1b0d510eae64",
+      "verified": "gh api repos/softprops/action-gh-release/git/ref/tags/v3"
+    },
+    "aliyun/configure-aliyun-credentials-action": {
+      "tag": "v1.1.0",
+      "commit": "1e5248c8d5d93a8781ac344a68e19a43341e79e6",
+      "verified": "gh api repos/aliyun/configure-aliyun-credentials-action/git/refs/tags -> refs/tags/v1.1.0 == the pinned commit"
+    }
+  },
+  "permissions": {
+    "note": "J2 permission allow-list. A workflow must declare permissions; every `*: write` scope it declares must be named here. Adding a write scope is a deliberate act recorded in review, not a side effect of a workflow edit.",
+    "writeScopes": {
+      "oss-staging.yml": ["id-token:write"],
+      "pages.yml": ["pages:write", "id-token:write"],
+      "release.yml": ["contents:write", "id-token:write"]
+    }
+  }
+}

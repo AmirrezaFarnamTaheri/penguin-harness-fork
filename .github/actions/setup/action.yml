@@ -25,7 +25,7 @@ runs:
     # which is most of what replacing pnpm/action-setup was meant to save. Cache what it
     # unpacks, keyed on the packageManager pin, and the fetch happens once per pin per OS.
     - name: Cache corepack's pnpm
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: |
           ~/.cache/node/corepack
@@ -42,7 +42,7 @@ runs:
         # so a download failure surfaces here rather than inside an unrelated step.
         pnpm --version
 
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
       with:
         node-version: 24
         cache: pnpm
