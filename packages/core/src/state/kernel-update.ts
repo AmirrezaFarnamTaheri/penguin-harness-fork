@@ -22,7 +22,6 @@
  * mechanism as the config PUT); finally the config is stamped `kernel_version: KERNEL_VERSION`.
  */
 import fs from "node:fs/promises";
-import { parseDocument, parse as parseYaml } from "yaml";
 import { atomicWriteFile } from "../internal/atomic-write.js";
 import { defaultSystemConfig } from "./default-config.js";
 import {
@@ -37,6 +36,12 @@ import {
   type KernelTab,
 } from "./kernel-history.js";
 import { assertValidId } from "./agent-state.js";
+import {
+  applyYamlEdits,
+  parseYamlForEdit,
+  yamlEditRefusalMessage,
+  type YamlEdit,
+} from "./yaml-edit.js";
 import { systemConfigPath } from "./paths.js";
 
 /** Outcome of a kernel update, tab keys in the settings page's tab order (see KERNEL_TABS). */
@@ -74,37 +79,20 @@ export async function applyKernelUpdate(
   } catch {
     throw new Error(`Agent State config not found: ${configPath} (the Agent does not exist).`);
   }
-  const parsed = parseYaml(raw) as unknown;
+  // The edit path is core's safe-YAML adapter (H2): it refuses duplicate keys, malformed syntax,
+  // an unexpected root type and unwritable paths *before* anything is touched, and preserves the
+  // document's comments, indentation width and sequence style on success.
+  const loaded = parseYamlForEdit(raw);
+  if (!loaded.ok) {
+    throw new Error(`Cannot update ${configPath}: ${yamlEditRefusalMessage(loaded.refusal)}`);
+  }
+  const parsed = loaded.document.toJS() as unknown;
   const stored = isPlainObject(parsed) ? parsed : {};
-  const doc = parseDocument(raw);
+  const edits: YamlEdit[] = [];
 
   const superseded = options?.supersededTabs ?? KERNEL_SUPERSEDED_TAB_HASHES;
   const advanced: KernelTab[] = [];
   const kept: KernelTab[] = [];
-
-  /**
-   * setIn that tolerates an invalid intermediate node — a hand-edited dangling `tools:` key
-   * parses as null, and `doc.setIn(["tools", …])` would throw "Expected YAML collection" on
-   * it. Such a section is effectively missing on the read side (the tab reads absent and gets
-   * materialized), so it is replaced by a map first — once, tracked so a later write to the
-   * same section does not wipe the earlier one.
-   */
-  const replacedSections = new Set<string>();
-  const setDeep = (segments: string[], value: unknown): void => {
-    for (let i = 1; i < segments.length; i++) {
-      const ancestor = segments.slice(0, i);
-      const key = ancestor.join(".");
-      if (replacedSections.has(key)) continue;
-      const existing = valueAtPath(stored, ancestor);
-      if (existing !== undefined && !isPlainObject(existing)) {
-        // createNode: a bare `{}` would be stored verbatim as a JS object, not a YAMLMap,
-        // and the child setIn below would still throw.
-        doc.setIn(ancestor, doc.createNode({}));
-        replacedSections.add(key);
-      }
-    }
-    doc.setIn(segments, value);
-  };
 
   const defaults = defaultSystemConfig();
 
@@ -121,12 +109,17 @@ export async function applyKernelUpdate(
     for (const path of KERNEL_TABS[tab]) {
       const segments = path.split(".");
       const value = valueAtPath(defaults, segments);
-      if (value !== undefined) setDeep(segments, value);
+      if (value !== undefined) edits.push({ path: segments, value });
     }
     advanced.push(tab);
   }
 
-  doc.setIn(["kernel_version"], KERNEL_VERSION);
-  await atomicWriteFile(configPath, doc.toString(), { followSymlinks: true });
+  edits.push({ path: ["kernel_version"], value: KERNEL_VERSION });
+  // One write, one refusal point: the adapter applies the whole list or returns the original bytes.
+  const outcome = applyYamlEdits(raw, edits);
+  if (!outcome.ok) {
+    throw new Error(`Cannot update ${configPath}: ${yamlEditRefusalMessage(outcome.refusal)}`);
+  }
+  await atomicWriteFile(configPath, outcome.text, { followSymlinks: true });
   return { advanced, kept, kernelVersion: KERNEL_VERSION };
 }

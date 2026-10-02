@@ -1,0 +1,22 @@
+# Agent system config — hand-tuned, comments matter.
+name: "My Agent" # identity: never touched by kernel updates
+description: 'single-quoted description'
+max_turns: 12
+
+tools:
+# tools section, indentless sequence follows
+- read_file
+- write_file # the two the user actually wants
+- bash
+
+model:
+  # the model block: nested map with a quoted scalar and a number
+  max_tokens: 8192
+  thinking_level: "medium"
+  name: "claude-sonnet-4-6"
+
+system_prompt: |
+  You are a careful agent.
+  Keep this block scalar exactly as written.
+
+compaction: { max_context_length: 0 }

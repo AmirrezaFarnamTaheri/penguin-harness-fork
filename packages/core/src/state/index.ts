@@ -7,6 +7,7 @@ export * from "./paths.js";
 export * from "./default-config.js";
 export * from "./kernel-history.js";
 export * from "./kernel-update.js";
+export * from "./yaml-edit.js";
 export * from "./builtin-agents.js";
 export * from "./model-catalog.js";
 // Seeded command-policy rules + the single "absent = factory set" fallback (the server
