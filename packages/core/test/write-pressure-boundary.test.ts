@@ -149,7 +149,7 @@ describe("I7.2 a blocked nonessential write does not touch the destination", () 
   it("still refuses when an override was granted for a different write", async () => {
     const root = path.join(await tempRoot(), "scratchpad");
     const overrides = new PressureOverrideStore();
-    overrides.grant({
+    await overrides.grant({
       sessionId: "session-1",
       producerId: "recall-store",
       toolCallId: "other-call",

@@ -75,7 +75,10 @@
  * `truncated-tool-output-archive.ts`). Removing the injection restores the previous behavior
  * exactly; no persisted format depends on the policy.
  */
+import { mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import type { ResourcePressureReport } from "../agent/resource/pressure-probe.js";
+import { atomicWriteFile } from "./atomic-write.js";
 
 /** 200 MiB, in bytes — the number statfs reports (`bsize * bavail`). */
 export const PRESSURE_WARN_BELOW_BYTES = 200 * 1024 * 1024; // 209_715_200
@@ -269,38 +272,148 @@ export class PressureOverrideStore {
   private readonly records = new Map<string, PressureOverrideRecord>();
   private sequence = 0;
   private readonly now: () => number;
+  /** When set, grants are recorded here and re-read before a consume, so a grant survives a restart. */
+  private readonly persistPath: string | undefined;
+  /** The last serialized state this process wrote or read — used to skip a redundant re-read. */
+  private loadedText: string | null = null;
 
-  constructor(options: { now?: () => number } = {}) {
+  constructor(options: { now?: () => number; persistPath?: string } = {}) {
     this.now = options.now ?? Date.now;
+    this.persistPath = options.persistPath;
   }
 
-  grant(
-    request: PressureWriteKey & { grantedBy: PressureOverrideRecord["grantedBy"]; reason: string },
-  ): PressureOverrideRecord {
+  /**
+   * Records a grant.
+   *
+   * `write: false` keeps it in memory (tests, and hosts that do not want a file); the default
+   * persists it, because "recorded" is the property the card asks for and an in-memory record
+   * dies with the process that made it.
+   */
+  async grant(
+    request: PressureWriteKey & {
+      grantedBy: PressureOverrideRecord["grantedBy"];
+      reason: string;
+      write?: boolean;
+    },
+  ): Promise<PressureOverrideRecord> {
     this.sequence += 1;
     const record: PressureOverrideRecord = {
-      ...request,
+      sessionId: request.sessionId,
+      producerId: request.producerId,
+      toolCallId: request.toolCallId,
+      volumePath: request.volumePath,
+      grantedBy: request.grantedBy,
+      reason: request.reason,
       overrideId: `pressure-override-${this.sequence}`,
       grantedAt: this.now(),
     };
+    await this.loadFromDisk();
     this.records.set(overrideKey(record), record);
+    if (this.persistPath !== undefined && request.write !== false) await this.saveToDisk();
     return record;
   }
 
-  /** Takes the override for exactly this write, marking it consumed. Returns null if none. */
-  consume(key: PressureWriteKey): PressureOverrideRecord | null {
+  /**
+   * Takes the override for exactly this write, marking it consumed. Returns null if none.
+   *
+   * Re-reads the record file first: the grant may have been made by another process (the server
+   * route that authenticated the human), and consuming a stale copy would either miss it or hand
+   * the same grant to two writes.
+   */
+  async consume(key: PressureWriteKey): Promise<PressureOverrideRecord | null> {
+    await this.loadFromDisk();
     const lookup = overrideKey(key);
     const record = this.records.get(lookup);
     if (record === undefined || record.consumedAt !== undefined) return null;
     const consumed: PressureOverrideRecord = { ...record, consumedAt: this.now() };
     this.records.set(lookup, consumed);
+    if (this.persistPath !== undefined) await this.saveToDisk();
     return consumed;
   }
 
-  /** Every grant this store has ever accepted, consumed ones included — the record the card asks for. */
+  /** Every grant this store has accepted, consumed ones included — the record the card asks for. */
   list(): readonly PressureOverrideRecord[] {
     return [...this.records.values()];
   }
+
+  /**
+   * Reads the durable records, tolerating every failure mode by *not* inventing grants: a missing
+   * file is an empty store, and a corrupt one is treated as empty (and left alone) rather than
+   * parsed into something that could admit a write. The refusal that would have needed a grant
+   * still stands, which is the safe direction.
+   */
+  private async loadFromDisk(): Promise<void> {
+    if (this.persistPath === undefined) return;
+    let text: string;
+    try {
+      text = await readFile(this.persistPath, "utf8");
+    } catch {
+      this.loadedText = null;
+      return;
+    }
+    if (text === this.loadedText) return;
+    try {
+      const parsed = JSON.parse(text) as { records?: unknown };
+      if (!Array.isArray(parsed.records)) throw new Error("records is not an array");
+      const next = new Map<string, PressureOverrideRecord>();
+      for (const candidate of parsed.records) {
+        const record = asPressureOverrideRecord(candidate);
+        if (record !== null) next.set(overrideKey(record), record);
+      }
+      this.records.clear();
+      for (const [key, record] of next) this.records.set(key, record);
+      this.loadedText = text;
+    } catch {
+      // Corrupt file: ignore it, keep whatever this process already knew. Nothing is admitted
+      // because of it, and nothing is overwritten until the next explicit grant.
+      this.loadedText = null;
+    }
+  }
+
+  private async saveToDisk(): Promise<void> {
+    if (this.persistPath === undefined) return;
+    const payload = JSON.stringify({ schemaVersion: 1, records: [...this.records.values()] });
+    await mkdir(path.dirname(this.persistPath), { recursive: true });
+    await atomicWriteFile(this.persistPath, payload, { mode: 0o600 });
+    this.loadedText = payload;
+  }
+}
+
+/** A parsed record, or null when the entry is not a complete, well-typed grant. */
+function asPressureOverrideRecord(value: unknown): PressureOverrideRecord | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const strings = [
+    "sessionId",
+    "producerId",
+    "toolCallId",
+    "volumePath",
+    "overrideId",
+    "reason",
+  ] as const;
+  for (const field of strings) {
+    if (typeof record[field] !== "string") return null;
+  }
+  if (typeof record.grantedAt !== "number" || !Number.isFinite(record.grantedAt)) return null;
+  if (
+    record.grantedBy !== "operator" &&
+    record.grantedBy !== "cli" &&
+    record.grantedBy !== "approval"
+  )
+    return null;
+  if (record.consumedAt !== undefined && typeof record.consumedAt !== "number") return null;
+  const consumedAt = record.consumedAt as number | undefined;
+  return {
+    sessionId: record.sessionId as string,
+    producerId: record.producerId as string,
+    toolCallId: record.toolCallId as string,
+    volumePath: record.volumePath as string,
+    overrideId: record.overrideId as string,
+    reason: record.reason as string,
+    grantedAt: record.grantedAt,
+    grantedBy: record.grantedBy,
+    ...(consumedAt === undefined ? {} : { consumedAt }),
+  };
 }
 
 function overrideKey(key: PressureWriteKey): string {
@@ -313,7 +426,7 @@ function overrideKey(key: PressureWriteKey): string {
  * There is deliberately no parameter for a tool call's arguments: the model cannot reach this
  * function's inputs, which is a stronger guarantee than validating a field it could set.
  */
-export function evaluateWritePressure(options: {
+export async function evaluateWritePressure(options: {
   producerId: string;
   reading: PressureReading | null;
   /** The id the *boundary* resolved for this producer, from the inventory — not from payload. */
@@ -321,7 +434,7 @@ export function evaluateWritePressure(options: {
   /** The key of this write, looked up in `overrides` when the decision would otherwise block. */
   writeKey: PressureWriteKey;
   overrides?: PressureOverrideStore;
-}): PressureDecision {
+}): Promise<PressureDecision> {
   const { producerId, reading, writeKey, overrides } = options;
   const entry = writeProducerEntry(options.inventoryId ?? producerId);
   const base = { producerId, volumePath: writeKey.volumePath };
@@ -361,7 +474,7 @@ export function evaluateWritePressure(options: {
   }
 
   if (measured < PRESSURE_BLOCK_BELOW_BYTES) {
-    const override = overrides?.consume(writeKey) ?? null;
+    const override = (await overrides?.consume(writeKey)) ?? null;
     if (override !== null) {
       return {
         ...base,
@@ -444,7 +557,7 @@ export function createProbeWritePressureGate(options: {
   return {
     async admit({ producerId, toolCallId }): Promise<PressureDecision> {
       const reading = await readVolumePressure(options.probe, options.volumePath);
-      return evaluateWritePressure({
+      return await evaluateWritePressure({
         producerId,
         reading,
         writeKey: {

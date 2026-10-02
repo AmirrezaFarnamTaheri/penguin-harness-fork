@@ -12,7 +12,10 @@
  * the card's requirement made mechanical: a write cannot become exempt by falling out of a
  * classification, and no exemption is a silence.
  */
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   evaluateWritePressure,
   NONESSENTIAL_PRODUCERS,
@@ -41,12 +44,12 @@ const measured = (freeBytes: number, volumePath = VOLUME): PressureReading => ({
   freeBytes,
 });
 
-function decide(
+async function decide(
   reading: PressureReading | null,
   overrides?: PressureOverrideStore,
   key: PressureWriteKey = KEY,
 ) {
-  return evaluateWritePressure({
+  return await evaluateWritePressure({
     producerId: key.producerId,
     reading,
     writeKey: key,
@@ -75,8 +78,8 @@ describe("I7 thresholds are exact byte values in the probe's unit", () => {
     ["one byte below the block threshold", 52_428_799, "block", "write_pressure_blocked"],
     // A measured zero is a real reading from a full filesystem: it blocks.
     ["measured zero", 0, "block", "write_pressure_blocked"],
-  ])("%s (%i bytes) → %s", (_label, freeBytes, action, signal) => {
-    const decision = decide(measured(freeBytes));
+  ])("%s (%i bytes) → %s", async (_label, freeBytes, action, signal) => {
+    const decision = await decide(measured(freeBytes));
     expect(decision.action).toBe(action);
     expect(decision.signal).toBe(signal);
     expect(decision.freeBytes).toBe(freeBytes);
@@ -95,8 +98,8 @@ describe("I7 no valid measurement ever blocks", () => {
     ["NaN", measured(Number.NaN), "write_pressure_wrong_volume"],
     ["Infinity", measured(Number.POSITIVE_INFINITY), "write_pressure_wrong_volume"],
     ["negative", measured(-1), "write_pressure_wrong_volume"],
-  ])("%s → warn, never block, freeBytes null", (_label, reading, signal) => {
-    const decision = decide(reading);
+  ])("%s → warn, never block, freeBytes null", async (_label, reading, signal) => {
+    const decision = await decide(reading);
     expect(decision.action).toBe("warn");
     expect(decision.signal).toBe(signal);
     // "No measurement" must not be reported as zero bytes free.
@@ -142,7 +145,7 @@ describe("I7 no valid measurement ever blocks", () => {
       volumePath: VOLUME,
       reason: expect.stringContaining("EACCES"),
     });
-    expect(decide(reading).action).toBe("warn");
+    expect((await decide(reading)).action).toBe("warn");
   });
 
   it("reports a missing path and a thrown probe as unavailable", async () => {
@@ -171,7 +174,7 @@ describe("I7 no valid measurement ever blocks", () => {
     };
     const reading = await readVolumePressure(throwing, VOLUME);
     expect(reading.kind).toBe("unavailable");
-    expect(decide(reading).signal).toBe("write_pressure_probe_unavailable");
+    expect((await decide(reading)).signal).toBe("write_pressure_probe_unavailable");
   });
 });
 
@@ -230,7 +233,7 @@ describe("I7 inventory: every exemption is enumerated, the two producers are the
     );
   });
 
-  it("allows the recovery, cleanup, export and read-only paths under block pressure", () => {
+  it("allows the recovery, cleanup, export and read-only paths under block pressure", async () => {
     const full = measured(1); // deep below the block threshold
     for (const id of [
       "read_file",
@@ -243,7 +246,7 @@ describe("I7 inventory: every exemption is enumerated, the two producers are the
       "run_subagent",
       "exec_command",
     ]) {
-      const decision = evaluateWritePressure({
+      const decision = await evaluateWritePressure({
         producerId: id,
         inventoryId: id,
         reading: full,
@@ -256,8 +259,8 @@ describe("I7 inventory: every exemption is enumerated, the two producers are the
     }
   });
 
-  it("treats an unknown producer id as exempt rather than blocked", () => {
-    const decision = evaluateWritePressure({
+  it("treats an unknown producer id as exempt rather than blocked", async () => {
+    const decision = await evaluateWritePressure({
       producerId: "some-future-tool",
       inventoryId: "some-future-tool",
       reading: measured(1),
@@ -268,9 +271,9 @@ describe("I7 inventory: every exemption is enumerated, the two producers are the
 });
 
 describe("I7 override: recorded, single-use, scoped to the write", () => {
-  it("admits the refused write once and records who granted it", () => {
+  it("admits the refused write once and records who granted it", async () => {
     const store = new PressureOverrideStore({ now: () => 1000 });
-    const record = store.grant({
+    const record = await store.grant({
       sessionId: "session-1",
       producerId: "recall-store",
       toolCallId: "call-1",
@@ -278,7 +281,7 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
       grantedBy: "operator",
       reason: "the user accepted the risk once",
     });
-    const decision = decide(measured(1), store);
+    const decision = await decide(measured(1), store);
     expect(decision.action).toBe("allow");
     expect(decision.overrideId).toBe(record.overrideId);
     expect(decision.freeBytes).toBe(1);
@@ -292,12 +295,12 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
       },
     ]);
     // Single-use: the same grant cannot admit a second write.
-    expect(decide(measured(1), store).action).toBe("block");
+    expect((await decide(measured(1), store)).action).toBe("block");
   });
 
-  it("does not let an override widen to another Session, call, producer or volume", () => {
+  it("does not let an override widen to another Session, call, producer or volume", async () => {
     const store = new PressureOverrideStore();
-    store.grant({
+    await store.grant({
       sessionId: "session-1",
       producerId: "recall-store",
       toolCallId: "call-1",
@@ -315,17 +318,18 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
       const key = { ...KEY, ...delta } as PressureWriteKey;
       // The reading follows the case's volume: a volume mismatch would warn (no valid
       // measurement for that volume) rather than block, which is a different assertion.
-      expect(decide(measured(1, key.volumePath), store, key).action, JSON.stringify(delta)).toBe(
-        "block",
-      );
+      expect(
+        (await decide(measured(1, key.volumePath), store, key)).action,
+        JSON.stringify(delta),
+      ).toBe("block");
     }
     // The grant was never consumed by the attempts above: the write it was granted for still works.
-    expect(decide(measured(1), store).action).toBe("allow");
+    expect((await decide(measured(1), store)).action).toBe("allow");
   });
 
-  it("never consults an override above the block threshold", () => {
+  it("never consults an override above the block threshold", async () => {
     const store = new PressureOverrideStore();
-    const record = store.grant({
+    const record = await store.grant({
       sessionId: "session-1",
       producerId: "recall-store",
       toolCallId: "call-1",
@@ -334,18 +338,18 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
       reason: "granted early",
     });
     // A warning is not a refusal, so there is nothing to override: the grant stays unconsumed.
-    const decision = decide(measured(100 * MiB), store);
+    const decision = await decide(measured(100 * MiB), store);
     expect(decision.action).toBe("warn");
     expect(decision.overrideId).toBeNull();
     expect(store.list()[0]?.consumedAt).toBeUndefined();
     // …and it is still there for the moment the disk actually crosses the block threshold.
-    expect(decide(measured(100 * MiB), store).action).toBe("warn");
-    const blocked = decide(measured(1), store);
+    expect((await decide(measured(100 * MiB), store)).action).toBe("warn");
+    const blocked = await decide(measured(1), store);
     expect(blocked.action).toBe("allow");
     expect(blocked.overrideId).toBe(record.overrideId);
   });
 
-  it("cannot be forged by payload-shaped fields in scope", () => {
+  it("cannot be forged by payload-shaped fields in scope", async () => {
     // The evaluator takes a producer id, a reading and a trusted lookup key. There is no
     // parameter a tool call's arguments can reach, so these payload-shaped values are inert —
     // and the grant store has no entry, so the decision stays a refusal.
@@ -357,7 +361,7 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
       producerId: "recall-store",
       toolCallId: "call-1",
     };
-    const decision = evaluateWritePressure({
+    const decision = await evaluateWritePressure({
       producerId: KEY.producerId,
       reading: measured(1),
       writeKey: KEY,
@@ -366,5 +370,86 @@ describe("I7 override: recorded, single-use, scoped to the write", () => {
     expect(decision.action).toBe("block");
     expect(decision.overrideId).toBeNull();
     expect(JSON.stringify(payload)).toContain("overrideId");
+  });
+});
+
+describe("I7.3 a grant is recorded durably and stays single-use across processes", () => {
+  let roots: string[] = [];
+  afterEach(async () => {
+    for (const root of roots) await rm(root, { recursive: true, force: true });
+    roots = [];
+  });
+  async function tempPath(): Promise<string> {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pressure-overrides-"));
+    roots.push(root);
+    return path.join(root, "pressure-overrides.json");
+  }
+
+  it("survives a restart: a second store honors the first store's grant exactly once", async () => {
+    const persistPath = await tempPath();
+    const first = new PressureOverrideStore({ now: () => 1000, persistPath });
+    const record = await first.grant({
+      sessionId: "session-1",
+      producerId: "recall-store",
+      toolCallId: "call-1",
+      volumePath: VOLUME,
+      grantedBy: "operator",
+      reason: "granted before the write",
+    });
+    // A fresh store in a fresh "process" reads the recorded grant.
+    const second = new PressureOverrideStore({ now: () => 2000, persistPath });
+    const decision = await decide(measured(1), second, KEY);
+    expect(decision.action).toBe("allow");
+    expect(decision.overrideId).toBe(record.overrideId);
+    // The consumption is durable too: a third store refuses the same write.
+    const third = new PressureOverrideStore({ now: () => 3000, persistPath });
+    expect((await decide(measured(1), third, KEY)).action).toBe("block");
+    const onDisk = JSON.parse(await readFile(persistPath, "utf8")) as {
+      records: Array<{ overrideId: string; consumedAt?: number }>;
+    };
+    expect(onDisk.records).toEqual([
+      expect.objectContaining({ overrideId: record.overrideId, consumedAt: 2000 }),
+    ]);
+  });
+
+  it("treats a corrupt or missing record file as no grants, never as a grant", async () => {
+    const persistPath = await tempPath();
+    await writeFile(persistPath, "{ not json");
+    const store = new PressureOverrideStore({ persistPath });
+    expect((await decide(measured(1), store, KEY)).action).toBe("block");
+    // A record shaped like a grant but missing who granted it is not a grant either.
+    await writeFile(
+      persistPath,
+      JSON.stringify({ schemaVersion: 1, records: [{ ...KEY, overrideId: "forged" }] }),
+    );
+    const second = new PressureOverrideStore({ persistPath });
+    expect((await decide(measured(1), second, KEY)).action).toBe("block");
+    expect(second.list()).toEqual([]);
+  });
+
+  it("keeps the whole-record shape, including who granted it and why", async () => {
+    const persistPath = await tempPath();
+    const store = new PressureOverrideStore({ now: () => 42, persistPath });
+    const record = await store.grant({
+      sessionId: "session-1",
+      producerId: "tool-output-archive",
+      toolCallId: "call-7",
+      volumePath: "/data",
+      grantedBy: "approval",
+      reason: "the operator accepted the risk for this call",
+    });
+    expect(record).toMatchObject({
+      grantedBy: "approval",
+      grantedAt: 42,
+      reason: "the operator accepted the risk for this call",
+    });
+    const reloaded = new PressureOverrideStore({ persistPath });
+    await reloaded.consume({
+      sessionId: "session-1",
+      producerId: "tool-output-archive",
+      toolCallId: "call-7",
+      volumePath: "/data",
+    });
+    expect(reloaded.list()[0]).toMatchObject({ grantedBy: "approval", grantedAt: 42 });
   });
 });
