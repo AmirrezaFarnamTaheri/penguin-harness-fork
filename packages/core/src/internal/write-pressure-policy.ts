@@ -249,6 +249,18 @@ export interface PressureWriteKey {
   readonly volumePath: string;
 }
 
+/**
+ * Where a Session's override records live, and the volume a grant for its archive must name.
+ *
+ * One convention, shared by the host that builds the gate and the authenticated route that grants:
+ * the archive lives under the Session's scratchpad, so the scratchpad directory is the volume all
+ * grants for it are scoped to. A grant recorded against a different path cannot admit these writes
+ * (the key would not match), which is what keeps a grant from widening beyond its Session.
+ */
+export function sessionPressureOverridePath(scratchpadDir: string): string {
+  return path.join(scratchpadDir, "pressure-overrides.json");
+}
+
 /** A granted override. `grant` is the only way to create one; the store records who and when. */
 export interface PressureOverrideRecord extends PressureWriteKey {
   readonly overrideId: string;

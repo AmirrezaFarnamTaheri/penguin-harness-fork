@@ -11,11 +11,16 @@ import path from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  NONESSENTIAL_PRODUCERS,
+  PRESSURE_BLOCK_BELOW_BYTES,
+  PRESSURE_WARN_BELOW_BYTES,
   RECALL_OUTPUT_PAGE_CHARS,
   THINKING_LEVEL_NAMES,
+  PressureOverrideStore,
   imageUrlMessage,
   isValidRecallId,
   scratchpadDir,
+  sessionPressureOverridePath,
   sessionScratchpadDir,
   sliceRecallPage,
   stripLeadingMarkerBlocks,
@@ -826,6 +831,77 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       nextOffset: slice.nextOffset,
       totalChars: slice.totalChars,
     } satisfies RecallPageResponse);
+  });
+
+  // The authenticated half of the write-pressure policy (I7.3): the recorded grant a person can
+  // take back a refusal with.
+  //
+  // The policy refuses the harness's own nonessential writes (the tool-output archive and the
+  // recall store) when the volume they write to has very little room left, and the model cannot
+  // lift that refusal — the evaluator has no parameter a tool call's arguments can reach. This
+  // route is where a *person* does, and every part of the grant's scope is derived here rather
+  // than accepted from the caller: the Session comes from the authenticated route resolution, the
+  // volume is that Session's scratchpad directory (where its archive lives), the grant is
+  // single-use and the record is written into the Session's own scratchpad. A request can name
+  // which producer and which tool call it is lifting, and nothing else.
+  app.post("/:sessionId/pressure-overrides", async (c) => {
+    const row = resolveSession(c);
+    const body = (await c.req.json().catch(() => null)) as {
+      producerId?: unknown;
+      toolCallId?: unknown;
+      reason?: unknown;
+    } | null;
+    const producerId = typeof body?.producerId === "string" ? body.producerId : "";
+    if (!(NONESSENTIAL_PRODUCERS as readonly string[]).includes(producerId)) {
+      throw new HttpError(
+        400,
+        "pressure_producer_invalid",
+        `producerId must be one of: ${NONESSENTIAL_PRODUCERS.join(", ")}.`,
+      );
+    }
+    const toolCallId = typeof body?.toolCallId === "string" ? body.toolCallId.trim() : "";
+    if (toolCallId === "" || toolCallId.length > 200) {
+      throw new HttpError(
+        400,
+        "pressure_tool_call_invalid",
+        "toolCallId must be a non-empty string of at most 200 characters.",
+      );
+    }
+    const reason =
+      typeof body?.reason === "string" && body.reason.trim() !== ""
+        ? body.reason.trim().slice(0, 500)
+        : "granted through the Session's pressure-override route";
+    const scratchpad = sessionScratchpadDir(
+      deps.config.root,
+      row.projectId,
+      row.agentId,
+      row.sessionId,
+    );
+    const store = new PressureOverrideStore({
+      persistPath: sessionPressureOverridePath(scratchpad),
+    });
+    const record = await store.grant({
+      sessionId: row.sessionId,
+      producerId,
+      toolCallId,
+      volumePath: scratchpad,
+      grantedBy: "operator",
+      reason,
+    });
+    return c.json(
+      {
+        overrideId: record.overrideId,
+        producerId: record.producerId,
+        toolCallId: record.toolCallId,
+        volumePath: record.volumePath,
+        grantedBy: record.grantedBy,
+        grantedAt: record.grantedAt,
+        reason: record.reason,
+        warnBelowBytes: PRESSURE_WARN_BELOW_BYTES,
+        blockBelowBytes: PRESSURE_BLOCK_BELOW_BYTES,
+      },
+      201,
+    );
   });
 
   // Session scratchpad files (input images saved to disk for image-unsupported models, the
