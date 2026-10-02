@@ -158,8 +158,11 @@ const MAX_TRACKED_METHODS = 128;
  * every chunk it measures — on a path that exists precisely because a peer is sending
  * absurd amounts of data. A lone surrogate counts as the 3 bytes of U+FFFD that
  * `TextEncoder` substitutes, so the two agree.
+ *
+ * Exported for `./acp-resume.js`, which bounds replay retention by the same unit; it is
+ * deliberately NOT part of the kernel's public surface (see ./index.ts).
  */
-function utf8Length(text: string): number {
+export function utf8Length(text: string): number {
   let bytes = 0;
   for (let index = 0; index < text.length; index++) {
     const code = text.charCodeAt(index);

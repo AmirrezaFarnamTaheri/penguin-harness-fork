@@ -80,3 +80,28 @@ export type {
   JsonRpcResponse,
   JsonRpcMessage,
 } from "./acp.js";
+
+// Resume is deliberately a separate module from the transport: the stream outlives individual
+// sockets (see its module doc), and hosts that never reconnect pay nothing for it.
+export {
+  ACP_ACK_EVERY_RECORDS,
+  ACP_ACK_INTERVAL_MS,
+  ACP_RECONNECT_BASE_MS,
+  ACP_RECONNECT_MAX_MS,
+  ACP_REPLAY_MAX_BYTES,
+  ACP_REPLAY_MAX_RECORDS,
+  AcpReplayLog,
+  AcpResumeConsumer,
+  acpReconnectDelayMs,
+  acpResumeBanner,
+} from "./acp-resume.js";
+export type {
+  AcpDeliveryOutcome,
+  AcpReplayLogOptions,
+  AcpReplayRecord,
+  AcpResumeBanner,
+  AcpResumeConsumerOptions,
+  AcpResumeFreshReason,
+  AcpResumePlan,
+  AcpStreamCursor,
+} from "./acp-resume.js";
