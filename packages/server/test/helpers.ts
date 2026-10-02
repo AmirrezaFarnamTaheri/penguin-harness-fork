@@ -44,6 +44,10 @@ export function testConfig(root: string): ServerConfig {
   return {
     root,
     host: "127.0.0.1",
+    // Shipped default: protected routes require a session, probes are public. Tests that
+    // exercise the I4 matrix override this (see auth-mode.test.ts).
+    authMode: "all-except-health",
+    authModeConfigured: "all-except-health",
     // Nothing listens in tests, but the value is not inert: preview URLs are built from
     // the server's own port, so keep it realistic rather than 0.
     port: 7364,

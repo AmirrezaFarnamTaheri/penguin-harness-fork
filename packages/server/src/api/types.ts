@@ -130,7 +130,9 @@ export interface MeResponse {
    * first-login link on a server whose admin password has never been set. Both may set a
    * password without the old one (it is random and was never shown); only "desktop" opens
    * desktop-only routes. "token" marks a request authenticated by the local API token's
-   * Bearer header (the CLI and agent-driven calls) — no stored session at all.
+   * Bearer header (the CLI and agent-driven calls), or served anonymously through the local
+   * operator grant in an `off`-mode deployment (I4: a trusted bind where the process's own
+   * boot token stands in for the caller) — no stored session either way.
    */
   sessionVia: "password" | "desktop" | "setup" | "token";
   /**
