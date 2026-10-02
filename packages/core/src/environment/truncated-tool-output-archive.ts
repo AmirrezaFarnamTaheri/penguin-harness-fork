@@ -92,9 +92,37 @@ interface TruncatedToolOutputArchiveOptions {
   fileLimitBytes?: number;
   /** Test-only overrides for the recall store's bounds; production uses RECALL_LIMITS. */
   recallLimits?: Partial<RecallLimits>;
+  /** Test-only overrides for the truncation archive's bounds; production uses ARCHIVE_LIMITS. */
+  archiveLimits?: Partial<ArchiveLimits>;
   /** Test-only clock, so age-bound eviction can be exercised without waiting a month. */
   now?: () => number;
 }
+
+/**
+ * The two bounds the truncation archive is held to, per Session. The recall store below has its
+ * own limits; these govern the `*.log` files that `commit` writes.
+ */
+export interface ArchiveLimits {
+  maxEntries: number;
+  maxTotalBytes: number;
+}
+
+/**
+ * Production bounds for the truncation archive (E10.4).
+ *
+ * Before this the archive had a per-call budget and nothing else, so a long conversation with N
+ * oversized commands kept N files at up to 8 MiB each — hundreds of megabytes in one Session's
+ * scratchpad, written by a feature whose only purpose is to let the model read back *recent*
+ * output. The bounds are the same shape as the recall store's: 500 entries and 256 MiB, which is
+ * generous for the head/tail windows a Session actually re-reads and finite on disk.
+ */
+export const ARCHIVE_LIMITS: ArchiveLimits = {
+  maxEntries: 500,
+  maxTotalBytes: 256 * 1024 * 1024,
+};
+
+/** Why an archived file left the directory — reported so a vanished path is explainable. */
+export type ArchiveDropReason = "capacity";
 
 /** The three bounds the recall store is held to, and the two knobs that override them in tests. */
 export interface RecallLimits {
@@ -124,6 +152,15 @@ export type RecallResult =
   | { status: "ok"; id: string; path: string; text: string }
   | { status: "missing"; id: string }
   | { status: "dropped"; id: string };
+
+/** Observable state of the truncation archive: its size, its bounds, and what it evicted. */
+export interface ArchiveStats {
+  entries: number;
+  bytes: number;
+  maxEntries: number;
+  maxTotalBytes: number;
+  dropped: { name: string; reason: ArchiveDropReason; at: number }[];
+}
 
 /** Observable state of the recall store: its size, its bounds, and what it has evicted. */
 export interface RecallStats {
@@ -468,6 +505,11 @@ export class TruncatedToolOutputArchive {
   private recallSaveTail: Promise<void> = Promise.resolve();
   private readonly recallLimits: RecallLimits;
   private readonly now: () => number;
+  private readonly archiveLimits: ArchiveLimits;
+  /** Serializes capacity checks with their writes, like the recall store (E10.4). */
+  private archiveSaveTail: Promise<void> = Promise.resolve();
+  /** Bounded log of files the capacity bound removed (newest last). */
+  private readonly archiveDropped: { name: string; reason: ArchiveDropReason; at: number }[] = [];
 
   constructor(opts: TruncatedToolOutputArchiveOptions) {
     // The explicit gap marker is part of every bounded head/tail archive, so even internal
@@ -479,6 +521,7 @@ export class TruncatedToolOutputArchive {
     this.rootDir = opts.rootDir;
     this.recallRootDir = path.join(opts.rootDir, "recall");
     this.recallLimits = { ...RECALL_LIMITS, ...opts.recallLimits };
+    this.archiveLimits = { ...ARCHIVE_LIMITS, ...opts.archiveLimits };
     this.now = opts.now ?? Date.now;
   }
 
@@ -487,7 +530,14 @@ export class TruncatedToolOutputArchive {
     return new TruncatedToolOutputCapture(this, this.fileLimitBytes);
   }
 
-  /** Internal commit path used by TruncatedToolOutputCapture. */
+  /**
+   * Internal commit path used by TruncatedToolOutputCapture.
+   *
+   * Serialized and capacity-checked (E10.4): the per-Session bound is enforced against the
+   * directory's actual contents, so it holds across concurrent calls and across a process
+   * restart, and the oldest files go first. A capture that cannot be admitted at all is refused
+   * with `ARCHIVE_FULL` and evidence on stderr rather than written outside the bound.
+   */
   async commit(
     toolName: string,
     toolCallId: string,
@@ -497,12 +547,26 @@ export class TruncatedToolOutputArchive {
     const safeToolName = toolName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "tool";
     const idHash = createHash("sha256").update(toolCallId).digest("hex").slice(0, 16);
     const filePath = path.join(this.rootDir, `${safeToolName}-${idHash}.log`);
+    const previous = this.archiveSaveTail;
+    let release!: () => void;
+    this.archiveSaveTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
     try {
       // Create shared Session ancestors with their existing/default policy, then apply the
       // archive's private directory mode only to the archive directory itself.
       await mkdir(path.dirname(this.rootDir), { recursive: true });
       await mkdir(this.rootDir, { recursive: true, mode: 0o700 });
-      await writeFile(filePath, redactArchive(data, this.fileLimitBytes), {
+      const payload = redactArchive(data, this.fileLimitBytes);
+      if (!(await this.makeRoomFor(payload.length))) {
+        process.stderr.write(
+          `[penguin] tool "${toolName}" truncated output archive is at capacity ` +
+            `(${this.archiveLimits.maxEntries} entries / ${this.archiveLimits.maxTotalBytes} bytes).\n`,
+        );
+        return { status: "failed", code: "ARCHIVE_FULL" };
+      }
+      await writeFile(filePath, payload, {
         flag: "wx",
         mode: 0o600,
       });
@@ -518,7 +582,84 @@ export class TruncatedToolOutputArchive {
         `[penguin] tool "${toolName}" truncated output archive write failed (${code}).\n`,
       );
       return { status: "failed", code };
+    } finally {
+      release();
     }
+  }
+
+  /**
+   * Evicts oldest-first until one more file of `pendingBytes` fits inside both bounds, and
+   * reports whether it now fits. The directory listing — not an in-memory index — is the
+   * authority, so a restart re-enforces the bound over files written by an earlier process, and
+   * only regular `*.log` files this class writes are candidates: the `recall/` subdirectory and
+   * anything else in the Session scratchpad are never touched.
+   */
+  private async makeRoomFor(pendingBytes: number): Promise<boolean> {
+    const entries: { name: string; path: string; bytes: number; mtimeMs: number }[] = [];
+    const listing = await readdir(this.rootDir, { withFileTypes: true }).catch(() => []);
+    for (const dirent of listing) {
+      if (!dirent.isFile() || !dirent.name.endsWith(".log")) continue;
+      const filePath = path.join(this.rootDir, dirent.name);
+      const info = await lstat(filePath).catch(() => null);
+      // A symlink is not something this class writes, and following one would make eviction a
+      // way to delete files outside the archive. Skip anything that is not a plain file.
+      if (info === null || !info.isFile() || info.isSymbolicLink()) continue;
+      entries.push({ name: dirent.name, path: filePath, bytes: info.size, mtimeMs: info.mtimeMs });
+    }
+    let totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
+    let count = entries.length;
+    if (pendingBytes > this.archiveLimits.maxTotalBytes) return false;
+    if (
+      count + 1 <= this.archiveLimits.maxEntries &&
+      totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
+    ) {
+      return true;
+    }
+    entries.sort((a, b) => a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (
+        count + 1 <= this.archiveLimits.maxEntries &&
+        totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
+      ) {
+        break;
+      }
+      try {
+        await unlink(entry.path);
+      } catch {
+        // Another writer (or the host's Session deletion) won the race: the bound is served
+        // either way, and the file is gone.
+      }
+      totalBytes -= entry.bytes;
+      count -= 1;
+      this.archiveDropped.push({ name: entry.name, reason: "capacity", at: this.now() });
+      while (this.archiveDropped.length > RECALL_DROPPED_LOG_LIMIT) this.archiveDropped.shift();
+    }
+    return (
+      count + 1 <= this.archiveLimits.maxEntries &&
+      totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
+    );
+  }
+
+  /** Observable state of the truncation archive: what it holds, its bounds, what it evicted. */
+  async archiveStats(): Promise<ArchiveStats> {
+    await this.archiveSaveTail;
+    const listing = await readdir(this.rootDir, { withFileTypes: true }).catch(() => []);
+    let entries = 0;
+    let bytes = 0;
+    for (const dirent of listing) {
+      if (!dirent.isFile() || !dirent.name.endsWith(".log")) continue;
+      const info = await lstat(path.join(this.rootDir, dirent.name)).catch(() => null);
+      if (info === null || !info.isFile() || info.isSymbolicLink()) continue;
+      entries += 1;
+      bytes += info.size;
+    }
+    return {
+      entries,
+      bytes,
+      maxEntries: this.archiveLimits.maxEntries,
+      maxTotalBytes: this.archiveLimits.maxTotalBytes,
+      dropped: [...this.archiveDropped],
+    };
   }
 
   // -------------------------------------------------------------------------
