@@ -47,6 +47,16 @@ jobs:
 
       - name: Enforce the skill length budget without expanding legacy exceptions
         run: node scripts/skills/line-budget.mjs --json=artifacts/skill-line-budget.json
+
+      # G4: every local.patch and SKILL.superseded.md artifact has one explicit disposition. The
+      # ledger fails closed on discovery errors (an unreadable directory is never "nothing to
+      # check"), and its checks are covered by fixture tests so a regression in any of them —
+      # deleted sidecars, body-only redirects, chained aliases, redirecting canonicals — fails
+      # here rather than passing quietly.
+      - name: Skill patch and supersession ledger
+        run: |
+          node scripts/skills/patch-ledger.mjs --check
+          node --test scripts/skills/patch-ledger.test.mjs
       - name: Build taxonomy and overlap report
         if: always()
         run: pnpm skills:catalog

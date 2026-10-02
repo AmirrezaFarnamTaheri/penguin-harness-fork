@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02T19:43:34.406Z",
+  "generatedAt": "2026-10-02T22:18:17.569Z",
   "patches": [
     {
       "skill": "adbc",
@@ -248,7 +248,9 @@
         "db2-rhel/install-admin.md",
         "db2-rhel/security-backup-recovery.md"
       ],
-      "references": [],
+      "references": [
+        "docs/audits/skill-patch-ledger-2026-10-02.md"
+      ],
       "decision": "retain: live patch, applies to this base"
     },
     {
@@ -670,126 +672,182 @@
     {
       "skill": "animations-emil-design-eng",
       "sidecar": ".agents/skills/animations-emil-design-eng/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "emil-design-eng",
       "redirect": "emil-design-eng",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "emil-design-eng",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "animations-review-animations",
       "sidecar": ".agents/skills/animations-review-animations/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "review-animations",
       "redirect": "review-animations",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "review-animations",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "codex-linear",
       "sidecar": ".agents/skills/codex-linear/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "linear",
       "redirect": "linear",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "linear",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "codex-security-best-practices",
       "sidecar": ".agents/skills/codex-security-best-practices/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "security-best-practices",
       "redirect": "security-best-practices",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-best-practices",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "codex-security-ownership-map",
       "sidecar": ".agents/skills/codex-security-ownership-map/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "security-ownership-map",
       "redirect": "security-ownership-map",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-ownership-map",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "codex-security-threat-model",
       "sidecar": ".agents/skills/codex-security-threat-model/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "security-threat-model",
       "redirect": "security-threat-model",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-threat-model",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "codex-vercel-deploy",
       "sidecar": ".agents/skills/codex-vercel-deploy/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "deploy-to-vercel",
       "redirect": "deploy-to-vercel",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "deploy-to-vercel",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-android-native-dev",
       "sidecar": ".agents/skills/minimax-android-native-dev/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "android-native-dev",
       "redirect": "android-native-dev",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "android-native-dev",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-fullstack-dev",
       "sidecar": ".agents/skills/minimax-fullstack-dev/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "fullstack-dev",
       "redirect": "fullstack-dev",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "fullstack-dev",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-gif-sticker-maker",
       "sidecar": ".agents/skills/minimax-gif-sticker-maker/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "gif-sticker-maker",
       "redirect": "gif-sticker-maker",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "gif-sticker-maker",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-ios-application-dev",
       "sidecar": ".agents/skills/minimax-ios-application-dev/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "ios-application-dev",
       "redirect": "ios-application-dev",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "ios-application-dev",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-pptx-generator",
       "sidecar": ".agents/skills/minimax-pptx-generator/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "pptx-generator",
       "redirect": "pptx-generator",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "pptx-generator",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-react-native-dev",
       "sidecar": ".agents/skills/minimax-react-native-dev/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "react-native-dev",
       "redirect": "react-native-dev",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "react-native-dev",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     },
     {
       "skill": "minimax-shader-dev",
       "sidecar": ".agents/skills/minimax-shader-dev/SKILL.superseded.md",
+      "sidecarExists": true,
       "canonical": "shader-dev",
       "redirect": "shader-dev",
       "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "shader-dev",
+      "aliasCycle": null,
       "aliasRegisters": true,
       "decision": "retain: deliberate supersession resolves once"
     }
