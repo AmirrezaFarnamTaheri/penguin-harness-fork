@@ -35,8 +35,11 @@ const PORT = Number(process.env.MOCK_PORT || 8931);
 /** Count of non-replay requests seen in the "bad stream" conversation: the 1st is cut off (malformed), later ones are retries that get a full tool call. */
 let malformedTurns = 0;
 
-/** Count of requests seen in the "quota retry" conversation: the first 5 are rejected 403 (insufficient_user_quota), the 6th streams normally. */
+/** Count of requests seen in the "quota retry" conversation: the first 2 are rejected 403 (insufficient_user_quota), the 3rd streams normally. */
 let quotaTurns = 0;
+
+/** Count of requests seen in the "retry countdown" conversation: the first 2 are cut off (malformed), the 3rd streams normally. */
+let countdownTurns = 0;
 
 function sse(res, event, data) {
   res.write(`event: ${event}\n`);
@@ -181,12 +184,62 @@ const server = http.createServer((req, res) => {
       return;
     }
 
+    // "Retry countdown" test case: the first 2 requests of the conversation are cut off
+    // after a partial tool_use block (no message_delta/message_stop), which AgentHub reports
+    // as an incomplete stream and GenerativeModel classifies as retryable/malformed. A
+    // malformed failure does NOT cool the key, so on the spec's single-key session the pool
+    // policy's single-account branch plans 2 s, then 4 s — both above the App's two-second
+    // countdown floor. The engine resends the input verbatim on each retry (the failed
+    // attempt was never committed), so the counter is the only way to tell attempts apart.
+    // The 3rd request streams normally.
+    if (flat.includes("retry countdown test") && !isTitle) {
+      countdownTurns += 1;
+      if (countdownTurns <= 2) {
+        res.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
+        });
+        messageStart(res, msgCount);
+        sse(res, "content_block_start", {
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: `toolu_countdown_${countdownTurns}`,
+            name: "exec_command",
+            input: {},
+          },
+        });
+        sse(res, "content_block_delta", {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "input_json_delta", partial_json: '{"cmd": "ec' },
+        });
+        sse(res, "content_block_stop", { type: "content_block_stop", index: 0 });
+        res.end(); // ends normally but is missing message_delta/message_stop -> "stream incomplete"
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      messageStart(res, msgCount);
+      block(res, 0, { type: "text", text: "" }, [
+        { type: "text_delta", text: "Countdown recovered; the answer is 42." },
+      ]);
+      messageStop(res, "end_turn", 10);
+      return;
+    }
+
     // "Quota retry" test case: the first 2 requests of the conversation are rejected 403
     // with the provider's quota-exhaustion code (as OpenAI-compatible gateways do).
-    // GenerativeModel classifies them retryable and the engine reconnects with
-    // exponential backoff (2s/4s) — the 4s wait before retry #2 is the
-    // window the spec uses to observe the live countdown and click "retry now"; the 3rd
-    // attempt streams a normal final answer.
+    // GenerativeModel classifies them retryable; with the spec's three-key pool the engine
+    // takes the pool policy's first-round fast-rotation branch (each rejected key is
+    // skipped after 50 ms, below the App's two-second countdown floor), so the 3rd request
+    // runs on the third key and streams a normal final answer. The spec asserts the
+    // rotation and the trace, not a countdown.
     if (flat.includes("quota retry test") && !isTitle) {
       quotaTurns += 1;
       if (quotaTurns <= 2) {

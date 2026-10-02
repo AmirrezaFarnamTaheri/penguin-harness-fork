@@ -2,14 +2,20 @@
  * LLM request-failure recovery:
  *
  * 1. Provider quota exhaustion (403 insufficient_user_quota) is retryable: the mock rejects
- *    the first two requests, GenerativeModel classifies them as retryable, the engine
- *    rotates through three configured keys with exponential backoff (2s/4s). The 4s wait before
- *    retry #2 shows a live countdown whose seconds tick DOWN; clicking "retry now"
- *    (立即重试) skips the rest of the wait and the turn completes normally — no abort.
- * 2. Give-up: a conversation whose quota rejections never stop — clicking 放弃 on the
+ *    the first two requests and GenerativeModel classifies them as retryable. On the spec's
+ *    three-key session the pool policy (A4) takes its first-round fast-rotation branch —
+ *    each rejected key is skipped after 50 ms, below the App's two-second countdown floor —
+ *    so the ladder line advances to attempt 2 and the third key streams the answer, with
+ *    both rejections recorded on the trace. No countdown is expected here.
+ * 2. A retryable transport failure (a stream cut after a partial block: malformed) on a
+ *    single configured key does show a live countdown: the pool policy's single-account
+ *    branch plans 2 s after the first failure and 4 s after the second, and the displayed
+ *    seconds tick DOWN. Clicking "retry now" (立即重试) skips the rest of the wait, the
+ *    next request goes out immediately and the turn completes normally — no abort.
+ * 3. Give-up: a conversation whose quota rejections never stop — clicking 放弃 on the
  *    countdown fires the ordinary abort; the engine's abort-during-backoff path ends the
  *    turn and the composer is immediately usable again.
- * 3. An authentication failure (401 invalid_api_key) marks the Session auth-dead but
+ * 4. An authentication failure (401 invalid_api_key) marks the Session auth-dead but
  *    RECOVERABLE: only the model reference is fixed at creation — credentials come from the
  *    current Project config — so the notice points at the Models page, updating the key
  *    auto-unlocks the composer (live via the credentials_updated event; across reloads via
@@ -49,9 +55,7 @@ async function makeSession(page, userId, apiKey = "sk-mock") {
   return { sessionId: sess.session.sessionId, projectId };
 }
 
-test("a quota-403 retries with a live countdown; 'retry now' skips the wait and the turn completes", async ({
-  page,
-}) => {
+test("a quota-403 rotates through a three-key pool and the turn completes", async ({ page }) => {
   const { sessionId } = await makeSession(page, "quotauser", "sk-mock-1,sk-mock-2,sk-mock-3");
 
   await page.goto(`${BASE}/chat/${sessionId}`);
@@ -81,13 +85,54 @@ test("a quota-403 retries with a live countdown; 'retry now' skips the wait and 
     );
 
   // One line for the whole ladder, advancing through the ordinals rather than stacking: the
-  // What is stable is that there is exactly ONE retry line, and that it
-  // has reached attempt 2 by the time the countdown below appears.
+  // second key's rejection replaces the first line in place and reads "第 2 次重试".
   const ladder = page.locator("p.text-amber-600", { hasText: "[重试]" });
   await expect(ladder).toHaveCount(1, { timeout: 20000 });
   await expect(ladder).toHaveText(/第 [2-9] 次重试/, { timeout: 20000 });
 
-  // The 4s wait before retry #2: a live countdown (whole seconds, ticking down).
+  // Attempt 3 (the third key) succeeds: the final answer streams in. The rotations are
+  // 50 ms — deliberately below the App's two-second countdown floor — so this scenario
+  // never renders the countdown or its retry-now control.
+  await expect(page.getByText("Quota recovered; the answer is 42.")).toBeVisible({
+    timeout: 20000,
+  });
+
+  // No abort: the run recovered, the composer stays usable.
+  await expect(page.getByText(/已中断/)).toHaveCount(0);
+  await expect(page.getByPlaceholder(/输入消息/)).toBeEnabled();
+
+  // Trace: both quota rejections recorded as retryable request_end events — the reconnect
+  // path — carrying the real failure detail (the Cost center's errors panel reads it from
+  // here) and the policy's first-round rotation; no abort event.
+  const msgs = await (await page.request.get(`${BASE}/api/sessions/${sessionId}/messages`)).json();
+  const retries = msgs.messages.filter(
+    (m) => m.payload.type === "request_end" && m.payload.status === "retryable",
+  );
+  expect(retries.length).toBe(2);
+  for (const retry of retries)
+    expect(retry.payload.error_message).toContain("insufficient_user_quota");
+  for (const retry of retries) {
+    // A4 pins the first-round rotation at 50 ms; the meaningful UI contract is that it is
+    // a real, positive delay and stays under the countdown floor.
+    expect(retry.payload.retry_in_ms).toBeGreaterThan(0);
+    expect(retry.payload.retry_in_ms).toBeLessThan(2000);
+  }
+  expect(msgs.messages.some((m) => m.payload.type === "abort")).toBe(false);
+});
+
+test("a cut stream on a single key shows a live countdown; 'retry now' skips the wait and the turn completes", async ({
+  page,
+}) => {
+  const { sessionId } = await makeSession(page, "countdownuser", "sk-countdown");
+
+  await page.goto(`${BASE}/chat/${sessionId}`);
+  await page.getByPlaceholder(/输入消息/).fill("retry countdown test");
+  await page.getByRole("button", { name: "发送" }).click();
+
+  // One line for the whole ladder. The single-account branch plans 2 s after the first
+  // failure and 4 s after the second, so by attempt 2 the line renders the live countdown.
+  const ladder = page.locator("p.text-amber-600", { hasText: "[重试]" });
+  await expect(ladder).toHaveCount(1, { timeout: 20000 });
   const countdown = page.locator("p.text-amber-600", { hasText: /第 2 次重试，\d+ 秒后发起/ });
   await expect(countdown).toBeVisible({ timeout: 20000 });
   const readSecs = async () => {
@@ -106,7 +151,8 @@ test("a quota-403 retries with a live countdown; 'retry now' skips the wait and 
   expect(second).not.toBeNull();
   expect(second).toBeLessThan(first);
 
-  // "Retry now" skips the remaining wait. The transient "retrying" label can be
+  // "Retry now" skips the remaining wait and the next request goes out immediately (a
+  // malformed failure never cools the key). The transient "retrying" label can be
   // replaced by the next response before the browser observes it, so check the
   // request record instead of polling that brief visual state.
   await page.getByRole("button", { name: "立即重试" }).click();
@@ -123,7 +169,7 @@ test("a quota-403 retries with a live countdown; 'retry now' skips the wait and 
     .toBeGreaterThanOrEqual(3);
 
   // Attempt 3 succeeds: the final answer streams in.
-  await expect(page.getByText("Quota recovered; the answer is 42.")).toBeVisible({
+  await expect(page.getByText("Countdown recovered; the answer is 42.")).toBeVisible({
     timeout: 20000,
   });
 
@@ -131,20 +177,15 @@ test("a quota-403 retries with a live countdown; 'retry now' skips the wait and 
   await expect(page.getByText(/已中断/)).toHaveCount(0);
   await expect(page.getByPlaceholder(/输入消息/)).toBeEnabled();
 
-  // Trace: both quota rejections recorded as retryable request_end events — the reconnect
-  // path — carrying the real failure detail (the Cost center's errors panel reads it from
-  // here) and the announced backoff ladder; no abort event.
+  // Trace: both failures recorded as retryable request_end events carrying their real
+  // detail and the announced single-account ladder (2 s, then 4 s); no abort event.
   const msgs = await (await page.request.get(`${BASE}/api/sessions/${sessionId}/messages`)).json();
   const retries = msgs.messages.filter(
     (m) => m.payload.type === "request_end" && m.payload.status === "retryable",
   );
   expect(retries.length).toBe(2);
-  for (const retry of retries)
-    expect(retry.payload.error_message).toContain("insufficient_user_quota");
+  for (const retry of retries) expect(typeof retry.payload.error_message).toBe("string");
   const plannedDelays = retries.map((retry) => retry.payload.retry_in_ms);
-  // The engine adds deterministic per-session jitter to its exponential ladder so a fleet
-  // that fails together does not reconnect in lockstep. Assert the 2s/4s ladder with its
-  // documented 0–50% jitter range instead of pinning one session's seed.
   expect(plannedDelays[0]).toBeGreaterThanOrEqual(2000);
   expect(plannedDelays[0]).toBeLessThanOrEqual(3000);
   expect(plannedDelays[1]).toBeGreaterThanOrEqual(4000);
