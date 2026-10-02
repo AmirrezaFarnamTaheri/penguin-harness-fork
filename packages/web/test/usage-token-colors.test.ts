@@ -24,23 +24,46 @@ import {
   tokenColors,
   type TokenBucketName,
 } from "../src/lib/token-colors";
-
-import {
-  TOKEN_CARD_BG,
-  TOKEN_COLOR_THEMES,
-  TOKEN_COLORS,
-  tokenColors,
-  type TokenBucketName,
-} from "../src/lib/token-colors";
 import { contrastRatio, parseColor, relativeLuminance } from "../src/lib/contrast.js";
 
-/** F8: the arithmetic lives in lib/contrast now; this suite checks the palette, not the formula. */
+/**
+ * F8: the arithmetic lives in `lib/contrast` now — this suite pins the palette, not the formula.
+ * The wrappers keep the assertions below reading as measurements.
+ */
 function luminance(hex: string): number {
   return relativeLuminance(parseColor(hex)!)!;
 }
 
 function contrast(a: string, b: string): number {
   return contrastRatio(a, b)!;
+}
+
+const BUCKETS: TokenBucketName[] = ["cacheRead", "cacheWrite", "output"];
+/** SC 1.4.11 asks 3:1 for a graphical object needed to understand the content. */
+const MIN_RATIO = 3;
+
+/** Tailwind's amber scale (the only shades the hit-rate curve is allowed to name). */
+const AMBER: Record<string, string> = {
+  300: "#fcd34d",
+  400: "#fbbf24",
+  500: "#f59e0b",
+  600: "#d97706",
+  700: "#b45309",
+  800: "#92400e",
+};
+
+function chartsSource(): string {
+  return readFileSync(
+    fileURLToPath(new URL("../src/features/usage/usage-charts.tsx", import.meta.url)),
+    "utf8",
+  );
+}
+
+/** The `text-amber-N` / `bg-amber-N` shades a `dark:`-paired class string names, in order (light, dark). */
+function amberShades(className: string): [string, string] {
+  const shades = [...className.matchAll(/(?:text|bg)-amber-(\d{3})/g)].map((m) => m[1]!);
+  expect(shades, `expected one light and one dark amber in "${className}"`).toHaveLength(2);
+  return [AMBER[shades[0]!]!, AMBER[shades[1]!]!];
 }
 
 describe("token palette non-text contrast", () => {

@@ -36,12 +36,7 @@ export interface Rgba {
 
 /** Roles the UI actually has, each with the WCAG 2.2 AA requirement it is held to. */
 export type ContrastRole =
-  | "text"
-  | "large-text"
-  | "icon"
-  | "focus-ring"
-  | "chart-fill"
-  | "disabled-text";
+  "text" | "large-text" | "icon" | "focus-ring" | "chart-fill" | "disabled-text";
 
 /**
  * The requirement per role, or `null` where the criterion does not apply.
@@ -116,7 +111,12 @@ export function composite(foreground: Rgba, background: Rgba): Rgba {
   if (a === 0) return { r: 0, g: 0, b: 0, a: 0 };
   const blend = (f: number, b: number): number =>
     (f * foreground.a + b * background.a * (1 - foreground.a)) / a;
-  return { r: blend(foreground.r, background.r), g: blend(foreground.g, background.g), b: blend(foreground.b, background.b), a };
+  return {
+    r: blend(foreground.r, background.r),
+    g: blend(foreground.g, background.g),
+    b: blend(foreground.b, background.b),
+    a,
+  };
 }
 
 /** WCAG 2.x relative luminance of an opaque color (alpha is resolved by {@link toHex} first). */
@@ -130,15 +130,15 @@ export function relativeLuminance(color: Rgba | string): number | null {
     const c = channel / 255;
     return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
   };
-  return (
-    0.2126 * linear(parsed.r) + 0.7152 * linear(parsed.g) + 0.0722 * linear(parsed.b)
-  );
+  return 0.2126 * linear(parsed.r) + 0.7152 * linear(parsed.g) + 0.0722 * linear(parsed.b);
 }
 
 /** `#rrggbb` for an opaque color, rounding channels; alpha is dropped (composite first). */
 export function toHex(color: Rgba): string {
   const channel = (value: number): string =>
-    Math.min(255, Math.max(0, Math.round(value))).toString(16).padStart(2, "0");
+    Math.min(255, Math.max(0, Math.round(value)))
+      .toString(16)
+      .padStart(2, "0");
   return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
 }
 

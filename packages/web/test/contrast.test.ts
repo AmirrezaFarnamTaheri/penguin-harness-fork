@@ -47,7 +47,15 @@ describe("contrast primitives (F8.2)", () => {
       a: 1,
     });
     // Refusals: the caller must decide, never this module.
-    for (const bad of ["", "gray", "#12345", "#gggggg", "rgb(300,0,0)", "rgba(1,2,3,2)", "hsl(0 0% 0%)"])
+    for (const bad of [
+      "",
+      "gray",
+      "#12345",
+      "#gggggg",
+      "rgb(300,0,0)",
+      "rgba(1,2,3,2)",
+      "hsl(0 0% 0%)",
+    ])
       expect(parseColor(bad), bad).toBeNull();
   });
 
@@ -71,12 +79,16 @@ describe("contrast primitives (F8.2)", () => {
   });
 
   it("keeps alpha colors measured against what they are painted over", () => {
-    // A 50% black scrim over the dark card is much lighter than over white; the ratio pair flips.
+    // A 50% black scrim is a different color on each theme, and its contrast against the surface
+    // it darkens says how visible the scrim itself is.
     const overLight = contrastRatio("rgba(0,0,0,0.5)", "#ffffff");
     const overDark = contrastRatio("rgba(0,0,0,0.5)", "#0d0d0d");
-    expect(overLight).toBeCloseTo(3.95, 1);
-    expect(overDark).toBeCloseTo(1.39, 1);
-    // Explicit base: white text on a 50% black scrim over white is worse than on the scrim alone.
+    expect(overLight).toBeCloseTo(3.95, 1); // #808080 on white: a clearly visible scrim
+    // …and on the near-black dark card the same scrim changes almost nothing (1.04:1). That is
+    // the honest measurement: the dark theme cannot rely on scrims for separation, which is why
+    // its muted text carries its own contrast instead of being dimmed.
+    expect(overDark).toBeCloseTo(1.04, 1);
+    // Explicit base: white text on a 50% black scrim over white is white on #808080.
     expect(contrastRatio("#ffffff", "rgba(0,0,0,0.5)", "#ffffff")).toBeCloseTo(3.95, 1);
   });
 
@@ -136,9 +148,10 @@ describe("measured color sites (F8.1/F8.3)", () => {
       const background = dark ? TOKEN_CARD_BG.dark : TOKEN_CARD_BG.light;
       for (const [bucket, color] of Object.entries(colors)) {
         const verdict = evaluateContrast(color, background, "chart-fill");
-        expect(verdict.passes, `${bucket} ${dark ? "dark" : "light"}: ${describeContrast(verdict)}`).toBe(
-          true,
-        );
+        expect(
+          verdict.passes,
+          `${bucket} ${dark ? "dark" : "light"}: ${describeContrast(verdict)}`,
+        ).toBe(true);
       }
     }
     // The legacy single-hex map still resolves through the themed pairs, not around them.
@@ -149,9 +162,10 @@ describe("measured color sites (F8.1/F8.3)", () => {
     const gutterLight = /\.code-lines \.line::before\s*\{[^}]*@apply bg-white text-gray-(\d+)/.exec(
       stylesCss,
     );
-    const gutterDark = /html\.dark \.code-lines \.line::before\s*\{[^}]*@apply bg-gray-950 text-gray-(\d+)/.exec(
-      stylesCss,
-    );
+    const gutterDark =
+      /html\.dark \.code-lines \.line::before\s*\{[^}]*@apply bg-gray-950 text-gray-(\d+)/.exec(
+        stylesCss,
+      );
     expect(gutterLight, "light gutter rule present").not.toBeNull();
     expect(gutterDark, "dark gutter rule present").not.toBeNull();
     // gray-400 on white was 2.54:1; gray-500 is 4.83:1.
