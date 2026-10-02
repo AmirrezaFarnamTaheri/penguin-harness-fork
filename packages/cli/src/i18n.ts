@@ -160,6 +160,23 @@ export interface Messages {
     /** --timeout without -f: there is no wait to bound. */
     timeoutNeedsFollow(): string;
   };
+  /** `penguin recall`: read archived tool output by the id a result note published (F18). */
+  recall: {
+    desc: string;
+    offset: string;
+    pages: string;
+    /** The id (or whatever was typed in its place) is not a recall id at all. */
+    invalidId(value: string): string;
+    offsetInvalid(value: string): string;
+    pagesInvalid(value: string): string;
+    /** The store no longer has the entry (it is bounded, and entries age out). */
+    expired(): string;
+    unavailableIn(sessionId: string): string;
+    /** The server refused the position, with its own explanation of the text's length. */
+    offsetRejected(reason: string): string;
+    /** --pages stopped the read early; the offset continues it. */
+    moreRemaining(nextOffset: number): string;
+  };
   /** `penguin agent`: agent listing and creation. */
   agent: {
     desc: string;
@@ -963,6 +980,21 @@ const en: Messages = {
     timeoutNeedsFollow: () =>
       "--timeout only applies to -f/--follow: without it, logs never waits.",
   },
+  recall: {
+    desc: "Read tool output that was archived out of a result, by its recall id",
+    offset: "Start at this character offset in the stored output",
+    pages: "Read at most this many pages (continue later with the printed offset)",
+    invalidId: (value) =>
+      `"${value}" is not a recall id: an id is 12 or 32 hexadecimal characters (it names no file).`,
+    offsetInvalid: (value) => `Invalid --offset value "${value}": expected a non-negative integer.`,
+    pagesInvalid: (value) => `Invalid --pages value "${value}": expected a positive integer.`,
+    expired: () =>
+      "That archived output has expired: the Session keeps a bounded store, and this entry aged out.",
+    unavailableIn: (sessionId) =>
+      `This output id is not in session ${sessionId}'s archive. Check the id and the session.`,
+    offsetRejected: (reason) => `The server refused that position: ${reason}`,
+    moreRemaining: (nextOffset) => `[more remains] continue with --offset ${nextOffset}`,
+  },
   agent: {
     desc: "Manage the project's agents",
     lsDesc: "List the project's agents",
@@ -1736,6 +1768,19 @@ const zh: Messages = {
     follow: "渲染历史后继续跟随实时输出流",
     tailInvalid: (value) => `--tail 值「${value}」无效：应为正整数。`,
     timeoutNeedsFollow: () => "--timeout 只与 -f/--follow 搭配：不跟随时 logs 不等待。",
+  },
+  recall: {
+    desc: "通过召回 ID 读取已归档的工具输出",
+    offset: "从已存储输出的该字符位置开始",
+    pages: "最多读取这么多页（之后可用输出的偏移量继续）",
+    invalidId: (value) =>
+      `“${value}”不是召回 ID：ID 为 12 位或 32 位十六进制字符（它不代表任何文件）。`,
+    offsetInvalid: (value) => `--offset 值“${value}”无效：应为非负整数。`,
+    pagesInvalid: (value) => `--pages 值“${value}”无效：应为正整数。`,
+    expired: () => "该归档输出已过期：Session 的存储有上限，该条目已被淘汰。",
+    unavailableIn: (sessionId) => `该输出 ID 不在会话 ${sessionId} 的归档中。请检查 ID 与会话。`,
+    offsetRejected: (reason) => `服务端拒绝了该位置：${reason}`,
+    moreRemaining: (nextOffset) => `[仍有剩余] 使用 --offset ${nextOffset} 继续`,
   },
   agent: {
     desc: "管理 Project 的 Agent",

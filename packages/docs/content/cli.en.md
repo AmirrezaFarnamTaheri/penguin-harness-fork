@@ -150,6 +150,28 @@ penguin logs 402a2e24 -f
 | `--agent-id <id>` | Whose most recent session the omitted session id means |
 | `--json` / `--server <url>` | As everywhere; `--json` prints the raw message array (and, with `-f`, one JSON message per line as they arrive) |
 
+## penguin recall
+
+Read tool output that was archived out of a result, by the recall id the result note published. When a tool's output is too large to keep inline, the note carries an opaque id (`{"recallId":"…","sizeBytes":…}`) alongside the compressed result — the model pages it back with the `recall_output` tool, and this command is the same handle for a human. The id is 12 or 32 hexadecimal characters and names no file: a path cannot be spelled as one, and both this command and the server refuse anything else before reading.
+
+The session id is optional and resolves exactly like `penguin logs`: omitted, it is the agent's most recent session. Pages are written to stdout as they arrive (the stored output can be megabytes — nothing buffers it), and `--pages`/`--offset` let a caller read a prefix and continue later.
+
+```bash
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718            # all pages, current agent's latest session
+penguin recall 3f9a1c8b2d4e5f60 402a2e24 --pages 1         # first page of a specific session
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718 --offset 12000 --json
+```
+
+| Option | Description |
+| --- | --- |
+| `--offset <n>` | Start at this character (UTF-16) offset in the stored output; continue a previous prefix read with the offset it printed |
+| `--pages <n>` | Read at most n pages (12 000 characters each), then stop with a note naming the offset that continues the read |
+| `--project-id <id>` / `--agent-id <id>` | Session resolution scope, as with `logs` |
+| `--json` | One JSON object per page (NDJSON: `{recallId, offset, page, nextOffset, totalChars}`) instead of raw text — still streamed, never the whole entry at once |
+| `--server <url>` | Target server (see Server connection) |
+
+Failures say which one happened, because the fix differs: a malformed id is refused locally (`it names no file`); an id this Session never stored is `unavailable`; an entry that aged out of the bounded store is `expired`; and a position past the end of the text (or inside a Unicode character) is refused by the server with the text's real length. Output that was compressed away is never lost to the person reading the session.
+
 ## penguin agent
 
 ```bash

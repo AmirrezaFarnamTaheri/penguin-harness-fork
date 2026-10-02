@@ -150,6 +150,28 @@ penguin logs 402a2e24 -f
 | `--agent-id <id>` | 省略 session id 时，取哪个 Agent 的最近一次会话 |
 | `--json` / `--server <url>` | 同各处约定；`--json` 输出原始消息数组（`-f` 下按行追加到达的 JSON 消息） |
 
+## penguin recall
+
+通过结果提示中给出的召回 ID，读取已从结果中归档出去的工具输出。当工具输出太大而无法内联保留时，提示中会带一个不透明 ID（`{"recallId":"…","sizeBytes":…}`），模型用 `recall_output` 工具分页读回，本命令就是同一句柄在人工侧的使用方式。ID 为 12 位或 32 位十六进制字符，不代表任何文件：路径无法拼成合法 ID，本命令与服务端都会在任何读取之前拒绝其他形式。
+
+会话 ID 可省略，解析规则与 `penguin logs` 相同：省略时使用该 agent 最近的会话。分页内容会边到边写入 stdout（归档输出可能达数兆字节，程序中不做整体缓冲），`--pages` / `--offset` 可先读前缀、之后再继续。
+
+```bash
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718            # 全部页面，当前 agent 最近会话
+penguin recall 3f9a1c8b2d4e5f60 402a2e24 --pages 1         # 指定会话的第一页
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718 --offset 12000 --json
+```
+
+| 选项 | 说明 |
+| --- | --- |
+| `--offset <n>` | 从已存储输出的该字符（UTF-16）位置开始；用上次打印的偏移量继续读取 |
+| `--pages <n>` | 最多读取 n 页（每页 12 000 字符），随后停止并提示可继续读取的偏移量 |
+| `--project-id <id>` / `--agent-id <id>` | 会话解析范围，与 `logs` 相同 |
+| `--json` | 每页输出一个 JSON 对象（NDJSON：`{recallId, offset, page, nextOffset, totalChars}`），仍然流式输出，绝不一次性输出整个条目 |
+| `--server <url>` | 目标服务器（见 Server connection） |
+
+失败信息会说明具体原因，因为处理方式各不相同：格式错误的 ID 在本地即被拒绝（`it names no file`）；本会话从未存过的 ID 为 `unavailable`；因有界存储淘汰而过期的条目为 `expired`；超出文本末尾（或落在 Unicode 字符中间）的位置由服务端拒绝，并给出文本真实长度。被压缩掉的输出不会对阅读会话的人丢失。
+
 ## penguin agent
 
 ```bash
