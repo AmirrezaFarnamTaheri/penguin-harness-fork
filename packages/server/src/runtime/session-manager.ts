@@ -653,6 +653,19 @@ function isPlainText(role: "user" | "assistant") {
   };
 }
 
+/**
+ * How long a removed entry's in-flight drive may take to settle before its environment is
+ * disposed anyway (E10.2). The same 5 s budget the delete route and shutdown already use, so
+ * the three waits agree instead of one of them being effectively infinite.
+ */
+export const RUNTIME_DISPOSE_GRACE_MS = 5_000;
+
+/** How a removed entry's runtime cleanup ended: settled in time, or forced at the bound. */
+export type DisposeOutcome = "disposed" | "disposed-after-timeout";
+
+/** Bounded history of cleanup outcomes, so a long-lived process does not accumulate them. */
+const DISPOSE_OUTCOME_HISTORY = 32;
+
 export class SessionManager {
   private readonly entries = new Map<string, RuntimeEntry>();
   /** Per-Session mutex (serializes get-or-load and status flips); auto-cleaned once the chain drains. */
@@ -664,6 +677,10 @@ export class SessionManager {
   private readonly deletingAgents = new Set<string>();
   /** Sessions currently being deleted (guards against the entry/Trace file being rebuilt and reviving it inside the deletion race window). */
   private readonly deletingSessions = new Set<string>();
+  /** Removed entries whose in-flight drive did not settle inside the dispose grace (E10.2). */
+  private disposeTimeouts = 0;
+  /** Outcome of the last cleanup per removed Session, newest last (E10.2); bounded. */
+  private readonly disposeOutcomes = new Map<string, DisposeOutcome>();
   /** Per-Agent config generation (key = agentKey), bumped by invalidateAgentRuntimes when a Project's credentials change. */
   private readonly agentGenerations = new Map<string, number>();
   /** Open streaming fragments of running sessions (fed by drive, served to GET /messages; see live-tail.ts). */
@@ -1543,11 +1560,60 @@ export class SessionManager {
    * Agent / Project is the one intent that must also end the background processes the
    * conversation started (a dev server surviving its deleted conversation is
    * unreachable from every UI, running forever).
+   *
+   * The wait is BOUNDED (E10.2). A drive promise that never settles used to mean
+   * `dispose()` was never called at all: the entry left the active table, the route
+   * answered 204, and the Session's background processes kept running with no UI left
+   * that could reach them. After {@link RUNTIME_DISPOSE_GRACE_MS} the cleanup runs
+   * anyway, and the caller is told which happened — `"disposed"` for a settle inside
+   * the grace, `"disposed-after-timeout"` for the forced case — so a timeout is never
+   * reported as an uncomplicated success. The outcome is also counted
+   * ({@link disposeTimeouts}) and logged, because the interesting event is the run that
+   * outlived its own deletion.
    */
-  private disposeRemoved(entry: RuntimeEntry): void {
-    const dispose = (): void => entry.session.dispose?.();
-    if (entry.running) void entry.running.then(dispose, dispose);
-    else dispose();
+  private disposeRemoved(entry: RuntimeEntry): Promise<DisposeOutcome> {
+    let disposeOnce: () => void;
+    const disposed = new Promise<DisposeOutcome>((resolve) => {
+      let done = false;
+      disposeOnce = (): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try {
+          entry.session.dispose?.();
+        } catch (err) {
+          // Cleanup must never reject the caller's deletion path; the process kill it owns
+          // is best-effort by the same rule as the rest of dispose().
+          this.log(
+            `[session-manager] dispose failed for ${entry.sessionId}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        const outcome: DisposeOutcome = timedOut ? "disposed-after-timeout" : "disposed";
+        this.disposeOutcomes.set(entry.sessionId, outcome);
+        if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
+          for (const key of this.disposeOutcomes.keys()) {
+            if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
+            this.disposeOutcomes.delete(key);
+          }
+        }
+        resolve(outcome);
+      };
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        this.disposeTimeouts += 1;
+        this.log(
+          `[session-manager] ${entry.sessionId} did not settle within ${RUNTIME_DISPOSE_GRACE_MS}ms; disposing anyway so its background processes cannot outlive it`,
+        );
+        disposeOnce();
+      }, RUNTIME_DISPOSE_GRACE_MS);
+      timer.unref?.();
+      if (entry.running) void entry.running.then(disposeOnce, disposeOnce);
+      else disposeOnce();
+    });
+    return disposed;
   }
 
   /**
@@ -1564,7 +1630,7 @@ export class SessionManager {
       entry.abort?.abort();
       if (entry.running) runnings.push(entry.running);
       this.entries.delete(key);
-      this.disposeRemoved(entry);
+      void this.disposeRemoved(entry);
     }
     return runnings;
   }
@@ -1587,7 +1653,7 @@ export class SessionManager {
       entry.abort?.abort();
       if (entry.running) runnings.push(entry.running);
       this.entries.delete(key);
-      this.disposeRemoved(entry);
+      void this.disposeRemoved(entry);
     }
     return runnings;
   }
@@ -1614,12 +1680,32 @@ export class SessionManager {
     entry.approvals.denyAll();
     entry.abort?.abort();
     this.entries.delete(sessionId);
-    this.disposeRemoved(entry);
+    void this.disposeRemoved(entry);
     return entry.running ? [entry.running] : [];
   }
 
   endSessionDeletion(sessionId: string): void {
     this.deletingSessions.delete(sessionId);
+  }
+
+  /**
+   * How many removed entries needed the forced cleanup in {@link disposeRemoved} (E10.2).
+   * A non-zero count is evidence about a stuck run, not about the delete having failed:
+   * the entry was removed and its environment disposed either way.
+   */
+  get disposeTimeoutCount(): number {
+    return this.disposeTimeouts;
+  }
+
+  /**
+   * How the removed Session's cleanup ended, or undefined when it is not known yet (the
+   * cleanup is asynchronous and may still be inside its grace) or was never scheduled here.
+   * This is the per-call "timeout result" the delete path can report: `disposed` means the
+   * drive settled and the environment was released; `disposed-after-timeout` means the run
+   * outlived its Session and the environment was released anyway.
+   */
+  disposeOutcomeOf(sessionId: string): DisposeOutcome | undefined {
+    return this.disposeOutcomes.get(sessionId);
   }
 
   /** Graceful shutdown: reject new tasks (503), interrupt all active runs, and wait for them to finish (default ≤5s). */
@@ -1637,9 +1723,7 @@ export class SessionManager {
       // App's freshly resumed Session starts with an empty process list, so the stop
       // control has gone blind. Sequenced after the in-flight drive settles, the same
       // ordering disposeRemoved uses.
-      const dispose = (): void => entry.session.dispose?.();
-      if (entry.running) void entry.running.then(dispose, dispose);
-      else dispose();
+      void this.disposeRemoved(entry); // bounded, like every other removal path (E10.2)
     }
     this.entries.clear();
     if (pending.length === 0) return;
