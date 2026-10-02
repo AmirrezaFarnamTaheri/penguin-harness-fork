@@ -132,13 +132,15 @@ export const WRITE_PRODUCER_INVENTORY: readonly WriteProducerInventoryEntry[] = 
     id: "tool-output-archive",
     nonessential: true,
     producerId: "tool-output-archive",
-    reason: "the .log capture of an over-long tool result; refusing it keeps the result in the conversation",
+    reason:
+      "the .log capture of an over-long tool result; refusing it keeps the result in the conversation",
   },
   {
     id: "recall-store",
     nonessential: true,
     producerId: "recall-store",
-    reason: "the recallable copy read by recall_output; refusing it costs the id, not the tool result",
+    reason:
+      "the recallable copy read by recall_output; refusing it costs the id, not the tool result",
   },
   // Read-only tools.
   ...(
@@ -178,7 +180,8 @@ export const WRITE_PRODUCER_INVENTORY: readonly WriteProducerInventoryEntry[] = 
   {
     id: "exec_command",
     nonessential: false,
-    reason: "unresolvable-destination: a command's target volume is not in its arguments (see the module's reopen condition)",
+    reason:
+      "unresolvable-destination: a command's target volume is not in its arguments (see the module's reopen condition)",
   },
   {
     id: "input_command",
