@@ -11,11 +11,15 @@ import path from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  RECALL_OUTPUT_PAGE_CHARS,
   THINKING_LEVEL_NAMES,
   imageUrlMessage,
+  isValidRecallId,
   scratchpadDir,
   sessionScratchpadDir,
+  sliceRecallPage,
   stripLeadingMarkerBlocks,
+  TruncatedToolOutputArchive,
   userText,
 } from "@prismshadow/penguin-core";
 import { catalogEntryFor } from "@prismshadow/penguin-core/model-catalog";
@@ -28,6 +32,7 @@ import type {
   MessagesLiveTail,
   MessagesPageInfo,
   MessagesResponse,
+  RecallPageResponse,
   RecalledMessageResponse,
   ServerEvent,
   SessionCategory,
@@ -757,6 +762,70 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       deps.manager.endSessionDeletion(row.sessionId);
     }
     return c.body(null, 204);
+  });
+
+  // Bounded, path-free retrieval of oversized tool output (F18). The browser and the CLI read a
+  // Session's archived output here by the opaque id the tool result published; the id is validated
+  // to the same 12/32-hex shape the model-facing tool accepts, so it can only ever name a file the
+  // archive wrote inside this Session's scratchpad — a request cannot ask for a path, because a
+  // path cannot spell a valid id. The store is constructed per request rather than shared: it
+  // reads the directory it is given and caches nothing between calls, so the Session's own
+  // lifetime (and its deletion) keeps governing what exists, exactly as it does for the model.
+  app.get("/:sessionId/recall/:recallId", async (c) => {
+    const row = resolveSession(c);
+    const recallId = (c.req.param("recallId") ?? "").trim().toLowerCase();
+    if (!isValidRecallId(recallId)) {
+      throw new HttpError(
+        400,
+        "recall_id_invalid",
+        "A recall id is 12 or 32 hexadecimal characters.",
+      );
+    }
+    const rawOffset = c.req.query("offset");
+    const offset = rawOffset === undefined || rawOffset === "" ? 0 : Number(rawOffset);
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new HttpError(
+        400,
+        "recall_offset_invalid",
+        "Recall offset must be a non-negative whole number.",
+      );
+    }
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(
+        sessionScratchpadDir(deps.config.root, row.projectId, row.agentId, row.sessionId),
+        "truncated-tool-output",
+      ),
+    });
+    const result = await archive.recall(recallId);
+    if (result.status !== "ok") {
+      // Two codes, because the two are different facts to the reader: the entry aged out of a
+      // bounded store, or this Session never held that id / never held it at all.
+      throw new HttpError(
+        404,
+        result.status === "dropped" ? "recall_expired" : "recall_unavailable",
+        result.status === "dropped"
+          ? "This Session's output archive entry has expired."
+          : "This output id is unavailable in this Session.",
+      );
+    }
+    const slice = sliceRecallPage(result.text, offset, RECALL_OUTPUT_PAGE_CHARS);
+    if (slice.status !== "ok") {
+      // Not 404: the id is fine and the text exists — the requested position is not a place in it
+      // (past the end, or inside a surrogate pair). 416 says that without pretending to be an
+      // unknown resource, and the body says how long the text actually is.
+      throw new HttpError(
+        416,
+        "recall_offset_out_of_range",
+        `Recall offset is outside this output (it is ${slice.totalChars} UTF-16 code units long) or splits a Unicode character.`,
+      );
+    }
+    return c.json({
+      recallId,
+      offset,
+      page: slice.page,
+      nextOffset: slice.nextOffset,
+      totalChars: slice.totalChars,
+    } satisfies RecallPageResponse);
   });
 
   // Session scratchpad files (input images saved to disk for image-unsupported models, the

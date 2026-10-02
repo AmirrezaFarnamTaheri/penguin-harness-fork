@@ -1880,6 +1880,27 @@ export interface SessionProcessesResponse {
   processes: SessionProcessInfo[];
 }
 
+/**
+ * One page of a Session's archived tool output (F18), fetched by opaque recall id.
+ *
+ * `page` is a slice of the stored text in UTF-16 code units, never more than the recall page size,
+ * and it never ends between the halves of a surrogate pair. `nextOffset` is null exactly when the
+ * page reaches the end, so a client can walk the whole output without guessing: pass the previous
+ * `nextOffset` back as `offset`. `totalChars` is the full length of the stored text, so the caller
+ * can show position without holding it. Nothing here is a path — the id names a file the archive
+ * wrote, and the text is only ever returned through it.
+ */
+export interface RecallPageResponse {
+  recallId: string;
+  /** Where this page starts (the `offset` that was requested). */
+  offset: number;
+  page: string;
+  /** The next `offset`, or null when this page reaches the end of the stored text. */
+  nextOffset: number | null;
+  /** Length of the whole stored text in UTF-16 code units. */
+  totalChars: number;
+}
+
 // ---------------------------------------------------------------------------
 // Messaging bindings (/api/sessions/:sessionId/messaging/*)
 // ---------------------------------------------------------------------------

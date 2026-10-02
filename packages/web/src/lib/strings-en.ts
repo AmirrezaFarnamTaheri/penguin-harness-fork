@@ -4202,6 +4202,12 @@ Scenarios:
       workspace_missing: "This Session's Workspace no longer exists.",
       workspace_not_found: "That Workspace does not exist, or is not a directory.",
       session_not_found: "This Session no longer exists, or you do not have access.",
+      recall_id_invalid: "A recall id is 12 or 32 hexadecimal characters.",
+      recall_unavailable: "This output id is unavailable in this Session.",
+      recall_expired: "This Session's archived output entry has expired.",
+      recall_offset_invalid: "The recall offset must be a non-negative whole number.",
+      recall_offset_out_of_range:
+        "That position is outside the archived output, or splits a Unicode character.",
       session_deleting: "This Session is being deleted.",
       approval_not_found: "This approval request was already answered, or is no longer valid.",
       process_not_found: "This background process already exited, or was removed.",
