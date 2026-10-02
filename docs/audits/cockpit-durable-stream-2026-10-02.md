@@ -152,12 +152,25 @@ head then executed:
 
 The browser lane's log is not retrievable from this environment (the Actions log download
 redirects to a host this sandbox cannot reach, and the check-run annotation carries only the exit
-code), so the failing spec is not yet identified. The lane has no retries and runs with
-`workers: 1`, i.e. one timing-sensitive expectation fails the whole job; the specs that exercise
-the cockpit stream mock the socket in the browser, so none of them can see the server-side
-durability changes directly. The lane is re-triggered on the follow-up docs head, and this row
-stays `IMPLEMENTED` rather than `VERIFIED` until an exact-commit browser verdict is green — see
-Residual work.
+code), so the failing spec on `85b6799c` is not identified. The lane has no retries
+(`workers: 1`), so one timing-sensitive expectation fails the whole job; the specs that exercise
+the cockpit stream mock the socket in the browser and cannot see these server changes directly.
+
+The follow-up docs head `ee07fcff` (the E4 receipt plus the CI-repair note; code tree identical
+to `85b6799c`) was run with retries disabled again and is **fully green**:
+
+- [37049972446](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37049972446)
+  (`CI`, head `ee07fcff`): **21/21 jobs success** — `e2e-browser` 110980641658,
+  `test (server)` 110980642088, `test (core)` 110980641919, `test (rest)` 110980641832,
+  `test (web-cli)` 110980642032, `typecheck` 110980641451, `style (prettier)` and the aggregate
+  `ci` 110983984408, plus macOS/Windows shards, installers and all three `runtime` lanes.
+- [37049972427](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37049972427)
+  (`Skill Integrity`, head `ee07fcff`): success.
+
+That is the exact-commit CI receipt for this package: the red lane on `85b6799c` is recorded as a
+flake (same code tree, no retries), and the green run at `ee07fcff` is the gate that closes E4.
+The previous head's aggregated `ci` job had been wedged since 17:22 UTC; it was cancelled at
+18:00:19 UTC, which is what allowed these runs to execute at all.
 
 ## Compatibility
 
@@ -190,8 +203,7 @@ Residual work.
 - **Compaction changes the file's base.** After a rewrite the file may start above seq 1; a client
   older than the base is told `outside_replay_window` with `missed: null`. This is intended and
   documented, but it means the durable window is bounded by the file, not by the whole history.
-- **Exact-commit CI gate.** The first exact-commit run on this head is green in 19/20 lanes and
-  red in `e2e-browser` (exit 1, spec unidentified because the log is unreachable from this
-  environment). Reopen condition: a browser verdict on a head that contains this work; if the
-  lane is red again, the failing spec must be read from the run page (only the user or a
-  network-enabled environment can fetch the log) and fixed as its own package.
+- **The `e2e-browser` failure on `85b6799c` is unread.** The same tree passed on `ee07fcff`, so it
+  is treated as a flake; if the lane fails again on a head containing this work, the failing spec
+  must be read from the run page (this environment cannot fetch Actions logs) and repaired as its
+  own package.
