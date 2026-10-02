@@ -19,6 +19,13 @@ import { lstat, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/prom
 import path from "node:path";
 import { redactCredentials } from "../internal/credential-redactor.js";
 import { READ_FILE_SCAN_CAP_BYTES } from "./tools/read-file.js";
+import {
+  createPruneFrontier,
+  parsePruneFrontier,
+  planPrune,
+  serializePruneFrontier,
+  type PruneFrontier,
+} from "../internal/prune-frontier.js";
 
 /**
  * Maximum stored bytes for one truncated tool call. One byte of headroom below read_file's
@@ -96,6 +103,13 @@ interface TruncatedToolOutputArchiveOptions {
   archiveLimits?: Partial<ArchiveLimits>;
   /** Test-only clock, so age-bound eviction can be exercised without waiting a month. */
   now?: () => number;
+  /**
+   * Where to persist the archive's prune frontier (B4.3). Omitted = in memory only: the frontier
+   * still answers repeated blocked prunes within this process, and a restart re-enforces the bound
+   * from the directory itself (which remains the authority). The archive root is deliberately not
+   * used as a default: an existing E10.4 contract pins that directory to the `.log` files it writes.
+   */
+  pruneFrontierPath?: string;
 }
 
 /**
@@ -497,6 +511,10 @@ export class TruncatedToolOutputCapture {
 export class TruncatedToolOutputArchive {
   private readonly rootDir: string;
   private readonly fileLimitBytes: number;
+  /** The prune frontier: what the last pass decided, so a repeat does not re-decide it (B4.3). */
+  private pruneFrontier: PruneFrontier = createPruneFrontier();
+  private pruneFrontierLoaded = false;
+
   /** Recall entries live in their own subdirectory so eviction can only unlink this store's files. */
   private readonly recallRootDir: string;
   private readonly recallIndex = new Map<string, RecallEntry>();
@@ -506,6 +524,7 @@ export class TruncatedToolOutputArchive {
   private readonly recallLimits: RecallLimits;
   private readonly now: () => number;
   private readonly archiveLimits: ArchiveLimits;
+  private readonly pruneFrontierPath: string | undefined;
   /** Serializes capacity checks with their writes, like the recall store (E10.4). */
   private archiveSaveTail: Promise<void> = Promise.resolve();
   /** Bounded log of files the capacity bound removed (newest last). */
@@ -522,6 +541,7 @@ export class TruncatedToolOutputArchive {
     this.recallRootDir = path.join(opts.rootDir, "recall");
     this.recallLimits = { ...RECALL_LIMITS, ...opts.recallLimits };
     this.archiveLimits = { ...ARCHIVE_LIMITS, ...opts.archiveLimits };
+    this.pruneFrontierPath = opts.pruneFrontierPath;
     this.now = opts.now ?? Date.now;
   }
 
@@ -595,6 +615,29 @@ export class TruncatedToolOutputArchive {
    * anything else in the Session scratchpad are never touched.
    */
   private async makeRoomFor(pendingBytes: number): Promise<boolean> {
+    // A requirement larger than the whole budget cannot fit at any level of pruning, and the
+    // frontier remembers that decision per directory state — so a repeated oversized capture is
+    // refused without listing or stat-ing anything (B4.3).
+    if (
+      this.pruneFrontier.blockedAtRequiredBytes !== null &&
+      pendingBytes >= this.pruneFrontier.blockedAtRequiredBytes
+    ) {
+      const cached = planPrune({
+        directoryMtimeMs: this.pruneFrontier.directoryMtimeMs,
+        requiredBytes: pendingBytes,
+        limits: this.archiveLimits,
+        frontier: this.pruneFrontier,
+      });
+      if (cached.decision === "cached-blocked") {
+        this.pruneFrontier = cached.frontier;
+        await this.persistPruneFrontier();
+        return false;
+      }
+    }
+    await this.loadPruneFrontier();
+    const directoryMtimeMs = await lstat(this.rootDir)
+      .then((info) => info.mtimeMs)
+      .catch(() => null);
     const entries: { name: string; path: string; bytes: number; mtimeMs: number }[] = [];
     const listing = await readdir(this.rootDir, { withFileTypes: true }).catch(() => []);
     for (const dirent of listing) {
@@ -606,38 +649,55 @@ export class TruncatedToolOutputArchive {
       if (info === null || !info.isFile() || info.isSymbolicLink()) continue;
       entries.push({ name: dirent.name, path: filePath, bytes: info.size, mtimeMs: info.mtimeMs });
     }
-    let totalBytes = entries.reduce((sum, entry) => sum + entry.bytes, 0);
-    let count = entries.length;
-    if (pendingBytes > this.archiveLimits.maxTotalBytes) return false;
-    if (
-      count + 1 <= this.archiveLimits.maxEntries &&
-      totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
-    ) {
-      return true;
+    const plan = planPrune({
+      directoryMtimeMs,
+      requiredBytes: pendingBytes,
+      limits: this.archiveLimits,
+      entries: entries.map(({ name, bytes, mtimeMs }) => ({ name, bytes, mtimeMs })),
+      // The recall store keeps its own documented lifetime and lives in its own subdirectory; the
+      // frontier records this so a future pruner cannot reconsider those entries either.
+      keepNames: [],
+      frontier: this.pruneFrontier,
+    });
+    this.pruneFrontier = plan.frontier;
+    if (plan.decision === "blocked" || plan.decision === "cached-blocked") {
+      await this.persistPruneFrontier();
+      return false;
     }
-    entries.sort((a, b) => a.mtimeMs - b.mtimeMs || a.name.localeCompare(b.name));
-    for (const entry of entries) {
-      if (
-        count + 1 <= this.archiveLimits.maxEntries &&
-        totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
-      ) {
-        break;
-      }
+    const byName = new Map(entries.map((entry) => [entry.name, entry]));
+    for (const name of plan.drops) {
+      const entry = byName.get(name);
+      if (entry === undefined) continue;
       try {
         await unlink(entry.path);
       } catch {
         // Another writer (or the host's Session deletion) won the race: the bound is served
         // either way, and the file is gone.
       }
-      totalBytes -= entry.bytes;
-      count -= 1;
       this.archiveDropped.push({ name: entry.name, reason: "capacity", at: this.now() });
       while (this.archiveDropped.length > RECALL_DROPPED_LOG_LIMIT) this.archiveDropped.shift();
     }
-    return (
-      count + 1 <= this.archiveLimits.maxEntries &&
-      totalBytes + pendingBytes <= this.archiveLimits.maxTotalBytes
+    await this.persistPruneFrontier();
+    return plan.decision === "fits" || plan.decision === "drop";
+  }
+
+  /** Loads a persisted frontier once; a missing or corrupt one is simply a fresh frontier. */
+  private async loadPruneFrontier(): Promise<void> {
+    if (this.pruneFrontierLoaded || this.pruneFrontierPath === undefined) return;
+    this.pruneFrontierLoaded = true;
+    const text = await readFile(this.pruneFrontierPath, "utf8").catch(() => null);
+    this.pruneFrontier = parsePruneFrontier(text);
+  }
+
+  /** Persists the frontier when a path was configured; a failed write is not fatal to a prune. */
+  private async persistPruneFrontier(): Promise<void> {
+    if (this.pruneFrontierPath === undefined) return;
+    await mkdir(path.dirname(this.pruneFrontierPath), { recursive: true, mode: 0o700 }).catch(
+      () => undefined,
     );
+    await writeFile(this.pruneFrontierPath, serializePruneFrontier(this.pruneFrontier), {
+      mode: 0o600,
+    }).catch(() => undefined);
   }
 
   /** Observable state of the truncation archive: what it holds, its bounds, what it evicted. */

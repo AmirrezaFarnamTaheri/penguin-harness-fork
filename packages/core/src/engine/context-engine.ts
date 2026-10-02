@@ -2195,6 +2195,30 @@ export class ContextEngine {
   }
 
   /**
+   * B4 — the compaction transaction: candidate stages, then exactly one swap.
+   *
+   * Everything before this method builds and validates a candidate; nothing in the engine's own
+   * state moves until the swap below. Per stage, the source IDs / frontier values that must survive:
+   *
+   * | stage | built | must survive |
+   * |---|---|---|
+   * | 1. trigger (`compactionTrigger`) | reason `context`/`turns` | the old context, `lastRequestTotal`, `sessionTurns` |
+   * | 2. fold (candidate input) | this round's tool outputs + the Prompt, tool_use/tool_result pairing intact | every folded `tool_call_id`/`call_id` pairing, the carry-over messages verbatim |
+   * | 3. generation (`runCompactionRequest`) | the attempt, written to the **old** Trace | the attempt's `token_usage`, the Trace file index (rotation is still pending, never started) |
+   * | 4. serialization | the `[context_summary]` text of a non-empty, tool-free response | the committed summary text, `pendingSummary` |
+   * | 5. commit (this method) | the opened context, validated | its `session_meta`, its toolset records, `maxTurns`, compaction settings; `sessionTurns`/`lastRequestTotal` reset |
+   *
+   * Failure rules, pinned by `test/compaction.test.ts`:
+   * - stages 2–4 failing (fatal / retryable / aborted / unusable summary) leave the current
+   *   context in place; while nothing was committed a retry resends the byte-identical input
+   *   ("summarize failure keeps the old context and does NOT downgrade to discard");
+   * - stage 5 refusing — the opener threw, or returned something that does not validate — leaves
+   *   the current context current, with no rotation pending, so the next trigger compacts again;
+   * - the swap block is deliberately **synchronous**: no `await` may be added between its first
+   *   and last assignment, or a concurrent reader could observe half a context;
+   * - Trace writes stay best-effort (`write`): a failing `write`/`rotate` warns and never tears a swap.
+   */
+  /**
    * Opens a new model context after successful compaction: swaps in the LLM object
    * `openNextContext` returns (seeding it with the Session cumulative token counts), adopts
    * whatever the opened context brings — its session_meta and toolset records for the rotated
@@ -2219,7 +2243,12 @@ export class ContextEngine {
     // An opener that throws (the Agent State could not be assembled) propagates out of the
     // run with the engine untouched: the old context stays current and no rotation is
     // pending, so the next trigger compacts again from a consistent state.
-    const opened = await opening;
+    // The candidate is validated before the swap: `openNextContext` is external code, and a
+    // result that is not a context must be refused while the current context is still whole
+    // (the mutation block below is the one commit point).
+    const opened = validateOpenedContext(await opening);
+    // The one swap. Synchronous by contract: assigning a half-built context would let the next
+    // write observe an LLM whose Trace rotation is not pending, or vice versa.
     this.pendingTraceRotation = true;
     this.llm = opened.llm;
     if (opened.sessionMeta) this.contextMeta = opened.sessionMeta;
@@ -2424,6 +2453,41 @@ export class ContextEngine {
       process.stderr.write(`[trace] write failed: ${message}\n`);
     }
   }
+}
+
+/**
+ * B4.2 — validates a candidate context before the swap.
+ *
+ * `openNextContext` is host code: an opener that returns a partial object (a missing `llm`, a
+ * settings object of the wrong shape) would otherwise be adopted and only fail later, after the
+ * Trace rotation flag and the turn counters had moved — a half-committed context. Each field the
+ * engine dereferences is checked here, while nothing has been mutated yet.
+ */
+function validateOpenedContext(opened: unknown): OpenedContext {
+  const refuse = (detail: string): never => {
+    throw new Error(`openNextContext returned an invalid context: ${detail}`);
+  };
+  if (opened === null || typeof opened !== "object") refuse("result is not an object");
+  const candidate = opened as Partial<OpenedContext>;
+  if (candidate.llm === null || typeof candidate.llm !== "object") refuse("`llm` is missing");
+  const llm = candidate.llm as Partial<LLMInterface>;
+  if (typeof llm.streamGenerate !== "function") refuse("`llm.streamGenerate` is not a function");
+  if (candidate.sessionMeta !== undefined && typeof candidate.sessionMeta?.type !== "string") {
+    refuse("`sessionMeta` is not an OmniMessage");
+  }
+  if (
+    candidate.maxTurns !== undefined &&
+    (typeof candidate.maxTurns !== "number" || !Number.isFinite(candidate.maxTurns))
+  ) {
+    refuse("`maxTurns` is not a finite number");
+  }
+  if (
+    candidate.compaction !== undefined &&
+    (candidate.compaction === null || typeof candidate.compaction !== "object")
+  ) {
+    refuse("`compaction` is not a settings object");
+  }
+  return candidate as OpenedContext;
 }
 
 /** Transcribes the model's produced thinking/text and tool calls/results into tagged lines (shared by `[turn_aborted]`/`[turn_retried]`). */
