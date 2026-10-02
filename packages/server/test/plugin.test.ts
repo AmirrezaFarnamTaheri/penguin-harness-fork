@@ -10,6 +10,7 @@ import { HotResources } from "../src/hmr/resources.js";
 import { packagedPlatform } from "../src/hmr/platform.js";
 import { PENGUIN_FAMILY, RUNTIME_INTERFACES_RESOURCE_ID } from "../src/hmr/capabilities.js";
 import { PLUGINS_RESOURCE_ID, PluginHost, pluginHostFrom } from "../src/plugin/host.js";
+import { serverLogger } from "../src/runtime/logger.js";
 import type {
   PenguinContext,
   PenguinInterface,
@@ -138,7 +139,7 @@ describe("plugin host", () => {
         });
       },
     });
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(serverLogger, "warn").mockImplementation(() => {});
     try {
       const pending = host.dispose();
       // Concurrent, not sequential: the fast disposer is not queued behind the gated one.

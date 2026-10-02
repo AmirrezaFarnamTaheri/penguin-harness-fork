@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Environment } from "../src/environment/index.js";
-import { TruncatedToolOutputCapture } from "../src/environment/truncated-tool-output-archive.js";
+import { TruncatedToolOutputArchive } from "../src/environment/truncated-tool-output-archive.js";
 import {
   partialToolCallOutput,
   toolCall,
@@ -72,9 +72,65 @@ function payloadTypes(messages: OmniMessage[]): string[] {
   return messages.map((m) => (m.payload as { type?: string }).type ?? "");
 }
 
-/** Extracts the plain archive path from the note (the path is always last before `]`). */
-function recoveryPath(output: string): string | undefined {
-  return output.match(/\[output archived[^:]*: ([^\]]+)\]/)?.[1];
+/** Extracts the Session-private recall id exposed by the model-facing recovery note. */
+function recallId(output: string): string | undefined {
+  return output.match(/call recall_output with recall_id "([a-f0-9]{12}|[a-f0-9]{32})"/i)?.[1];
+}
+
+interface RecallPage {
+  text: string;
+  total: number;
+  nextOffset: number | null;
+}
+
+async function recallPage(
+  env: Environment,
+  id: string,
+  offset: number,
+  toolCallId: string,
+): Promise<RecallPage> {
+  const messages = await collect(
+    env.executeTool({
+      toolCall: toolCall({
+        name: "recall_output",
+        arguments: JSON.stringify({ recall_id: id, offset }),
+        toolCallId,
+      }),
+    }),
+  );
+  const output = (messages.at(-1)?.payload as { output?: string } | undefined)?.output ?? "";
+  const next = output.match(
+    /\[recall page: UTF-16 offsets \d+[–-](\d+) of (\d+); next_offset \d+\]$/,
+  );
+  if (next) {
+    return {
+      text: output.slice(0, next.index).replace(/\n$/, ""),
+      total: Number(next[2]),
+      nextOffset: Number(next[1]),
+    };
+  }
+  const complete = output.match(/\[recall complete: (\d+) UTF-16 code units\]$/);
+  return {
+    text: complete ? output.slice(0, complete.index).replace(/\n$/, "") : output,
+    total: complete ? Number(complete[1]) : output.length,
+    nextOffset: null,
+  };
+}
+
+async function recoverOutput(
+  env: Environment,
+  id: string,
+  toolCallPrefix = "recall",
+): Promise<string> {
+  let offset = 0;
+  let recovered = "";
+  for (let page = 0; page < 1000; page++) {
+    const result = await recallPage(env, id, offset, `${toolCallPrefix}_${page}`);
+    recovered += result.text;
+    if (result.nextOffset === null) return recovered;
+    offset = result.nextOffset;
+  }
+  throw new Error("Recall output exceeded the bounded test page count.");
 }
 
 let tmp: string;
@@ -400,7 +456,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
     const output = (messages[messages.length - 1]!.payload as { output: string }).output;
     // Budget 5 splits into a 2-char head and a 3-char tail around the counting marker.
     expect(output).toBe("ab\n[output truncated: kept first 2 and last 3 of 26 chars]\nxyz");
-    expect(output).not.toContain("[output archived:");
+    expect(output).not.toContain("call recall_output with recall_id");
   });
 
   it("keeps head and tail windows, archives the received output, and keeps stream == complete", async () => {
@@ -432,9 +488,9 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
     expect(output.indexOf(marker![0])).toBe(26); // right after the 25-char head + newline
     // The tail window surfaces the end of the run without reading the archive.
     expect(output).toContain("100000");
-    const savedPath = recoveryPath(output);
-    expect(savedPath).toBeDefined();
-    const archived = await readFile(savedPath!, "utf8");
+    const id = recallId(output);
+    expect(id).toBeDefined();
+    const archived = await recoverOutput(env, id!);
     expect(archived).toMatch(/100000\r?\n$/);
     // The marker's total equals the full text the archive preserved (ASCII: chars == bytes).
     expect(Number(marker![1])).toBe(archived.length);
@@ -449,7 +505,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
       .map((m) => (m.payload as { output?: string }).output ?? "")
       .join("");
     expect(streamed).toBe(output);
-  });
+  }, 15_000);
 
   it("maxOutputLength <= 0 disables truncation", async () => {
     const sessionScratchpadDir = path.join(tmp, "scratch");
@@ -521,15 +577,9 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
     );
     // The visible tail window carries the end of the output.
     expect(complete.output).toContain("\nEND\n");
-    const savedPath = recoveryPath(complete.output);
-    expect(savedPath).toBeDefined();
-    if (process.platform === "win32") {
-      expect(savedPath).not.toContain("\\");
-    }
-    expect(await readFile(savedPath!, "utf8")).toBe(expected);
-    if (process.platform !== "win32") {
-      expect((await stat(savedPath!)).mode & 0o777).toBe(0o600);
-    }
+    const id = recallId(complete.output);
+    expect(id).toBeDefined();
+    expect(await recoverOutput(env, id!)).toBe(expected);
 
     const streamed = messages
       .filter(
@@ -543,45 +593,17 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
     // complete result. The archive path is present identically on both sides.
     expect(streamed).toBe(complete.output);
 
-    // The production recovery directory is outside the Workspace. Pin that the existing
-    // read_file tool accepts the absolute path, so no dedicated recovery tool is needed.
-    const readMessages = await collect(
-      env.executeTool({
-        toolCall: toolCall({
-          name: "read_file",
-          arguments: JSON.stringify({ file_path: savedPath }),
-          toolCallId: "read_recovery",
-        }),
-      }),
-    );
-    const readOutput = (readMessages[readMessages.length - 1]!.payload as { output: string })
-      .output;
-    expect(readOutput).toContain("BEGIN");
-    expect(readOutput).toContain("END");
-
     env.dispose();
-    expect(await readFile(savedPath!, "utf8")).toBe(expected);
     await expect(access(truncatedToolOutputRoot)).resolves.toBeUndefined();
 
-    // Resuming the Session creates a fresh Environment over the same scratchpad. The path
-    // recorded in Trace must still work with the ordinary read_file tool.
+    // Resuming the Session creates a fresh Environment over the same scratchpad; the opaque
+    // recall id still resolves without exposing an archive path to the model.
     const resumedEnv = new Environment({
       workspaceDir,
       toolConfig,
       sessionScratchpadDir,
     });
-    const resumedRead = await collect(
-      resumedEnv.executeTool({
-        toolCall: toolCall({
-          name: "read_file",
-          arguments: JSON.stringify({ file_path: savedPath }),
-          toolCallId: "read_after_resume",
-        }),
-      }),
-    );
-    expect((resumedRead[resumedRead.length - 1]!.payload as { output: string }).output).toContain(
-      "END",
-    );
+    expect(await recoverOutput(resumedEnv, id!, "read_after_resume")).toBe(expected);
     resumedEnv.dispose();
   });
 
@@ -603,7 +625,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
       }),
     );
     const output = (messages[messages.length - 1]!.payload as { output: string }).output;
-    expect(output).not.toContain("[output archived:");
+    expect(output).not.toContain("call recall_output with recall_id");
     await expect(access(truncatedToolOutputRoot)).rejects.toThrow();
   });
 
@@ -640,9 +662,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
     };
     expect(complete.output).toMatch(/\[output archive failed: [^\]]+\]/);
     expect(complete.stop_reason).toBe("completed");
-    expect(stderr.join("")).toMatch(
-      /\[penguin\] tool "exec_command" truncated output archive write failed \([^)]+\)\./,
-    );
+    expect(stderr.join("")).toMatch(/\[penguin\] tool output recall write failed \([^)]+\)\./);
     const streamed = messages
       .filter(
         (m) =>
@@ -656,14 +676,14 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
 
   it("freezes the completed outcome before auxiliary archive I/O", async () => {
     const controller = new AbortController();
-    const originalSave = TruncatedToolOutputCapture.prototype.save;
+    const originalSave = TruncatedToolOutputArchive.prototype.saveRecallEntry;
     const saveSpy = vi
-      .spyOn(TruncatedToolOutputCapture.prototype, "save")
-      .mockImplementation(function (this: TruncatedToolOutputCapture, toolName, toolCallId) {
+      .spyOn(TruncatedToolOutputArchive.prototype, "saveRecallEntry")
+      .mockImplementation(function (this: TruncatedToolOutputArchive, toolName, text) {
         // The tool has already reached its terminal state when save() starts. This late abort
         // must not retroactively turn a completed tool into an aborted one.
         controller.abort();
-        return originalSave.call(this, toolName, toolCallId);
+        return originalSave.call(this, toolName, text);
       });
     const env = new Environment({
       workspaceDir: tmp,
@@ -688,7 +708,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
       expect(saveSpy).toHaveBeenCalledOnce();
       expect(controller.signal.aborted).toBe(true);
       expect(complete.stop_reason).toBe("completed");
-      expect(complete.output).toContain("[output archived:");
+      expect(complete.output).toContain("call recall_output with recall_id");
       expect(complete.output).not.toContain("[interrupted: tool aborted by user]");
     } finally {
       saveSpy.mockRestore();
@@ -733,17 +753,26 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
         }),
       );
       const complete = messages[messages.length - 1]!.payload as { output: string };
-      expect(complete.output).toContain("head and tail kept");
+      expect(complete.output).toContain("output archive kept bounded head and tail");
       // The visible tail window ends with the intact trailing surrogate pair.
       expect(complete.output).toContain("-END-🐧");
-      const savedPath = recoveryPath(complete.output);
-      expect(savedPath).toBeDefined();
-      const archived = await readFile(savedPath!, "utf8");
-      expect(Buffer.byteLength(archived, "utf8")).toBeLessThanOrEqual(8 * 1024 * 1024);
-      expect(archived).toContain("BEGIN-企鹅");
-      expect(archived).toContain("-END-🐧");
-      expect(archived).toContain("[archive middle truncated]");
-      expect(archived).not.toContain("\uFFFD");
+      const id = recallId(complete.output);
+      expect(id).toBeDefined();
+      const size = complete.output.match(/"sizeBytes":(\d+)/);
+      expect(size).not.toBeNull();
+      expect(Number(size![1])).toBeLessThanOrEqual(8 * 1024 * 1024);
+      const first = await recallPage(env, id!, 0, "large_recall_head");
+      const middle = await recallPage(
+        env,
+        id!,
+        Math.floor(first.total / 2) - 2_000,
+        "large_recall_middle",
+      );
+      const last = await recallPage(env, id!, first.total - 12_000, "large_recall_tail");
+      expect(first.text).toContain("BEGIN-企鹅");
+      expect(middle.text).toContain("[archive middle truncated]");
+      expect(last.text).toContain("-END-🐧");
+      expect(`${first.text}${middle.text}${last.text}`).not.toContain("\uFFFD");
     } finally {
       delete BUILTIN_TOOL_FACTORIES[NAME];
     }
@@ -783,9 +812,9 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
         output: string;
         stop_reason?: string;
       };
-      const savedPath = recoveryPath(complete.output);
-      expect(savedPath).toBeDefined();
-      expect(await readFile(savedPath!, "utf8")).toBe(source);
+      const id = recallId(complete.output);
+      expect(id).toBeDefined();
+      expect(await recoverOutput(env, id!)).toBe(source);
       // The full-message basis gets the same head/tail windows as the streamed path.
       expect(complete.output.startsWith(source.slice(0, 10))).toBe(true);
       expect(complete.output).toContain(
@@ -803,7 +832,7 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
         .join("");
       expect(streamed).toBe(complete.output);
       env.dispose();
-      expect(await readFile(savedPath!, "utf8")).toBe(source);
+      expect(await recoverOutput(env, id!, "recall_after_dispose")).toBe(source);
     } finally {
       delete BUILTIN_TOOL_FACTORIES[NAME];
     }
@@ -903,9 +932,9 @@ describe("Environment.executeTool — maxOutputLength truncation", () => {
       // result carries no half characters; the dropped pair stays intact in the archive.
       expect(complete.output).toContain("[output truncated: kept first 3 and last 4 of 25 chars]");
       expect(/[\ud800-\udfff]/.test(complete.output)).toBe(false);
-      const savedPath = recoveryPath(complete.output);
-      expect(savedPath).toBeDefined();
-      expect(await readFile(savedPath!, "utf8")).toBe("abc🐧" + "x".repeat(20));
+      const id = recallId(complete.output);
+      expect(id).toBeDefined();
+      expect(await recoverOutput(env, id!)).toBe("abc🐧" + "x".repeat(20));
       const streamed = messages
         .filter(
           (m) =>

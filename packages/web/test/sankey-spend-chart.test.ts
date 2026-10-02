@@ -2,7 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SpendFlowReport } from "@prismshadow/penguin-core/browser";
-import { SankeySpendChart, layoutSpendFlow } from "../src/features/cockpit-widgets/sankey-spend-chart";
+import {
+  SankeySpendChart,
+  layoutSpendFlow,
+} from "../src/features/cockpit-widgets/sankey-spend-chart";
 import { SpendFlowCard } from "../src/features/hud/spend-flow-card";
 
 const report: SpendFlowReport = {

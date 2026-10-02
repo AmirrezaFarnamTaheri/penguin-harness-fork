@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createStructuredLogger,
   requestLogContext,
+  safeErrorSummary,
   unhandledRejectionMetrics,
   withLogContext,
 } from "../src/runtime/logger.js";
@@ -77,9 +78,14 @@ describe("structured server logging", () => {
     const record = JSON.parse(lines[0]!) as Record<string, unknown>;
     const text = JSON.stringify(record);
     expect(record.message).toBe("request from o***@example.com failed");
-    expect(record.error).toMatchObject({
+    expect(record.error).toEqual({
       name: "Error",
-      cause: { code: "EAUTH", message: "db login failed for d***@corp.example" },
+      message: "upstream rejected api_key=[REDACTED]",
+      cause: {
+        name: "Error",
+        code: "EAUTH",
+        message: "db login failed for d***@corp.example",
+      },
     });
     expect(record.headers).toEqual({
       "user-agent": "cli/1.0 (o***@example.com)",
@@ -89,6 +95,24 @@ describe("structured server logging", () => {
     expect(text).not.toContain("stack");
     const secrets = ["ops@example.com", "dba@corp.example", "cause-secret-value", "vendor-secret"];
     for (const secret of secrets) expect(text).not.toContain(secret);
+  });
+
+  it("keeps safe process summaries structured, redacted, and free of stacks", () => {
+    const root = new Error("failed for alice@example.com");
+    Object.assign(root, { code: 503 });
+    const reason = new Error("connection failed", { cause: root });
+    Object.assign(reason, { code: "ECONNRESET" });
+
+    expect(safeErrorSummary(reason)).toEqual({
+      name: "Error",
+      message: "connection failed",
+      code: "ECONNRESET",
+      cause: {
+        name: "Error",
+        message: "failed for a***@example.com",
+        code: "503",
+      },
+    });
   });
 
   it("turns one rejection into one bounded record when the primary logger sink fails", () => {

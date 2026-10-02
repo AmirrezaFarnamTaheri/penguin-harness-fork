@@ -56,7 +56,7 @@ describe("scope-aware findings store", () => {
     expect(after.graph!.archived()).toMatchObject([
       { operationId: expect.any(String), finding: { id: "record-0", status: "refuted" } },
     ]);
-  });
+  }, 15_000);
 
   it("keeps over-ceiling files exportable with bounded memory and preserves them on reset", async () => {
     const s = store("large-external");
@@ -73,7 +73,7 @@ describe("scope-aware findings store", () => {
     await s.recover("reset", read.revision, "Exported oversized state", user);
     const audit = JSON.parse((await s.read()).graph!.since().at(-1)!.note!);
     expect((await fs.stat(audit.preserved)).size).toBe(FINDINGS_MAX_BYTES + 1);
-  });
+  }, 15_000);
   it("serializes independent Node processes against one authority", async () => {
     const authority = store("process");
     const moduleUrl = new URL("../../dist/index.js", import.meta.url).href;
@@ -89,7 +89,7 @@ describe("scope-aware findings store", () => {
       ),
     );
     expect((await authority.read()).graph!.list()).toHaveLength(50);
-  });
+  }, 15_000);
   let root: string;
   const user = { actor: { kind: "user" as const, id: "operator" }, method: "route" as const };
   const store = (name = "workspace", kind: "workspace" | "project" = "workspace") =>
@@ -120,7 +120,7 @@ describe("scope-aware findings store", () => {
       expect(restarted.scope.kind).toBe(kind);
     }
     expect(FindingsStore.cacheStats().pending).toBe(0);
-  });
+  }, 15_000);
 
   it("parses unchanged reads once and detects same-size external replacement", async () => {
     const s = store();

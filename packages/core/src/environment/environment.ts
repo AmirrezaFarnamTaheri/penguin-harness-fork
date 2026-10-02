@@ -51,7 +51,11 @@ import type {
   ToolPermission,
 } from "../interfaces/index.js";
 import type { BuiltinTool, ToolResult } from "./tools/types.js";
-import { createRecallOutputTool, RECALL_OUTPUT_DEFINITION, RECALL_OUTPUT_NAME } from "./tools/recall-output.js";
+import {
+  createRecallOutputTool,
+  RECALL_OUTPUT_DEFINITION,
+  RECALL_OUTPUT_NAME,
+} from "./tools/recall-output.js";
 import { BUILTIN_TOOL_FACTORIES } from "./tools/registry.js";
 import { McpToolProvider } from "./mcp/provider.js";
 import { CommandSessionManager } from "./tools/command/index.js";
@@ -1155,11 +1159,11 @@ export class Environment implements EnvironmentInterface {
         return {
           visible: outcome.text,
           truncated: false,
-        note: formatCompressionNote(collector.kind, outcome, {
-          id: saved.id,
-          bytes: saved.bytes,
-          lines: outcome.originalLines,
-        }),
+          note: formatCompressionNote(collector.kind, outcome, {
+            id: saved.id,
+            bytes: saved.bytes,
+            lines: outcome.originalLines,
+          }),
           archiveSave: null,
         };
       }

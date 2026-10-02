@@ -185,9 +185,25 @@ sink produces one fixed, bounded emergency record and never logs the rejected se
 calls the failed sink. The first-login URL remains an operator notice written outside diagnostic
 logs because it contains the one-time sign-in credential.
 
-Focused verification on 2026-10-02: server package typecheck passed; `structured-logger.test.ts`
-and `health.test.ts` passed 5/5. The Wave 2 row remains open until the PR head and required CI
-checks satisfy the repository's exact-commit gate.
+Focused verification on 2026-10-02: the core package build passed, and the logger, plugin-dispose,
+and cockpit-integrity suites passed 32/32. The local workspace initially resolved stale generated
+core output; rebuilding `@prismshadow/penguin-core` made its I1 sanitizer exports available to the
+server tests. CI at `c829119` still needs a new exact-head run after the test changes. The Wave 2
+row remains open until the PR head and required checks satisfy the repository's exact-commit gate.
+
+The I1 logger adapter now consumes the core email masker, session-header allowlist, and structured
+error sanitizer for log fields and process-error summaries. It preserves error name/message while
+adding bounded `code` and `cause` fields and omits stacks. Trace and export paths have not yet been
+routed through these helpers, so I1 remains incomplete.
+
+## E6 cockpit error contract
+
+Cockpit route exceptions share `handleError`; the route adapter adds `success: false` while retaining
+the shared `{ error: { code, message } }` body and HTTP status. Explicit key, mailbox, and swarm
+failures use the same `errorBody` helper, while successful payload fields remain present. On
+2026-10-02, focused tests passed for malformed JSON, invalid project ids, five unsuccessful swarm
+outcomes, and unexpected exceptions that must return the safe generic 500 response. Exact-head CI
+remains pending.
 
 ## PR #12 status
 

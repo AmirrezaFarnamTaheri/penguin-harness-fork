@@ -40,10 +40,7 @@ function isSplitSurrogate(text: string, offset: number): boolean {
   return previous >= 0xd800 && previous <= 0xdbff && current >= 0xdc00 && current <= 0xdfff;
 }
 
-function emitText(
-  output: string,
-  toolCallId: string,
-): ReturnType<typeof partialToolCallOutput> {
+function emitText(output: string, toolCallId: string): ReturnType<typeof partialToolCallOutput> {
   return partialToolCallOutput({ eventType: "delta", output, toolCallId });
 }
 
@@ -76,7 +73,10 @@ export function createRecallOutputTool(archive: TruncatedToolOutputArchive): Bui
       }
 
       if (offset > result.text.length || isSplitSurrogate(result.text, offset)) {
-        yield emitText("Recall offset is outside the output or splits a Unicode character.", ctx.toolCallId);
+        yield emitText(
+          "Recall offset is outside the output or splits a Unicode character.",
+          ctx.toolCallId,
+        );
         return { stopReason: "fatal" };
       }
 

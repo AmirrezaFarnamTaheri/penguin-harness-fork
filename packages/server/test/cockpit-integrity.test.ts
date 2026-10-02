@@ -7,6 +7,7 @@ import {
   resetCockpitRuntimesForTesting,
   scheduleRuntimeReap,
 } from "../src/cockpit/ws.js";
+import { serverLogger } from "../src/runtime/logger.js";
 
 afterEach(() => {
   resetCockpitRuntimesForTesting();
@@ -35,6 +36,35 @@ describe("cockpit integrity", () => {
       success: false,
       error: { code: "bad_request", message: expect.any(String) },
     });
+  });
+
+  it("keeps unexpected route failures in the shared cockpit error contract", async () => {
+    const runtime = await getOrCreateProjectRuntime("integrity-error", {
+      workspaceRoot: process.cwd(),
+    });
+    vi.spyOn(runtime.keyFleet, "getFleetReport").mockImplementation(() => {
+      throw new Error("private database detail");
+    });
+    vi.spyOn(serverLogger, "error").mockImplementation(() => {});
+
+    const app = new Hono();
+    app.route("/api/cockpit", cockpitRoutes(undefined, { workspaceRoot: process.cwd() }));
+    const response = await app.request("/api/cockpit/keys?project=integrity-error");
+    const body = (await response.json()) as {
+      success?: boolean;
+      error?: { code: string; message: string; i18nKey?: string };
+    };
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({
+      success: false,
+      error: {
+        code: "internal",
+        message: "Internal server error.",
+        i18nKey: "errors.byCode.internal",
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain("private database detail");
   });
 
   it("never sends an unknown provider credential to a different provider", async () => {

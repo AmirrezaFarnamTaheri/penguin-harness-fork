@@ -135,25 +135,25 @@ as not applicable to this checkout; reopen only if the vendored installer artifa
 | [ ] | **A4** Pool-shape-aware retry budget + once-per-account grace (implemented locally; exact-commit gate pending) | M | A3 | policy branch table + fake-timer runtime checks; see Wave 1–2 evidence |
 | [ ] | **A5** Snapshot→delta stream reassembler (implemented locally; exact-commit gate pending) | M | — | 500-sequence property test; see Wave 1–2 evidence |
 | [x] | **A6** Length-prefixed frame parser | S | — | Five reference shapes pass; core typecheck passes; exported primitive awaits provider integration |
-| [ ] | **B1** Large-output spill + recall id (implemented locally; exact-commit gate pending) | M | B2 | failures remain useful inline; Session-scoped paged recall reproduces persisted UTF-8 text after redaction |
+| [ ] | **B1** Large-output spill + recall id (implementation and path-free recall tests updated locally; exact-head gate pending) | M | B2 | failures remain useful inline; Session-scoped paged recall reproduces persisted UTF-8 text after redaction |
 | [ ] | **B3** Tool-output compression + honest savings table | M | B1 | 3 non-negotiable tests + table (losers dropped) |
 | [ ] | **B4** Transactional compaction + prune frontier | M | — | byte-identical on failure; frontier no-reread |
 | [ ] | **C8** Offline e2e | S | — | CI e2e job green |
 | [ ] | **E1** Cockpit sync-seam residuals | S | — | `vitest run test/cockpit*` |
 | [ ] | **E5** trigger_swarm non-simulate | S | — | cockpit ws tests |
-| [ ] | **E6** Cockpit error-shape unification | XS | — | server route tests |
+| [ ] | **E6** Cockpit error-shape unification (implemented locally; exact-head gate pending) | XS | — | structured malformed/invalid/unexpected failures and unsuccessful task outcomes use `{ success:false, error:{code,message} }`; see Wave 1–2 evidence |
 | [ ] | **E7** Gateway input validation (implemented locally; exact-head gate pending) | XS | — | gateway tests; URL/body identifiers and approval session IDs bounded before lookup |
 | [ ] | **E8** /health + readiness (implemented locally; exact-head gate pending) | S | — | `health.test.ts` covers serving, DB-closed, degradation, and recovery |
-| [ ] | **E9** Structured logger + rejection counter | M | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
+| [ ] | **E9** Structured logger + rejection counter (implemented locally; exact-head gate pending) | M | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
 | [ ] | **E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap) | M | — | revert-and-see tests ×4 |
-| [ ] | **E2** acp.ts 8-defect sweep (verified/refuted table) | M | — | `test/kernel/acp.test.ts` |
+| [ ] | **E2** acp.ts 8-defect sweep (verified/refuted table) | M | — | `packages/core/test/acp-connection.test.ts` |
 | [ ] | **E3** ACP connection resume | M | E2 | kill-mid-stream replay test |
 | [ ] | **E4** Durable SSE tail + safeSend gap signal | M | E3 | no silent gaps on reconnect |
 | [ ] | **G1** validate-agent-skills CI gate | M | — | corpus passes or triaged |
 | [ ] | **G3** skills-lock pin + resolver | S | — | pin→verify→drift covered |
 | [ ] | **G4** local.patch / superseded hygiene | S | — | zero ambiguous `local.patch` |
 | [ ] | **H3** Atomic credential write 5-step audit | S | — | internal tests ×5 steps |
-| [ ] | **I1** Redaction completions | S | — | 14-header allowlist test |
+| [ ] | **I1** Redaction completions (partially routed through server logs; trace/export consumers remain) | S | — | 14-header allowlist, structured error and export-path coverage |
 | [ ] | **I2** Command-policy completions | S | — | spawn-refusal test |
 | [ ] | **I3** Zip symlink-entry refusal | S | — | symlink fixture test |
 | [ ] | **I4** effective_auth_mode matrix | S | — | auth matrix test |

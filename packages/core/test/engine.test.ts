@@ -181,9 +181,12 @@ async function readFileEventually(
   }
 }
 
-/** Extracts the plain archive path from the note (the path is always last before `]`). */
-function recoveryPath(output: string): string | undefined {
-  return output.match(/\[output archived[^:]*: ([^\]]+)\]/)?.[1];
+function recallId(output: string): string | undefined {
+  return output.match(/call recall_output with recall_id "([a-f0-9]{12}|[a-f0-9]{32})"/i)?.[1];
+}
+
+function recalledText(output: string): string {
+  return output.replace(/\n?\[recall complete: \d+ UTF-16 code units\]$/, "");
 }
 
 describe("ContextEngine ReAct loop (mock LLM, approve callback)", () => {
@@ -266,7 +269,7 @@ describe("ContextEngine ReAct loop (mock LLM, approve callback)", () => {
     try {
       let calls = 0;
       let agentVisibleOutput = "";
-      let recoveredPath = "";
+      let archivedId = "";
       let recoveredDuringTask = "";
       const llm: LLMInterface = {
         async *streamGenerate(params): AsyncGenerator<OmniMessage, LLMOutcome> {
@@ -286,12 +289,36 @@ describe("ContextEngine ReAct loop (mock LLM, approve callback)", () => {
             });
             return { status: "completed" };
           }
-          const toolResult = params.newMessages.find(
-            (m) => (m.payload as { type?: string }).type === "tool_call_output",
+          if (calls === 2) {
+            const toolResult = params.newMessages.find(
+              (m) =>
+                (m.payload as { type?: string }).type === "tool_call_output" &&
+                (m.payload as { tool_call_id?: string }).tool_call_id === "recover-call",
+            );
+            agentVisibleOutput = (toolResult?.payload as { output?: string }).output ?? "";
+            archivedId = recallId(agentVisibleOutput) ?? "";
+            yield toolCall({
+              name: "recall_output",
+              arguments: JSON.stringify({ recall_id: archivedId, offset: 0 }),
+              toolCallId: "recall-call",
+              stopReason: "completed",
+            });
+            yield tokenUsage(emptyTokenCounts(), {
+              cache_read: 0,
+              cache_write: 0,
+              output: 1,
+              total: 2,
+            });
+            return { status: "completed" };
+          }
+          const recallResult = params.newMessages.find(
+            (m) =>
+              (m.payload as { type?: string }).type === "tool_call_output" &&
+              (m.payload as { tool_call_id?: string }).tool_call_id === "recall-call",
           );
-          agentVisibleOutput = (toolResult?.payload as { output?: string }).output ?? "";
-          recoveredPath = recoveryPath(agentVisibleOutput) ?? "";
-          recoveredDuringTask = await readFile(recoveredPath, "utf8");
+          recoveredDuringTask = recalledText(
+            (recallResult?.payload as { output?: string }).output ?? "",
+          );
           yield assistantText("Recovered the final answer.");
           yield tokenUsage(emptyTokenCounts(), {
             cache_read: 0,
@@ -316,6 +343,7 @@ describe("ContextEngine ReAct loop (mock LLM, approve callback)", () => {
       const engine = new ContextEngine({ llm, environment, trace });
       const all = await collectRun(engine, [userText("recover it")], allowAll);
 
+      expect(archivedId).toMatch(/^(?:[a-f0-9]{12}|[a-f0-9]{32})$/i);
       expect(recoveredDuringTask).toBe(source);
       const frontendComplete = all.find(
         (m) =>
@@ -342,9 +370,20 @@ describe("ContextEngine ReAct loop (mock LLM, approve callback)", () => {
       );
       expect((tracedOutput!.payload as { output: string }).output).toBe(agentVisibleOutput);
 
-      expect(await readFile(recoveredPath, "utf8")).toBe(source);
+      const persisted: OmniMessage[] = [];
+      for await (const message of environment.executeTool({
+        toolCall: toolCall({
+          name: "recall_output",
+          arguments: JSON.stringify({ recall_id: archivedId, offset: 0 }),
+          toolCallId: "persisted-recall",
+        }),
+      })) {
+        persisted.push(message);
+      }
+      expect(
+        recalledText((persisted.at(-1)?.payload as { output?: string } | undefined)?.output ?? ""),
+      ).toBe(source);
       environment.dispose();
-      expect(await readFile(recoveredPath, "utf8")).toBe(source);
     } finally {
       delete BUILTIN_TOOL_FACTORIES[NAME];
     }
@@ -2117,9 +2156,15 @@ describe("ContextEngine LLM timeout / network interruption (PRN-012)", () => {
     const ends = all.filter((m) => (m.payload as { type?: string }).type === "request_end") as {
       payload: { attempt?: number; retry_in_ms?: number };
     }[];
-    // The announced waits show the reset: base, base again (the ladder restarted after each
-    // productive attempt), then the climb over the fruitless tail, then none.
-    expect(ends.map((e) => e.payload.retry_in_ms)).toEqual([10, 10, 15, undefined]);
+    // The first two waits are the same jittered base rung, which proves productive content
+    // reset the ladder. The first wait over the fruitless tail is a later rung, still capped.
+    const waits = ends.map((e) => e.payload.retry_in_ms);
+    expect(waits[0]).toBeGreaterThanOrEqual(10);
+    expect(waits[0]).toBeLessThanOrEqual(15);
+    expect(waits[1]).toBe(waits[0]);
+    expect(waits[2]).toBeGreaterThanOrEqual(waits[1]!);
+    expect(waits[2]).toBeLessThanOrEqual(15);
+    expect(waits[3]).toBeUndefined();
     // The ordinal counts every attempt and never rewinds when the ladder does — a counter
     // that went backwards mid-turn would read as a lost attempt.
     expect(ends.map((e) => e.payload.attempt)).toEqual([1, 2, 3, 4]);
