@@ -194,9 +194,9 @@ describe("SwarmCoordinator task bounds", () => {
 
     // A long task for session-a occupies the FIFO; session-b queues behind it and its Session is
     // deleted while it waits.
-    let releaseActive = () => undefined;
+    let releaseActive: () => void = () => undefined;
     const active = new Promise<void>((resolve) => {
-      releaseActive = resolve;
+      releaseActive = () => resolve();
     });
     const first = coordinator.runTask(
       { ...TASK, id: "task-active", ownerSessionId: "session-a" },
@@ -230,7 +230,9 @@ describe("SwarmCoordinator task bounds", () => {
     // explaining that its owner is gone rather than silence.
     expect(order).toEqual(["session-a"]);
     expect(queuedResult.status).toBe("unhandled");
-    expect(queuedResult.log.join("\n")).toMatch(/not started: the Session that queued it was deleted/i);
+    expect(queuedResult.log.join("\n")).toMatch(
+      /not started: the Session that queued it was deleted/i,
+    );
   });
 
   it("reports abort() as a no-op when no task is running", () => {
