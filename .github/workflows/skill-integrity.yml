@@ -34,6 +34,17 @@ jobs:
         run: pnpm skills:lock:verify
       - name: Validate skill identities, metadata, resource closure and aliases
         run: pnpm skills:check -- --strict-resources --json=artifacts/skill-audit.json
+      # G2: the frozen routing corpus re-run through the runtime resolver. The default reporter
+      # puts the expected/actual trace in the log; the JSON report is written even when the probes
+      # fail, so `artifacts/skill-routing-report.json` names the prompt, the candidate set and the
+      # score that moved for whoever reads the run afterwards.
+      - name: Frozen skill-routing probes
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          pnpm --dir packages/core exec vitest run test/skill-routing-probes.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$GITHUB_WORKSPACE/artifacts/skill-routing-report.json"
+
       - name: Enforce the skill length budget without expanding legacy exceptions
         run: node scripts/skills/line-budget.mjs --json=artifacts/skill-line-budget.json
       - name: Build taxonomy and overlap report
