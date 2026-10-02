@@ -315,6 +315,13 @@ export function cockpitRoutes(
         ? Math.min(Math.max(1, Math.floor(body.maxRounds)), 10)
         : 3;
     const simulate = body.simulate === true;
+    // Which Session asked for this task, when the caller knows (E10.3): the tag is what lets
+    // Session deletion stop the work instead of leaving it to run out its round cap. Absent for
+    // callers without a session context; the ownership check simply never matches then.
+    const ownerSessionId =
+      typeof body.sessionId === "string" && body.sessionId.trim()
+        ? body.sessionId.trim().slice(0, 256)
+        : undefined;
 
     const coordinator = runtime.coordinator;
 
@@ -353,6 +360,7 @@ export function cockpitRoutes(
             proposedCommands,
             maxRounds,
             simulate,
+            ...(ownerSessionId ? { ownerSessionId } : {}),
           },
           runtime.swarmHandlers,
         )
@@ -369,6 +377,7 @@ export function cockpitRoutes(
           proposedCommands,
           maxRounds,
           simulate,
+          ...(ownerSessionId ? { ownerSessionId } : {}),
         },
         runtime.swarmHandlers,
       );

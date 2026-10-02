@@ -110,6 +110,64 @@ describe("SwarmCoordinator task bounds", () => {
     expect(result.log.join("\n")).toMatch(/Task interrupted: session deleted/);
   });
 
+  it("stops a task only when the Session asking is its owner (E10.3)", async () => {
+    const coordinator = new SwarmCoordinator({
+      watchdogConfig: { totalTimeoutMs: 60_000, stepTimeoutMs: 30_000, stallHeartbeatMs: 60_000 },
+    });
+
+    let sawAbort = false;
+    const running = coordinator.runTask(
+      { ...TASK, ownerSessionId: "session-a" },
+      {
+        onPlan: async () => ({ steps: ["long_step"] }),
+        onExecute: async (_task, _step, _round, ctx) => {
+          await new Promise<void>((resolve) => {
+            ctx?.signal.addEventListener("abort", () => {
+              sawAbort = true;
+              resolve();
+            });
+          });
+          return { artifacts: [], summary: "stopped" };
+        },
+        onReview: async () => ({ approved: false, grounds: "not yet" }),
+      },
+    );
+    await sleep(50);
+
+    // A different Session, and a coordinator-level abort with no owner, must not touch it.
+    expect(coordinator.abortTasksForSession("session-b", "other session deleted")).toBe(false);
+    expect(sawAbort).toBe(false);
+
+    // The owner stops it, and the run ends on the first round with the reason in its log.
+    expect(coordinator.abortTasksForSession("session-a", "session deleted")).toBe(true);
+    const result = await running;
+    expect(sawAbort).toBe(true);
+    expect(result.rounds).toBe(1);
+    expect(result.log.join("\n")).toMatch(/Task interrupted: session deleted/);
+  });
+
+  it("never attributes an unowned task to a Session (E10.3)", async () => {
+    const coordinator = new SwarmCoordinator({
+      watchdogConfig: { totalTimeoutMs: 60_000, stepTimeoutMs: 30_000, stallHeartbeatMs: 60_000 },
+    });
+    const running = coordinator.runTask(TASK, {
+      onPlan: async () => ({ steps: ["long_step"] }),
+      onExecute: async (_task, _step, _round, ctx) => {
+        await new Promise<void>((resolve) => {
+          ctx?.signal.addEventListener("abort", () => resolve());
+        });
+        return { artifacts: [], summary: "stopped" };
+      },
+      onReview: async () => ({ approved: false, grounds: "not yet" }),
+    });
+    await sleep(50);
+    // A task launched without ownerSessionId belongs to nobody: a Session deletion cannot reach
+    // it, and the plain abort() path still can.
+    expect(coordinator.abortTasksForSession("session-a", "session deleted")).toBe(false);
+    expect(coordinator.abort("operator stop")).toBe(true);
+    await running;
+  });
+
   it("reports abort() as a no-op when no task is running", () => {
     const coordinator = new SwarmCoordinator();
     expect(coordinator.abort("nothing to stop")).toBe(false);

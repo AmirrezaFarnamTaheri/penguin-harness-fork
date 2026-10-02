@@ -50,6 +50,7 @@ import type { SessionRow } from "../../db/repos/sessions.js";
 import { assertWorkspaceAllowed } from "../../services/workspace-guard.js";
 import { isGoalOutcome } from "../../runtime/goal-events.js";
 import { HttpError } from "../errors.js";
+import { abortSwarmTasksForSession } from "../../cockpit/ws.js";
 import { sseEndpoint } from "../sse.js";
 import {
   badRequest,
@@ -700,6 +701,10 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
     // being-deleted marker is cleared once deletion finishes (success or failure).
     const runnings = deps.manager.beginSessionDeletion(row.sessionId);
     try {
+      // Work the Session spawned does not outlive it (E10.3): a swarm task started from this
+      // conversation keeps running on the project coordinator otherwise, invisible and
+      // unstoppable from any UI, until it reaches its round cap.
+      abortSwarmTasksForSession(row.sessionId, "session deleted");
       if (runnings.length > 0) {
         await Promise.race([
           Promise.allSettled(runnings).then(() => undefined),

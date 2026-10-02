@@ -691,6 +691,21 @@ export function getSharedSwarmCoordinator(
   return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).coordinator;
 }
 
+/**
+ * Stops the swarm task a Session spawned, across every live project runtime (E10.3). The
+ * coordinator's own lifetime is the project's, not the Session's, so a swarm started from a
+ * conversation used to survive that conversation's deletion and run to its round cap with no UI
+ * left to show it. Only the coordinator whose *active task* carries this owner id acts; every
+ * other runtime answers false and is left alone. Returns how many tasks were actually stopped.
+ */
+export function abortSwarmTasksForSession(sessionId: string, reason: string): number {
+  let stopped = 0;
+  for (const runtime of projectRuntimes.values()) {
+    if (runtime.coordinator.abortTasksForSession(sessionId, reason)) stopped += 1;
+  }
+  return stopped;
+}
+
 export function getSharedKeyFleetMonitor(
   projectId = DEFAULT_PROJECT_ID,
   workspaceRoot?: string,

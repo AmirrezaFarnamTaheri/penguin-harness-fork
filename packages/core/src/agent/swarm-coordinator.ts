@@ -44,6 +44,12 @@ export interface SwarmTaskDefinition {
   maxRounds?: number;
   proposedCommands?: string[];
   simulate?: boolean;
+  /**
+   * The host Session this task belongs to (E10.3). Purely for lifecycle: the coordinator keeps
+   * it only long enough to answer `abortTasksForSession`, so deleting the Session that spawned
+   * a swarm can stop the work instead of leaving it to run out its round cap.
+   */
+  ownerSessionId?: string;
 }
 
 export interface SwarmAgentState {
@@ -157,6 +163,8 @@ export class SwarmCoordinator {
   private edges = new Map<string, SwarmEdgeState>();
   private listeners = new Set<(event: SwarmEvent) => void>();
   private activeTaskId: string | null = null;
+  /** Owner Session of the task currently executing (see SwarmTaskDefinition.ownerSessionId). */
+  private activeOwnerSessionId: string | null = null;
   private logMessages: string[] = [];
   private taskQueue: Promise<unknown> = Promise.resolve();
   private loopOptions: LoopDetectorOptions;
@@ -419,6 +427,18 @@ export class SwarmCoordinator {
   }
 
   /**
+   * Stops the running task only when it belongs to `sessionId` (E10.3). Returns whether a task
+   * was actually stopped, so a Session-deletion path can call this for every project's
+   * coordinator and let exactly the owner's coordinator act. A task with no recorded owner
+   * (an older caller that did not pass one) is never aborted by a session id.
+   */
+  public abortTasksForSession(sessionId: string, reason: string): boolean {
+    if (this.activeTaskId === null) return false;
+    if (this.activeOwnerSessionId === null || this.activeOwnerSessionId !== sessionId) return false;
+    return this.abort(reason);
+  }
+
+  /**
    * Appends one timestamped line to the current task's log.
    *
    * A method rather than the closure inside runTask because the interruption has to be recorded
@@ -488,6 +508,7 @@ export class SwarmCoordinator {
   ): Promise<SwarmExecutionResult> {
     const taskId = task.id ?? `task-${randomUUID().slice(0, 8)}`;
     this.activeTaskId = taskId;
+    this.activeOwnerSessionId = task.ownerSessionId ?? null;
     this.logMessages = [];
     // Cleared at entry, not left to the finally: a coordinator is reusable, and a latch left
     // over from a previous task would stop this one before its first step.
@@ -918,6 +939,7 @@ export class SwarmCoordinator {
       }
       this.watchdog.stop();
       this.activeTaskId = null;
+      this.activeOwnerSessionId = null;
       for (const a of this.agents.values()) {
         a.status = "idle";
         a.currentTask = undefined;
