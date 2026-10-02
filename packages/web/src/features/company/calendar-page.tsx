@@ -22,6 +22,7 @@ import type {
 } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
+import { useUiClock } from "../../lib/use-ui-clock";
 import { apiErrorText } from "../../lib/api-error";
 import { formatDateTime } from "../../lib/format";
 import { useDocumentTitle } from "../../lib/use-document-title";
@@ -149,7 +150,7 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<CalendarView>("month");
   const [anchor, setAnchor] = useState(() => Date.now());
-  const [now, setNow] = useState(() => Date.now());
+  const now = useUiClock(60_000);
   const [employeeFilter, setEmployeeFilter] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
   const [fieldErrors, setFieldErrors] = useState<
@@ -188,11 +189,9 @@ export function CalendarPage() {
     void load();
   }, [load, runs, budget]);
 
-  // The "now" the past marks and the time line read: a minute's precision is all they show.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(t);
-  }, []);
+  // The "now" the past marks and the time line read: a minute's precision is all they show, and it
+  // comes from the shared UI clock (F2) — a separate 60 s timer here was one more thing to leak on
+  // an unmount, and it missed the clock entirely when the tab woke from sleep.
 
   const loaded = events !== null;
   // The day and week columns open at the working hours (the hour label sits astride its
