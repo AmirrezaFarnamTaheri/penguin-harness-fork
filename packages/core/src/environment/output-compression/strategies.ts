@@ -24,29 +24,36 @@
  * A consequence worth stating plainly: a strategy that cannot measure a win returns `null` and
  * the caller ships the text unchanged. Compression is an optimisation, never a policy.
  *
- * ## What each strategy measured, on real captured output
+ * ## What each strategy measured, on the frozen corpus
  *
- * Character counts against a 16 000-character budget — the module ships no tokenizer, so these
- * are not token counts and the ~1/4 estimate is not applied here. The last two columns are the
- * strategy's own runtime, warm, median of 20.
+ * Character counts against the caller's budget (16 000 in the corpus run), grouped by output
+ * class. These numbers are reproducible: `packages/core/test/fixtures/output-compression/` holds
+ * the raw files with their sha256 in `manifest.json`, and
+ * `node --import tsx scripts/measure-output-compression.mts` regenerates the table into
+ * `artifacts/output-compression-savings.json` (and fails if a shipped class drops under 10 %).
+ * The module ships no tokenizer, so there are no token counts here; the recall handle publishes
+ * a bytes/4 *estimate* and labels it as one.
  *
- * | output                          | before  | after   | saved  | median |
- * |---------------------------------|--------:|--------:|-------:|-------:|
- * | `git log -n 200 --stat`          | 557 999 |  10 252 | 98.2 % | 6.4 ms |
- * | `vitest run` (322 tests, green)  |   9 262 |     204 | 97.8 % | 0.3 ms |
- * | `git diff HEAD` (17 files)       | 291 052 |  12 138 | 95.8 % | 2.0 ms |
- * | log tail (1 297 lines)           |  92 282 |  15 930 | 82.7 % | 1.2 ms |
- * | `read_file` on the same log      | 101 361 |  15 923 | 84.3 % | 1.7 ms |
- * | `vitest run` (144 failures)      |  63 268 |  15 921 | 74.8 % | 1.5 ms |
- * | `git status --porcelain`         |   2 908 |   1 032 | 64.5 % | 0.05 ms|
- * | `oxlint` (168 findings)          |  38 256 |  15 956 | 58.3 % | 1.1 ms |
+ * | output class  | chars in | chars out | saved | median (warm) |
+ * |---------------|---------:|----------:|------:|--------------:|
+ * | `git-log`     |   72 982 |     7 668 | 89.5 % |         1.2 ms |
+ * | `test-runner` |   93 975 |    15 673 | 83.3 % |         1.9 ms |
+ * | `log-dedup`   |   87 812 |    15 910 | 81.9 % |         2.4 ms |
+ * | `git-status`  |    7 829 |     1 744 | 77.7 % |         0.2 ms |
+ * | `git-diff`    |   18 942 |     7 536 | 60.2 % |         0.6 ms |
+ * | `lint`        |   10 472 |     9 200 | 12.2 % |         0.5 ms |
  *
  * Two results are deliberately at zero, and both are the strategy working:
  *
- * - A **small failing run** (1 884 chars) is returned unchanged. Collapsing its three passing
- *   lines would not clear the 400-character floor, and the announcement note would cost more
- *   than the saving. So would a *small* lint run for the same reason.
+ * - A **small passing run** (88 chars in the corpus) is returned unchanged. Collapsing its three
+ *   passing lines would not clear the 400-character floor, and the announcement note would cost
+ *   more than the saving. A *small* lint run is declined for the same reason.
  * - An **unrecognised output** is never a candidate; see the classifier in `detect.ts`.
+ *
+ * `lint` sits closest to the floor: findings are all signal, so the strategy only strips the
+ * box drawing around them and cannot save much by construction. It ships at 12.2 %; if a linter's
+ * format ever changes so that the number falls under 10 %, the corpus run fails rather than
+ * quietly shipping a class that costs more than it saves.
  *
  * One transform was measured and rejected: reducing `git diff` **context** (dropping unchanged
  * lines to hit a target). It is the largest available win — context is most of a diff — and it
@@ -121,8 +128,16 @@ function finish(
   lines: string[],
   originalLines: number,
   cutBefore?: (line: string) => boolean,
+  /** Characters of the budget reserved for the *last* lines (see `fitToBudget`). */
+  reserveTailChars = 0,
 ): CompressionResult | null {
-  const fitted = fitToBudget(lines, request.maxChars, `${request.kind} lines not shown`, cutBefore);
+  const fitted = fitToBudget(
+    lines,
+    request.maxChars,
+    `${request.kind} lines not shown`,
+    cutBefore,
+    reserveTailChars,
+  );
   // A replacement that is nothing but the "left behind" marker carries no information: the
   // budget was too small to hold even one unit. Shipping it would cost the note and tell the
   // model nothing, so this counts as "no win" and the caller keeps the real text.
@@ -166,23 +181,43 @@ function fitToBudget(
   maxChars: number,
   label: string,
   cutBefore?: (line: string) => boolean,
+  reserveTailChars = 0,
 ): string[] {
   const total = lines.length;
   if (lines.join("\n").length <= maxChars) return lines;
   // Reserve the marker's own worst case so the fit is guaranteed, not usually true.
   const budget = maxChars - 64;
+  // A tail reservation keeps the *end* of the text as well as its beginning. Some outputs put
+  // their only signal at the end — a log is the obvious one: the ERROR that follows ten thousand
+  // INFO lines is the line the model needs, and a head-only cut deletes exactly it. The window is
+  // computed from the end backwards, and the marker stays between the two halves, so the visible
+  // text is still the original text in its original order.
+  const tail: string[] = [];
+  if (reserveTailChars > 0) {
+    let tailChars = 0;
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const cost = lines[i]!.length + 1;
+      if (tailChars + cost > reserveTailChars) break;
+      tailChars += cost;
+      if (i < lines.length - tail.length - 1) break;
+      tail.unshift(lines[i]!);
+    }
+  }
+  const headBudget = budget - tail.reduce((sum, line) => sum + line.length + 1, 0);
   let used = 0;
   let hardCut = 0;
   let lastBoundary = 0;
-  for (let i = 0; i < lines.length; i += 1) {
+  const headLimit = lines.length - tail.length;
+  for (let i = 0; i < headLimit; i += 1) {
     const cost = lines[i]!.length + 1;
-    if (used + cost > budget) break;
+    if (used + cost > headBudget) break;
     used += cost;
     hardCut = i + 1;
     if (cutBefore !== undefined && i > 0 && cutBefore(lines[i]!)) lastBoundary = i;
   }
   const kept = lines.slice(0, cutBefore === undefined ? hardCut : lastBoundary || hardCut);
-  kept.push(`[${total - kept.length} more ${label}]`);
+  kept.push(`[${total - kept.length - tail.length} more ${label}]`);
+  kept.push(...tail);
   return kept;
 }
 
@@ -657,7 +692,16 @@ function compressLogDedup(request: CompressionRequest): CompressionResult | null
   const header =
     `[log deduplicated: ${rows.length} lines → ${emitted.size} unique, ` +
     `${collapsed} duplicate lines collapsed${guttedNote}]`;
-  return finish(request, [header, ...out], lines.length);
+  // A log's signal is usually at its end, so this strategy reserves the last fifth of the budget
+  // for the tail rather than letting a head-only cut delete the one ERROR line (B3.3: the failure
+  // signal must survive the budget, not just the dedup).
+  return finish(
+    request,
+    [header, ...out],
+    lines.length,
+    undefined,
+    Math.floor(request.maxChars / 5),
+  );
 }
 
 // ---------------------------------------------------------------------------

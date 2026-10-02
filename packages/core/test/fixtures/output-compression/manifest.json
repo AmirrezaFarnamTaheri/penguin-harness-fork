@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "note": "Frozen raw tool-output corpus for B3. Every fixture is an exact byte sequence whose sha256 is pinned here; `output-compression-corpus.test.ts` recomputes it, so an edit to a fixture without a manifest update fails the suite. `command`/`exitCode` are the metadata a caller would have had when the output was captured, and `expected` records the decision the strategy is required to make on it.",
+  "budgetChars": 16000,
+  "fixtures": [
+    {
+      "file": "passing-vitest.txt",
+      "sha256": "2d7eb517bf90eaa54789dc551b7f43f3adefadaf32fdc67fa534155b4e635d13",
+      "bytes": 12600,
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 0,
+      "expected": "compressed",
+      "minSavingRatio": 0.5,
+      "notes": "green suite: per-file and per-case lines collapse to their own tally"
+    },
+    {
+      "file": "failing-vitest.txt",
+      "sha256": "7c139187e52d8ef3110075a80eb5bbedbbd38b603b6ea1dcfcc4e970067b1eea",
+      "bytes": 83291,
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 1,
+      "expected": "compressed",
+      "minSavingRatio": 0.5,
+      "notes": "144 failures: every FAIL header, assertion, diff and code frame must survive",
+      "failureMarkers": [" FAIL  ", "AssertionError:", " ❯ ", "^"]
+    },
+    {
+      "file": "git-log.txt",
+      "sha256": "f03169178f0a2871ab5da36e8a07a293f4345b06fefa6035e0d5002ffa65e4bb",
+      "bytes": 72982,
+      "class": "git-log",
+      "command": "git log -n 200 --stat",
+      "exitCode": 0,
+      "expected": "compressed",
+      "minSavingRatio": 0.5,
+      "notes": "hash/author/subject kept, body and stat stripped"
+    },
+    {
+      "file": "git-status.txt",
+      "sha256": "fafbd0aca56ee240ec44d1402c6ec95a93536e35d74c14e5cdfe65a3f78a0e2f",
+      "bytes": 7829,
+      "class": "git-status",
+      "command": "git status --porcelain",
+      "exitCode": 0,
+      "expected": "compressed",
+      "minSavingRatio": 0.1,
+      "notes": "230 entries grouped by state instead of listed"
+    },
+    {
+      "file": "git-diff.txt",
+      "sha256": "4ffab59962978b75081c4561276b3be260188288c962f5f0374bc04bca6a410c",
+      "bytes": 18942,
+      "class": "git-diff",
+      "command": "git diff HEAD",
+      "exitCode": 0,
+      "expected": "compressed",
+      "minSavingRatio": 0.1,
+      "notes": "hunks stay byte-exact; only whole files are cut"
+    },
+    {
+      "file": "lint-findings.txt",
+      "sha256": "93352484eadb08db2efa0cd836ab31a3581fa6544d405b7a146f839ba670bb80",
+      "bytes": 10472,
+      "class": "lint",
+      "command": "pnpm exec oxlint .",
+      "exitCode": 1,
+      "expected": "compressed",
+      "minSavingRatio": 0.1,
+      "notes": "168 findings: every finding line, location and code frame kept",
+      "failureMarkers": ["no-unused-vars"]
+    },
+    {
+      "file": "app-log.txt",
+      "sha256": "c0668f6e1c81dc3efd2af3c5a8f04aad9d851712029a14ed820f7b0cbf88def8",
+      "bytes": 87812,
+      "class": "log-dedup",
+      "command": "read_file app.log",
+      "exitCode": 0,
+      "expected": "compressed",
+      "minSavingRatio": 0.5,
+      "notes": "900 identical lines collapse to one with a count; the ERROR line survives",
+      "failureMarkers": ["ERROR [pool] upstream timeout"]
+    },
+    {
+      "file": "small-passing-vitest.txt",
+      "sha256": "47a1e741307c8207a4a8ce66631fd777e77abab375a017fbfcd0639153554dfe",
+      "bytes": 88,
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 0,
+      "expected": "passthrough",
+      "minSavingRatio": 0,
+      "notes": "below the note's own cost: the strategy must decline rather than announce a loss"
+    }
+  ]
+}
