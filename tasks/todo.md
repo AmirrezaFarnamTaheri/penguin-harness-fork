@@ -27,14 +27,16 @@ Current runtime claims remain in [docs/status-ledger.json](../docs/status-ledger
 ## Release repair orders
 
 The [current incident](work-orders.md#current-release-incident) records CI on this exact baseline.
-All four orders are ready to investigate; their file ownership controls parallel dispatch.
+All four orders are closed on the incident run; the two repository gates the fixtures had broken
+(`typecheck`, `style`) are repaired at `a882cda4` — see the receipt in
+[docs/audits/ci-repair-2026-10-02.md](../docs/audits/ci-repair-2026-10-02.md).
 
-| Check | ID / order                                                         | State | Required proof                                                                    |
-| ----- | ------------------------------------------------------------------ | ----- | --------------------------------------------------------------------------------- |
-| [ ]   | [CI-01 — Findings denied-I/O classification](work-orders.md#ci-01) | OPEN  | macOS/Windows denied-read and quarantine branches; no destructive acknowledgement |
-| [ ]   | [CI-02 — Nested-directory watcher fallback](work-orders.md#ci-02)  | OPEN  | actual subdirectory invalidation and cleanup on macOS                             |
-| [ ]   | [CI-03 — Quota countdown / retry-now](work-orders.md#ci-03)        | OPEN  | decreasing countdown, early retry, recovered answer and honest trace              |
-| [ ]   | [CI-04 — Cockpit HTTP fallback lifecycle](work-orders.md#ci-04)    | OPEN  | repeated polling after disconnect, no request after unmount                       |
+| Check | ID / order                                                         | State    | Required proof and evidence                                                                                                             |
+| ----- | ------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [x]   | [CI-01 — Findings denied-I/O classification](work-orders.md#ci-01) | VERIFIED | receipt; run 37038239523 `test (core)` 110941636677, `test-macos (core)` 110941636736, `test-windows (core)` 110941636849                  |
+| [x]   | [CI-02 — Nested-directory watcher fallback](work-orders.md#ci-02)  | VERIFIED | receipt; run 37038239523 `test-macos (core)` 110941636736 (macOS lane)                                                                   |
+| [x]   | [CI-03 — Quota countdown / retry-now](work-orders.md#ci-03)        | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten spec at `b8c74439`)                                                       |
+| [x]   | [CI-04 — Cockpit HTTP fallback lifecycle](work-orders.md#ci-04)    | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten cockpit spec at `09b36f78`)                                              |
 
 ## Wave R
 
