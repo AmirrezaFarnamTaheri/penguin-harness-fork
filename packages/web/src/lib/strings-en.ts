@@ -2273,6 +2273,17 @@ Scenarios:
     reconnectGiveUp: "Give up",
     imageAlt: "Image uploaded by user",
     toolImageAlt: "Image from tool output",
+    // Recall chip (F18): the affordance under a tool result whose output was archived away. The
+    // label names what the reader gets (the full output), and the panel strings describe the
+    // bounded read in progress rather than mimicking a file viewer.
+    recallChipLabel: "Show full output",
+    recallPanelLabel: "Archived tool output",
+    recallLoading: "Loading\u2026",
+    recallComplete: (chars: number) => `Full output (${chars.toLocaleString()} characters)`,
+    recallPartial: (chars: number) => `Showing the first ${chars.toLocaleString()} characters`,
+    recallLoadMore: "Load more",
+    recallReload: "Reload",
+    recallFailed: (message: string) => `Could not load the output: ${message}`,
     imagesAsPathHint:
       "This model cannot view images directly: on send, images are saved to the session scratchpad and passed as file paths (viewed via read_file)",
     infoPanel: "Session info",

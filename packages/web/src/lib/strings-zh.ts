@@ -2237,6 +2237,15 @@ Benchmark：
     reconnectGiveUp: "放弃",
     imageAlt: "用户上传的图片",
     toolImageAlt: "工具输出的图片",
+    // Recall chip (F18): the affordance under a tool result whose output was archived away.
+    recallChipLabel: "查看完整输出",
+    recallPanelLabel: "已归档的工具输出",
+    recallLoading: "加载中…",
+    recallComplete: (chars: number) => `完整输出（${chars.toLocaleString()} 个字符）`,
+    recallPartial: (chars: number) => `已显示前 ${chars.toLocaleString()} 个字符`,
+    recallLoadMore: "加载更多",
+    recallReload: "重新加载",
+    recallFailed: (message: string) => `无法加载该输出：${message}`,
     imagesAsPathHint:
       "当前模型不支持直接查看图片：发送时图片将保存到会话临时目录，以文件路径转交（模型经 read_file 查看）",
     infoPanel: "Session 信息",

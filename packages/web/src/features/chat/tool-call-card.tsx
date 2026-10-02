@@ -38,6 +38,9 @@ import { JevAdvisoryNote } from "./jev-advisory-note";
 import { useTheme } from "../../state/theme";
 import { agentIdFromRunSubagentArgs } from "./agent-topology";
 import { SubagentChip } from "./subagent-chip";
+import { RecallChip } from "./recall-chip";
+import { parseRecallMetadata } from "../../lib/recall";
+import type { RecallMetadata } from "../../lib/recall";
 import { EditToolOutput } from "./edit-tool-output";
 import type { StreamRenderContext } from "./message-stream";
 
@@ -313,6 +316,23 @@ function extractStringField(argsJson: string, field: string): PartialField | nul
   return { value: out, complete: false };
 }
 
+/**
+ * The recall metadata this card should offer, if any.
+ *
+ * Three gates, all of them load-bearing: the Session must be known (a recall id resolves against
+ * one Session's archive, and guessing one would read the wrong conversation's output), the output
+ * must be settled (a note still streaming in can be half-written), and the note must actually
+ * publish a valid id. `item.output` is what is parsed — not the ANSI-stripped text the card
+ * displays — because the note is what the harness wrote into the raw output.
+ */
+export function recallAffordance(
+  item: Pick<ToolCallItem, "output" | "outputComplete">,
+  sessionId: string | undefined,
+): RecallMetadata | null {
+  if (sessionId === undefined || !item.outputComplete) return null;
+  return parseRecallMetadata(item.output);
+}
+
 export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRenderContext }) {
   const [open, setOpen] = useState(false);
   const userToggled = useRef(false);
@@ -333,6 +353,12 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
   // force-color programs still can (#102). Memoized — the aggregated output can be large and
   // grows on every streamed delta.
   const output = useMemo(() => stripAnsi(item.output), [item.output]);
+  // A recall note publishes an id for output the harness archived away; the chip is what makes it
+  // readable. The decision is a pure function (see below) so it can be tested without a DOM.
+  const recall = useMemo(
+    () => recallAffordance(item, ctx.sessionId),
+    [item.output, item.outputComplete, ctx.sessionId],
+  );
   // Settled once argument streaming stopped (or the complete call arrived): the subtitle's
   // completeness gate is lifted — whatever is there is final.
   const subtitle = headerSubtitle(item.name, item.argumentsText, !item.callStreaming);
@@ -577,6 +603,13 @@ export function ToolCallCard({ item, ctx }: { item: ToolCallItem; ctx: StreamRen
             </div>
           )}
         </div>
+      )}
+
+      {/* Archived-output affordance: the reader's half of the recall handle the note publishes
+          (F18). Below the output it belongs to, and always visible — an archived result is exactly
+          the one the card cannot show, so this must not be behind the card's own disclosure. */}
+      {recall && ctx.sessionId !== undefined && (
+        <RecallChip sessionId={ctx.sessionId} recall={recall} />
       )}
 
       {/* Subagent row: always visible (unaffected by the tool card's collapsed state) below the expanded arguments/output — a full-width shortcut bar into the subagents panel; the nested conversation no longer renders inline. */}

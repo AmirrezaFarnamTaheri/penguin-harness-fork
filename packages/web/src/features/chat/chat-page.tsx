@@ -1650,6 +1650,11 @@ export function ChatPage() {
   const ctx: StreamRenderContext = {
     subagents: stream.subagents,
     pendingApprovals: stream.pendingApprovals,
+    // Read by the recall chip, which resolves an archived output against the Session that stored
+    // it. Note this is one of the fields the item comparator never looks at: a result whose note
+    // publishes a recall id does not change when the transcript is re-seated in a different
+    // Session, because a Session switch remounts the whole conversation anyway.
+    sessionId: selected?.sessionId,
     onApprove,
     onSendToBackground,
     origin: [],
