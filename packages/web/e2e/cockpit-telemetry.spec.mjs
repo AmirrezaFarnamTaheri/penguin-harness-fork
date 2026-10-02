@@ -32,7 +32,11 @@ const json = (route, body, status = 200) =>
 const state = async (page) =>
   JSON.parse(await page.getByLabel("Telemetry", { exact: true }).textContent());
 
-async function boot(page, telemetry = (route) => json(route, snapshot()), { pauseClock = false } = {}) {
+async function boot(
+  page,
+  telemetry = (route) => json(route, snapshot()),
+  { pauseClock = false } = {},
+) {
   const sockets = [];
   const requests = [];
   const errors = [];

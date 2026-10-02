@@ -21,7 +21,7 @@
  *   on success the trace rotates into a new file (index+1, the new file starts with session_meta;
  *   rotation is deferred until the new context has its first message to write).
  */
-import { mkdtemp, rm, access, readdir } from "node:fs/promises";
+import { mkdtemp, rm, access, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -61,7 +61,7 @@ import type {
 } from "../src/interfaces/index.js";
 import { ContextEngine, SUMMARY_RETRY_GUIDANCE } from "../src/engine/context-engine.js";
 import { Session } from "../src/session.js";
-import type { CompactionSettings } from "../src/engine/context-engine.js";
+import type { CompactionSettings, OpenedContext, TraceSink } from "../src/engine/context-engine.js";
 import { GenerativeModel } from "../src/llm/index.js";
 import type { UniConfig, UniEvent, UniMessage } from "@prismshadow/agenthub";
 import { Writer, readTrace, resumeTrace } from "../src/trace/index.js";
@@ -482,6 +482,181 @@ describe("context compaction", () => {
     );
     expect(trace.currentPath()).toBe(firstPath);
     expect(llm1.calls).toHaveLength(3);
+  });
+
+  it("a malformed opener result is refused before the swap, and the retry commits it", async () => {
+    // B4.2: the candidate is validated while the current context is still whole. An opener that
+    // returns a non-context (without throwing) must not be adopted, or the engine would carry an
+    // `llm` that cannot stream while its turn counters and rotation flag had already moved.
+    const llm1 = new ScriptedLLM(
+      [
+        { messages: [assistantText("answer one"), usage(150, 150)] },
+        { messages: [assistantText("[summary]first try[/summary]"), usage(160, 310)] },
+        { messages: [assistantText("[summary]second try[/summary]"), usage(170, 330)] },
+        { messages: [assistantText("[summary]third try[/summary]"), usage(180, 350)] },
+      ],
+      "llm1",
+    );
+    const llm2 = new ScriptedLLM(
+      [{ messages: [assistantText("new context"), usage(20, 370)] }],
+      "llm2",
+    );
+    let created = 0;
+    const trace = new Writer({ tracesDir: traces, sessionId: "sess_bad_opener" });
+    const engine = new ContextEngine({
+      llm: llm1,
+      environment: fakeEnvironment,
+      trace,
+      sessionMeta: metaMessage,
+      compaction: settings(),
+      openNextContext: () => {
+        created += 1;
+        if (created === 1) return { llm: null } as unknown as OpenedContext; // missing llm
+        if (created === 2) return { llm: {} } as unknown as OpenedContext; // cannot stream
+        return { llm: llm2 };
+      },
+    });
+    const oldPath = trace.currentPath();
+
+    await expect(
+      collect(engine.run([userText("task one")], { approve: allowAll })),
+    ).rejects.toThrow(/openNextContext returned an invalid context: `llm` is missing/);
+
+    // The refusal happened before the swap: the old object is still current, nothing reached the
+    // candidate, and the Trace index never moved (one file, no rotation pending).
+    expect(created).toBe(1);
+    expect(llm2.calls).toHaveLength(0);
+    expect(trace.currentPath()).toBe(oldPath);
+    expect(await readdir(dirname(oldPath))).toEqual(["sess_bad_opener_001.jsonl"]);
+
+    // A second refusal, this time for a candidate that exists but cannot stream.
+    await expect(collect(engine.compact())).rejects.toThrow(
+      /openNextContext returned an invalid context: `llm.streamGenerate` is not a function/,
+    );
+    expect(created).toBe(2);
+    expect(llm2.calls).toHaveLength(0);
+    expect(trace.currentPath()).toBe(oldPath);
+
+    // Forward progress on the valid path: the retry validates, swaps once, and the new context
+    // receives the summary as its first input. Rotation stays deferred until the new context has
+    // something to write (the summary is only handed over on the next request), then splits.
+    const out = await collect(engine.compact());
+    expect(
+      compactionEvents(out).map((e) => `${e.type}:${(e as { status?: string }).status ?? ""}`),
+    ).toEqual(["compaction_begin:", "compaction_end:completed"]);
+    expect(created).toBe(3);
+    expect(trace.currentPath()).toBe(oldPath);
+    await collect(engine.run([userText("task two")], { approve: allowAll }));
+    expect(llm2.calls.map((input) => input.map(textOf))).toEqual([
+      ["[context_summary]\nthird try\n[/context_summary]", "task two"],
+    ]);
+    expect(trace.currentPath()).not.toBe(oldPath);
+    expect(await readdir(dirname(oldPath))).toEqual([
+      "sess_bad_opener_001.jsonl",
+      "sess_bad_opener_002.jsonl",
+    ]);
+  });
+
+  it("a Trace write/rotate failure during compaction does not change the outcome or tear the swap", async () => {
+    // B4.4 write failure: Trace writes are best-effort. The bytes already on disk are untouched
+    // (append-only), the file index does not move, and the compaction still commits one swap.
+    const llm1 = new ScriptedLLM(
+      [
+        {
+          messages: [toolCall({ name: "t", arguments: "{}", toolCallId: "c1" }), usage(150, 150)],
+        },
+        { messages: [assistantText("[summary]survived a full disk[/summary]")] },
+      ],
+      "llm1",
+    );
+    const llm2 = new ScriptedLLM(
+      [{ messages: [assistantText("task done"), usage(30, 200)] }],
+      "llm2",
+    );
+    const real = new Writer({ tracesDir: traces, sessionId: "sess_trace_fail" });
+    let writes = 0;
+    const flaky: TraceSink = {
+      write: async (msg) => {
+        writes += 1;
+        // The first messages land on disk; everything from the compaction on fails.
+        if (writes > 2) throw new Error("ENOSPC: disk full");
+        await real.write(msg);
+      },
+      rotate: async () => {
+        throw new Error("ENOSPC: rotate failed");
+      },
+    };
+    const engine = new ContextEngine({
+      llm: llm1,
+      environment: fakeEnvironment,
+      trace: flaky,
+      sessionMeta: metaMessage,
+      compaction: settings(),
+      openNextContext: () => ({ llm: llm2 }),
+    });
+    const pathBefore = real.currentPath();
+    // The Writer creates the file on its first write; before the run there may be nothing yet.
+    const bytesBefore = await readFile(pathBefore, "utf8").catch(() => "");
+
+    const out = await collect(engine.run([userText("do task")], { approve: allowAll }));
+
+    // Outcome unchanged: the compaction completed and the summary reached the new context.
+    expect(compactionEvents(out).map((e) => (e as { status?: string }).status)).toEqual([
+      undefined,
+      "completed",
+    ]);
+    expect(llm2.calls.map((input) => input.map(textOf))).toEqual([
+      ["[context_summary]\nsurvived a full disk\n[/context_summary]"],
+    ]);
+    // The acknowledged bytes are append-only and the failed rotation did not lose the file.
+    const bytesAfter = await readFile(pathBefore, "utf8");
+    expect(bytesAfter.startsWith(bytesBefore)).toBe(true);
+    expect(writes).toBeGreaterThan(2); // the failures really did interleave the compaction
+    expect(real.currentPath()).toBe(pathBefore);
+    expect(await readdir(dirname(pathBefore))).toEqual(["sess_trace_fail_001.jsonl"]);
+  });
+
+  it("a failed compaction attempt resends the byte-identical folded input, tool ids included", async () => {
+    // B4.1/B4.4: while nothing was committed, the retry must resend the same bytes — same tool
+    // pairings, same prompt — and the ids in them must be the ones the provider acknowledged.
+    const llm1 = new ScriptedLLM(
+      [
+        {
+          messages: [toolCall({ name: "t", arguments: "{}", toolCallId: "c1" }), usage(150, 150)],
+        },
+        { messages: [], outcome: { status: "retryable", errorMessage: "502 upstream" } },
+        { messages: [assistantText("[summary]recovered[/summary]")] },
+      ],
+      "llm1",
+    );
+    const llm2 = new ScriptedLLM(
+      [{ messages: [assistantText("task done"), usage(30, 200)] }],
+      "llm2",
+    );
+    const engine = new ContextEngine({
+      llm: llm1,
+      environment: fakeEnvironment,
+      compaction: settings(),
+      openNextContext: () => ({ llm: llm2 }),
+      compactionMaxReconnects: 2,
+      reconnectBackoffMs: 1,
+    });
+
+    const out = await collect(engine.run([userText("do task")], { approve: allowAll }));
+
+    expect(compactionEvents(out)[1]).toMatchObject({ status: "completed" });
+    const firstAttempt = llm1.calls[1]!;
+    const retryAttempt = llm1.calls[2]!;
+    expect(JSON.stringify(retryAttempt)).toBe(JSON.stringify(firstAttempt));
+    expect(payloadTypes(firstAttempt)).toEqual(["tool_call_output", "text"]);
+    const foldedIds = firstAttempt
+      .filter((m) => (m.payload as { type?: string }).type === "tool_call_output")
+      .map((m) => (m.payload as { tool_call_id?: string }).tool_call_id);
+    expect(foldedIds).toEqual(["c1"]);
+    // And the committed summary alone feeds the new context.
+    expect(llm2.calls.map((input) => input.map(textOf))).toEqual([
+      ["[context_summary]\nrecovered\n[/context_summary]"],
+    ]);
   });
 
   it("an opened context's maxTurns and compaction settings replace the engine's from then on", async () => {

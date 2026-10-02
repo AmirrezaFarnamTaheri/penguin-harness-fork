@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { sharedUiClock } from "../../lib/ui-clock";
+import { useUiClock } from "../../lib/use-ui-clock";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { CopyButton } from "../../components/ui/copy-button";
@@ -33,18 +35,18 @@ export function KeyHealthCard({
   renaming = false,
   children,
 }: KeyHealthCardProps) {
-  const [remainingMs, setRemainingMs] = useState(keyItem.cooldownRemainingMs);
-
+  // The cooldown is an absolute deadline measured once when the report arrives, not a per-tick
+  // decrement (F2): decrementing drifts — a tab restored after 60 s showed a value that was 60 s
+  // too large, and a throttled timer was worse still — whereas reading the shared clock's `now`
+  // converges the moment the tab wakes.
+  const clock = sharedUiClock();
+  const [deadlineMs, setDeadlineMs] = useState(() => clock.now() + keyItem.cooldownRemainingMs);
   useEffect(() => {
-    setRemainingMs(keyItem.cooldownRemainingMs);
-    if (keyItem.status !== "cooldown" || keyItem.cooldownRemainingMs <= 0) return;
-
-    const interval = setInterval(() => {
-      setRemainingMs((prev) => Math.max(0, prev - 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [keyItem.cooldownRemainingMs, keyItem.status]);
+    setDeadlineMs(clock.now() + keyItem.cooldownRemainingMs);
+  }, [clock, keyItem.cooldownRemainingMs, keyItem.status]);
+  const ticking = keyItem.status === "cooldown" && keyItem.cooldownRemainingMs > 0;
+  const nowMs = useUiClock(1000, { enabled: ticking });
+  const remainingMs = ticking ? Math.max(0, deadlineMs - nowMs) : keyItem.cooldownRemainingMs;
 
   const successRate = calculateKeySuccessRate(keyItem.successCount, keyItem.failureCount);
   const totalCalls = keyItem.successCount + keyItem.failureCount;

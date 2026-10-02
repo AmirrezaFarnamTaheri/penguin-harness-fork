@@ -112,6 +112,41 @@ interface ProcessOptions {
 /**
  * Reads committed Git trees without checking them out or touching the working tree.
  * Blob ids shared by the two commits are fetched once with one `cat-file --batch` process.
+ *
+ * ## Reader contract
+ *
+ * **Reads** — committed objects only, through four subprocesses per commit plus one batch pair:
+ * `rev-parse --verify <rev>^{commit}`, `rev-parse --verify <commit>^{tree}`, `ls-tree -r -z`, then
+ * `cat-file --batch-check` (sizes) and `cat-file --batch` (contents) for the *deduplicated* union of
+ * the two commits' blob ids. `uniqueBlobCount` / `uniqueBlobBytes` report that union.
+ *
+ * **Isolation guarantees** — no working-tree, index or ref write; the source repository's dirty and
+ * untracked files are irrelevant to the result; every inherited `GIT_DIR`, `GIT_WORK_TREE`,
+ * `GIT_COMMON_DIR`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`,
+ * `GIT_NAMESPACE`, `GIT_PREFIX` and `GIT_CONFIG_*` override is stripped from the child environment;
+ * replacement refs are disabled twice over (`--no-replace-objects` and `GIT_NO_REPLACE_OBJECTS`);
+ * `GIT_OPTIONAL_LOCKS=0` keeps even the lock-free paths lock-free. A **bare repository works**: there
+ * is no implicit checkout anywhere in the path, which is why D5's revision-to-files seam can be
+ * satisfied without a worktree.
+ *
+ * **Bounds** (each with its typed error): `maxTreeBytes` 16 MiB and `maxEntries` 50,000 →
+ * `snapshot-too-large`; `maxObjectBytes` 8 MiB → `object-too-large`; `maxTotalBytes` 64 MiB →
+ * `snapshot-too-large`; `timeoutMs` 30 s → `timeout`. `includePath` is applied to `ls-tree` entries
+ * *before* any blob is fetched, so excluded files (binary assets, fixtures) cost no blob budget and
+ * cannot trip the size limits.
+ *
+ * **Cancellation** — an aborted signal or an expired timeout SIGKILLs the child; the promise only
+ * settles on `close`, so a rejection with `interrupted`/`timeout` is proof the process is gone.
+ *
+ * **Limitations** — requires `git` on `PATH`; SHA-1 and SHA-256 repositories (40/64-hex ids);
+ * gitlink (submodule) entries are skipped, so a submodule pointer change is not reported as a
+ * difference; symlink entries are returned as their target-text blob and are never followed; a blob
+ * containing a NUL byte is refused (`binary-object`) rather than returned truncated; object ids are
+ * re-hashed from the returned bytes, so a corrupt object store is an error, not silently accepted.
+ *
+ * **Consumer seam (D5/D7)** — `readPair(base, head)` is the revision-to-files provider: its
+ * `GitSnapshotPair.changes` carries per-path `before`/`after` entries with contents and modes, which
+ * is what the graph diff needs to compare two versions without reading the worktree.
  */
 export class GitSnapshotReader {
   private readonly repositoryPath: string;

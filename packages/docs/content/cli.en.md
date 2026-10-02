@@ -27,6 +27,7 @@ Authentication is the local API token: the server writes a fresh one to `<root>/
 - `--json` prints raw JSON instead of the rendered/tabular output; `--server <url>` targets a specific server (see above).
 - Caller-context defaults: inside a harness agent (`PENGUIN_SESSION_ID` present in the environment), a session created by `run` / `chat` defaults each **unspecified** field to the calling session's live values — the Workspace, the model pair, the approval mode and the thinking level — the same inheritance `run_subagent` applies to spawned children, so the two surfaces follow one convention. Per field the precedence is explicit flag > caller value > the plain fallback; a failed lookup prints a dim warning and falls back; outside an agent nothing changes. (`--project-id` / `--agent-id` keep their env-var defaults above.)
 - `--timeout <duration>` (on `run`, `input`, and `logs -f`) bounds the wait with soft-yield semantics — the `exec_command` yield-window model applied to the CLI's wait: at expiry the command detaches cleanly and exits 0, and the task keeps running server-side for a later `penguin input` / `penguin logs` to pick up. Accepted shapes: `30s`, `5m`, `2h`, or a bare integer meaning seconds; anything else is rejected. `--timeout 0` is the degenerate window — return immediately after delivery (`{sessionId, status: "running"}` under `--json`); the one knob covers "don't wait" too. No flag = wait indefinitely. (`run --background` remains the idiomatic fire-and-forget for NEW tasks: it prints the bare session id for scripts and detaches at creation time.)
+- Help has three depths. `penguin --help` prints the default inventory: the commands a normal session uses, plus `-h, --help`, `-v, --version` and `--help-mode` — it stays short on a narrow terminal because descriptions are shortened by whole words, never cut mid-word. `--help-mode simple` narrows that to getting started (`auth`, `server`, `chat`, `run`, `logs`, `recall`, `version`); `--help-mode full` shows every registered command with its aliases and every global option, and on a subcommand page it also lists the ancestor options that command accepts. The command list is derived from the live registry — a command added without a tier still appears in the default and full inventories rather than disappearing — and a value that is not one of the three modes is a usage error like any other. `--help`, bare `penguin` and `-v, --version` all exit 0.
 - Argument errors speak the interface language: a missing argument, a missing required option, an unknown option or a mistyped command prints one localized line plus that command's own usage and a pointer at its `--help`, and exits non-zero.
 - Data root (`config` only): `--root <dir>` overrides the data root directory. Priority: `--root` > the `PENGUIN_HOME` env var > `~/.penguin/data`.
 
@@ -149,6 +150,28 @@ penguin logs 402a2e24 -f
 | `--project-id <id>` | Fragment-search scope |
 | `--agent-id <id>` | Whose most recent session the omitted session id means |
 | `--json` / `--server <url>` | As everywhere; `--json` prints the raw message array (and, with `-f`, one JSON message per line as they arrive) |
+
+## penguin recall
+
+Read tool output that was archived out of a result, by the recall id the result note published. When a tool's output is too large to keep inline, the note carries an opaque id (`{"recallId":"…","sizeBytes":…}`) alongside the compressed result — the model pages it back with the `recall_output` tool, and this command is the same handle for a human. The id is 12 or 32 hexadecimal characters and names no file: a path cannot be spelled as one, and both this command and the server refuse anything else before reading.
+
+The session id is optional and resolves exactly like `penguin logs`: omitted, it is the agent's most recent session. Pages are written to stdout as they arrive (the stored output can be megabytes — nothing buffers it), and `--pages`/`--offset` let a caller read a prefix and continue later.
+
+```bash
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718            # all pages, current agent's latest session
+penguin recall 3f9a1c8b2d4e5f60 402a2e24 --pages 1         # first page of a specific session
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718 --offset 12000 --json
+```
+
+| Option | Description |
+| --- | --- |
+| `--offset <n>` | Start at this character (UTF-16) offset in the stored output; continue a previous prefix read with the offset it printed |
+| `--pages <n>` | Read at most n pages (12 000 characters each), then stop with a note naming the offset that continues the read |
+| `--project-id <id>` / `--agent-id <id>` | Session resolution scope, as with `logs` |
+| `--json` | One JSON object per page (NDJSON: `{recallId, offset, page, nextOffset, totalChars}`) instead of raw text — still streamed, never the whole entry at once |
+| `--server <url>` | Target server (see Server connection) |
+
+Failures say which one happened, because the fix differs: a malformed id is refused locally (`it names no file`); an id this Session never stored is `unavailable`; an entry that aged out of the bounded store is `expired`; and a position past the end of the text (or inside a Unicode character) is refused by the server with the text's real length. Output that was compressed away is never lost to the person reading the session.
 
 ## penguin agent
 

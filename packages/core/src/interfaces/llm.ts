@@ -15,6 +15,7 @@ import type {
   TokenCounts,
   ToolDefinition,
 } from "../omnimessage/types.js";
+import type { FailurePolicy } from "../fleet/provider-gateway.js";
 import type { ThinkingLevelName } from "./shared.js";
 // Concrete class, used only as a type annotation (type-only import; no runtime dependency, no circular reference).
 import type { ToolCallIdAllocator } from "../llm/tool-call-ids.js";
@@ -79,6 +80,13 @@ export interface GenerativeModelConfig {
    * inside the first-event gap.
    */
   requestTimeoutMs?: number;
+  /**
+   * A1 — which decider owns provider-failure actions: `shadow` (default) keeps the legacy branch
+   * deciding while the typed classifier reports, `active` obeys the classifier's recovery. When
+   * omitted it is resolved from `PENGUIN_FAILURE_CLASSIFIER`, so the flip is an operator decision
+   * and is reversible without a release.
+   */
+  failurePolicy?: FailurePolicy;
   /**
    * tool_call_id uniqueness registry (Session-level). Pass the same instance when rebuilding a new
    * GenerativeModel on compaction so the uniqueness scope covers the whole Session; defaults to a fresh

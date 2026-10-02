@@ -190,6 +190,26 @@ pnpm test:e2e                                        # core live-model e2e, need
   `node packages/landing/scripts/capture-readme-demo.mjs` (build first; needs Playwright
   chromium). Regenerate rather than hand-editing.
 
+## Rules for agent contributors
+
+Four rules govern agent contributions here. They live in a tracked file because the root
+`AGENTS.md` is git-ignored and absent from a clean checkout, and none of them depend on private or
+machine-local state. The [agent contribution rules](../docs/policies/agent-contribution-rules.md)
+carry each rule's trigger, required behavior, completion evidence, and the policy it maps to.
+
+1. **Declare the boundary before you edit** — read the request, the card, and any local `AGENTS.md`
+   that applies; name the branch, `HEAD`, and files; keep one package to one observable boundary;
+   read private state when it applies but never edit, delete, or require it.
+2. **Never claim more than you ran** — quote the command and its result on the revision you name;
+   cite CI only from a run observed on that commit; keep unmet criteria and residual work visible.
+3. **Land each green package; external actions only when authorized** — commit and push the package
+   the moment it is green, one package per commit, and never rewrite shared history; publishing,
+   tagging, releasing, merging, deploying, mass deletion, spending, and long-lived services need an
+   explicit instruction; never ask for or store credentials.
+4. **Reuse has provenance; refusals are absolute** — establish source, commit, license, and notices
+   before copying or adapting external material and record the decision; the
+   [hard refusals](../docs/policies/porting-and-refusals.md#hard-refusals) are never routed around.
+
 ## Reporting a bug or proposing a feature
 
 Open an issue from the [issue forms](https://github.com/Prism-Shadow/penguin-harness/issues/new/choose).

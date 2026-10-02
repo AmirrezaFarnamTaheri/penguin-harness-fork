@@ -1,0 +1,769 @@
+diff --git a/src/a.ts b/src/a.ts
+index 1111111..2222222 100644
+--- a/src/a.ts
++++ b/src/a.ts
+diff --git a/src/file-0.ts b/src/file-0.ts
+index 1111111..2222222 100644
+--- a/src/file-0.ts
++++ b/src/file-0.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 0
+ context line 1 of file 0
+ context line 2 of file 0
+ context line 3 of file 0
+ context line 4 of file 0
+ context line 5 of file 0
+ context line 6 of file 0
+ context line 7 of file 0
+ context line 8 of file 0
+ context line 9 of file 0
+ context line 10 of file 0
+ context line 11 of file 0
+ context line 12 of file 0
+ context line 13 of file 0
+ context line 14 of file 0
+ context line 15 of file 0
+ context line 16 of file 0
+ context line 17 of file 0
+ context line 18 of file 0
+ context line 19 of file 0
+ context line 20 of file 0
+ context line 21 of file 0
+ context line 22 of file 0
+ context line 23 of file 0
+ context line 24 of file 0
+ context line 25 of file 0
+ context line 26 of file 0
+ context line 27 of file 0
+ context line 28 of file 0
+ context line 29 of file 0
+-const old0 = 1;
++const next0 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-1.ts b/src/file-1.ts
+index 1111111..2222222 100644
+--- a/src/file-1.ts
++++ b/src/file-1.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 1
+ context line 1 of file 1
+ context line 2 of file 1
+ context line 3 of file 1
+ context line 4 of file 1
+ context line 5 of file 1
+ context line 6 of file 1
+ context line 7 of file 1
+ context line 8 of file 1
+ context line 9 of file 1
+ context line 10 of file 1
+ context line 11 of file 1
+ context line 12 of file 1
+ context line 13 of file 1
+ context line 14 of file 1
+ context line 15 of file 1
+ context line 16 of file 1
+ context line 17 of file 1
+ context line 18 of file 1
+ context line 19 of file 1
+ context line 20 of file 1
+ context line 21 of file 1
+ context line 22 of file 1
+ context line 23 of file 1
+ context line 24 of file 1
+ context line 25 of file 1
+ context line 26 of file 1
+ context line 27 of file 1
+ context line 28 of file 1
+ context line 29 of file 1
+-const old1 = 1;
++const next1 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-2.ts b/src/file-2.ts
+index 1111111..2222222 100644
+--- a/src/file-2.ts
++++ b/src/file-2.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 2
+ context line 1 of file 2
+ context line 2 of file 2
+ context line 3 of file 2
+ context line 4 of file 2
+ context line 5 of file 2
+ context line 6 of file 2
+ context line 7 of file 2
+ context line 8 of file 2
+ context line 9 of file 2
+ context line 10 of file 2
+ context line 11 of file 2
+ context line 12 of file 2
+ context line 13 of file 2
+ context line 14 of file 2
+ context line 15 of file 2
+ context line 16 of file 2
+ context line 17 of file 2
+ context line 18 of file 2
+ context line 19 of file 2
+ context line 20 of file 2
+ context line 21 of file 2
+ context line 22 of file 2
+ context line 23 of file 2
+ context line 24 of file 2
+ context line 25 of file 2
+ context line 26 of file 2
+ context line 27 of file 2
+ context line 28 of file 2
+ context line 29 of file 2
+-const old2 = 1;
++const next2 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-3.ts b/src/file-3.ts
+index 1111111..2222222 100644
+--- a/src/file-3.ts
++++ b/src/file-3.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 3
+ context line 1 of file 3
+ context line 2 of file 3
+ context line 3 of file 3
+ context line 4 of file 3
+ context line 5 of file 3
+ context line 6 of file 3
+ context line 7 of file 3
+ context line 8 of file 3
+ context line 9 of file 3
+ context line 10 of file 3
+ context line 11 of file 3
+ context line 12 of file 3
+ context line 13 of file 3
+ context line 14 of file 3
+ context line 15 of file 3
+ context line 16 of file 3
+ context line 17 of file 3
+ context line 18 of file 3
+ context line 19 of file 3
+ context line 20 of file 3
+ context line 21 of file 3
+ context line 22 of file 3
+ context line 23 of file 3
+ context line 24 of file 3
+ context line 25 of file 3
+ context line 26 of file 3
+ context line 27 of file 3
+ context line 28 of file 3
+ context line 29 of file 3
+-const old3 = 1;
++const next3 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-4.ts b/src/file-4.ts
+index 1111111..2222222 100644
+--- a/src/file-4.ts
++++ b/src/file-4.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 4
+ context line 1 of file 4
+ context line 2 of file 4
+ context line 3 of file 4
+ context line 4 of file 4
+ context line 5 of file 4
+ context line 6 of file 4
+ context line 7 of file 4
+ context line 8 of file 4
+ context line 9 of file 4
+ context line 10 of file 4
+ context line 11 of file 4
+ context line 12 of file 4
+ context line 13 of file 4
+ context line 14 of file 4
+ context line 15 of file 4
+ context line 16 of file 4
+ context line 17 of file 4
+ context line 18 of file 4
+ context line 19 of file 4
+ context line 20 of file 4
+ context line 21 of file 4
+ context line 22 of file 4
+ context line 23 of file 4
+ context line 24 of file 4
+ context line 25 of file 4
+ context line 26 of file 4
+ context line 27 of file 4
+ context line 28 of file 4
+ context line 29 of file 4
+-const old4 = 1;
++const next4 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-5.ts b/src/file-5.ts
+index 1111111..2222222 100644
+--- a/src/file-5.ts
++++ b/src/file-5.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 5
+ context line 1 of file 5
+ context line 2 of file 5
+ context line 3 of file 5
+ context line 4 of file 5
+ context line 5 of file 5
+ context line 6 of file 5
+ context line 7 of file 5
+ context line 8 of file 5
+ context line 9 of file 5
+ context line 10 of file 5
+ context line 11 of file 5
+ context line 12 of file 5
+ context line 13 of file 5
+ context line 14 of file 5
+ context line 15 of file 5
+ context line 16 of file 5
+ context line 17 of file 5
+ context line 18 of file 5
+ context line 19 of file 5
+ context line 20 of file 5
+ context line 21 of file 5
+ context line 22 of file 5
+ context line 23 of file 5
+ context line 24 of file 5
+ context line 25 of file 5
+ context line 26 of file 5
+ context line 27 of file 5
+ context line 28 of file 5
+ context line 29 of file 5
+-const old5 = 1;
++const next5 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-6.ts b/src/file-6.ts
+index 1111111..2222222 100644
+--- a/src/file-6.ts
++++ b/src/file-6.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 6
+ context line 1 of file 6
+ context line 2 of file 6
+ context line 3 of file 6
+ context line 4 of file 6
+ context line 5 of file 6
+ context line 6 of file 6
+ context line 7 of file 6
+ context line 8 of file 6
+ context line 9 of file 6
+ context line 10 of file 6
+ context line 11 of file 6
+ context line 12 of file 6
+ context line 13 of file 6
+ context line 14 of file 6
+ context line 15 of file 6
+ context line 16 of file 6
+ context line 17 of file 6
+ context line 18 of file 6
+ context line 19 of file 6
+ context line 20 of file 6
+ context line 21 of file 6
+ context line 22 of file 6
+ context line 23 of file 6
+ context line 24 of file 6
+ context line 25 of file 6
+ context line 26 of file 6
+ context line 27 of file 6
+ context line 28 of file 6
+ context line 29 of file 6
+-const old6 = 1;
++const next6 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-7.ts b/src/file-7.ts
+index 1111111..2222222 100644
+--- a/src/file-7.ts
++++ b/src/file-7.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 7
+ context line 1 of file 7
+ context line 2 of file 7
+ context line 3 of file 7
+ context line 4 of file 7
+ context line 5 of file 7
+ context line 6 of file 7
+ context line 7 of file 7
+ context line 8 of file 7
+ context line 9 of file 7
+ context line 10 of file 7
+ context line 11 of file 7
+ context line 12 of file 7
+ context line 13 of file 7
+ context line 14 of file 7
+ context line 15 of file 7
+ context line 16 of file 7
+ context line 17 of file 7
+ context line 18 of file 7
+ context line 19 of file 7
+ context line 20 of file 7
+ context line 21 of file 7
+ context line 22 of file 7
+ context line 23 of file 7
+ context line 24 of file 7
+ context line 25 of file 7
+ context line 26 of file 7
+ context line 27 of file 7
+ context line 28 of file 7
+ context line 29 of file 7
+-const old7 = 1;
++const next7 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-8.ts b/src/file-8.ts
+index 1111111..2222222 100644
+--- a/src/file-8.ts
++++ b/src/file-8.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 8
+ context line 1 of file 8
+ context line 2 of file 8
+ context line 3 of file 8
+ context line 4 of file 8
+ context line 5 of file 8
+ context line 6 of file 8
+ context line 7 of file 8
+ context line 8 of file 8
+ context line 9 of file 8
+ context line 10 of file 8
+ context line 11 of file 8
+ context line 12 of file 8
+ context line 13 of file 8
+ context line 14 of file 8
+ context line 15 of file 8
+ context line 16 of file 8
+ context line 17 of file 8
+ context line 18 of file 8
+ context line 19 of file 8
+ context line 20 of file 8
+ context line 21 of file 8
+ context line 22 of file 8
+ context line 23 of file 8
+ context line 24 of file 8
+ context line 25 of file 8
+ context line 26 of file 8
+ context line 27 of file 8
+ context line 28 of file 8
+ context line 29 of file 8
+-const old8 = 1;
++const next8 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-9.ts b/src/file-9.ts
+index 1111111..2222222 100644
+--- a/src/file-9.ts
++++ b/src/file-9.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 9
+ context line 1 of file 9
+ context line 2 of file 9
+ context line 3 of file 9
+ context line 4 of file 9
+ context line 5 of file 9
+ context line 6 of file 9
+ context line 7 of file 9
+ context line 8 of file 9
+ context line 9 of file 9
+ context line 10 of file 9
+ context line 11 of file 9
+ context line 12 of file 9
+ context line 13 of file 9
+ context line 14 of file 9
+ context line 15 of file 9
+ context line 16 of file 9
+ context line 17 of file 9
+ context line 18 of file 9
+ context line 19 of file 9
+ context line 20 of file 9
+ context line 21 of file 9
+ context line 22 of file 9
+ context line 23 of file 9
+ context line 24 of file 9
+ context line 25 of file 9
+ context line 26 of file 9
+ context line 27 of file 9
+ context line 28 of file 9
+ context line 29 of file 9
+-const old9 = 1;
++const next9 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-10.ts b/src/file-10.ts
+index 1111111..2222222 100644
+--- a/src/file-10.ts
++++ b/src/file-10.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 10
+ context line 1 of file 10
+ context line 2 of file 10
+ context line 3 of file 10
+ context line 4 of file 10
+ context line 5 of file 10
+ context line 6 of file 10
+ context line 7 of file 10
+ context line 8 of file 10
+ context line 9 of file 10
+ context line 10 of file 10
+ context line 11 of file 10
+ context line 12 of file 10
+ context line 13 of file 10
+ context line 14 of file 10
+ context line 15 of file 10
+ context line 16 of file 10
+ context line 17 of file 10
+ context line 18 of file 10
+ context line 19 of file 10
+ context line 20 of file 10
+ context line 21 of file 10
+ context line 22 of file 10
+ context line 23 of file 10
+ context line 24 of file 10
+ context line 25 of file 10
+ context line 26 of file 10
+ context line 27 of file 10
+ context line 28 of file 10
+ context line 29 of file 10
+-const old10 = 1;
++const next10 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-11.ts b/src/file-11.ts
+index 1111111..2222222 100644
+--- a/src/file-11.ts
++++ b/src/file-11.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 11
+ context line 1 of file 11
+ context line 2 of file 11
+ context line 3 of file 11
+ context line 4 of file 11
+ context line 5 of file 11
+ context line 6 of file 11
+ context line 7 of file 11
+ context line 8 of file 11
+ context line 9 of file 11
+ context line 10 of file 11
+ context line 11 of file 11
+ context line 12 of file 11
+ context line 13 of file 11
+ context line 14 of file 11
+ context line 15 of file 11
+ context line 16 of file 11
+ context line 17 of file 11
+ context line 18 of file 11
+ context line 19 of file 11
+ context line 20 of file 11
+ context line 21 of file 11
+ context line 22 of file 11
+ context line 23 of file 11
+ context line 24 of file 11
+ context line 25 of file 11
+ context line 26 of file 11
+ context line 27 of file 11
+ context line 28 of file 11
+ context line 29 of file 11
+-const old11 = 1;
++const next11 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-12.ts b/src/file-12.ts
+index 1111111..2222222 100644
+--- a/src/file-12.ts
++++ b/src/file-12.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 12
+ context line 1 of file 12
+ context line 2 of file 12
+ context line 3 of file 12
+ context line 4 of file 12
+ context line 5 of file 12
+ context line 6 of file 12
+ context line 7 of file 12
+ context line 8 of file 12
+ context line 9 of file 12
+ context line 10 of file 12
+ context line 11 of file 12
+ context line 12 of file 12
+ context line 13 of file 12
+ context line 14 of file 12
+ context line 15 of file 12
+ context line 16 of file 12
+ context line 17 of file 12
+ context line 18 of file 12
+ context line 19 of file 12
+ context line 20 of file 12
+ context line 21 of file 12
+ context line 22 of file 12
+ context line 23 of file 12
+ context line 24 of file 12
+ context line 25 of file 12
+ context line 26 of file 12
+ context line 27 of file 12
+ context line 28 of file 12
+ context line 29 of file 12
+-const old12 = 1;
++const next12 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-13.ts b/src/file-13.ts
+index 1111111..2222222 100644
+--- a/src/file-13.ts
++++ b/src/file-13.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 13
+ context line 1 of file 13
+ context line 2 of file 13
+ context line 3 of file 13
+ context line 4 of file 13
+ context line 5 of file 13
+ context line 6 of file 13
+ context line 7 of file 13
+ context line 8 of file 13
+ context line 9 of file 13
+ context line 10 of file 13
+ context line 11 of file 13
+ context line 12 of file 13
+ context line 13 of file 13
+ context line 14 of file 13
+ context line 15 of file 13
+ context line 16 of file 13
+ context line 17 of file 13
+ context line 18 of file 13
+ context line 19 of file 13
+ context line 20 of file 13
+ context line 21 of file 13
+ context line 22 of file 13
+ context line 23 of file 13
+ context line 24 of file 13
+ context line 25 of file 13
+ context line 26 of file 13
+ context line 27 of file 13
+ context line 28 of file 13
+ context line 29 of file 13
+-const old13 = 1;
++const next13 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-14.ts b/src/file-14.ts
+index 1111111..2222222 100644
+--- a/src/file-14.ts
++++ b/src/file-14.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 14
+ context line 1 of file 14
+ context line 2 of file 14
+ context line 3 of file 14
+ context line 4 of file 14
+ context line 5 of file 14
+ context line 6 of file 14
+ context line 7 of file 14
+ context line 8 of file 14
+ context line 9 of file 14
+ context line 10 of file 14
+ context line 11 of file 14
+ context line 12 of file 14
+ context line 13 of file 14
+ context line 14 of file 14
+ context line 15 of file 14
+ context line 16 of file 14
+ context line 17 of file 14
+ context line 18 of file 14
+ context line 19 of file 14
+ context line 20 of file 14
+ context line 21 of file 14
+ context line 22 of file 14
+ context line 23 of file 14
+ context line 24 of file 14
+ context line 25 of file 14
+ context line 26 of file 14
+ context line 27 of file 14
+ context line 28 of file 14
+ context line 29 of file 14
+-const old14 = 1;
++const next14 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-15.ts b/src/file-15.ts
+index 1111111..2222222 100644
+--- a/src/file-15.ts
++++ b/src/file-15.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 15
+ context line 1 of file 15
+ context line 2 of file 15
+ context line 3 of file 15
+ context line 4 of file 15
+ context line 5 of file 15
+ context line 6 of file 15
+ context line 7 of file 15
+ context line 8 of file 15
+ context line 9 of file 15
+ context line 10 of file 15
+ context line 11 of file 15
+ context line 12 of file 15
+ context line 13 of file 15
+ context line 14 of file 15
+ context line 15 of file 15
+ context line 16 of file 15
+ context line 17 of file 15
+ context line 18 of file 15
+ context line 19 of file 15
+ context line 20 of file 15
+ context line 21 of file 15
+ context line 22 of file 15
+ context line 23 of file 15
+ context line 24 of file 15
+ context line 25 of file 15
+ context line 26 of file 15
+ context line 27 of file 15
+ context line 28 of file 15
+ context line 29 of file 15
+-const old15 = 1;
++const next15 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7
+diff --git a/src/file-16.ts b/src/file-16.ts
+index 1111111..2222222 100644
+--- a/src/file-16.ts
++++ b/src/file-16.ts
+@@ -1,40 +1,42 @@
+ context line 0 of file 16
+ context line 1 of file 16
+ context line 2 of file 16
+ context line 3 of file 16
+ context line 4 of file 16
+ context line 5 of file 16
+ context line 6 of file 16
+ context line 7 of file 16
+ context line 8 of file 16
+ context line 9 of file 16
+ context line 10 of file 16
+ context line 11 of file 16
+ context line 12 of file 16
+ context line 13 of file 16
+ context line 14 of file 16
+ context line 15 of file 16
+ context line 16 of file 16
+ context line 17 of file 16
+ context line 18 of file 16
+ context line 19 of file 16
+ context line 20 of file 16
+ context line 21 of file 16
+ context line 22 of file 16
+ context line 23 of file 16
+ context line 24 of file 16
+ context line 25 of file 16
+ context line 26 of file 16
+ context line 27 of file 16
+ context line 28 of file 16
+ context line 29 of file 16
+-const old16 = 1;
++const next16 = 2;
+ more context 0
+ more context 1
+ more context 2
+ more context 3
+ more context 4
+ more context 5
+ more context 6
+ more context 7

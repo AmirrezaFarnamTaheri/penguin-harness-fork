@@ -18,7 +18,20 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactCredentials } from "../internal/credential-redactor.js";
+import type {
+  NonessentialProducerId,
+  PressureDecision,
+  PressureSignal,
+  WritePressureGate,
+} from "../internal/write-pressure-policy.js";
 import { READ_FILE_SCAN_CAP_BYTES } from "./tools/read-file.js";
+import {
+  createPruneFrontier,
+  parsePruneFrontier,
+  planPrune,
+  serializePruneFrontier,
+  type PruneFrontier,
+} from "../internal/prune-frontier.js";
 
 /**
  * Maximum stored bytes for one truncated tool call. One byte of headroom below read_file's
@@ -83,8 +96,22 @@ export type TruncatedToolOutputArchiveSaveResult =
       status: "saved";
       path: string;
       archiveTruncated: boolean;
+      /** Disk-pressure warning that fired while admitting this write (I7.2); the write proceeded. */
+      warning?: WritePressureWarning;
     }
   | { status: "failed"; code: string };
+
+/**
+ * A warning that fired while a nonessential write was admitted. Carried on the result so the
+ * caller can show it — a warning nobody can observe is indistinguishable from a policy that
+ * never ran. `freeBytes` is null when no valid measurement existed (never 0-as-unknown).
+ */
+export interface WritePressureWarning {
+  signal: PressureSignal;
+  reason: string;
+  volumePath: string;
+  freeBytes: number | null;
+}
 
 interface TruncatedToolOutputArchiveOptions {
   rootDir: string;
@@ -92,9 +119,51 @@ interface TruncatedToolOutputArchiveOptions {
   fileLimitBytes?: number;
   /** Test-only overrides for the recall store's bounds; production uses RECALL_LIMITS. */
   recallLimits?: Partial<RecallLimits>;
+  /** Test-only overrides for the truncation archive's bounds; production uses ARCHIVE_LIMITS. */
+  archiveLimits?: Partial<ArchiveLimits>;
   /** Test-only clock, so age-bound eviction can be exercised without waiting a month. */
   now?: () => number;
+  /**
+   * Admission gate for this archive's own writes (I7.2). Omitted = no pressure policy, which is
+   * the previous behavior exactly: the card's rollback is removing this injection. A gate that
+   * blocks refuses the write *before* any filesystem mutation; a gate that warns lets the write
+   * through and the warning rides back on the result.
+   */
+  writePressure?: WritePressureGate;
+  /**
+   * Where to persist the archive's prune frontier (B4.3). Omitted = in memory only: the frontier
+   * still answers repeated blocked prunes within this process, and a restart re-enforces the bound
+   * from the directory itself (which remains the authority). The archive root is deliberately not
+   * used as a default: an existing E10.4 contract pins that directory to the `.log` files it writes.
+   */
+  pruneFrontierPath?: string;
 }
+
+/**
+ * The two bounds the truncation archive is held to, per Session. The recall store below has its
+ * own limits; these govern the `*.log` files that `commit` writes.
+ */
+export interface ArchiveLimits {
+  maxEntries: number;
+  maxTotalBytes: number;
+}
+
+/**
+ * Production bounds for the truncation archive (E10.4).
+ *
+ * Before this the archive had a per-call budget and nothing else, so a long conversation with N
+ * oversized commands kept N files at up to 8 MiB each — hundreds of megabytes in one Session's
+ * scratchpad, written by a feature whose only purpose is to let the model read back *recent*
+ * output. The bounds are the same shape as the recall store's: 500 entries and 256 MiB, which is
+ * generous for the head/tail windows a Session actually re-reads and finite on disk.
+ */
+export const ARCHIVE_LIMITS: ArchiveLimits = {
+  maxEntries: 500,
+  maxTotalBytes: 256 * 1024 * 1024,
+};
+
+/** Why an archived file left the directory — reported so a vanished path is explainable. */
+export type ArchiveDropReason = "capacity";
 
 /** The three bounds the recall store is held to, and the two knobs that override them in tests. */
 export interface RecallLimits {
@@ -117,13 +186,30 @@ interface RecallEntry {
 }
 
 export type RecallSaveResult =
-  | { status: "saved"; id: string; path: string; bytes: number; reused: boolean }
+  | {
+      status: "saved";
+      id: string;
+      path: string;
+      bytes: number;
+      reused: boolean;
+      /** Disk-pressure warning that fired while admitting this write (I7.2); the write proceeded. */
+      warning?: WritePressureWarning;
+    }
   | { status: "failed"; code: string };
 
 export type RecallResult =
   | { status: "ok"; id: string; path: string; text: string }
   | { status: "missing"; id: string }
   | { status: "dropped"; id: string };
+
+/** Observable state of the truncation archive: its size, its bounds, and what it evicted. */
+export interface ArchiveStats {
+  entries: number;
+  bytes: number;
+  maxEntries: number;
+  maxTotalBytes: number;
+  dropped: { name: string; reason: ArchiveDropReason; at: number }[];
+}
 
 /** Observable state of the recall store: its size, its bounds, and what it has evicted. */
 export interface RecallStats {
@@ -460,6 +546,10 @@ export class TruncatedToolOutputCapture {
 export class TruncatedToolOutputArchive {
   private readonly rootDir: string;
   private readonly fileLimitBytes: number;
+  /** The prune frontier: what the last pass decided, so a repeat does not re-decide it (B4.3). */
+  private pruneFrontier: PruneFrontier = createPruneFrontier();
+  private pruneFrontierLoaded = false;
+
   /** Recall entries live in their own subdirectory so eviction can only unlink this store's files. */
   private readonly recallRootDir: string;
   private readonly recallIndex = new Map<string, RecallEntry>();
@@ -468,6 +558,14 @@ export class TruncatedToolOutputArchive {
   private recallSaveTail: Promise<void> = Promise.resolve();
   private readonly recallLimits: RecallLimits;
   private readonly now: () => number;
+  private readonly archiveLimits: ArchiveLimits;
+  private readonly pruneFrontierPath: string | undefined;
+  /** The I7.2 admission gate for this store's own writes; undefined = no pressure policy. */
+  private readonly writePressure: WritePressureGate | undefined;
+  /** Serializes capacity checks with their writes, like the recall store (E10.4). */
+  private archiveSaveTail: Promise<void> = Promise.resolve();
+  /** Bounded log of files the capacity bound removed (newest last). */
+  private readonly archiveDropped: { name: string; reason: ArchiveDropReason; at: number }[] = [];
 
   constructor(opts: TruncatedToolOutputArchiveOptions) {
     // The explicit gap marker is part of every bounded head/tail archive, so even internal
@@ -478,7 +576,10 @@ export class TruncatedToolOutputArchive {
     );
     this.rootDir = opts.rootDir;
     this.recallRootDir = path.join(opts.rootDir, "recall");
+    this.writePressure = opts.writePressure;
     this.recallLimits = { ...RECALL_LIMITS, ...opts.recallLimits };
+    this.archiveLimits = { ...ARCHIVE_LIMITS, ...opts.archiveLimits };
+    this.pruneFrontierPath = opts.pruneFrontierPath;
     this.now = opts.now ?? Date.now;
   }
 
@@ -487,7 +588,14 @@ export class TruncatedToolOutputArchive {
     return new TruncatedToolOutputCapture(this, this.fileLimitBytes);
   }
 
-  /** Internal commit path used by TruncatedToolOutputCapture. */
+  /**
+   * Internal commit path used by TruncatedToolOutputCapture.
+   *
+   * Serialized and capacity-checked (E10.4): the per-Session bound is enforced against the
+   * directory's actual contents, so it holds across concurrent calls and across a process
+   * restart, and the oldest files go first. A capture that cannot be admitted at all is refused
+   * with `ARCHIVE_FULL` and evidence on stderr rather than written outside the bound.
+   */
   async commit(
     toolName: string,
     toolCallId: string,
@@ -497,12 +605,30 @@ export class TruncatedToolOutputArchive {
     const safeToolName = toolName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "tool";
     const idHash = createHash("sha256").update(toolCallId).digest("hex").slice(0, 16);
     const filePath = path.join(this.rootDir, `${safeToolName}-${idHash}.log`);
+    const previous = this.archiveSaveTail;
+    let release!: () => void;
+    this.archiveSaveTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    // Admitted before the first filesystem call: a refused write must not create the directory,
+    // touch the ledger or leave a partial file for the next reader to trip over.
+    const admission = await this.admitWrite("tool-output-archive", toolCallId);
+    if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
     try {
       // Create shared Session ancestors with their existing/default policy, then apply the
       // archive's private directory mode only to the archive directory itself.
       await mkdir(path.dirname(this.rootDir), { recursive: true });
       await mkdir(this.rootDir, { recursive: true, mode: 0o700 });
-      await writeFile(filePath, redactArchive(data, this.fileLimitBytes), {
+      const payload = redactArchive(data, this.fileLimitBytes);
+      if (!(await this.makeRoomFor(payload.length))) {
+        process.stderr.write(
+          `[penguin] tool "${toolName}" truncated output archive is at capacity ` +
+            `(${this.archiveLimits.maxEntries} entries / ${this.archiveLimits.maxTotalBytes} bytes).\n`,
+        );
+        return { status: "failed", code: "ARCHIVE_FULL" };
+      }
+      await writeFile(filePath, payload, {
         flag: "wx",
         mode: 0o600,
       });
@@ -510,6 +636,7 @@ export class TruncatedToolOutputArchive {
         status: "saved",
         path: filePath,
         archiveTruncated,
+        ...(admission.warning ? { warning: admission.warning } : {}),
       };
     } catch (err) {
       const rawCode = (err as { code?: unknown }).code;
@@ -518,7 +645,176 @@ export class TruncatedToolOutputArchive {
         `[penguin] tool "${toolName}" truncated output archive write failed (${code}).\n`,
       );
       return { status: "failed", code };
+    } finally {
+      release();
     }
+  }
+
+  /**
+   * Evicts oldest-first until one more file of `pendingBytes` fits inside both bounds, and
+   * reports whether it now fits. The directory listing — not an in-memory index — is the
+   * authority, so a restart re-enforces the bound over files written by an earlier process, and
+   * only regular `*.log` files this class writes are candidates: the `recall/` subdirectory and
+   * anything else in the Session scratchpad are never touched.
+   */
+  private async makeRoomFor(pendingBytes: number): Promise<boolean> {
+    // A requirement larger than the whole budget cannot fit at any level of pruning, and the
+    // frontier remembers that decision per directory state — so a repeated oversized capture is
+    // refused without listing or stat-ing anything (B4.3).
+    if (
+      this.pruneFrontier.blockedAtRequiredBytes !== null &&
+      pendingBytes >= this.pruneFrontier.blockedAtRequiredBytes
+    ) {
+      const cached = planPrune({
+        directoryMtimeMs: this.pruneFrontier.directoryMtimeMs,
+        requiredBytes: pendingBytes,
+        limits: this.archiveLimits,
+        frontier: this.pruneFrontier,
+      });
+      if (cached.decision === "cached-blocked") {
+        this.pruneFrontier = cached.frontier;
+        await this.persistPruneFrontier();
+        return false;
+      }
+    }
+    await this.loadPruneFrontier();
+    const directoryMtimeMs = await lstat(this.rootDir)
+      .then((info) => info.mtimeMs)
+      .catch(() => null);
+    const entries: { name: string; path: string; bytes: number; mtimeMs: number }[] = [];
+    const listing = await readdir(this.rootDir, { withFileTypes: true }).catch(() => []);
+    for (const dirent of listing) {
+      if (!dirent.isFile() || !dirent.name.endsWith(".log")) continue;
+      const filePath = path.join(this.rootDir, dirent.name);
+      const info = await lstat(filePath).catch(() => null);
+      // A symlink is not something this class writes, and following one would make eviction a
+      // way to delete files outside the archive. Skip anything that is not a plain file.
+      if (info === null || !info.isFile() || info.isSymbolicLink()) continue;
+      entries.push({ name: dirent.name, path: filePath, bytes: info.size, mtimeMs: info.mtimeMs });
+    }
+    const plan = planPrune({
+      directoryMtimeMs,
+      requiredBytes: pendingBytes,
+      limits: this.archiveLimits,
+      entries: entries.map(({ name, bytes, mtimeMs }) => ({ name, bytes, mtimeMs })),
+      // The recall store keeps its own documented lifetime and lives in its own subdirectory; the
+      // frontier records this so a future pruner cannot reconsider those entries either.
+      keepNames: [],
+      frontier: this.pruneFrontier,
+    });
+    this.pruneFrontier = plan.frontier;
+    if (plan.decision === "blocked" || plan.decision === "cached-blocked") {
+      await this.persistPruneFrontier();
+      return false;
+    }
+    const byName = new Map(entries.map((entry) => [entry.name, entry]));
+    let removed = 0;
+    for (const name of plan.drops) {
+      const entry = byName.get(name);
+      if (entry === undefined) continue;
+      try {
+        await unlink(entry.path);
+      } catch (error) {
+        // Only ENOENT means another writer (or the host's Session deletion) already removed the
+        // file, in which case the bound is served and the entry counts as dropped. Anything else
+        // -- EACCES, EPERM, EBUSY -- leaves the file on disk, so counting it would lower
+        // `totalBytes`/`count` for a file that is still there and let `makeRoomFor` report room
+        // that does not exist, and the drop log would name a file a reader can still open.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") continue;
+      }
+      removed += 1;
+      this.archiveDropped.push({ name: entry.name, reason: "capacity", at: this.now() });
+      while (this.archiveDropped.length > RECALL_DROPPED_LOG_LIMIT) this.archiveDropped.shift();
+    }
+    await this.persistPruneFrontier();
+    // Room exists only if the plan's drops actually happened. A file the operating system would
+    // not let go of is still consuming the bound, so reporting "made room" would let the caller
+    // write past `maxEntries`/`maxTotalBytes` while the drop log named a file that is still there.
+    return plan.decision === "fits" || removed === plan.drops.length;
+  }
+
+  /** Loads a persisted frontier once; a missing or corrupt one is simply a fresh frontier. */
+  private async loadPruneFrontier(): Promise<void> {
+    if (this.pruneFrontierLoaded || this.pruneFrontierPath === undefined) return;
+    this.pruneFrontierLoaded = true;
+    const text = await readFile(this.pruneFrontierPath, "utf8").catch(() => null);
+    this.pruneFrontier = parsePruneFrontier(text);
+  }
+
+  /** Persists the frontier when a path was configured; a failed write is not fatal to a prune. */
+  private async persistPruneFrontier(): Promise<void> {
+    if (this.pruneFrontierPath === undefined) return;
+    await mkdir(path.dirname(this.pruneFrontierPath), { recursive: true, mode: 0o700 }).catch(
+      () => undefined,
+    );
+    await writeFile(this.pruneFrontierPath, serializePruneFrontier(this.pruneFrontier), {
+      mode: 0o600,
+    }).catch(() => undefined);
+  }
+
+  /** Observable state of the truncation archive: what it holds, its bounds, what it evicted. */
+  async archiveStats(): Promise<ArchiveStats> {
+    await this.archiveSaveTail;
+    const listing = await readdir(this.rootDir, { withFileTypes: true }).catch(() => []);
+    let entries = 0;
+    let bytes = 0;
+    for (const dirent of listing) {
+      if (!dirent.isFile() || !dirent.name.endsWith(".log")) continue;
+      const info = await lstat(path.join(this.rootDir, dirent.name)).catch(() => null);
+      if (info === null || !info.isFile() || info.isSymbolicLink()) continue;
+      entries += 1;
+      bytes += info.size;
+    }
+    return {
+      entries,
+      bytes,
+      maxEntries: this.archiveLimits.maxEntries,
+      maxTotalBytes: this.archiveLimits.maxTotalBytes,
+      dropped: [...this.archiveDropped],
+    };
+  }
+
+  /**
+   * Asks the gate, if one is configured, whether this write may proceed.
+   *
+   * A gate that throws becomes a warning with no measurement rather than a refusal: the policy
+   * must not lose a write because its own probe misbehaved, and it must not claim a measurement
+   * it does not have. `blocked` is true only for a decision that is actually a block, so an
+   * unavailable probe can never refuse a write (I7.2). Nothing here reads tool arguments — the
+   * identity is the caller's own tool call id.
+   */
+  private async admitWrite(
+    producerId: NonessentialProducerId,
+    toolCallId: string,
+  ): Promise<{ blocked: boolean; warning: WritePressureWarning | null }> {
+    if (this.writePressure === undefined) return { blocked: false, warning: null };
+    let decision: PressureDecision;
+    try {
+      decision = await this.writePressure.admit({ producerId, toolCallId });
+    } catch (err) {
+      return {
+        blocked: false,
+        warning: {
+          signal: "write_pressure_probe_unavailable",
+          reason: `the write-pressure gate threw: ${err instanceof Error ? err.message : String(err)}`,
+          volumePath: "",
+          freeBytes: null,
+        },
+      };
+    }
+    if (decision.action === "block") return { blocked: true, warning: null };
+    if (decision.action === "warn" && decision.signal !== null) {
+      return {
+        blocked: false,
+        warning: {
+          signal: decision.signal,
+          reason: decision.reason,
+          volumePath: decision.volumePath,
+          freeBytes: decision.freeBytes,
+        },
+      };
+    }
+    return { blocked: false, warning: null };
   }
 
   // -------------------------------------------------------------------------
@@ -543,7 +839,12 @@ export class TruncatedToolOutputArchive {
    * `recall/` subdirectory so eviction can only ever unlink files this store created — the
    * truncation archive's own files, written by `commit`, are never touched by it.
    */
-  async saveRecallEntry(toolName: string, text: string): Promise<RecallSaveResult> {
+  async saveRecallEntry(
+    toolName: string,
+    text: string,
+    /** The boundary's identity for this write (the tool call id); an override is scoped to it. */
+    writeId = "",
+  ): Promise<RecallSaveResult> {
     // Environment can finish multiple tool calls concurrently. Serialize capacity checks with
     // their writes so every accepted id is accounted for before another call reserves space.
     const previous = this.recallSaveTail;
@@ -553,7 +854,7 @@ export class TruncatedToolOutputArchive {
     });
     await previous;
     try {
-      return await this.saveRecallEntryExclusive(toolName, text);
+      return await this.saveRecallEntryExclusive(toolName, text, writeId);
     } finally {
       release();
     }
@@ -562,9 +863,15 @@ export class TruncatedToolOutputArchive {
   private async saveRecallEntryExclusive(
     _toolName: string,
     text: string,
+    writeId: string,
   ): Promise<RecallSaveResult> {
     await this.loadRecallFiles();
     await this.enforceRecallBounds();
+    // Before the id is derived and before anything is written: a block here means the entry is
+    // not stored at all, and the caller falls back to the honest bounded answer. Nothing on the
+    // destination volume changes, including the store's own index.
+    const admission = await this.admitWrite("recall-store", writeId);
+    if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
     if (!isWellFormedUtf16(text)) return { status: "failed", code: "INVALID_UTF8" };
     const data = Buffer.from(text, "utf8");
     if (data.length > this.fileLimitBytes) return { status: "failed", code: "ENTRY_TOO_LARGE" };
@@ -581,7 +888,14 @@ export class TruncatedToolOutputArchive {
       // Already stored (identical redacted text): reuse the entry, do not rewrite
       // it or reset its age, so a repeated command cannot keep a stale entry alive forever.
       existing.uses += 1;
-      return { status: "saved", id, path: existing.path, bytes: existing.bytes, reused: true };
+      return {
+        status: "saved",
+        id,
+        path: existing.path,
+        bytes: existing.bytes,
+        reused: true,
+        ...(admission.warning ? { warning: admission.warning } : {}),
+      };
     }
 
     // An issued id is promised to remain usable until its age expiry (or Session deletion).
@@ -623,7 +937,14 @@ export class TruncatedToolOutputArchive {
         });
         await this.enforceRecallBounds();
         if (!this.recallIndex.has(id)) return { status: "failed", code: "EXPIRED" };
-        return { status: "saved", id, path: filePath, bytes: redacted.length, reused: true };
+        return {
+          status: "saved",
+          id,
+          path: filePath,
+          bytes: redacted.length,
+          reused: true,
+          ...(admission.warning ? { warning: admission.warning } : {}),
+        };
       }
       const code = typeof rawCode === "string" ? rawCode : "UNKNOWN";
       process.stderr.write(`[penguin] tool output recall write failed (${code}).\n`);
@@ -641,7 +962,14 @@ export class TruncatedToolOutputArchive {
     });
     await this.enforceRecallBounds();
     if (!this.recallIndex.has(id)) return { status: "failed", code: "EXPIRED" };
-    return { status: "saved", id, path: filePath, bytes: redacted.length, reused: false };
+    return {
+      status: "saved",
+      id,
+      path: filePath,
+      bytes: redacted.length,
+      reused: false,
+      ...(admission.warning ? { warning: admission.warning } : {}),
+    };
   }
 
   /**

@@ -184,6 +184,16 @@ export class FakeServer {
   onTask: (session: FakeSessionState, body: Json) => unknown[] = () => [];
   /** Messages GET /messages returns. */
   history: unknown[] = [];
+  /**
+   * Archived tool output a recall route can serve (F18): recall id -> stored text. Absent ids
+   * answer `recall_unavailable`, and one whose text is empty answers with a single empty page, so
+   * the CLI's error mapping and its end-of-text handling are both reachable.
+   */
+  recallEntries = new Map<string, string>();
+  /** Ids the fake reports as expired (404 `recall_expired`) instead of unknown. */
+  expiredRecallIds = new Set<string>();
+  /** Every recall page request, in order: `{ sessionId, recallId, offset }`. */
+  recallRequests: { sessionId: string; recallId: string; offset: number }[] = [];
   /** POST /compact behavior: "reject" -> 409 nothing_to_compact; a function emits its messages like a task. */
   compact: "reject" | ((session: FakeSessionState) => unknown[]) = "reject";
   /** POST /steer behavior: accept (202) or reject (409 not_running). */
@@ -1670,6 +1680,51 @@ export class FakeServer {
         return this.json({ session: this.sessionInfo(session) });
       }
       if (rest === "/messages" && method === "GET") return this.json({ messages: this.history });
+      const recallMatch = /^\/recall\/([^/]+)$/.exec(rest);
+      if (recallMatch && method === "GET") {
+        // The server's page size, so the CLI's paging loop is exercised across more than one page
+        // exactly as it would be in production.
+        const recallId = decodeURIComponent(recallMatch[1]!).toLowerCase();
+        const offset = Number(url.searchParams.get("offset") ?? "0");
+        this.recallRequests.push({ sessionId, recallId, offset });
+        if (!/^(?:[a-f0-9]{12}|[a-f0-9]{32})$/.test(recallId)) {
+          return this.error(
+            400,
+            "recall_id_invalid",
+            "A recall id is 12 or 32 hexadecimal characters.",
+          );
+        }
+        if (this.expiredRecallIds.has(recallId)) {
+          return this.error(
+            404,
+            "recall_expired",
+            "This Session's output archive entry has expired.",
+          );
+        }
+        const text = this.recallEntries.get(recallId);
+        if (text === undefined) {
+          return this.error(
+            404,
+            "recall_unavailable",
+            "This output id is unavailable in this Session.",
+          );
+        }
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > text.length) {
+          return this.error(
+            416,
+            "recall_offset_out_of_range",
+            `Recall offset is outside this output (it is ${text.length} UTF-16 code units long).`,
+          );
+        }
+        const end = Math.min(text.length, offset + 12_000);
+        return this.json({
+          recallId,
+          offset,
+          page: text.slice(offset, end),
+          nextOffset: end < text.length ? end : null,
+          totalChars: text.length,
+        });
+      }
       if (rest === "/stream" && method === "GET") {
         const subs = this.subscribers.get(sessionId) ?? [];
         this.subscribers.set(sessionId, subs);

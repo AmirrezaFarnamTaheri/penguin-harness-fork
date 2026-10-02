@@ -6,7 +6,7 @@
  * stale runtimes, and LLM / tool errors in the message stream being persisted
  * (core doesn't throw, so try/catch can't catch them).
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -48,6 +48,7 @@ import { ChannelHub } from "../src/runtime/channel.js";
 import type { ChannelEvent } from "../src/runtime/channel.js";
 import type { ErrorRecordArgs, ErrorSink } from "../src/runtime/error-recorder.js";
 import { SessionManager } from "../src/runtime/session-manager.js";
+import { RUNTIME_DISPOSE_GRACE_MS } from "../src/runtime/session-manager.js";
 import type { RuntimeSession, SessionLoader } from "../src/runtime/session-manager.js";
 import { SessionSources } from "../src/runtime/session-sources.js";
 import type { TitleRequest } from "../src/runtime/title-generator.js";
@@ -1012,6 +1013,83 @@ describe("session-manager", () => {
     await Promise.allSettled(runnings);
     expect(manager.statusOf("session-1")).toBe("idle"); // entry has been removed
     manager.endSessionDeletion("session-1");
+  });
+
+  it("E10.2: a drive that never settles cannot stop the removed environment from being disposed", async () => {
+    // The leak this fixes: disposeRemoved waited on entry.running forever, so a hung run
+    // meant dispose() never ran — the entry left the active table, the route answered 204,
+    // and the Session's background processes kept running with no UI able to reach them.
+    vi.useFakeTimers();
+    try {
+      const disposed: string[] = [];
+      const fake: RuntimeSession = {
+        ...approvalFakeSession("session-1"),
+        dispose: async () => {
+          disposed.push("session-1");
+        },
+      };
+      const manager = makeManager(loaderOf(fake));
+      await manager.startTask("session-1", [userText("go")]);
+      await waitFor(() => manager.pendingApprovalCount("session-1") === 1);
+      // Detach observation of the never-settling drive: the manager still holds it, but the
+      // test must not await it (that is the whole point — it never resolves).
+      const stuck = new Promise<void>(() => {});
+      const internals = manager as unknown as { entries: Map<string, { running: Promise<void> }> };
+      internals.entries.get("session-1")!.running = stuck;
+
+      expect(manager.beginSessionDeletion("session-1")).toHaveLength(1); // the drive only
+      await vi.advanceTimersByTimeAsync(RUNTIME_DISPOSE_GRACE_MS);
+      // Cleanup ran even though the drive never settled, and the timeout is recorded as the
+      // outcome rather than reported as a clean dispose.
+      expect(disposed).toEqual(["session-1"]);
+      expect(manager.disposeTimeoutCount).toBe(1);
+      expect(manager.disposeOutcomeOf("session-1")).toBe("disposed-after-timeout");
+      manager.endSessionDeletion("session-1");
+
+      // A drive that settles in time is disposed promptly and does NOT count as a timeout.
+      sessions.insert({ ...ROW, sessionId: "session-2" });
+      const settledDisposed: string[] = [];
+      const settledFake: RuntimeSession = {
+        ...approvalFakeSession("session-2"),
+        dispose: async () => {
+          settledDisposed.push("session-2");
+        },
+      };
+      const fast = makeManager(loaderOf(settledFake));
+      await fast.startTask("session-2", [userText("go")]);
+      await waitFor(() => fast.pendingApprovalCount("session-2") === 1);
+      fast.beginSessionDeletion("session-2");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(settledDisposed).toEqual(["session-2"]);
+      expect(fast.disposeTimeoutCount).toBe(0);
+      expect(fast.disposeOutcomeOf("session-2")).toBe("disposed");
+      expect(await fast.disposeOutcomeWithin("session-2", 100)).toBe("disposed");
+      fast.endSessionDeletion("session-2");
+
+      // A dispose() that throws is neither a clean dispose nor a timeout: the environment may
+      // not have been released, and that is what the deletion path reports (CR).
+      sessions.insert({ ...ROW, sessionId: "session-3" });
+      const throwingFake: RuntimeSession = {
+        ...approvalFakeSession("session-3"),
+        dispose: async () => {
+          throw new Error("fixture: dispose threw before releasing processes");
+        },
+      };
+      const throwing = makeManager(loaderOf(throwingFake));
+      await throwing.startTask("session-3", [userText("go")]);
+      await waitFor(() => throwing.pendingApprovalCount("session-3") === 1);
+      throwing.beginSessionDeletion("session-3");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(throwing.disposeOutcomeOf("session-3")).toBe("dispose-failed");
+      expect(throwing.disposeFailureCount).toBe(1);
+      expect(throwing.disposeTimeoutCount).toBe(0);
+      expect(await throwing.disposeOutcomeWithin("session-3", 100)).toBe("dispose-failed");
+      // Nothing scheduled: the caller gets a straight answer rather than a wait.
+      expect(await throwing.disposeOutcomeWithin("session-never-removed", 10)).toBeUndefined();
+      throwing.endSessionDeletion("session-3");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("self-heal: when the loader returns a new session_id, the index primary key is updated and the actual current id returned", async () => {

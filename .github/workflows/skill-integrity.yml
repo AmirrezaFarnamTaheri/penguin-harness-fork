@@ -13,10 +13,14 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # Read-only: this job reads the skills tree and publishes a report artifact. Declared
+    # explicitly (J2) so the job's grant is a property of this file, not of repository settings.
+    permissions:
+      contents: read
     env:
       SKILLS_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
@@ -30,8 +34,29 @@ jobs:
         run: pnpm skills:lock:verify
       - name: Validate skill identities, metadata, resource closure and aliases
         run: pnpm skills:check -- --strict-resources --json=artifacts/skill-audit.json
+      # G2: the frozen routing corpus re-run through the runtime resolver. The default reporter
+      # puts the expected/actual trace in the log; the JSON report is written even when the probes
+      # fail, so `artifacts/skill-routing-report.json` names the prompt, the candidate set and the
+      # score that moved for whoever reads the run afterwards.
+      - name: Frozen skill-routing probes
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          pnpm --dir packages/core exec vitest run test/skill-routing-probes.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$GITHUB_WORKSPACE/artifacts/skill-routing-report.json"
+
       - name: Enforce the skill length budget without expanding legacy exceptions
         run: node scripts/skills/line-budget.mjs --json=artifacts/skill-line-budget.json
+
+      # G4: every local.patch and SKILL.superseded.md artifact has one explicit disposition. The
+      # ledger fails closed on discovery errors (an unreadable directory is never "nothing to
+      # check"), and its checks are covered by fixture tests so a regression in any of them —
+      # deleted sidecars, body-only redirects, chained aliases, redirecting canonicals — fails
+      # here rather than passing quietly.
+      - name: Skill patch and supersession ledger
+        run: |
+          node scripts/skills/patch-ledger.mjs --check
+          node --test scripts/skills/patch-ledger.test.mjs
       - name: Build taxonomy and overlap report
         if: always()
         run: pnpm skills:catalog
@@ -40,7 +65,7 @@ jobs:
         run: pnpm skills:readiness
       - name: Upload skill audit evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: skill-integrity-report
           if-no-files-found: warn

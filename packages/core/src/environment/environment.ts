@@ -64,6 +64,7 @@ import {
   TRUNCATED_TOOL_OUTPUT_FILE_LIMIT_BYTES,
   TruncatedToolOutputArchive,
   type TruncatedToolOutputCapture,
+  type WritePressureWarning,
 } from "./truncated-tool-output-archive.js";
 import {
   classifyToolOutput,
@@ -88,8 +89,23 @@ const TOOL_EMPTY_NOTE = "[no output]";
 const ARCHIVE_MIDDLE_OMITTED_MARKER = "\n[archive middle truncated]\n";
 
 type RecallArchiveSaveResult =
-  | { status: "saved"; id: string; bytes: number; archiveTruncated: boolean }
+  | {
+      status: "saved";
+      id: string;
+      bytes: number;
+      archiveTruncated: boolean;
+      /** The I7.2 warning that fired during admission, when one did: shown, never swallowed. */
+      warning?: WritePressureWarning;
+    }
   | { status: "failed"; code: string };
+
+/** One line of the note a disk-pressure warning contributes; empty when nothing fired. */
+function pressureNote(warning: WritePressureWarning | undefined): string | null {
+  if (warning === undefined) return null;
+  const free =
+    warning.freeBytes === null ? "no valid free-space reading" : `${warning.freeBytes} bytes free`;
+  return `[disk pressure ${warning.signal}: ${free}; ${warning.reason}]`;
+}
 
 function recallMetadata(id: string, bytes: number): string {
   return JSON.stringify({ recallId: id, sizeBytes: bytes, tokenCount: Math.ceil(bytes / 4) });
@@ -100,14 +116,21 @@ async function saveCaptureAsRecall(
   archive: TruncatedToolOutputArchive,
   capture: TruncatedToolOutputCapture,
   toolName: string,
+  toolCallId: string,
 ): Promise<RecallArchiveSaveResult> {
   const exact = capture.text();
   const text =
     exact ?? `${capture.headText()}${ARCHIVE_MIDDLE_OMITTED_MARKER}${capture.tailText()}`;
-  const saved = await archive.saveRecallEntry(toolName, text);
+  const saved = await archive.saveRecallEntry(toolName, text, toolCallId);
   capture.cancel();
   return saved.status === "saved"
-    ? { status: "saved", id: saved.id, bytes: saved.bytes, archiveTruncated: exact === null }
+    ? {
+        status: "saved",
+        id: saved.id,
+        bytes: saved.bytes,
+        archiveTruncated: exact === null,
+        ...(saved.warning ? { warning: saved.warning } : {}),
+      }
     : saved;
 }
 
@@ -212,6 +235,9 @@ export class Environment implements EnvironmentInterface {
     this.truncatedToolOutputArchive = config.sessionScratchpadDir
       ? new TruncatedToolOutputArchive({
           rootDir: path.join(config.sessionScratchpadDir, "truncated-tool-output"),
+          // The host's pressure gate for this Session's own nonessential writes (I7.2). Omitted
+          // by embedders: no gate, no policy, the previous behavior exactly.
+          ...(config.writePressure === undefined ? {} : { writePressure: config.writePressure }),
         })
       : null;
     // The background session registry is created alongside Environment (one per Session) and
@@ -225,6 +251,12 @@ export class Environment implements EnvironmentInterface {
       ...(config.pathPrepend !== undefined ? { pathPrepend: config.pathPrepend } : {}),
       ...(config.confineSpawn !== undefined ? { confineSpawn: config.confineSpawn } : {}),
       workspaceDir: config.workspaceDir,
+      // The parent-death watchdog's pid file lives in the Session scratchpad (E10.1): the host
+      // already removes that directory with the Session, and its absence is the watchdog's own
+      // signal to exit, so nothing here outlives the Session.
+      ...(config.sessionScratchpadDir !== undefined
+        ? { guardianDir: config.sessionScratchpadDir }
+        : {}),
     });
     this.subagentSessions = new SubagentSessionManager();
     // Background-task liveness fans in from both registries and from the subagent run-state
@@ -993,6 +1025,7 @@ export class Environment implements EnvironmentInterface {
         this.truncatedToolOutputArchive!,
         archiveCapture,
         executionName,
+        toolCallId,
       );
     } else if (!outputCollector) {
       archiveCapture?.cancel();
@@ -1015,6 +1048,11 @@ export class Environment implements EnvironmentInterface {
         }
       } else if (archiveResult?.status === "failed") {
         notes.push(`[output archive failed: ${archiveResult.code}]`);
+      }
+      if (archiveResult?.status === "saved") {
+        // The write went through under pressure: say so, with the signal name and the numbers.
+        const pressure = pressureNote(archiveResult.warning);
+        if (pressure !== null) notes.push(pressure);
       }
     }
     // The tool's self-reported end marker (e.g. exit code): appended outside the budget — as a
@@ -1143,7 +1181,12 @@ export class Environment implements EnvironmentInterface {
         ),
         truncated: true,
         note: null,
-        archiveSave: await saveCaptureAsRecall(archive, collector.captureHandle, opts.toolName),
+        archiveSave: await saveCaptureAsRecall(
+          archive,
+          collector.captureHandle,
+          opts.toolName,
+          opts.toolCallId,
+        ),
       };
     }
 
@@ -1151,19 +1194,21 @@ export class Environment implements EnvironmentInterface {
       ? compressCollected(collector.kind, full, opts.headBudget + opts.tailBudget)
       : null;
     if (outcome !== null) {
-      const saved = await archive.saveRecallEntry(opts.toolName, full);
+      const saved = await archive.saveRecallEntry(opts.toolName, full, opts.toolCallId);
       if (saved.status === "saved") {
         // The recall entry is the recovery copy; a second archive file would be the same bytes
         // under a second name, so the capture is released instead of saved.
         collector.captureHandle.cancel();
+        const compressedNote = formatCompressionNote(collector.kind, outcome, {
+          id: saved.id,
+          bytes: saved.bytes,
+          lines: outcome.originalLines,
+        });
+        const pressure = pressureNote(saved.warning);
         return {
           visible: outcome.text,
           truncated: false,
-          note: formatCompressionNote(collector.kind, outcome, {
-            id: saved.id,
-            bytes: saved.bytes,
-            lines: outcome.originalLines,
-          }),
+          note: pressure === null ? compressedNote : `${compressedNote}\n${pressure}`,
           archiveSave: null,
         };
       }
@@ -1178,7 +1223,12 @@ export class Environment implements EnvironmentInterface {
       visible: bounded.visible,
       truncated: bounded.truncated,
       note: null,
-      archiveSave: await saveCaptureAsRecall(archive, collector.captureHandle, opts.toolName),
+      archiveSave: await saveCaptureAsRecall(
+        archive,
+        collector.captureHandle,
+        opts.toolName,
+        opts.toolCallId,
+      ),
     };
   }
 }

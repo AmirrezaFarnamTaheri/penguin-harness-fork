@@ -1,0 +1,238 @@
+{
+  "version": 1,
+  "note": "G2 frozen routing corpus. Every probe names the candidate skills it routes among (a bounded corpus), the expected routed id sequence, and the leader's score as measured from the real scorer at freeze time. Descriptions are hashed: an edit that changes a candidate's text fails the drift check first, and the probe that depended on it fails next. Expectations are only ever updated deliberately, in the same change that edits the description.",
+  "minScore": 0.2,
+  "maxResults": 3,
+  "rules": {
+    "ordering": "score descending, then distinctive name-token count descending, then name ascending",
+    "floor": "a skill scoring below minScore (0.2 by default) is not routed",
+    "tie": "an exact score tie is broken by specificity and then by name, never by candidate order or insertion order",
+    "noMatch": "an empty result is a valid outcome; the resolver never falls back to a default skill",
+    "invalid": "a file whose frontmatter has no `name` is refused by the parser and never registered",
+    "fanout": "a `*-automation` wrapper with no distinctive service token in the prompt is clamped below the floor, so a generic mention cannot fan out across hundreds of integrations"
+  },
+  "syntheticSkills": [
+    {
+      "file": "widget-export.md",
+      "sha256": "5c3ca42d7cadcaaaf7195a1d6ecd747d933a1600ef296f50b5f0bb9a48b4e857"
+    },
+    {
+      "file": "widget-import.md",
+      "sha256": "f92218407ba66acec715d401fefcee4e7521037883b51868e0baf0e5a6bde48e"
+    },
+    {
+      "file": "widget-sync.md",
+      "sha256": "c8e9bf790800992496387866b05c9c4429ebdb47699530e72535a7caee99fe46"
+    },
+    {
+      "file": "ship-notes.md",
+      "sha256": "5001822de96bcf3b22111f255fbda381cf398724872a662358d1422c8fb518b3"
+    },
+    {
+      "file": "invoice-audit.md",
+      "sha256": "288e27707fec733e9093ce3ad40d08803d1b7d4ec294283de507bdf75c23c1d7"
+    },
+    {
+      "file": "empty-desc.md",
+      "sha256": "974d5f7ece2cf63e5a53349e8cfdaf3e7920b60cecbddcea53964b89c081f898"
+    },
+    {
+      "file": "zephyr-automation.md",
+      "sha256": "0eb3331c78151623b3cf2dae42ce3a0881cac206d57ccd2a5d47a822e8a5efd0"
+    }
+  ],
+  "invalidSkill": {
+    "file": "broken.md",
+    "sha256": "e117b6dae72b78db08a1b65e5af64e52e2f9d3209ca9aa3ea07ee1bd29cbb7c6",
+    "reason": "the frontmatter has no `name`, so parseSkillMarkdown returns null and the file must never reach the registry"
+  },
+  "realSkills": [
+    {
+      "name": "ab-test-setup",
+      "sha256": "51b1895d080bca288a6f1d8022a6a124e82338a7d88c7dd34f1f01b500286459"
+    },
+    {
+      "name": "analytics-tracking",
+      "sha256": "d3619b093a80a814821d87f40e230e165918800820738af9d6087975d765ccff"
+    },
+    {
+      "name": "accessibility-review",
+      "sha256": "ef42982af0d51238dda2ab16d08626712891bdd41864876c32d1e7b13fb3124f"
+    },
+    {
+      "name": "changelog-automation",
+      "sha256": "ba9e7f79fa949f294d930f58cb62fd8bb8831c1cff250bb98c04a097f23486d7"
+    }
+  ],
+  "probes": [
+    {
+      "id": "real/name-exact",
+      "branch": "canonical-name match",
+      "prompt": "use the ab-test-setup skill",
+      "candidates": [
+        "ab-test-setup",
+        "analytics-tracking",
+        "accessibility-review",
+        "changelog-automation"
+      ],
+      "expect": ["ab-test-setup"],
+      "leaderScore": 0.94,
+      "note": "the hyphenated name appears verbatim: 0.6 for the name, 0.22 for two distinctive tokens, 0.12 for matching all of them"
+    },
+    {
+      "id": "real/name-normalized",
+      "branch": "normalized-name match (hyphens read as spaces)",
+      "prompt": "ab test setup please",
+      "candidates": [
+        "ab-test-setup",
+        "analytics-tracking",
+        "accessibility-review",
+        "changelog-automation"
+      ],
+      "expect": ["ab-test-setup"],
+      "leaderScore": 0.94,
+      "note": "the same skill is reached without the hyphens, which is what a user actually types"
+    },
+    {
+      "id": "real/normalized-analytics",
+      "branch": "normalized-name match, second candidate set",
+      "prompt": "set up analytics tracking",
+      "candidates": [
+        "ab-test-setup",
+        "analytics-tracking",
+        "accessibility-review",
+        "changelog-automation"
+      ],
+      "expect": ["analytics-tracking"],
+      "leaderScore": 0.94,
+      "note": "guards the neighbouring skill in the same directory: an edit to `analytics-tracking`'s name or description shows up here"
+    },
+    {
+      "id": "real/description-only-below-floor",
+      "branch": "description tokens only",
+      "prompt": "audit accessibility on the checkout page",
+      "candidates": [
+        "ab-test-setup",
+        "analytics-tracking",
+        "accessibility-review",
+        "changelog-automation"
+      ],
+      "expect": [],
+      "leaderScore": null,
+      "note": "description tokens are capped at 0.10 by design, so a prompt that never names the skill stays below the 0.2 floor. This is a deliberate property, not a missing feature"
+    },
+    {
+      "id": "real/no-match",
+      "branch": "unmatched prompt",
+      "prompt": "what is the weather in berlin",
+      "candidates": [
+        "ab-test-setup",
+        "analytics-tracking",
+        "accessibility-review",
+        "changelog-automation"
+      ],
+      "expect": [],
+      "leaderScore": null,
+      "note": "no fallback: an off-topic prompt routes nowhere rather than to the first skill"
+    },
+    {
+      "id": "syn/tie-deterministic",
+      "branch": "score tie",
+      "prompt": "export the widget data, then import it",
+      "candidates": ["widget-export", "widget-import"],
+      "expect": ["widget-export", "widget-import"],
+      "leaderScore": 0.37,
+      "note": "both skills score 0.37; the order comes from the name comparison, and the suite re-runs this probe with the candidate list reversed to prove the order is not input order"
+    },
+    {
+      "id": "syn/tag-match",
+      "branch": "tag match",
+      "prompt": "prepare the release-notes for v2",
+      "candidates": ["ship-notes", "widget-export"],
+      "expect": ["ship-notes"],
+      "leaderScore": 0.28,
+      "note": "0.11 for the distinctive token `notes` plus 0.14 for the `release-notes` tag; the tag is what lifts it over the floor"
+    },
+    {
+      "id": "syn/description-tokens-decide",
+      "branch": "description tokens decide a borderline probe",
+      "prompt": "compare widget inventories across two spaces",
+      "candidates": ["widget-sync"],
+      "expect": ["widget-sync"],
+      "leaderScore": 0.21,
+      "note": "0.11 for `widget` plus 0.10 of description vocabulary: this probe sits one edit away from the floor, which is what makes it the target of the description mutation below"
+    },
+    {
+      "id": "syn/category-match",
+      "branch": "category match",
+      "prompt": "qa invoice audit",
+      "candidates": ["invoice-audit"],
+      "expect": ["invoice-audit"],
+      "leaderScore": 1,
+      "note": "the name and both distinctive tokens match, and the inferred `qa` category adds 0.08 before the score is capped at 1"
+    },
+    {
+      "id": "syn/fanout-clamped",
+      "branch": "fan-out clamp (no service token)",
+      "prompt": "zeta integration",
+      "candidates": ["zephyr-automation"],
+      "expect": [],
+      "leaderScore": null,
+      "note": "the two tags would score 0.28, but with no distinctive name token matched the wrapper is clamped to 0.19 and stays under the floor"
+    },
+    {
+      "id": "syn/fanout-allowed",
+      "branch": "fan-out clamp release (service token present)",
+      "prompt": "zephyr zeta integration",
+      "candidates": ["zephyr-automation"],
+      "expect": ["zephyr-automation"],
+      "leaderScore": 0.39,
+      "note": "naming the service lifts the clamp: 0.11 for `zephyr` plus the 0.28 of tags"
+    },
+    {
+      "id": "syn/empty-description",
+      "branch": "empty description",
+      "prompt": "empty-desc please",
+      "candidates": ["empty-desc"],
+      "expect": ["empty-desc"],
+      "leaderScore": 0.94,
+      "note": "a skill with no description still routes by name; the description branch contributes nothing and does not error"
+    }
+  ],
+  "mutations": [
+    {
+      "id": "mut/description-drops-vocabulary",
+      "probe": "syn/description-tokens-decide",
+      "skill": "widget-sync",
+      "patch": { "description": "Sync widgets between environments." },
+      "expectRoutingChange": true,
+      "note": "the routing-breaking edit the card asks for: removing the prompt's vocabulary from the description drops the probe from a match to no match"
+    },
+    {
+      "id": "mut/description-adds-filler",
+      "probe": "syn/description-tokens-decide",
+      "skill": "widget-sync",
+      "patch": {
+        "description": "Sync widgets between environments. Compare widget inventories across two spaces, staging and production."
+      },
+      "expectRoutingChange": false,
+      "note": "negative control: adding words the prompt does not use must NOT change routing, so the gate fails on a break rather than on any edit"
+    },
+    {
+      "id": "mut/tag-renamed",
+      "probe": "syn/tag-match",
+      "skill": "ship-notes",
+      "patch": { "tags": ["changelog-entry"] },
+      "expectRoutingChange": true,
+      "note": "retagging the skill takes its score under the floor, so the tag probe fails and names the tag that moved"
+    },
+    {
+      "id": "mut/tags-removed",
+      "probe": "syn/fanout-allowed",
+      "skill": "zephyr-automation",
+      "patch": { "tags": [] },
+      "expectRoutingChange": true,
+      "note": "removing the tags leaves only the name token at 0.11: below the floor, so the service-token probe fails too"
+    }
+  ]
+}

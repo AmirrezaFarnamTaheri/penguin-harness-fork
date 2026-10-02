@@ -37,6 +37,9 @@ Commit them there, on their own branch, in their own PR. They can never appear i
 implementation-repo PR. A fresh clone has none of the three links; recreate them by hand. A clone
 with no design repo beside it — the normal state for a remote or throwaway environment — has
 nothing to link to, so it carries no `AGENTS.md` at all and these skills are its whole contract.
+The four tracked rules for agent contributions — boundary, evidence, incremental landing, and
+provenance — are in `docs/policies/agent-contribution-rules.md`; they apply to every change
+alongside this page.
 
 Both repos take changes through branch + PR against `main`, squash-merged. Do not push to `main`,
 and `gh pr create --base main` — not `dev`, whatever a sibling repo does.

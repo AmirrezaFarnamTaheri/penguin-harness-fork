@@ -9,6 +9,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { scratchpadDir } from "@prismshadow/penguin-core";
 import type { ProjectCreateResponse, SessionCreateResponse } from "../src/api/types.js";
+import { getOrCreateProjectRuntime, resetCockpitRuntimesForTesting } from "../src/cockpit/ws.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
 
@@ -27,6 +28,7 @@ describe("session deletion cleans up the scratchpad", () => {
   let projectId: string;
 
   beforeEach(async () => {
+    resetCockpitRuntimesForTesting();
     t = await createTestApp();
     const a = await provisionUser(t.app, "owner_s");
     owner = apiClient(t.app, a.cookie);
@@ -43,7 +45,60 @@ describe("session deletion cleans up the scratchpad", () => {
     });
   });
   afterEach(async () => {
+    resetCockpitRuntimesForTesting();
     await t.cleanup();
+  });
+
+  it("DELETE stops the swarm task the session owns (E10.3)", async () => {
+    const created = await owner.post(
+      `/api/projects/${projectId}/agents/default_agent/sessions`,
+      {},
+    );
+    const { session } = (await created.json()) as SessionCreateResponse;
+
+    // A swarm task owned by this Session, running on the project runtime the cockpit shares.
+    const runtime = await getOrCreateProjectRuntime(projectId, { root: t.root });
+    let sawAbort = false;
+    const running = runtime.coordinator.runTask(
+      {
+        id: "task-owned-by-deleted-session",
+        goal: "run until stopped",
+        simulate: true,
+        ownerSessionId: session.sessionId,
+      },
+      {
+        onPlan: async () => ({ steps: ["long_step"] }),
+        onExecute: async (
+          _task: unknown,
+          _step: string,
+          _round: number,
+          ctx?: { signal: AbortSignal },
+        ) => {
+          await new Promise<void>((resolve) => {
+            ctx?.signal.addEventListener("abort", () => {
+              sawAbort = true;
+              resolve();
+            });
+          });
+          return { artifacts: [], summary: "stopped" };
+        },
+        onReview: async () => ({ approved: false, grounds: "not yet" }),
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(sawAbort).toBe(false);
+
+    const deleted = await owner.delete(`/api/sessions/${session.sessionId}`);
+    expect(deleted.status).toBe(204);
+
+    // The deletion reached the coordinator: the task stopped on its first round instead of
+    // running to its round cap, and the run's log says why.
+    const result = await running;
+    expect(sawAbort).toBe(true);
+    expect(result.status).toBe("timed_out");
+    expect(result.rounds).toBe(1);
+    expect(result.log.join("\n")).toMatch(/Task interrupted: session deleted/);
+    resetCockpitRuntimesForTesting();
   });
 
   it("DELETE removes the session's scratchpad directory along with it", async () => {

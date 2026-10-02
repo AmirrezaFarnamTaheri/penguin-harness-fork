@@ -384,7 +384,7 @@ async function readResponse(res: Response) {
 
 export function useCockpitTelemetry(
   projectId: string | null = null,
-  _sessionId = "default-session",
+  sessionId = "default-session",
 ): CockpitTelemetryState {
   const [state, setState] = useState(() => ({ projectId, ...emptyTelemetry(projectId) }));
   const scopeRef = useRef<ProjectScope | null>(null);
@@ -751,8 +751,11 @@ export function useCockpitTelemetry(
     [projectId],
   );
   const triggerTask = useCallback(
-    (goal: string, files?: string[]) => dispatch("swarm/run", { goal, files, maxRounds: 3 }, true),
-    [dispatch],
+    // The owning Session rides along (E10.3) so deleting the conversation stops the task it
+    // started, instead of the swarm outliving its conversation on the project coordinator.
+    (goal: string, files?: string[]) =>
+      dispatch("swarm/run", { goal, files, maxRounds: 3, sessionId }, true),
+    [dispatch, sessionId],
   );
   const dispatchDirective = useCallback(
     (to: string, content: string, from = "operator") =>

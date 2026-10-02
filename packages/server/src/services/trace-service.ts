@@ -25,6 +25,8 @@ import {
   parseTraceLines,
   parseUserSteeringText,
   readTraceTolerant,
+  redactTraceContent,
+  redactTraceRecord,
   resumeTrace,
   scratchpadDir,
   tracesDir,
@@ -852,7 +854,11 @@ export class TraceService {
   ): Promise<TraceEventsResponse> {
     const messages = await this.readFileByIndex(projectId, agentId, sessionId, index);
     return {
-      events: messages.slice(offset, offset + limit),
+      // I1: the API boundary is a diagnostic boundary. Records leave as redacted copies, so a
+      // credential that was recorded while the Session ran (tool output, a provider error, a
+      // prompt) is not re-published to every member who can read this Project's Traces. The
+      // file on disk is untouched — it stays the byte-exact resume source.
+      events: messages.slice(offset, offset + limit).map((message) => redactTraceRecord(message)),
       offset,
       limit,
       total: messages.length,
@@ -1656,7 +1662,16 @@ export class TraceService {
     return file;
   }
 
-  /** Raw bytes of the Trace file at the given index (export/download: the file is served verbatim). */
+  /**
+   * Export/download bytes of the Trace file at the given index.
+   *
+   * I1: the export is a diagnostic boundary, so the content is redacted line-by-line
+   * ({@link redactTraceContent}) on the way out. A line that carries nothing sensitive is
+   * emitted byte-for-byte, so an ordinary export is still exactly the file (and re-imports as
+   * one); a line carrying a credential, an address or a credential-named field is re-serialized
+   * from its redacted copy. The stored file itself is never rewritten — resumption and analysis
+   * read the original.
+   */
   async readFileRaw(
     projectId: string,
     agentId: string,
@@ -1664,7 +1679,7 @@ export class TraceService {
     index: number,
   ): Promise<Buffer> {
     const file = await this.locateByIndex(projectId, agentId, sessionId, index);
-    return fs.readFile(file.path);
+    return Buffer.from(redactTraceContent(await fs.readFile(file.path, "utf8")), "utf8");
   }
 
   /**

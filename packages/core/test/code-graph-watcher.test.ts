@@ -262,7 +262,7 @@ describe("code-graph-watcher non-recursive fallback", () => {
       ([directory]) => fs.realpathSync.native(directory) === fs.realpathSync.native(srcDir),
     );
     expect(srcSubscription).toBeGreaterThanOrEqual(0);
-    const handle = subscriptions.mock.results[srcSubscription].value;
+    const handle = subscriptions.mock.results[srcSubscription]!.value;
     expect(handle.listenerCount("change")).toBeGreaterThan(0);
 
     // fs.watch has no ready event. Observe the native source-directory callback before
@@ -326,8 +326,18 @@ describe("code-graph-watcher non-recursive fallback", () => {
     fs.writeFileSync(path.join(nested, "deep.ts"), "export function second() {}\n");
     nestedHandle.emit("change", "change", "deep.ts");
     await watcher.flush();
-    expect(watcher.getGraph().getAllNodes().some((node) => node.name === "second")).toBe(true);
-    expect(watcher.getGraph().getAllNodes().some((node) => node.name === "first")).toBe(false);
+    expect(
+      watcher
+        .getGraph()
+        .getAllNodes()
+        .some((node) => node.name === "second"),
+    ).toBe(true);
+    expect(
+      watcher
+        .getGraph()
+        .getAllNodes()
+        .some((node) => node.name === "first"),
+    ).toBe(false);
 
     watcher.close();
     for (const handle of handles.values()) expect(handle.close).toHaveBeenCalledTimes(1);

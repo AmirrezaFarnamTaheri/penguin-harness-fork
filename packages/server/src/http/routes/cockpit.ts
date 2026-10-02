@@ -315,6 +315,41 @@ export function cockpitRoutes(
         ? Math.min(Math.max(1, Math.floor(body.maxRounds)), 10)
         : 3;
     const simulate = body.simulate === true;
+    // Which Session asked for this task, when the caller knows (E10.3): the tag is what lets
+    // Session deletion stop the work instead of leaving it to run out its round cap. Absent for
+    // callers without a session context; the ownership check simply never matches then.
+    const ownerSessionId =
+      typeof body.sessionId === "string" && body.sessionId.trim()
+        ? body.sessionId.trim().slice(0, 256)
+        : undefined;
+
+    // The tag is only worth having if it names a Session that can still be asked to stop: a
+    // client-supplied id is not evidence that the Session exists, that it belongs to this
+    // project, or that it is not being deleted right now, and a task tagged with a dead id is
+    // one no deletion can ever reach (CR). The check runs as late as possible — immediately
+    // before the task is registered — and a deletion that starts right after it is still
+    // covered: `beginSessionDeletion` latches the id on the coordinator before it removes
+    // anything, and a task reaching the queue with a latched id is refused there.
+    if (ownerSessionId !== undefined) {
+      // Without the session registry there is nothing to validate against, and an unverifiable
+      // tag is refused rather than trusted (fail closed, like every other missing dependency in
+      // this route).
+      const session = deps?.sessionsRepo?.findById(ownerSessionId) ?? null;
+      if (session === null || session.projectId !== projectId) {
+        throw new HttpError(
+          404,
+          "session_not_found",
+          "Session does not exist in this project or you do not have access.",
+        );
+      }
+      if (deps?.manager?.isSessionDeleting(ownerSessionId)) {
+        throw new HttpError(
+          409,
+          "session_deleting",
+          "This Session is being deleted; not accepting new swarm tasks.",
+        );
+      }
+    }
 
     const coordinator = runtime.coordinator;
 
@@ -353,6 +388,7 @@ export function cockpitRoutes(
             proposedCommands,
             maxRounds,
             simulate,
+            ...(ownerSessionId ? { ownerSessionId } : {}),
           },
           runtime.swarmHandlers,
         )
@@ -369,6 +405,7 @@ export function cockpitRoutes(
           proposedCommands,
           maxRounds,
           simulate,
+          ...(ownerSessionId ? { ownerSessionId } : {}),
         },
         runtime.swarmHandlers,
       );

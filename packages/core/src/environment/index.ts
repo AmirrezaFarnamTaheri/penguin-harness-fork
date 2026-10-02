@@ -25,6 +25,16 @@ export {
   DEFAULT_SEARXNG_ENDPOINT,
   buildSearxngSearchUrl,
 } from "./tools/web-search.js";
+export {
+  RECALL_ID_PATTERN,
+  RECALL_OUTPUT_NAME,
+  RECALL_OUTPUT_PAGE_CHARS,
+  isValidRecallId,
+  sliceRecallPage,
+} from "./tools/recall-output.js";
+export type { RecallPageSlice } from "./tools/recall-output.js";
+export { TruncatedToolOutputArchive } from "./truncated-tool-output-archive.js";
+export type { RecallResult, RecallStats, ArchiveStats } from "./truncated-tool-output-archive.js";
 export { CommandSessionManager, ManagedSession } from "./tools/command/index.js";
 export type { ProcessExit, SpawnOptions } from "./tools/command/index.js";
 export { SubagentSessionManager, ManagedSubagentSession } from "./tools/subagent/index.js";

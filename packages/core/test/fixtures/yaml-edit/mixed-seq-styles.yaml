@@ -1,0 +1,6 @@
+first:
+- indentless
+- items
+second:
+  - indented
+  - items

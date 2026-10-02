@@ -290,11 +290,25 @@ describe("deduplication", () => {
     // Every unique line survives, including the last one, and the error that sent anyone here.
     expect(result.text).toContain("entering poll cycle tick=199");
     expect(result.text).toContain("ERROR [pool] upstream timeout after 30000ms");
-    // Deduplication alone must still respect the budget, and admit what it left behind.
-    const crowded = compress("log-dedup", logLines(600, 400));
+    // Deduplication alone must still respect the budget, and admit what it left behind. The
+    // marker sits between the head and the reserved tail (B3.3): a head-only cut used to delete
+    // the trailing ERROR line, which is the one line a log compression must never lose.
+    const crowdedSource = logLines(600, 400);
+    const crowded = compress("log-dedup", crowdedSource);
     if (crowded === null) throw new Error("expected a result");
     expect(crowded.text.length).toBeLessThanOrEqual(BUDGET);
-    expect(crowded.text).toMatch(/more log-dedup lines not shown\]$/);
+    expect(crowded.text).toMatch(/\[\d+ more log-dedup lines not shown\]/);
+    expect(
+      crowded.text.endsWith("ERROR [pool] upstream timeout after 30000ms url=https://svc/q"),
+    ).toBe(true);
+    // The visible halves are the original text in the original order: head, gap marker, tail.
+    const markerIndex = crowded.text.search(/\[\d+ more log-dedup lines not shown\]/);
+    expect(crowded.text.slice(0, markerIndex)).toContain(
+      "connection established peer=10.0.0.4 ×600",
+    );
+    expect(crowdedSource.endsWith(crowded.text.slice(crowded.text.lastIndexOf("\n") + 1))).toBe(
+      true,
+    );
   });
 
   it("handles read_file's `cat -n` gutter, where identical lines are never byte-identical", () => {

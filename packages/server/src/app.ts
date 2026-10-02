@@ -58,7 +58,7 @@ import { SessionsRepo } from "./db/repos/sessions.js";
 import { UiPrefsRepo } from "./db/repos/ui-prefs.js";
 import { UsersRepo } from "./db/repos/users.js";
 import type { UserRow } from "./db/repos/users.js";
-import { authMiddleware, jsonOnlyWrites } from "./auth/middleware.js";
+import { authMiddleware, configAuthPolicy, jsonOnlyWrites } from "./auth/middleware.js";
 import { mintApiToken, storeApiToken } from "./auth/api-token.js";
 import type { Identity } from "./terminal/identity.js";
 import { terminalRoutes } from "./terminal/routes.js";
@@ -442,6 +442,8 @@ export async function bootAppDeps(
 /** Assembles the Hono app (does not listen on a port). */
 export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  // I4: one policy per app, derived from config (never from a request) and shared by every gate.
+  const authPolicy = configAuthPolicy(deps.config);
 
   // Error recording is layered in a lambda wrapping onError: handleError stays a
   // pure function with unchanged behavior (HttpError is mapped as-is, unknown
@@ -582,8 +584,14 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
     // check/install back. Cookie-authed, unlike the Bearer-token shutdown above, so it
     // carries the auth middleware on its own subtree — the routes then gate on
     // `sessionVia === "desktop"`, i.e. the shell's own window.
-    app.use("/api/desktop/update", authMiddleware(deps.authService, deps.config.trustProxy));
-    app.use("/api/desktop/update/*", authMiddleware(deps.authService, deps.config.trustProxy));
+    app.use(
+      "/api/desktop/update",
+      authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
+    );
+    app.use(
+      "/api/desktop/update/*",
+      authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
+    );
     app.route("/api/desktop/update", desktopUpdateRoutes(deps));
   }
   // Hot platform APIs run their own gate — the network gate, then the SAME auth middleware
@@ -1394,6 +1402,9 @@ export function createApp(
 
   if (deps === null) return app;
 
+  // I4: the same single policy the runtime app uses — one derivation, every gate.
+  const authPolicy = configAuthPolicy(deps.config);
+
   // Runtime-owned prefixes decline before anything else runs — in particular before the
   // auth gate below, which would otherwise 401 an unauthenticated /api/auth/login instead
   // of letting the runtime's own public route serve it.
@@ -1441,7 +1452,7 @@ export function createApp(
   );
   app.all(
     `${SERVER_PROXY_PREFIX}*`,
-    authMiddleware(deps.authService, deps.config.trustProxy),
+    authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
     async (c) => {
       if (!c.var.user.isAdmin) {
         throw new HttpError(403, "admin_required", "Only an admin can reach a machine's API.");
@@ -1456,7 +1467,7 @@ export function createApp(
   app.route("/health", healthRoutes(deps));
 
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
-  app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));
+  app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy, authPolicy));
   app.route("/api/cockpit", cockpitRoutes(deps));
   app.route("/api/me", meRoutes(deps));
   app.route("/api/version", versionRoutes(deps));

@@ -24,21 +24,18 @@ import {
   tokenColors,
   type TokenBucketName,
 } from "../src/lib/token-colors";
+import { contrastRatio, parseColor, relativeLuminance } from "../src/lib/contrast.js";
 
-/** WCAG 2.x relative luminance of a `#rrggbb` color. */
+/**
+ * F8: the arithmetic lives in `lib/contrast` now — this suite pins the palette, not the formula.
+ * The wrappers keep the assertions below reading as measurements.
+ */
 function luminance(hex: string): number {
-  const n = parseInt(hex.slice(1), 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  return relativeLuminance(parseColor(hex)!)!;
 }
 
-/** WCAG 2.x contrast ratio between two `#rrggbb` colors. */
 function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (hi! + 0.05) / (lo! + 0.05);
+  return contrastRatio(a, b)!;
 }
 
 const BUCKETS: TokenBucketName[] = ["cacheRead", "cacheWrite", "output"];

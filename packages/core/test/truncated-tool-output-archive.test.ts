@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -169,7 +170,7 @@ describe("TruncatedToolOutputArchive", () => {
     expect(archived).not.toContain("\uFFFD");
   });
 
-  it("allows independent captures without imposing an aggregate Session budget", async () => {
+  it("admits independent captures while they fit the per-Session bound (E10.4)", async () => {
     const archive = new TruncatedToolOutputArchive({
       rootDir: path.join(tmp, "output"),
       fileLimitBytes: 64,
@@ -181,6 +182,92 @@ describe("TruncatedToolOutputArchive", () => {
       captures.map((capture, index) => capture.save("tool", `call-${index}`)),
     );
     expect(saved.every((result) => result.status === "saved")).toBe(true);
+    const stats = await archive.archiveStats();
+    expect(stats.entries).toBe(3);
+    expect(stats.dropped).toEqual([]);
+  });
+
+  it("bounds the archive per Session, evicting the oldest files first (E10.4)", async () => {
+    const dir = path.join(tmp, "output");
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: dir,
+      fileLimitBytes: 64,
+      archiveLimits: { maxEntries: 2, maxTotalBytes: 1024 },
+    });
+    for (let index = 0; index < 4; index += 1) {
+      const capture = archive.startCapture();
+      capture.append(`output-${index}`);
+      const result = await capture.save("tool", `call-${index}`);
+      expect(result.status).toBe("saved");
+      // A distinct mtime per file, so oldest-first is a property of the archive and not of
+      // filesystem timestamp resolution.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const files = (await readdir(dir)).filter((name) => name.endsWith(".log")).sort();
+    expect(files).toHaveLength(2);
+    // Exactly the two NEWEST survive: which ids these are is checked by name, so an eviction
+    // order that removed the newest instead would fail here rather than merely count out.
+    const nameOf = (callId: string): string =>
+      `tool-${createHash("sha256").update(callId).digest("hex").slice(0, 16)}.log`;
+    expect(files).toEqual([nameOf("call-2"), nameOf("call-3")].sort());
+    // ...and the evictions are on the record, naming the two oldest.
+    const stats = await archive.archiveStats();
+    expect(stats.entries).toBe(2);
+    expect(stats.dropped.map((drop) => drop.name).sort()).toEqual(
+      [nameOf("call-0"), nameOf("call-1")].sort(),
+    );
+    expect(stats.dropped.every((drop) => drop.reason === "capacity")).toBe(true);
+  });
+
+  it("re-enforces the bound over files from an earlier process, and never touches recall entries", async () => {
+    const dir = path.join(tmp, "output");
+    const first = new TruncatedToolOutputArchive({ rootDir: dir, fileLimitBytes: 64 });
+    const recall = await first.saveRecallEntry("tool", "recall me later");
+    expect(recall.status).toBe("saved");
+    if (recall.status !== "saved") throw new Error("recall entry was not saved");
+    for (let index = 0; index < 3; index += 1) {
+      const capture = first.startCapture();
+      capture.append(`output-${index}`);
+      expect((await capture.save("tool", `call-${index}`)).status).toBe("saved");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    // A new process (fresh instance, no in-memory index) with a tighter bound must not need the
+    // old instance's knowledge to trim the directory it finds.
+    const restarted = new TruncatedToolOutputArchive({
+      rootDir: dir,
+      fileLimitBytes: 64,
+      archiveLimits: { maxEntries: 1, maxTotalBytes: 1024 },
+    });
+    const capture = restarted.startCapture();
+    capture.append("output-after-restart");
+    expect((await capture.save("tool", "call-restart")).status).toBe("saved");
+    const stats = await restarted.archiveStats();
+    expect(stats.entries).toBe(1);
+    expect(stats.dropped.length).toBe(3);
+    // The recall store lives in its own subdirectory and keeps its own (documented) lifetime.
+    const recalled = await restarted.recall(recall.id);
+    expect(recalled.status).toBe("ok");
+    if (recalled.status === "ok") expect(recalled.text).toBe("recall me later");
+  });
+
+  it("refuses an archive that cannot fit instead of writing outside the bound (E10.4)", async () => {
+    const dir = path.join(tmp, "output");
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: dir,
+      fileLimitBytes: 4096,
+      archiveLimits: { maxEntries: 5, maxTotalBytes: 128 },
+    });
+    const capture = archive.startCapture();
+    capture.append("x".repeat(1024));
+    const result = await capture.save("tool", "call-too-big");
+    // Explicit failure, and the refusal is truthful: nothing was written for this call.
+    expect(result).toEqual({ status: "failed", code: "ARCHIVE_FULL" });
+    expect(await readdir(dir).catch(() => [])).toEqual([]);
+    // A smaller save still fits, and it is not collateral damage from the refusal.
+    const ok = archive.startCapture();
+    ok.append("small");
+    expect((await ok.save("tool", "call-small")).status).toBe("saved");
   });
 
   it("reports a write failure without throwing", async () => {
