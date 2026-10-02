@@ -4219,6 +4219,12 @@ Scenarios:
       recall_offset_invalid: "The recall offset must be a non-negative whole number.",
       recall_offset_out_of_range:
         "That position is outside the archived output, or splits a Unicode character.",
+      // Pressure overrides may only lift the harness's own convenience writers; a Session's
+      // tool output archive or its recall store, never an essential write.
+      pressure_producer_invalid:
+        "Only a convenience output producer (the tool-output archive or the recall store) can be lifted.",
+      pressure_tool_call_invalid:
+        "Name the tool call this override lifts: a non-empty id of at most 200 characters.",
       session_deleting: "This Session is being deleted.",
       approval_not_found: "This approval request was already answered, or is no longer valid.",
       process_not_found: "This background process already exited, or was removed.",

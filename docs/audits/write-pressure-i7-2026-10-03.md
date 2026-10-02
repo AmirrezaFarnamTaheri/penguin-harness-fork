@@ -173,3 +173,17 @@ recorded above.
 - **Next work package:** the card after I7 in the roadmap, to be picked from the remaining
   unblocked OPEN rows (the previous batches closed I1, I4, E10, G4, C8, F17, F8, F2, H2, D6, I6, B4,
   A1, B3, F18, G2, H1, J2).
+
+## Follow-up (2026-10-03): the two route codes needed UI messages
+
+Discovered while verifying J4: `pnpm check:i18n` (a step of the required CI `style` job) was red on
+this lineage because the route added here introduced two literal `HttpError` codes
+(`pressure_producer_invalid`, `pressure_tool_call_invalid`) that the required-checker
+`scripts/check-i18n.mjs` reads out of `packages/server/src/` — and neither web dictionary carried a
+message for them. The route's own tests passed, and the parity gate was not part of this receipt's
+run set, so the gap reached the branch instead of failing here.
+
+Repaired in the same session: messages for both codes added to `packages/web/src/lib/strings-en.ts`
+and `packages/web/src/lib/strings-zh.ts`; `pnpm check:i18n` now reports "i18n parity check passed".
+Recorded as an addendum rather than a rewrite of the receipt above: the I7 implementation is
+unchanged, and the acceptance table's "route 4/4" evidence still holds.

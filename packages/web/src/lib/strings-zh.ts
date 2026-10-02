@@ -4139,6 +4139,8 @@ Benchmark：
       recall_expired: "该 Session 的归档输出条目已过期。",
       recall_offset_invalid: "召回偏移量必须是非负整数。",
       recall_offset_out_of_range: "该位置超出归档输出范围，或位于 Unicode 字符中间。",
+      pressure_producer_invalid: "只有便利性输出生产者（工具输出归档或召回存储）可以被豁免。",
+      pressure_tool_call_invalid: "请指明该豁免针对的工具调用：非空且不超过 200 个字符的 id。",
       session_deleting: "该 Session 正在删除中。",
       approval_not_found: "该授权请求已处理或已失效。",
       process_not_found: "该后台进程已结束或已被移除。",
