@@ -102,6 +102,14 @@ export function authMiddleware(
     const token = getCookie(c, SESSION_COOKIE);
     const authed = token ? auth.authenticateWithMeta(token) : null;
     if (!authed) {
+      // A cookie that WAS supplied and did not authenticate is a rejection, not an invitation to
+      // try something else: falling through to the operator grant would serve an expired
+      // session's request as the admin, silently attributing its writes to the wrong identity
+      // (the Bearer branch rejects a bad token for the same reason). The grant is only for a
+      // request that presented nothing at all.
+      if (token) {
+        throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+      }
       // I4 `off`: the local-operator grant. The process holds this boot's own API token (it
       // wrote it to <root>/api-token), so on a trusted bind an anonymous request is the
       // operator — the same authority the Bearer path encodes, without the round trip. A

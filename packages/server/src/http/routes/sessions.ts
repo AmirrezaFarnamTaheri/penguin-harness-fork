@@ -729,6 +729,16 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
           );
         }
       }
+      // Cleanup is asynchronous and can throw before it releases the background processes the
+      // deleted conversation started. That failure must not be reported as a plain success: the
+      // Session's files are going away next, so nothing else will ever be able to stop them.
+      const disposeOutcome = await deps.manager.disposeOutcomeWithin(row.sessionId, 5000);
+      if (disposeOutcome === "dispose-failed") {
+        console.warn(
+          `[penguin] session ${row.sessionId} was deleted but its runtime cleanup failed; ` +
+            `background processes it started may still be running (disposeFailureCount=${deps.manager.disposeFailureCount})`,
+        );
+      }
       await deps.traceService.deleteSessionTraces(row.projectId, row.agentId, row.sessionId);
       // The session-level scratchpad (model temp files + input images saved to disk for image-unsupported models) is deleted along with the session.
       await fs.rm(

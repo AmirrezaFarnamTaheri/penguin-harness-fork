@@ -14,6 +14,7 @@ import {
   authPolicyFor,
   classifyBind,
   parseConfiguredAuthMode,
+  parseTrustLoopback,
   resolveAuthMode,
   type BindClass,
   type ConfiguredAuthMode,
@@ -33,20 +34,44 @@ describe("I4 effective auth mode: the pure matrix", () => {
     for (const host of lan) expect(classifyBind(host), host).toBe<BindClass>("lan");
   });
 
-  it("resolves Auto to Off on loopback and AllExceptHealth on every network-reachable bind", () => {
+  it("resolves Auto to Off on loopback ONLY with explicit trust, and never on a network bind", () => {
+    // A loopback socket is not proof of data-root ownership: another local user can connect to
+    // 127.0.0.1 without any access to the server's root, so `auto` needs the operator's second,
+    // explicit statement of trust before it lifts authentication (CR).
     for (const host of loopback) {
-      expect(resolveAuthMode("auto", host), host).toMatchObject({
-        effective: "off",
-        requiresAuth: false,
-        bindClass: "loopback",
-      });
-    }
-    for (const host of [...unspecified, ...lan]) {
+      // Trust unset: `auto` on loopback is the gated mode, so the worst case of forgetting the
+      // opt-in is a sign-in prompt, not an open admin.
       expect(resolveAuthMode("auto", host), host).toMatchObject({
         effective: "all-except-health",
         requiresAuth: true,
+        bindClass: "loopback",
+        loopbackTrusted: false,
+      });
+      // Trust set: same as before, and the decision records why.
+      expect(resolveAuthMode("auto", host, { trustLoopback: true }), host).toMatchObject({
+        effective: "off",
+        requiresAuth: false,
+        bindClass: "loopback",
+        loopbackTrusted: true,
       });
     }
+    for (const host of [...unspecified, ...lan]) {
+      for (const trustLoopback of [false, true]) {
+        // The flag cannot talk a network bind into `off`: it is about loopback, nothing else.
+        expect(resolveAuthMode("auto", host, { trustLoopback }), host).toMatchObject({
+          effective: "all-except-health",
+          requiresAuth: true,
+          loopbackTrusted: false,
+        });
+      }
+    }
+    // Parsing the flag: unset/empty/0/false/no mean no; 1/true/yes mean yes; a typo throws.
+    expect(parseTrustLoopback(undefined)).toBe(false);
+    expect(parseTrustLoopback("  ")).toBe(false);
+    for (const no of ["0", "false", "FALSE", " no "])
+      expect(parseTrustLoopback(no), no).toBe(false);
+    for (const yes of ["1", "true", "YES"]) expect(parseTrustLoopback(yes), yes).toBe(true);
+    expect(() => parseTrustLoopback("maybe")).toThrow(/Invalid PENGUIN_AUTH_TRUST_LOOPBACK/);
   });
 
   it("honours an explicit policy regardless of bind", () => {
@@ -74,14 +99,47 @@ describe("I4 effective auth mode: the pure matrix", () => {
   });
 
   it("derives the configuration's effective mode from the trusted bind, not from anything else", () => {
+    // `auto` on loopback without the trust flag stays gated (see the matrix above).
     expect(resolveServerConfig({ HOST: "127.0.0.1", PENGUIN_AUTH_MODE: "auto" })).toMatchObject({
+      authMode: "all-except-health",
+      authModeConfigured: "auto",
+      authTrustLoopback: false,
+    });
+    expect(
+      resolveServerConfig({
+        HOST: "127.0.0.1",
+        PENGUIN_AUTH_MODE: "auto",
+        PENGUIN_AUTH_TRUST_LOOPBACK: "1",
+      }),
+    ).toMatchObject({
       authMode: "off",
+      authModeConfigured: "auto",
+      authTrustLoopback: true,
+    });
+    // The flag is inert on a network bind, even when set.
+    expect(
+      resolveServerConfig({
+        HOST: "0.0.0.0",
+        PENGUIN_AUTH_MODE: "auto",
+        PENGUIN_AUTH_TRUST_LOOPBACK: "1",
+      }),
+    ).toMatchObject({
+      authMode: "all-except-health",
       authModeConfigured: "auto",
     });
     expect(resolveServerConfig({ HOST: "0.0.0.0", PENGUIN_AUTH_MODE: "auto" })).toMatchObject({
       authMode: "all-except-health",
       authModeConfigured: "auto",
     });
+    // The trust flag does NOT turn an explicit gated mode off: it says "this loopback is
+    // trustworthy", never "ignore what I configured".
+    expect(
+      resolveServerConfig({
+        HOST: "127.0.0.1",
+        PENGUIN_AUTH_MODE: "all-except-health",
+        PENGUIN_AUTH_TRUST_LOOPBACK: "1",
+      }),
+    ).toMatchObject({ authMode: "all-except-health" });
     // The shipped default keeps requiring a session on a loopback bind.
     expect(resolveServerConfig({ HOST: "127.0.0.1" })).toMatchObject({
       authMode: "all-except-health",
@@ -177,6 +235,32 @@ describe("I4 effective auth mode: the gate at its boundary", () => {
     const memberBody = (await asMember.json()) as { user: { userId: string }; sessionVia: string };
     expect(memberBody.user.userId).toBe("member_of_off");
     expect(memberBody.sessionVia).toBe("password");
+  });
+
+  it("off: a supplied but invalid cookie is rejected, never served as the operator (CR)", async () => {
+    t = await withMode("off");
+    // No cookie at all: the operator grant applies (asserted above). A cookie that WAS supplied
+    // and did not authenticate is different — falling through would serve an expired session's
+    // request as the admin and silently attribute its writes to the wrong identity.
+    // (An *empty* cookie value is not a supplied credential and stays equivalent to no cookie —
+    // the rejection is about a value that claims to be a session and is not one.)
+    for (const cookie of [
+      "penguin_session=not-a-real-session",
+      "penguin_session=expired.value",
+      "penguin_session=a.b.c",
+    ]) {
+      const res = await t.app.request("/api/me", { headers: { cookie } });
+      expect(res.status, cookie).toBe(401);
+    }
+    // A real cookie that stopped authenticating is rejected too — not just a malformed one.
+    // Logging out revokes the session behind the cookie, which is exactly the "supplied but no
+    // longer valid" shape (an expired one reaches the same branch: authenticateWithMeta null).
+    const { cookie } = await provisionUser(t.app, "signed_out_member");
+    expect((await t.app.request("/api/me", { headers: { cookie } })).status).toBe(200);
+    await t.app.request("/api/auth/logout", { method: "POST", headers: { cookie } });
+    expect((await t.app.request("/api/me", { headers: { cookie } })).status).toBe(401);
+    // ...and no cookie still works, so the rejection is about the cookie, not the mode.
+    expect((await t.app.request("/api/me")).status).toBe(200);
   });
 
   it("fails closed when the local-operator grant is missing", async () => {

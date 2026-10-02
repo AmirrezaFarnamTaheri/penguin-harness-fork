@@ -660,8 +660,16 @@ function isPlainText(role: "user" | "assistant") {
  */
 export const RUNTIME_DISPOSE_GRACE_MS = 5_000;
 
-/** How a removed entry's runtime cleanup ended: settled in time, or forced at the bound. */
-export type DisposeOutcome = "disposed" | "disposed-after-timeout";
+/**
+ * How a removed entry's runtime cleanup ended: settled in time, forced at the bound, or failed.
+ *
+ * `dispose-failed` is distinct from the other two on purpose. `dispose()` throwing means the
+ * process kill it owns did not run, so background processes may still be alive with no Session
+ * control left to reach them — reporting that as a success would hide exactly the leak the
+ * cleanup exists to prevent. The caller (the delete path) surfaces it; the entry is already out
+ * of the active table by then, which is why the outcome has to carry the news.
+ */
+export type DisposeOutcome = "disposed" | "disposed-after-timeout" | "dispose-failed";
 
 /** Bounded history of cleanup outcomes, so a long-lived process does not accumulate them. */
 const DISPOSE_OUTCOME_HISTORY = 32;
@@ -679,8 +687,12 @@ export class SessionManager {
   private readonly deletingSessions = new Set<string>();
   /** Removed entries whose in-flight drive did not settle inside the dispose grace (E10.2). */
   private disposeTimeouts = 0;
+  /** Removed entries whose dispose() threw, so their environment may not have been released. */
+  private disposeFailures = 0;
   /** Outcome of the last cleanup per removed Session, newest last (E10.2); bounded. */
   private readonly disposeOutcomes = new Map<string, DisposeOutcome>();
+  /** Pending cleanup promises per removed Session, so a caller can wait for the outcome. */
+  private readonly disposeSettled = new Map<string, Promise<DisposeOutcome>>();
   /** Per-Agent config generation (key = agentKey), bumped by invalidateAgentRuntimes when a Project's credentials change. */
   private readonly agentGenerations = new Map<string, number>();
   /** Open streaming fragments of running sessions (fed by drive, served to GET /messages; see live-tail.ts). */
@@ -1579,26 +1591,50 @@ export class SessionManager {
         if (done) return;
         done = true;
         clearTimeout(timer);
-        try {
-          entry.session.dispose?.();
-        } catch (err) {
-          // Cleanup must never reject the caller's deletion path; the process kill it owns
-          // is best-effort by the same rule as the rest of dispose().
+        // Cleanup must never reject the caller's deletion path; the process kill it owns is
+        // best-effort by the same rule as the rest of dispose(). "Best-effort" is not
+        // "successful" though: a throw AND a rejected promise are recorded as their own outcome,
+        // so the deletion path and its metrics can tell a released environment from a leaked one
+        // (and an async rejection can no longer escape as an unhandled rejection).
+        const finish = (outcome: DisposeOutcome): void => {
+          // Recorded before the resolve so a caller woken by the promise always finds it.
+          this.disposeSettled.set(entry.sessionId, disposed);
+          this.disposeOutcomes.set(entry.sessionId, outcome);
+          if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
+            for (const key of this.disposeOutcomes.keys()) {
+              if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
+              this.disposeOutcomes.delete(key);
+              this.disposeSettled.delete(key);
+            }
+          }
+          resolve(outcome);
+        };
+        const fail = (err: unknown): void => {
+          this.disposeFailures += 1;
           this.log(
             `[session-manager] dispose failed for ${entry.sessionId}: ${
               err instanceof Error ? err.message : String(err)
             }`,
           );
+          finish("dispose-failed");
+        };
+        let pending: unknown;
+        try {
+          pending = entry.session.dispose?.();
+        } catch (err) {
+          fail(err);
+          return;
         }
-        const outcome: DisposeOutcome = timedOut ? "disposed-after-timeout" : "disposed";
-        this.disposeOutcomes.set(entry.sessionId, outcome);
-        if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
-          for (const key of this.disposeOutcomes.keys()) {
-            if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
-            this.disposeOutcomes.delete(key);
-          }
+        if (pending !== null && typeof (pending as { then?: unknown }).then === "function") {
+          // The cleanup returned a promise: the outcome is the promise's, not the call's. A
+          // rejection here is a failure to release, exactly like a synchronous throw.
+          void Promise.resolve(pending).then(
+            () => finish(timedOut ? "disposed-after-timeout" : "disposed"),
+            (err: unknown) => fail(err),
+          );
+          return;
         }
-        resolve(outcome);
+        finish(timedOut ? "disposed-after-timeout" : "disposed");
       };
       let timedOut = false;
       const timer = setTimeout(() => {
@@ -1689,6 +1725,17 @@ export class SessionManager {
   }
 
   /**
+   * Whether this Session's deletion is in flight. Published so a route that is about to attach
+   * work to a Session can ask the same question the Task path asks (`assertSessionNotDeleting`)
+   * instead of re-deriving it: the flag is set synchronously before any file is removed and
+   * cleared when deletion ends, so a caller that checks it immediately before registering work
+   * either sees the deletion or is covered by the coordinator's per-Session cancellation latch.
+   */
+  isSessionDeleting(sessionId: string): boolean {
+    return this.deletingSessions.has(sessionId);
+  }
+
+  /**
    * How many removed entries needed the forced cleanup in {@link disposeRemoved} (E10.2).
    * A non-zero count is evidence about a stuck run, not about the delete having failed:
    * the entry was removed and its environment disposed either way.
@@ -1697,15 +1744,41 @@ export class SessionManager {
     return this.disposeTimeouts;
   }
 
+  /** Removed entries whose dispose() threw — the environments whose release is unproven. */
+  get disposeFailureCount(): number {
+    return this.disposeFailures;
+  }
+
   /**
    * How the removed Session's cleanup ended, or undefined when it is not known yet (the
    * cleanup is asynchronous and may still be inside its grace) or was never scheduled here.
-   * This is the per-call "timeout result" the delete path can report: `disposed` means the
-   * drive settled and the environment was released; `disposed-after-timeout` means the run
-   * outlived its Session and the environment was released anyway.
+   * This is the per-call outcome the delete path can report: `disposed` means the drive settled
+   * and the environment was released; `disposed-after-timeout` means the run outlived its
+   * Session and the environment was released anyway; `dispose-failed` means the release itself
+   * threw, so anything dispose() would have killed may still be running.
    */
   disposeOutcomeOf(sessionId: string): DisposeOutcome | undefined {
     return this.disposeOutcomes.get(sessionId);
+  }
+
+  /**
+   * Waits up to `timeoutMs` for the removed Session's cleanup to finish, and returns its outcome
+   * (or undefined when nothing was scheduled, or the cleanup outlasted the wait). The delete path
+   * uses this to tell the caller — and the log — that an environment whose `dispose()` threw may
+   * still hold processes, instead of returning a bare 204 over a leak.
+   */
+  async disposeOutcomeWithin(
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<DisposeOutcome | undefined> {
+    const pending = this.disposeSettled.get(sessionId);
+    if (pending === undefined) return this.disposeOutcomes.get(sessionId);
+    return Promise.race([
+      pending,
+      new Promise<undefined>((resolve) => {
+        setTimeout(() => resolve(undefined), timeoutMs).unref?.();
+      }),
+    ]);
   }
 
   /** Graceful shutdown: reject new tasks (503), interrupt all active runs, and wait for them to finish (default ≤5s). */

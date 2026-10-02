@@ -1063,7 +1063,30 @@ describe("session-manager", () => {
       expect(settledDisposed).toEqual(["session-2"]);
       expect(fast.disposeTimeoutCount).toBe(0);
       expect(fast.disposeOutcomeOf("session-2")).toBe("disposed");
+      expect(await fast.disposeOutcomeWithin("session-2", 100)).toBe("disposed");
       fast.endSessionDeletion("session-2");
+
+      // A dispose() that throws is neither a clean dispose nor a timeout: the environment may
+      // not have been released, and that is what the deletion path reports (CR).
+      sessions.insert({ ...ROW, sessionId: "session-3" });
+      const throwingFake: RuntimeSession = {
+        ...approvalFakeSession("session-3"),
+        dispose: async () => {
+          throw new Error("fixture: dispose threw before releasing processes");
+        },
+      };
+      const throwing = makeManager(loaderOf(throwingFake));
+      await throwing.startTask("session-3", [userText("go")]);
+      await waitFor(() => throwing.pendingApprovalCount("session-3") === 1);
+      throwing.beginSessionDeletion("session-3");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(throwing.disposeOutcomeOf("session-3")).toBe("dispose-failed");
+      expect(throwing.disposeFailureCount).toBe(1);
+      expect(throwing.disposeTimeoutCount).toBe(0);
+      expect(await throwing.disposeOutcomeWithin("session-3", 100)).toBe("dispose-failed");
+      // Nothing scheduled: the caller gets a straight answer rather than a wait.
+      expect(await throwing.disposeOutcomeWithin("session-never-removed", 10)).toBeUndefined();
+      throwing.endSessionDeletion("session-3");
     } finally {
       vi.useRealTimers();
     }

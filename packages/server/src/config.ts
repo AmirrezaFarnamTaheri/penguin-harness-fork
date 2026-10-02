@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   parseConfiguredAuthMode,
+  parseTrustLoopback,
   resolveAuthMode,
   type AuthModeDecision,
   type ConfiguredAuthMode,
@@ -106,6 +107,12 @@ export interface ServerConfig {
   /** The raw `PENGUIN_AUTH_MODE` policy this decision came from. */
   authModeConfigured: ConfiguredAuthMode;
   /**
+   * `PENGUIN_AUTH_TRUST_LOOPBACK=1`: the operator asserts that connections to this machine's
+   * loopback are trustworthy. Only meaningful for `auto` on a loopback bind, and never inferred
+   * from the bind itself — see auth/auth-mode.ts.
+   */
+  authTrustLoopback: boolean;
+  /**
    * Trust `x-forwarded-proto` from the request (PENGUIN_TRUST_PROXY=1). Off by default:
    * the header is caller-supplied, so on a non-loopback bind an untrusted caller could
    * set it to `https` to walk through the hot-update network gate (hmr/routes.ts) while
@@ -192,7 +199,12 @@ export function resolveServerConfig(env: NodeJS.ProcessEnv = process.env): Serve
   // bind address through the single pure resolver in auth/auth-mode.ts. This is the only place
   // the decision is made; the middleware applies it and never re-derives it from a request.
   const authModeConfigured = parseConfiguredAuthMode(env.PENGUIN_AUTH_MODE);
-  const authModeDecision = resolveAuthMode(authModeConfigured, host);
+  // A loopback connection is not proof of data-root ownership (any local user can reach
+  // 127.0.0.1), so `auto` on loopback needs the operator's explicit statement of trust.
+  const authTrustLoopback = parseTrustLoopback(env.PENGUIN_AUTH_TRUST_LOOPBACK);
+  const authModeDecision = resolveAuthMode(authModeConfigured, host, {
+    trustLoopback: authTrustLoopback,
+  });
   const desktopToken = env.PENGUIN_DESKTOP_TOKEN?.trim() || null;
   // Desktop mode redeems its token through a URL: never allow it off loopback.
   if (desktopToken !== null && host !== "127.0.0.1" && host !== "localhost") {
@@ -204,6 +216,7 @@ export function resolveServerConfig(env: NodeJS.ProcessEnv = process.env): Serve
     port,
     authMode: authModeDecision.effective,
     authModeConfigured,
+    authTrustLoopback,
     dbPath: env.PENGUIN_WEB_DB ?? path.join(root, "web.db"),
     webDist: env.PENGUIN_WEB_DIST ?? defaultWebDist(),
     previewOrigin: normalizePreviewOrigin(env.PENGUIN_PREVIEW_ORIGIN),

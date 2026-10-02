@@ -323,6 +323,34 @@ export function cockpitRoutes(
         ? body.sessionId.trim().slice(0, 256)
         : undefined;
 
+    // The tag is only worth having if it names a Session that can still be asked to stop: a
+    // client-supplied id is not evidence that the Session exists, that it belongs to this
+    // project, or that it is not being deleted right now, and a task tagged with a dead id is
+    // one no deletion can ever reach (CR). The check runs as late as possible — immediately
+    // before the task is registered — and a deletion that starts right after it is still
+    // covered: `beginSessionDeletion` latches the id on the coordinator before it removes
+    // anything, and a task reaching the queue with a latched id is refused there.
+    if (ownerSessionId !== undefined) {
+      // Without the session registry there is nothing to validate against, and an unverifiable
+      // tag is refused rather than trusted (fail closed, like every other missing dependency in
+      // this route).
+      const session = deps?.sessionsRepo?.findById(ownerSessionId) ?? null;
+      if (session === null || session.projectId !== projectId) {
+        throw new HttpError(
+          404,
+          "session_not_found",
+          "Session does not exist in this project or you do not have access.",
+        );
+      }
+      if (deps?.manager?.isSessionDeleting(ownerSessionId)) {
+        throw new HttpError(
+          409,
+          "session_deleting",
+          "This Session is being deleted; not accepting new swarm tasks.",
+        );
+      }
+    }
+
     const coordinator = runtime.coordinator;
 
     if (!simulate && !runtime.swarmHandlers?.onExecute) {
