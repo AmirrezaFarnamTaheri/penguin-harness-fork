@@ -32,14 +32,46 @@ import type { AuthService } from "../auth/service.js";
 import type { ProjectService } from "../services/project-service.js";
 import type { ProjectConfigService } from "../services/project-config-service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
-import { CockpitEventLog } from "./event-log.js";
+import { COCKPIT_EVENT_LOG_FILE, CockpitEventLog } from "./event-log.js";
 
 const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
 const MAX_BUFFERED_AMOUNT = 64 * 1024; // 64KB backpressure guard
 
-function safeSend(ws: WebSocket, payload: string): void {
-  if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < MAX_BUFFERED_AMOUNT) {
+/** WebSocket close code for a client dropped because its view could no longer be kept whole. */
+export const COCKPIT_BACKPRESSURE_CLOSE_CODE = 1013; // "Try Again Later"
+
+/**
+ * Delivers one frame, or ends the connection when it cannot be delivered.
+ *
+ * This used to be a bare "if open and not backed up, send" — and that silently skipped frames
+ * for a client that was over the backpressure guard, which is the one failure the resume
+ * protocol exists to prevent: a connected client would keep its cursor where it was, receive
+ * every LATER frame, and look current while missing a stretch in the middle. Closing is the
+ * honest answer: the client reconnects with the cursor it actually applied, and the bounded
+ * replay fills the hole (or reports the gap if the window has moved on).
+ *
+ * Exported for the focused transport fixtures; not part of any public server surface.
+ */
+export function safeSend(ws: WebSocket, payload: string): boolean {
+  if (ws.readyState !== WebSocket.OPEN) return false;
+  if (ws.bufferedAmount >= MAX_BUFFERED_AMOUNT) {
+    try {
+      ws.close(COCKPIT_BACKPRESSURE_CLOSE_CODE, "cockpit stream backpressure");
+    } catch {
+      // A socket that cannot even be closed will be cleaned up by its own close event.
+    }
+    return false;
+  }
+  try {
     ws.send(payload);
+    return true;
+  } catch {
+    try {
+      ws.close(COCKPIT_BACKPRESSURE_CLOSE_CODE, "cockpit stream send failed");
+    } catch {
+      // Same as above: the transport owns the socket from here.
+    }
+    return false;
   }
 }
 
@@ -527,6 +559,13 @@ export async function getOrCreateProjectRuntime(
 
       const clients = new Set<WebSocket>();
 
+      // The durable tail belongs to the PROJECT, not to this runtime instance: `deps.root` is
+      // the data root in production, so a restart (or an idle reap) reloads the same stream
+      // identity and a reconnecting client resumes instead of being told the generation
+      // changed. Without a data root — the shared-coordinator path and the test harnesses —
+      // the log stays memory-only, exactly as before.
+      const streamFile = deps.root ? path.join(workspaceDir, COCKPIT_EVENT_LOG_FILE) : undefined;
+
       const runtime: ProjectCockpitRuntime = {
         swarmHandlers: deps.swarmHandlers,
         projectId,
@@ -534,7 +573,14 @@ export async function getOrCreateProjectRuntime(
         keyFleet,
         codeGraphWatcher,
         clients,
-        eventLog: new CockpitEventLog(),
+        eventLog: new CockpitEventLog({
+          ...(streamFile !== undefined ? { file: streamFile } : {}),
+          onPersistError: (error) => {
+            deps.log?.(
+              `[cockpit-ws][${projectId}] cockpit stream persistence failed: ${error.message}`,
+            );
+          },
+        }),
       };
       projectRuntimes.set(runtimeKey, runtime);
 
@@ -719,11 +765,13 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       // the backlog would deliver a NEW event to a client that has not yet been sent the OLDER
       // events it missed, and the client's applied order would be inverted. Synchronous send,
       // then register: every later event is newer than everything sent so far, always.
+      let streamHasGap = false;
       if (since !== undefined) {
         const sameGeneration = requestedGeneration === runtime.eventLog.generation;
         const replay = sameGeneration
           ? runtime.eventLog.since(since)
           : { entries: [], gap: true, missed: null, cursor: runtime.eventLog.cursor };
+        streamHasGap = replay.gap;
         if (replay.gap) {
           // The cursor fell out of the bounded window. Say so explicitly and resync from
           // state: a client told "you are behind" plus a fresh snapshot is honest, where a
@@ -773,14 +821,37 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
         runtime.codeGraphWatcher,
         projectId,
       );
+      // The convergence point: everything sent above — replay (if any) and this snapshot —
+      // was produced from one synchronous block, so no event can interleave and the cursor
+      // read here is the position the client is current through.
+      const convergedAt = runtime.eventLog.cursor;
       safeSend(
         ws,
         JSON.stringify({
           ...snapshot,
-          seq: runtime.eventLog.cursor,
+          seq: convergedAt,
           generation: runtime.eventLog.generation,
         }),
       );
+
+      // The caught-up marker, sent LAST and only on the contiguous path. Its presence is the
+      // client's proof that its delta-built feeds have no hole; the gap path sends
+      // `cockpit_stream_gap` instead and deliberately no marker, because a snapshot repairs
+      // current state but cannot recreate the events that fell out of the window. Making this
+      // message conditional is the point — "caught up" inferred from a snapshot alone would be
+      // exactly the false claim the gap signal exists to prevent.
+      if (!streamHasGap) {
+        safeSend(
+          ws,
+          JSON.stringify({
+            type: "cockpit_caught_up",
+            projectId,
+            generation: runtime.eventLog.generation,
+            cursor: convergedAt,
+            timestamp: Date.now(),
+          }),
+        );
+      }
 
       runtime.clients.add(ws);
 

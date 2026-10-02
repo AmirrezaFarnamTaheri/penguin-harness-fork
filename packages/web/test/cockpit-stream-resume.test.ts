@@ -122,6 +122,27 @@ describe("stream progress: a resumed connection reconciles, and a lossy one says
     expect(resumed.cursor).toBe(1200);
   });
 
+  it("treats cockpit_caught_up as a cursor advance, never as a way out of behind", () => {
+    // The server sends `cockpit_caught_up` only on the contiguous path — its presence is the
+    // proof the delta feeds have no hole. So the marker must move the cursor to the
+    // convergence point AND must not clear `behind`: a socket that saw a gap is still holey,
+    // and letting the marker un-warn it would rebuild the exact false "connected" badge the
+    // gap signal exists to prevent. On a healthy connection it is simply consistent with the
+    // snapshot that preceded it.
+    const live = applyStreamMessage(START, { type: "cockpit_init", seq: 7 });
+    const marker = applyStreamMessage(live, { type: "cockpit_caught_up", cursor: 7 });
+    expect(marker).toEqual({ streamState: "live", missedEvents: 0, cursor: 7 });
+
+    const gapped = applyStreamMessage(live, { type: "cockpit_stream_gap", missed: 3, cursor: 10 });
+    const after = applyStreamMessage(
+      applyStreamMessage(gapped, { type: "cockpit_init", seq: 10 }),
+      { type: "cockpit_caught_up", cursor: 10 },
+    );
+    expect(after.streamState).toBe("behind");
+    expect(after.missedEvents).toBe(3);
+    expect(after.cursor).toBe(10);
+  });
+
   it("keeps saying it is behind when later deltas arrive", () => {
     // The lost stretch cannot be un-lost by events that happened after it. A delta must
     // advance the cursor without clearing the flag.
