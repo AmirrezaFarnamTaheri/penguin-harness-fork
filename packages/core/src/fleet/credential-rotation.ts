@@ -21,6 +21,13 @@
  * Node built-ins only.
  */
 import { randomUUID } from "node:crypto";
+import {
+  classifyFailure,
+  FAILURE_KIND,
+  FAILURE_POLICY,
+  type FailurePolicy,
+  type ProviderFailure,
+} from "./provider-gateway.js";
 
 /**
  * Why a credential is parked. The distinction matters operationally: quota exhaustion
@@ -117,7 +124,34 @@ export function classifyRateLimitReason(
   status: number,
   body: string,
   authHeader?: string,
+  /** A1 — structured provider evidence, when the caller has it. */
+  structured?: ProviderFailure,
+  policy: FailurePolicy = FAILURE_POLICY.Shadow,
 ): RateLimitReason {
+  // A1 promotion, consumer two: when the caller can hand over structured evidence *and* the
+  // policy is active, the typed classifier decides and prose is never read. Under the default
+  // `shadow` policy this function is byte-for-byte its old self, which is what makes the flip
+  // reversible without a release.
+  if (structured !== undefined && policy === FAILURE_POLICY.Active) {
+    const kind = classifyFailure(structured).kind;
+    switch (kind) {
+      case FAILURE_KIND.RateLimited:
+        return RATE_LIMIT_REASON.RateLimitExceeded;
+      case FAILURE_KIND.QuotaExhausted:
+        return RATE_LIMIT_REASON.QuotaExhausted;
+      case FAILURE_KIND.CredentialRejected:
+        return RATE_LIMIT_REASON.AuthFailure;
+      case FAILURE_KIND.ProviderUnavailable:
+        return RATE_LIMIT_REASON.ServerError;
+      case FAILURE_KIND.RequestRejected:
+        // The request is wrong, not the credential: no park, no reason to blame this key.
+        return RATE_LIMIT_REASON.Unknown;
+      default:
+        // Nothing recognised structurally — the body may still carry the provider's wording,
+        // so the prose path below remains the honest last resort rather than a guess.
+        break;
+    }
+  }
   if (status === 401 || status === 403) return RATE_LIMIT_REASON.AuthFailure;
   if (authHeader !== undefined && /invalid[_ ]token|expired/i.test(authHeader)) {
     return RATE_LIMIT_REASON.AuthFailure;
