@@ -4062,6 +4062,17 @@ Benchmark：
       editorHint: "Markdown · Ctrl/⌘+S 保存",
     },
   },
+  connectivity: {
+    browserOffline: "此设备似乎已离线。已加载的内容仍可阅读；连接恢复前无法发送消息。",
+    serverUnreachable:
+      "无法连接本地 Penguin 服务。已加载的内容仍可阅读；在服务恢复响应前无法发送消息。",
+    reconnecting: "正在重新连接本地 Penguin 服务——确认其是否已恢复可达。",
+    recovered: "已重新连接。",
+    cachedReadable: "已加载的内容仍可阅读。",
+    retry: "立即重试",
+    retryInFlight: "正在检查中。",
+    retryRateLimited: "刚刚检查过——请稍后重试。",
+  },
   errors: {
     networkError: "网络错误，请检查连接",
     malformedBody: "服务器返回了无法解析的响应，请检查连接后重试",

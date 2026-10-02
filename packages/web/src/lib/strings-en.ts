@@ -4137,6 +4137,18 @@ Scenarios:
       editorHint: "Markdown · Ctrl/⌘+S to save",
     },
   },
+  connectivity: {
+    browserOffline:
+      "This device appears to be offline. Already-loaded content stays readable; messages cannot be sent until the connection returns.",
+    serverUnreachable:
+      "Cannot reach the local Penguin server. Already-loaded content stays readable; sending is unavailable until it answers.",
+    reconnecting: "Reconnecting to the local Penguin server — verifying it is reachable again.",
+    recovered: "Reconnected.",
+    cachedReadable: "Loaded content is still readable.",
+    retry: "Retry now",
+    retryInFlight: "A check is already running.",
+    retryRateLimited: "Just checked — retry again in a moment.",
+  },
   errors: {
     networkError: "Network error, please check your connection",
     malformedBody: "The server sent an unexpected response — check your connection and try again",
