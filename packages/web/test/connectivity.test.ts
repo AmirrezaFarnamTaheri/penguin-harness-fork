@@ -192,10 +192,14 @@ describe("bounded health probe (F17.1)", () => {
     expect(monitor.isProbing()).toBe(false);
   });
 
-  it("caps automatic attempts and leaves recovery to the online event or a manual retry", async () => {
+  it("caps the fast attempts but keeps a slow probe, so a recovered server is noticed (CR)", async () => {
     const h = harness();
+    let probes = 0;
     const monitor = createConnectivityMonitor({
-      probe: async () => false,
+      probe: async () => {
+        probes += 1;
+        return false;
+      },
       onSnapshot: () => {},
       now: h.now,
       setTimeoutFn: h.setTimeoutFn,
@@ -203,13 +207,97 @@ describe("bounded health probe (F17.1)", () => {
       maxAutoAttempts: 3,
       backoffMs: () => 10,
       healthyProbeIntervalMs: 60_000,
+      minManualRetryIntervalMs: 0,
+    });
+    const step = (ms: number): Promise<void> => h.advance(ms);
+    monitor.start();
+    await step(1000);
+    // The fast ladder is over: 3 attempts, flagged as exhausted, and no more backoff growth...
+    expect(probes).toBe(3);
+    expect(monitor.snapshot().posture).toBe("server-unreachable");
+    expect(monitor.snapshot().autoRetriesExhausted).toBe(true);
+    // ...but the slow heartbeat IS still scheduled, so recovery needs no click (CR).
+    expect(h.pending()).toBe(1);
+    await step(50_000); // still inside the first slow interval
+    expect(probes).toBe(3);
+    await step(20_000); // crosses it
+    expect(probes).toBe(4);
+    await step(60_000); // exactly one more: the same interval, never a burst
+    expect(probes).toBe(5);
+
+    // A manual retry restores the fast allowance: the failing retry schedules the backoff ladder
+    // again instead of being instantly exhausted a second time (CR).
+    const beforeRetry = probes;
+    expect(monitor.retry()).toBe(true);
+    await step(11);
+    expect(probes).toBeGreaterThanOrEqual(beforeRetry + 2);
+    expect(h.pending()).toBe(1);
+    monitor.stop();
+  });
+
+  it("stops probing only while stopped, and resumes on start", async () => {
+    const h = harness();
+    let probes = 0;
+    const monitor = createConnectivityMonitor({
+      probe: async () => {
+        probes += 1;
+        return false;
+      },
+      onSnapshot: () => {},
+      now: h.now,
+      setTimeoutFn: h.setTimeoutFn,
+      clearTimeoutFn: h.clearTimeoutFn,
+      maxAutoAttempts: 3,
+      backoffMs: () => 10,
+      healthyProbeIntervalMs: 5_000,
     });
     monitor.start();
     await h.advance(1000);
-    // 3 attempts, then no timer is left to fire: the monitor is waiting for a real signal.
+    const before = probes;
+    monitor.stop();
+    // Nothing runs while stopped, and the pending slow probe is gone...
+    await h.advance(61_000);
+    expect(probes).toBe(before);
     expect(h.pending()).toBe(0);
-    expect(monitor.snapshot().posture).toBe("server-unreachable");
-    expect(monitor.snapshot().autoRetriesExhausted).toBe(true);
+    // ...and starting again probes immediately with a fresh attempt allowance (StrictMode).
+    monitor.start();
+    expect(monitor.isProbing()).toBe(true);
+    await h.advance(0);
+    expect(probes).toBe(before + 1);
+    monitor.stop();
+  });
+
+  it("restarts after stop and ignores a late result from the run before it (CR)", async () => {
+    const h = harness();
+    const states: ConnectivityState[] = [];
+    const control: { resolvers: ((ok: boolean) => void)[] } = { resolvers: [] };
+    const monitor = createConnectivityMonitor({
+      probe: () => new Promise<boolean>((resolve) => control.resolvers.push(resolve)),
+      onSnapshot: (state) => states.push(state),
+      now: h.now,
+      setTimeoutFn: h.setTimeoutFn,
+      clearTimeoutFn: h.clearTimeoutFn,
+    });
+    monitor.start();
+    expect(monitor.isProbing()).toBe(true);
+    monitor.stop(); // React StrictMode cleanup...
+    expect(monitor.isProbing()).toBe(false);
+    monitor.start(); // ...and the second setup, which used to find a permanently dead monitor
+    expect(monitor.isProbing()).toBe(true);
+    const settled = states.length;
+    // The aborted first probe answers late. It speaks for the abandoned run: applying its
+    // success here would report a link that this run has not actually verified.
+    control.resolvers[0]!(true);
+    await h.advance(0);
+    expect(states.length).toBe(settled);
+    // "checking" or "reconnecting" depending on what the abandoned run had already recorded —
+    // the point is that it is NOT online on the strength of the stale answer.
+    expect(monitor.snapshot().posture).not.toBe("online");
+    expect(monitor.snapshot().lastProbe).not.toBe("success");
+    // The live probe answers, and that one counts.
+    control.resolvers[1]!(true);
+    await h.advance(0);
+    expect(monitor.snapshot().posture).toBe("online");
     monitor.stop();
   });
 

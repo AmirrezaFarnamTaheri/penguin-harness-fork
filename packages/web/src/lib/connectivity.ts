@@ -307,13 +307,34 @@ export function createConnectivityMonitor(
   const recoveryNoticeMs = options.recoveryNoticeMs ?? RECOVERY_NOTICE_MS;
   const healthyProbeIntervalMs =
     options.healthyProbeIntervalMs ?? DEFAULT_HEALTHY_PROBE_INTERVAL_MS;
+  // A non-positive interval would turn the slow heartbeat into a busy loop, so it falls back to
+  // the default rather than probing continuously.
+  const slowProbeIntervalMs =
+    healthyProbeIntervalMs > 0 ? healthyProbeIntervalMs : DEFAULT_HEALTHY_PROBE_INTERVAL_MS;
 
   let state = initialConnectivityState(now());
   let stopped = false;
+  /**
+   * Which run of the monitor a callback belongs to. `stop()` is a cancellation, not a conclusion:
+   * React StrictMode runs cleanup and setup back to back, so `start()` has to reopen what
+   * `stop()` closed. Bumping this on both edges is what lets a late result from the run BEFORE
+   * the restart be recognized and dropped instead of being applied to the new run (CR).
+   */
+  let generation = 0;
   let inFlight: AbortController | null = null;
   /** Timeout handle of the current attempt, cleared on settle AND on stop(). */
   let attemptTimeout: unknown = null;
   let attempt = 0;
+  /**
+   * The consecutive-failure count when the ladder last got a fresh allowance (start, success, or
+   * a manual retry). The exhaustion trigger compares against this instead of zero, because the
+   * raw count stays high until a probe SUCCEEDS: a level-triggered comparison would drop a
+   * retry's very next failure straight back onto the slow path, so "try again" would buy exactly
+   * one probe (CR).
+   */
+  let failureBaseline = 0;
+  /** Whether the fast ladder has handed over to the slow heartbeat (cleared by a fresh allowance). */
+  let slowProbe = false;
   let lastProbeStartedAtMs: number | null = null;
   let timer: unknown = null;
   let noticeTimer: unknown = null;
@@ -360,6 +381,8 @@ export function createConnectivityMonitor(
     inFlight = null;
     if (ok) {
       attempt = 0;
+      slowProbe = false;
+      failureBaseline = 0;
       // Cancel any notice from an EARLIER recovery before applying this one; the notice this
       // success just entered must survive (a `clearNotice()` here would erase it immediately).
       cancelNoticeTimer();
@@ -380,8 +403,19 @@ export function createConnectivityMonitor(
       // automatic attempts on a network that is not there.
       return;
     }
-    if (attempt >= maxAutoAttempts || state.consecutiveFailures >= FAILURE_THRESHOLD * 2) {
-      emit({ ...state, autoRetriesExhausted: true });
+    if (
+      slowProbe ||
+      attempt >= maxAutoAttempts ||
+      state.consecutiveFailures - failureBaseline >= FAILURE_THRESHOLD * 2
+    ) {
+      if (!slowProbe) emit({ ...state, autoRetriesExhausted: true });
+      slowProbe = true;
+      // The fast ladder is over, but the question "is the server back?" cannot be: with nothing
+      // scheduled, the banner keeps saying unreachable and writes stay blocked until the user
+      // clicks Retry or reloads — a server that recovered on its own stays invisible (CR). The
+      // fast backoff hands over to the same slow heartbeat a healthy link uses: no further
+      // backoff growth, and still exactly one probe in flight at a time.
+      schedule(() => probeNow(false), slowProbeIntervalMs);
       return;
     }
     schedule(() => probeNow(false), backoffMs(attempt - 1));
@@ -400,40 +434,45 @@ export function createConnectivityMonitor(
     }
     lastProbeStartedAtMs = startedAt;
     const controller = new AbortController();
+    const probeGeneration = generation;
     inFlight = controller;
     emit(reduceConnectivity(state, { type: "probe-started", atMs: startedAt }));
     // The retry control is offered while an attempt is in flight as "unavailable, in flight", and
     // becomes available again on any settle; `manual` probes therefore re-enable it deliberately.
     emit({ ...state, retry: { allowed: manual, reason: null } });
 
-    attemptTimeout = setT(() => {
+    // The handle is kept per attempt, not just in the shared slot: after a restart the shared
+    // slot belongs to the NEW probe, and a late settle from this one must clear only its own.
+    const timeoutHandle = setT(() => {
       // A probe that never settles is a failure with evidence (the timeout), not a hang.
       controller.abort();
     }, probeTimeoutMs);
+    attemptTimeout = timeoutHandle;
 
     // The handle is cleared BEFORE the stopped check: a probe that settles after stop() must not
     // leave its timeout armed (the leak this fixes: a cancelled attempt kept the timer alive).
     const endAttempt = (): void => {
-      if (attemptTimeout !== null) {
-        clearT(attemptTimeout);
-        attemptTimeout = null;
-      }
+      clearT(timeoutHandle);
+      if (attemptTimeout === timeoutHandle) attemptTimeout = null;
     };
+
+    /** True when this attempt still speaks for the current run (see {@link generation}). */
+    const current = (): boolean => !stopped && generation === probeGeneration;
 
     void options
       .probe(controller.signal)
       .then((ok) => {
         endAttempt();
-        if (stopped) return;
+        if (!current()) return;
         finish(ok === true);
       })
       .catch(() => {
         endAttempt();
-        if (stopped) return;
+        if (!current()) return;
         finish(false);
       })
       .finally(() => {
-        if (stopped) return;
+        if (!current()) return;
         // Offered whenever the posture is not already healthy; whether it may actually run right
         // now is decided by the spacing check in retry(), which reports "rate-limited" itself.
         emit({ ...state, retry: { allowed: state.posture !== "online", reason: null } });
@@ -443,11 +482,20 @@ export function createConnectivityMonitor(
   return {
     snapshot: () => state,
     start() {
-      if (stopped || inFlight !== null) return;
+      if (!stopped && inFlight !== null) return;
+      // Reopening after stop(): the previous run's cancellation is not a verdict about the
+      // server, so this run gets a fresh probe and its own full auto-retry allowance (a stopped
+      // monitor may have burned attempts that never produced an answer).
+      generation += 1;
+      stopped = false;
+      attempt = 0;
+      slowProbe = false;
+      failureBaseline = state.consecutiveFailures;
       probeNow(false);
     },
     stop() {
       stopped = true;
+      generation += 1;
       inFlight?.abort();
       inFlight = null;
       if (attemptTimeout !== null) {
@@ -472,6 +520,12 @@ export function createConnectivityMonitor(
         return false;
       }
       clearTimer();
+      // A manual retry is the user saying "try again", so it restores the automatic allowance
+      // and leaves the slow path: otherwise a retry that fails once is instantly exhausted again
+      // and the very next retry has nothing to schedule (CR).
+      attempt = 0;
+      slowProbe = false;
+      failureBaseline = state.consecutiveFailures;
       probeNow(true);
       return true;
     },
