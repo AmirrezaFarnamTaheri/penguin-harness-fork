@@ -415,6 +415,50 @@ function measuredReading(reading: PressureReading | null, volumePath: string): n
   return free;
 }
 
+/**
+ * The gate a write boundary consults before a nonessential write (I7.2).
+ *
+ * `admit` never throws: a probe failure becomes a `warn` decision inside
+ * {@link createProbeWritePressureGate}, because a boundary that cannot tell "no reading" from
+ * "allow" would have to choose between failing open and failing closed on its own — and neither
+ * is its call to make.
+ */
+export interface WritePressureGate {
+  admit(request: {
+    producerId: NonessentialProducerId;
+    /** The boundary's own identity for this write (a tool call id); never read from payload. */
+    toolCallId: string;
+  }): Promise<PressureDecision>;
+}
+
+/**
+ * The production gate: the probe's TTL-cached report for one volume, the inventory, and the
+ * override store — bound to one Session and one volume by the caller that owns them.
+ */
+export function createProbeWritePressureGate(options: {
+  probe: PressureReportSource;
+  volumePath: string;
+  sessionId: string;
+  overrides?: PressureOverrideStore;
+}): WritePressureGate {
+  return {
+    async admit({ producerId, toolCallId }): Promise<PressureDecision> {
+      const reading = await readVolumePressure(options.probe, options.volumePath);
+      return evaluateWritePressure({
+        producerId,
+        reading,
+        writeKey: {
+          sessionId: options.sessionId,
+          producerId,
+          toolCallId,
+          volumePath: options.volumePath,
+        },
+        ...(options.overrides ? { overrides: options.overrides } : {}),
+      });
+    },
+  };
+}
+
 /** The probing half the boundary needs; `ResourcePressureProbe.probe` satisfies it. */
 export interface PressureReportSource {
   probe(force?: boolean): Promise<ResourcePressureReport>;

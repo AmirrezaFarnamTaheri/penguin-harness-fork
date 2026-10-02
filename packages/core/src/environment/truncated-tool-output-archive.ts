@@ -18,6 +18,12 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { redactCredentials } from "../internal/credential-redactor.js";
+import type {
+  NonessentialProducerId,
+  PressureDecision,
+  PressureSignal,
+  WritePressureGate,
+} from "../internal/write-pressure-policy.js";
 import { READ_FILE_SCAN_CAP_BYTES } from "./tools/read-file.js";
 import {
   createPruneFrontier,
@@ -90,8 +96,22 @@ export type TruncatedToolOutputArchiveSaveResult =
       status: "saved";
       path: string;
       archiveTruncated: boolean;
+      /** Disk-pressure warning that fired while admitting this write (I7.2); the write proceeded. */
+      warning?: WritePressureWarning;
     }
   | { status: "failed"; code: string };
+
+/**
+ * A warning that fired while a nonessential write was admitted. Carried on the result so the
+ * caller can show it — a warning nobody can observe is indistinguishable from a policy that
+ * never ran. `freeBytes` is null when no valid measurement existed (never 0-as-unknown).
+ */
+export interface WritePressureWarning {
+  signal: PressureSignal;
+  reason: string;
+  volumePath: string;
+  freeBytes: number | null;
+}
 
 interface TruncatedToolOutputArchiveOptions {
   rootDir: string;
@@ -103,6 +123,13 @@ interface TruncatedToolOutputArchiveOptions {
   archiveLimits?: Partial<ArchiveLimits>;
   /** Test-only clock, so age-bound eviction can be exercised without waiting a month. */
   now?: () => number;
+  /**
+   * Admission gate for this archive's own writes (I7.2). Omitted = no pressure policy, which is
+   * the previous behavior exactly: the card's rollback is removing this injection. A gate that
+   * blocks refuses the write *before* any filesystem mutation; a gate that warns lets the write
+   * through and the warning rides back on the result.
+   */
+  writePressure?: WritePressureGate;
   /**
    * Where to persist the archive's prune frontier (B4.3). Omitted = in memory only: the frontier
    * still answers repeated blocked prunes within this process, and a restart re-enforces the bound
@@ -159,7 +186,15 @@ interface RecallEntry {
 }
 
 export type RecallSaveResult =
-  | { status: "saved"; id: string; path: string; bytes: number; reused: boolean }
+  | {
+      status: "saved";
+      id: string;
+      path: string;
+      bytes: number;
+      reused: boolean;
+      /** Disk-pressure warning that fired while admitting this write (I7.2); the write proceeded. */
+      warning?: WritePressureWarning;
+    }
   | { status: "failed"; code: string };
 
 export type RecallResult =
@@ -525,6 +560,8 @@ export class TruncatedToolOutputArchive {
   private readonly now: () => number;
   private readonly archiveLimits: ArchiveLimits;
   private readonly pruneFrontierPath: string | undefined;
+  /** The I7.2 admission gate for this store's own writes; undefined = no pressure policy. */
+  private readonly writePressure: WritePressureGate | undefined;
   /** Serializes capacity checks with their writes, like the recall store (E10.4). */
   private archiveSaveTail: Promise<void> = Promise.resolve();
   /** Bounded log of files the capacity bound removed (newest last). */
@@ -539,6 +576,7 @@ export class TruncatedToolOutputArchive {
     );
     this.rootDir = opts.rootDir;
     this.recallRootDir = path.join(opts.rootDir, "recall");
+    this.writePressure = opts.writePressure;
     this.recallLimits = { ...RECALL_LIMITS, ...opts.recallLimits };
     this.archiveLimits = { ...ARCHIVE_LIMITS, ...opts.archiveLimits };
     this.pruneFrontierPath = opts.pruneFrontierPath;
@@ -573,6 +611,10 @@ export class TruncatedToolOutputArchive {
       release = resolve;
     });
     await previous;
+    // Admitted before the first filesystem call: a refused write must not create the directory,
+    // touch the ledger or leave a partial file for the next reader to trip over.
+    const admission = await this.admitWrite("tool-output-archive", toolCallId);
+    if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
     try {
       // Create shared Session ancestors with their existing/default policy, then apply the
       // archive's private directory mode only to the archive directory itself.
@@ -594,6 +636,7 @@ export class TruncatedToolOutputArchive {
         status: "saved",
         path: filePath,
         archiveTruncated,
+        ...(admission.warning ? { warning: admission.warning } : {}),
       };
     } catch (err) {
       const rawCode = (err as { code?: unknown }).code;
@@ -731,6 +774,49 @@ export class TruncatedToolOutputArchive {
     };
   }
 
+  /**
+   * Asks the gate, if one is configured, whether this write may proceed.
+   *
+   * A gate that throws becomes a warning with no measurement rather than a refusal: the policy
+   * must not lose a write because its own probe misbehaved, and it must not claim a measurement
+   * it does not have. `blocked` is true only for a decision that is actually a block, so an
+   * unavailable probe can never refuse a write (I7.2). Nothing here reads tool arguments — the
+   * identity is the caller's own tool call id.
+   */
+  private async admitWrite(
+    producerId: NonessentialProducerId,
+    toolCallId: string,
+  ): Promise<{ blocked: boolean; warning: WritePressureWarning | null }> {
+    if (this.writePressure === undefined) return { blocked: false, warning: null };
+    let decision: PressureDecision;
+    try {
+      decision = await this.writePressure.admit({ producerId, toolCallId });
+    } catch (err) {
+      return {
+        blocked: false,
+        warning: {
+          signal: "write_pressure_probe_unavailable",
+          reason: `the write-pressure gate threw: ${err instanceof Error ? err.message : String(err)}`,
+          volumePath: "",
+          freeBytes: null,
+        },
+      };
+    }
+    if (decision.action === "block") return { blocked: true, warning: null };
+    if (decision.action === "warn" && decision.signal !== null) {
+      return {
+        blocked: false,
+        warning: {
+          signal: decision.signal,
+          reason: decision.reason,
+          volumePath: decision.volumePath,
+          freeBytes: decision.freeBytes,
+        },
+      };
+    }
+    return { blocked: false, warning: null };
+  }
+
   // -------------------------------------------------------------------------
   // Recall store
   //
@@ -753,7 +839,12 @@ export class TruncatedToolOutputArchive {
    * `recall/` subdirectory so eviction can only ever unlink files this store created — the
    * truncation archive's own files, written by `commit`, are never touched by it.
    */
-  async saveRecallEntry(toolName: string, text: string): Promise<RecallSaveResult> {
+  async saveRecallEntry(
+    toolName: string,
+    text: string,
+    /** The boundary's identity for this write (the tool call id); an override is scoped to it. */
+    writeId = "",
+  ): Promise<RecallSaveResult> {
     // Environment can finish multiple tool calls concurrently. Serialize capacity checks with
     // their writes so every accepted id is accounted for before another call reserves space.
     const previous = this.recallSaveTail;
@@ -763,7 +854,7 @@ export class TruncatedToolOutputArchive {
     });
     await previous;
     try {
-      return await this.saveRecallEntryExclusive(toolName, text);
+      return await this.saveRecallEntryExclusive(toolName, text, writeId);
     } finally {
       release();
     }
@@ -772,9 +863,15 @@ export class TruncatedToolOutputArchive {
   private async saveRecallEntryExclusive(
     _toolName: string,
     text: string,
+    writeId: string,
   ): Promise<RecallSaveResult> {
     await this.loadRecallFiles();
     await this.enforceRecallBounds();
+    // Before the id is derived and before anything is written: a block here means the entry is
+    // not stored at all, and the caller falls back to the honest bounded answer. Nothing on the
+    // destination volume changes, including the store's own index.
+    const admission = await this.admitWrite("recall-store", writeId);
+    if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
     if (!isWellFormedUtf16(text)) return { status: "failed", code: "INVALID_UTF8" };
     const data = Buffer.from(text, "utf8");
     if (data.length > this.fileLimitBytes) return { status: "failed", code: "ENTRY_TOO_LARGE" };
@@ -791,7 +888,14 @@ export class TruncatedToolOutputArchive {
       // Already stored (identical redacted text): reuse the entry, do not rewrite
       // it or reset its age, so a repeated command cannot keep a stale entry alive forever.
       existing.uses += 1;
-      return { status: "saved", id, path: existing.path, bytes: existing.bytes, reused: true };
+      return {
+        status: "saved",
+        id,
+        path: existing.path,
+        bytes: existing.bytes,
+        reused: true,
+        ...(admission.warning ? { warning: admission.warning } : {}),
+      };
     }
 
     // An issued id is promised to remain usable until its age expiry (or Session deletion).
@@ -833,7 +937,14 @@ export class TruncatedToolOutputArchive {
         });
         await this.enforceRecallBounds();
         if (!this.recallIndex.has(id)) return { status: "failed", code: "EXPIRED" };
-        return { status: "saved", id, path: filePath, bytes: redacted.length, reused: true };
+        return {
+          status: "saved",
+          id,
+          path: filePath,
+          bytes: redacted.length,
+          reused: true,
+          ...(admission.warning ? { warning: admission.warning } : {}),
+        };
       }
       const code = typeof rawCode === "string" ? rawCode : "UNKNOWN";
       process.stderr.write(`[penguin] tool output recall write failed (${code}).\n`);
@@ -851,7 +962,14 @@ export class TruncatedToolOutputArchive {
     });
     await this.enforceRecallBounds();
     if (!this.recallIndex.has(id)) return { status: "failed", code: "EXPIRED" };
-    return { status: "saved", id, path: filePath, bytes: redacted.length, reused: false };
+    return {
+      status: "saved",
+      id,
+      path: filePath,
+      bytes: redacted.length,
+      reused: false,
+      ...(admission.warning ? { warning: admission.warning } : {}),
+    };
   }
 
   /**
