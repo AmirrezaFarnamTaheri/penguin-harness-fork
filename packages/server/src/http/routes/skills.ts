@@ -15,6 +15,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { strFromU8, zipSync } from "fflate";
+import { assertSafeZipEntryPath } from "../../services/zip-entry-types.js";
 import { Hono } from "hono";
 import {
   listInstalledSkills,
@@ -47,13 +48,7 @@ export const MAX_ARCHIVE_BYTES = 14 * 1024 * 1024;
  * outside the target Skill directory. Shared with the hooks archive routes.
  */
 export function assertSafeEntryPath(name: string): void {
-  if (name.includes("\\")) throw badRequest(`Invalid zip entry path (backslash): ${name}`);
-  if (name.startsWith("/") || /^[A-Za-z]:/.test(name)) {
-    throw badRequest(`Invalid zip entry path (absolute): ${name}`);
-  }
-  if (name.split("/").some((segment) => segment === "..")) {
-    throw badRequest(`Invalid zip entry path (traversal): ${name}`);
-  }
+  assertSafeZipEntryPath(name);
 }
 
 /** A skill decoded from an uploaded zip: name + file bytes keyed by path relative to the skill directory. */

@@ -9,7 +9,6 @@ import { program } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import axios from 'axios';
-import https from 'https';
 import {
   downloadTrack,
   updateManifest,
@@ -19,11 +18,8 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-// ccMixter's SSL certificate chain is incomplete, causing "unable to verify
-// the first certificate" errors with Node.js default TLS settings.
-// We create a custom HTTPS agent that tolerates this.
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-const api = axios.create({ httpsAgent, timeout: 15000 });
+// Keep certificate verification enabled; custom roots use NODE_EXTRA_CA_CERTS.
+const api = axios.create({ timeout: 15000 });
 
 const API_BASE = 'https://ccmixter.org/api/query';
 

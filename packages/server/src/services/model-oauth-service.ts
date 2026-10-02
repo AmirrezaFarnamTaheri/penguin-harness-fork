@@ -2,7 +2,7 @@
  * Provider key-minting flows (the `oauth` descriptor in core's model catalog).
  *
  * A provider that publishes such a flow lets the user authorize in a browser and get a
- * **freshly minted API key** back, instead of copying one out of a console. The upstream
+ * **freshly minted API key** back, instead of copying one out of a command-line window. The upstream
  * protocol is PKCE: the harness picks a random verifier, sends only its SHA-256 challenge
  * to the authorization page, and later presents the verifier to redeem the one-time code
  * the page hands back.

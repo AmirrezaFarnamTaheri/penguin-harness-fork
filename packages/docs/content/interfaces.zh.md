@@ -46,7 +46,7 @@ context_engine 依赖三个接口：Human、LLM、Environment。协议转换全�
 
 ## LLMInterface
 
-模型侧的完整契约只有一个方法：
+模型侧必须实现的方法：
 
 ```ts
 interface LLMInterface {
@@ -66,24 +66,23 @@ interface GenerativeModelParameters {
 
 ```ts
 interface LLMOutcome {
-  status: StopReason;   // completed | timeout | malformed | aborted | failed | auth
-  message?: string;     // 失败详情:failed/auth 时携带;timeout/malformed 捕获到具体
-                        // 错误时也携带——透传到 request_end,错误面板据此展示被重试
-                        // 请求背后的真实原因
-  permanent?: boolean;  // 标记该 failed 为确定性失败(发起网络请求前在客户端就被拒绝,
-                        // 如在没有 fast 档位的模型上启用 fast_mode):引擎直接带消息
-                        // 终止,不再重试
+  status: StopReason; // completed | retryable | fatal | aborted
+  usage?: TokenCounts;
+  errorCode?: ErrorCode;
+  errorMessage?: string;
+  retryDelay?: { rawMs: number; source: "header" | "structured" | "text"; bufferedMs: number };
+  retryAccount?: { accountId?: string; rateLimited: boolean; poolUnavailableForMs?: number };
 }
 ```
 
+`errorCode` 与 `errorMessage` 会写入请求事件；已知的失败请求用量也会记录。`retryDelay` 与 `retryAccount` 只供引擎内部使用，不持久化；账户标识必须是不含凭据的匿名标识。适配器可提供 `readonly retryPoolSize?: number` 和 `retrySameAccount?(): void` 参与账户池重试路由；原账户偏好必须遵守冷却时间。现有可选的 `keyRotator` 与 `rotateKey()` 钩子仍可使用。
+
 | status | 含义 | 引擎的反应 |
 | --- | --- | --- |
-| `completed` | 正常完成(已产出 token_usage) | 继续下一步 |
-| `timeout` | 超时/传输层断连 | 同一 run 内自动重连 |
-| `malformed` | 响应解析失败 | 同一 run 内自动重连 |
-| `failed` | 分类器未判定为瞬时的错误(参数等) | 同样在同一 run 内自动重连——状态本身仍如实上报为 `failed`。例外：携带 `permanent: true`（确定性的客户端拒绝，如在没有 fast 档位的模型上启用快速模式）时立即带消息停止 |
-| `aborted` | 用户中断 | 停止交还用户 |
-| `auth` | 凭据被拒绝 | 停止交还用户——唯一从不重试的 LLM 终态；宿主据此禁用输入，直到该模型的 API key 被更新 |
+| `completed` | 正常完成 | 继续 |
+| `retryable` | 可恢复的传输、解析或账户错误 | 在当前请求预算内重试 |
+| `fatal` | 确定拒绝、输入无效或没有有效凭据 | 携带错误详情停止 |
+| `aborted` | 用户中断 | 将控制权交还用户 |
 
 实现约束：从不抛异常；不做内部重试(重连是引擎的职责，见 [Agent 运行循环](/agent-loop))。
 

@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BUILTIN_TOOL_FACTORIES, projectDir } from "@prismshadow/penguin-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BUILTIN_TOOL_FACTORIES,
+  projectDir,
+  FindingsGraph,
+  LifecycleError,
+  FINDING_STATUSES,
+} from "@prismshadow/penguin-core";
 import type { ToolExecutionContext } from "@prismshadow/penguin-core";
 import type { ProjectCreateResponse } from "../src/api/types.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
@@ -16,7 +22,7 @@ async function runKnowledgeGraphTool(
   const tool = factory({ name: "knowledge_graph", description: "test", parameters: {} });
   const ctx: ToolExecutionContext = { workspaceDir, toolCallId: "findings-scope-test" };
   let output = "";
-  const generator = tool.execute(args, ctx);
+  const generator = tool.execute({ outputVersion: 1, ...args }, ctx);
   for (;;) {
     const step = await generator.next();
     if (step.done) return output;
@@ -38,10 +44,12 @@ describe("findings routes (persistent knowledge plane)", () => {
   let t: TestApp;
   let client: ReturnType<typeof apiClient>;
   let projectId: string;
+  let cookie: string;
 
   beforeEach(async () => {
     t = await createTestApp();
     const user = await provisionUser(t.app, "findings_routes");
+    cookie = user.cookie;
     client = apiClient(t.app, user.cookie);
     const created = (await (
       await client.post("/api/projects", {
@@ -54,6 +62,282 @@ describe("findings routes (persistent knowledge plane)", () => {
 
   afterEach(async () => {
     await t.cleanup();
+  });
+
+  it("preserves corrupt snapshots, exposes recovery/raw export, and audits explicit reset/restore", async () => {
+    const target = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const raw = '{"version":1,"findings":[';
+    await fs.writeFile(target, raw);
+    const report = await client.post(`/api/projects/${projectId}/findings`, {
+      title: "Unsafe repair",
+    });
+    expect(report.status).toBe(409);
+    expect(((await report.json()) as { error: { code: string } }).error.code).toBe(
+      "findings_recovery_required",
+    );
+    expect(await fs.readFile(target, "utf8")).toBe(raw);
+    const recovery = (await (
+      await client.get(`/api/projects/${projectId}/findings/recovery`)
+    ).json()) as { revision: string; recovery: { quarantinePath: string } };
+    expect(await fs.readFile(recovery.recovery.quarantinePath, "utf8")).toBe(raw);
+    const exported = await client.get(`/api/projects/${projectId}/findings/raw`);
+    expect(exported.status).toBe(200);
+    const page = (await exported.json()) as {
+      data: string;
+    };
+    expect(Buffer.from(page.data, "base64").toString()).toBe(raw);
+    const resetUrl = `/api/projects/${projectId}/findings/recovery/reset`;
+    expect(
+      (await client.post(resetUrl, { revision: recovery.revision, reason: "Reviewed" })).status,
+    ).toBe(400);
+    expect(
+      (await client.post(resetUrl, { revision: "stale", reason: "Reviewed", acknowledge: true }))
+        .status,
+    ).toBe(409);
+    const reset = await client.post(resetUrl, {
+      revision: recovery.revision,
+      reason: "Reviewed damaged snapshot",
+      acknowledge: true,
+    });
+    expect(reset.status).toBe(200);
+    const { revision } = (await reset.json()) as { revision: string };
+    const snapshot = (await (
+      await client.get(`/api/projects/${projectId}/findings/snapshot`)
+    ).json()) as { findings: unknown[]; events: Array<{ actor: { kind: string }; note: string }> };
+    expect(snapshot.findings).toHaveLength(0);
+    expect(snapshot.events.at(-1)!.actor.kind).toBe("user");
+    expect(await fs.readFile(JSON.parse(snapshot.events.at(-1)!.note).preserved, "utf8")).toBe(raw);
+    const backup = new FindingsGraph();
+    backup.report({ title: "Verified restored claim" });
+    const restored = await client.post(`/api/projects/${projectId}/findings/recovery/restore`, {
+      revision,
+      reason: "Restore verified backup",
+      acknowledge: true,
+      snapshot: JSON.stringify(backup.exportSnapshot()),
+    });
+    expect(restored.status).toBe(200);
+  });
+
+  it("uses the same report limits as the tool and rejects a stale report revision", async () => {
+    for (const input of [
+      { title: "t".repeat(301) },
+      { title: "Valid title", evidence: [{ tier: "runtime", quote: "q".repeat(2001) }] },
+      { title: "Valid title", subjects: Array(101).fill("path") },
+    ]) {
+      expect((await client.post(`/api/projects/${projectId}/findings`, input)).status).toBe(400);
+    }
+    const before = (await (
+      await client.get(`/api/projects/${projectId}/findings/recovery`)
+    ).json()) as { revision: string };
+    await client.post(`/api/projects/${projectId}/findings`, { title: "First claim" });
+    const response = await t.app.request(`/api/projects/${projectId}/findings`, {
+      method: "POST",
+      headers: { cookie, "Content-Type": "application/json", "If-Match": before.revision },
+      body: JSON.stringify({ title: "Stale claim" }),
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it("shows agent, user, system and legacy authorship from events on both read paths", async () => {
+    const storePath = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    await fs.mkdir(path.dirname(storePath), { recursive: true });
+    for (const kind of ["agent", "user", "system", "legacy-unknown"] as const) {
+      const graph = new FindingsGraph();
+      graph.report(
+        {
+          title: "Loader waits",
+          source: { agentId: "user:forged" },
+          evidence: [{ tier: "runtime" }],
+        },
+        kind === "legacy-unknown" ? {} : { actor: { kind, id: "host-id" } },
+      );
+      const snapshot = graph.exportSnapshot();
+      if (kind === "legacy-unknown") snapshot.events!.forEach((event) => delete event.actor);
+      await fs.writeFile(storePath, JSON.stringify(snapshot));
+      for (const suffix of ["", "/snapshot"]) {
+        const body = (await (
+          await client.get(`/api/projects/${projectId}/findings${suffix}`)
+        ).json()) as { findings: Array<{ authoredBy: string; author: { id: string } }> };
+        expect(body.findings[0]).toMatchObject({
+          authoredBy: kind,
+          status: "open",
+          evidenceTiers: ["runtime"],
+        });
+        expect(body.findings[0]!.author.id).not.toBe("forged");
+      }
+    }
+  });
+
+  it("preserves refuted claims, deduplicates revisions, and requires a reason to reopen", async () => {
+    const input = { title: "Loader waits", evidence: [{ tier: "runtime", path: "loader.ts" }] };
+    const original = (await (
+      await client.post(`/api/projects/${projectId}/findings`, input)
+    ).json()) as { finding: { id: string } };
+    const url = `/api/projects/${projectId}/findings/${original.finding.id}`;
+    expect((await client.post(`${url}/refute`, { note: "Falsified" })).status).toBe(200);
+    const revision = (await (
+      await client.post(`/api/projects/${projectId}/findings`, { ...input, reopen: true })
+    ).json()) as { finding: { id: string }; merged: boolean };
+    expect(revision.finding.id).not.toBe(original.finding.id);
+    expect(revision.merged).toBe(false);
+    const replay = (await (
+      await client.post(`/api/projects/${projectId}/findings`, input)
+    ).json()) as typeof revision;
+    expect(replay.finding.id).toBe(revision.finding.id);
+    expect(replay.merged).toBe(true);
+    const snapshot = (await (
+      await client.get(`/api/projects/${projectId}/findings/snapshot`)
+    ).json()) as { findings: Array<{ id: string; status: string; contradicts?: string[] }> };
+    expect(snapshot.findings).toHaveLength(2);
+    expect(snapshot.findings.find((f) => f.id === original.finding.id)).toMatchObject({
+      status: "refuted",
+      contradicts: [revision.finding.id],
+    });
+    expect((await client.post(`${url}/reopen`, {})).status).toBe(400);
+    expect((await client.post(`${url}/reopen`, { note: " " })).status).toBe(400);
+    expect(
+      (
+        await client.post(`${url}/reopen`, {
+          note: "Independent review",
+          actor: { kind: "system", id: "forged" },
+        })
+      ).status,
+    ).toBe(200);
+    const { events } = (await (
+      await client.get(`/api/projects/${projectId}/findings/events`)
+    ).json()) as {
+      events: Array<{ type: string; actor: { kind: string; id: string }; method: string }>;
+    };
+    expect(events.at(-1)).toMatchObject({
+      type: "reopen",
+      actor: { kind: "user" },
+      method: "route",
+    });
+    expect(events.at(-1)!.actor.id).not.toBe("forged");
+    expect(
+      (await client.post(`${url}/supersede`, { replacement_id: revision.finding.id })).status,
+    ).toBe(200);
+    expect((await client.post(`${url}/reopen`, { note: "reason" })).status).toBe(409);
+  });
+
+  it("rejects dead replacements and imported cyclic or overlong chains without writing", async () => {
+    const seed = new FindingsGraph();
+    const claim = seed.report({ title: "Loader waits" }).finding;
+    const replacement = seed.report({ title: "Fresh budget evidence" }).finding;
+    const base = seed.exportSnapshot();
+    const dead = structuredClone(base);
+    dead.findings[1]!.status = "refuted";
+    const cycle = structuredClone(base);
+    cycle.findings[1]!.supersededBy = replacement.id;
+    const deep = structuredClone(base);
+    deep.findings[1]!.supersededBy = "hop-1";
+    for (let i = 1; i <= 65; i++)
+      deep.findings.push({
+        ...replacement,
+        id: `hop-${i}`,
+        ...(i < 65 ? { supersededBy: `hop-${i + 1}` } : {}),
+      });
+    const storePath = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    await fs.mkdir(path.dirname(storePath), { recursive: true });
+    for (const [snapshot, message] of [
+      [dead, "open or confirmed"],
+      [cycle, "cycle"],
+      [deep, "64 hops"],
+    ] as const) {
+      const before = JSON.stringify(snapshot);
+      await fs.writeFile(storePath, before);
+      const response = await client.post(
+        `/api/projects/${projectId}/findings/${claim.id}/supersede`,
+        { replacement_id: replacement.id },
+      );
+      expect(response.status).toBe(409);
+      expect(((await response.json()) as { error: { message: string } }).error.message).toContain(
+        message,
+      );
+      expect(await fs.readFile(storePath, "utf8")).toBe(before);
+    }
+  });
+
+  it("enforces lifecycle transitions and takes actors only from authentication", async () => {
+    const allowed = new Set([
+      "open:confirmed",
+      "open:refuted",
+      "open:superseded",
+      "confirmed:refuted",
+      "confirmed:superseded",
+    ]);
+    const storePath = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    await fs.mkdir(path.dirname(storePath), { recursive: true });
+    for (const from of FINDING_STATUSES)
+      for (const to of ["confirmed", "refuted", "superseded"] as const) {
+        const graph = new FindingsGraph();
+        const claim = graph.report({
+          title: "Loader waits",
+          evidence: [{ tier: "runtime" }],
+        }).finding;
+        const replacement = graph.report({ title: "Fresh budget evidence" }).finding;
+        const snapshot = graph.exportSnapshot();
+        snapshot.findings.find((f) => f.id === claim.id)!.status = from;
+        const before = JSON.stringify(snapshot);
+        await fs.writeFile(storePath, before);
+        const action = to === "confirmed" ? "confirm" : to === "refuted" ? "refute" : "supersede";
+        const response = await client.post(
+          `/api/projects/${projectId}/findings/${claim.id}/${action}`,
+          {
+            replacement_id: replacement.id,
+            actor: { kind: "system", id: "forged" },
+            method: "engine",
+          },
+        );
+        if (allowed.has(`${from}:${to}`)) {
+          expect(response.status).toBe(200);
+          expect(((await response.json()) as { finding: { status: string } }).finding.status).toBe(
+            to,
+          );
+          const persisted = JSON.parse(await fs.readFile(storePath, "utf8"));
+          const event = persisted.events.at(-1);
+          expect(event.actor.kind).toBe("user");
+          expect(event.actor.id).not.toBe("forged");
+          expect(event.method).toBe("route");
+        } else {
+          expect(response.status).toBe(409);
+          expect(await fs.readFile(storePath, "utf8")).toBe(before);
+        }
+      }
+  });
+
+  it("gates confirmation and records authenticated human override reasons", async () => {
+    const { finding } = (await (
+      await client.post(`/api/projects/${projectId}/findings`, { title: "Unproven claim" })
+    ).json()) as { finding: { id: string; sources: Array<{ agentId: string }> } };
+    const url = `/api/projects/${projectId}/findings/${finding.id}/confirm`;
+    expect((await client.post(url, {})).status).toBe(409);
+    for (const body of [
+      { override: true },
+      { override: true, note: " " },
+      { override: "true", note: "reason" },
+    ]) {
+      expect((await client.post(url, body)).status).toBe(400);
+    }
+    expect(
+      (
+        await client.post(url, {
+          override: true,
+          note: "Reviewed manually",
+          actor: { kind: "agent", id: "forged" },
+        })
+      ).status,
+    ).toBe(200);
+    const { events } = (await (
+      await client.get(`/api/projects/${projectId}/findings/events`)
+    ).json()) as { events: Array<Record<string, unknown>> };
+    expect(events.at(-1)).toMatchObject({
+      actor: { kind: "user", id: finding.sources[0]!.agentId.slice(5) },
+      method: "route",
+      override: true,
+      note: "Reviewed manually",
+    });
   });
 
   it("reports a finding and reads it back from a later request (persisted)", async () => {
@@ -184,6 +468,7 @@ describe("findings routes (persistent knowledge plane)", () => {
       await client.post(`/api/projects/${projectId}/findings`, {
         title: "The cache invalidates stale workspace graphs",
         body: "Expiry prevents stale results.",
+        evidence: [{ tier: "implementation", path: "cache.ts" }],
       })
     ).json()) as { finding: { id: string } };
     const merged = await client.post(`/api/projects/${projectId}/findings`, {
@@ -202,7 +487,10 @@ describe("findings routes (persistent knowledge plane)", () => {
 
   it("runs the lifecycle: confirm, supersede, events replay", async () => {
     const old = (await (
-      await client.post(`/api/projects/${projectId}/findings`, { title: "Old retry claim" })
+      await client.post(`/api/projects/${projectId}/findings`, {
+        title: "Old retry claim",
+        evidence: [{ tier: "runtime" }],
+      })
     ).json()) as { finding: { id: string } };
     const replacement = (await (
       await client.post(`/api/projects/${projectId}/findings`, { title: "Fresh budget evidence" })
@@ -278,5 +566,74 @@ describe("findings routes (persistent knowledge plane)", () => {
     expect(snapshot.version).toBe(1);
     const aRecord = snapshot.findings.find((f) => f.id === a.finding.id);
     expect(aRecord?.related).toContain(b.finding.id);
+  });
+
+  it("validates GET enums with the same lists used by report", async () => {
+    for (const query of ["kind=vibes", "kind=", "status=anything", "status="]) {
+      const response = await client.get(`/api/projects/${projectId}/findings?${query}`);
+      expect(response.status, query).toBe(400);
+      const body = (await response.json()) as { error: { message: string } };
+      expect(body.error.message).toContain("must be one of:");
+      expect(body.error.message).toContain(query.startsWith("kind") ? "hypothesis" : "superseded");
+    }
+  });
+
+  it("rejects partial, fractional, empty and unsafe integer query values", async () => {
+    for (const value of ["1junk", "1.5", "", "9007199254740992", "-1"]) {
+      expect(
+        (await client.get(`/api/projects/${projectId}/findings?limit=${value}`)).status,
+        value,
+      ).toBe(400);
+      expect(
+        (await client.get(`/api/projects/${projectId}/findings/events?since=${value}`)).status,
+        value,
+      ).toBe(400);
+    }
+  });
+
+  it("returns 400 for malformed finding-id encoding on every mutation ingress", async () => {
+    for (const action of ["confirm", "refute", "supersede", "link", "reopen"]) {
+      const response = await client.post(`/api/projects/${projectId}/findings/%zz/${action}`, {});
+      expect(response.status, action).toBe(400);
+    }
+  });
+
+  it("keeps unexpected engine exceptions as 500 and leaves the persisted snapshot unchanged", async () => {
+    const report = await client.post(`/api/projects/${projectId}/findings`, {
+      title: "Test engine failure",
+    });
+    const { finding } = (await report.json()) as { finding: { id: string } };
+    const before = await (await client.get(`/api/projects/${projectId}/findings/snapshot`)).json();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const confirm = vi.spyOn(FindingsGraph.prototype, "confirm").mockImplementation(() => {
+      throw new TypeError("private engine failure detail");
+    });
+    try {
+      const response = await client.post(
+        `/api/projects/${projectId}/findings/${finding.id}/confirm`,
+        {},
+      );
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("private engine failure detail");
+      expect(
+        await (await client.get(`/api/projects/${projectId}/findings/snapshot`)).json(),
+      ).toEqual(before);
+    } finally {
+      confirm.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it("maps only typed lifecycle rejection to 409", async () => {
+    const confirm = vi.spyOn(FindingsGraph.prototype, "confirm").mockImplementation(() => {
+      throw new LifecycleError("This transition conflicts with the current lifecycle.");
+    });
+    try {
+      const response = await client.post(`/api/projects/${projectId}/findings/claim/confirm`, {});
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code: "finding_conflict" } });
+    } finally {
+      confirm.mockRestore();
+    }
   });
 });

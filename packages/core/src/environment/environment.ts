@@ -51,6 +51,11 @@ import type {
   ToolPermission,
 } from "../interfaces/index.js";
 import type { BuiltinTool, ToolResult } from "./tools/types.js";
+import {
+  createRecallOutputTool,
+  RECALL_OUTPUT_DEFINITION,
+  RECALL_OUTPUT_NAME,
+} from "./tools/recall-output.js";
 import { BUILTIN_TOOL_FACTORIES } from "./tools/registry.js";
 import { McpToolProvider } from "./mcp/provider.js";
 import { CommandSessionManager } from "./tools/command/index.js";
@@ -58,7 +63,6 @@ import { ManagedSubagentSession, SubagentSessionManager } from "./tools/subagent
 import {
   TRUNCATED_TOOL_OUTPUT_FILE_LIMIT_BYTES,
   TruncatedToolOutputArchive,
-  type TruncatedToolOutputArchiveSaveResult,
   type TruncatedToolOutputCapture,
 } from "./truncated-tool-output-archive.js";
 import {
@@ -69,7 +73,6 @@ import {
   type ToolOutputCollector,
 } from "./output-compression/index.js";
 import { defaultPressurePaths, ResourcePressureProbe } from "../agent/resource/index.js";
-import { modelVisiblePath } from "../internal/model-visible-path.js";
 
 /** Default cap on tool output truncation (characters). */
 const DEFAULT_MAX_OUTPUT_LENGTH = 16000;
@@ -82,6 +85,31 @@ const TOOL_ABORTED_NOTE = "[interrupted: tool aborted by user]";
 
 /** Placeholder marker used when a tool produces no output at all (tool_call_output content is never empty). */
 const TOOL_EMPTY_NOTE = "[no output]";
+const ARCHIVE_MIDDLE_OMITTED_MARKER = "\n[archive middle truncated]\n";
+
+type RecallArchiveSaveResult =
+  | { status: "saved"; id: string; bytes: number; archiveTruncated: boolean }
+  | { status: "failed"; code: string };
+
+function recallMetadata(id: string, bytes: number): string {
+  return JSON.stringify({ recallId: id, sizeBytes: bytes, tokenCount: Math.ceil(bytes / 4) });
+}
+
+/** Save an exact capture when possible; an over-limit capture is explicitly a head/tail archive. */
+async function saveCaptureAsRecall(
+  archive: TruncatedToolOutputArchive,
+  capture: TruncatedToolOutputCapture,
+  toolName: string,
+): Promise<RecallArchiveSaveResult> {
+  const exact = capture.text();
+  const text =
+    exact ?? `${capture.headText()}${ARCHIVE_MIDDLE_OMITTED_MARKER}${capture.tailText()}`;
+  const saved = await archive.saveRecallEntry(toolName, text);
+  capture.cancel();
+  return saved.status === "saved"
+    ? { status: "saved", id: saved.id, bytes: saved.bytes, archiveTruncated: exact === null }
+    : saved;
+}
 
 /**
  * Explanation for a failed argument JSON parse. The normal pipeline never reaches this: bad
@@ -154,6 +182,8 @@ export class Environment implements EnvironmentInterface {
   private readonly attribution: EnvironmentConfig["attribution"];
   /** The running model context's tool configuration; replaced as a whole by `reconfigure`. */
   private toolConfig!: ToolConfig;
+  /** Rollback switch: disable new archive writes without invalidating already issued ids. */
+  private readonly outputSpillEnabled: boolean;
   /**
    * Truncated-output recovery, derived from the generic `sessionScratchpadDir` config; null for
    * standalone embedders without a Session directory (legacy truncation-only behavior).
@@ -178,6 +208,7 @@ export class Environment implements EnvironmentInterface {
     this.workspaceDir = config.workspaceDir;
     this.attribution = config.attribution;
     this.toolExposure = config.toolConfig.toolExposure ?? "direct";
+    this.outputSpillEnabled = config.outputSpillEnabled !== false;
     this.truncatedToolOutputArchive = config.sessionScratchpadDir
       ? new TruncatedToolOutputArchive({
           rootDir: path.join(config.sessionScratchpadDir, "truncated-tool-output"),
@@ -253,8 +284,13 @@ export class Environment implements EnvironmentInterface {
     this.toolConfig = toolConfig;
     this.tools = new Map();
     for (const def of toolConfig.customTools) {
+      // This name is a runtime-owned Session capability, never a user-configurable tool.
+      if (def.name === RECALL_OUTPUT_NAME) continue;
       const factory = BUILTIN_TOOL_FACTORIES[def.name];
       if (factory) this.tools.set(def.name, factory(def, this.services));
+    }
+    if (this.truncatedToolOutputArchive) {
+      this.tools.set(RECALL_OUTPUT_NAME, createRecallOutputTool(this.truncatedToolOutputArchive));
     }
   }
 
@@ -579,13 +615,24 @@ export class Environment implements EnvironmentInterface {
   }
 
   private builtinToolDefinitions(): ToolDefinition[] {
-    return this.toolConfig.customTools
+    const definitions = this.toolConfig.customTools
+      .filter((tool) => tool.name !== RECALL_OUTPUT_NAME)
       .filter((tool) => this.tools.has(tool.name))
       .map((tool) => ({
         name: tool.name,
         description: tool.description,
         ...(tool.parameters !== undefined ? { parameters: tool.parameters } : {}),
       }));
+    if (this.truncatedToolOutputArchive) {
+      definitions.push({
+        name: RECALL_OUTPUT_DEFINITION.name,
+        description: RECALL_OUTPUT_DEFINITION.description,
+        ...(RECALL_OUTPUT_DEFINITION.parameters !== undefined
+          ? { parameters: RECALL_OUTPUT_DEFINITION.parameters }
+          : {}),
+      });
+    }
+    return definitions;
   }
 
   /** Per-server MCP connect outcomes, populated by the first listTools(); empty before it or without MCP. Feeds the mcp_connect_end event. */
@@ -600,6 +647,7 @@ export class Environment implements EnvironmentInterface {
 
   /** Looks up a tool's permission level (for the frontend's permission-mode decisions); gateway calls resolve the referenced target's permission. */
   toolPermission(name: string, rawArguments?: string): ToolPermission | undefined {
+    if (name === RECALL_OUTPUT_NAME && this.truncatedToolOutputArchive) return "r";
     if (this.toolExposure !== "lazy") {
       const builtin = this.toolConfig.customTools.find((t) => t.name === name)?.permission;
       if (builtin !== undefined) return builtin;
@@ -735,7 +783,9 @@ export class Environment implements EnvironmentInterface {
     // text can replace them wholesale at finalization without breaking the
     // "streamed concatenation == complete message" invariant this file guarantees.
     const outputCollector: ToolOutputCollector | null = startCollector(
-      truncationEnabled ? classifyToolOutput(executionName, executionArgs) : null,
+      truncationEnabled && this.outputSpillEnabled
+        ? classifyToolOutput(executionName, executionArgs)
+        : null,
       this.truncatedToolOutputArchive,
     );
     const gen = tool.execute(executionArgs, {
@@ -784,6 +834,7 @@ export class Environment implements EnvironmentInterface {
           }
           if (
             truncationEnabled &&
+            this.outputSpillEnabled &&
             contentLen > maxOutputLength &&
             this.truncatedToolOutputArchive
           ) {
@@ -846,6 +897,7 @@ export class Environment implements EnvironmentInterface {
             outputCollector.captureHandle.replace(toolOutput);
           } else if (
             maxOutputLength > 0 &&
+            this.outputSpillEnabled &&
             toolOutput.length > maxOutputLength &&
             this.truncatedToolOutputArchive
           ) {
@@ -890,7 +942,13 @@ export class Environment implements EnvironmentInterface {
     // Declared before the branches below because the compression path may fill it itself: a
     // call that was collected but not compressed still has to be bounded, and bounded text is
     // saved by the same archive the truncation path uses.
-    let archiveResult: TruncatedToolOutputArchiveSaveResult | null = null;
+    let archiveResult: RecallArchiveSaveResult | null = null;
+    const allowCompression =
+      !timedOut &&
+      signal?.aborted !== true &&
+      thrown === null &&
+      selfReported !== "fatal" &&
+      selfReported !== "aborted";
     if (outputCollector) {
       const outcome = await this.finalizeCollected(outputCollector, {
         headBudget,
@@ -898,6 +956,7 @@ export class Environment implements EnvironmentInterface {
         contentLen,
         toolName: executionName,
         toolCallId,
+        allowCompression,
       });
       visible = outcome.visible;
       truncated = outcome.truncated;
@@ -930,7 +989,11 @@ export class Environment implements EnvironmentInterface {
       // Both truncation paths initialize this capture at the exact point they first exceed the
       // visible cap, so a truncated call with a Session scratchpad always has one to save. A
       // standalone Environment has no capture and retains truncation-only behavior.
-      archiveResult = await archiveCapture.save(executionName, toolCallId);
+      archiveResult = await saveCaptureAsRecall(
+        this.truncatedToolOutputArchive!,
+        archiveCapture,
+        executionName,
+      );
     } else if (!outputCollector) {
       archiveCapture?.cancel();
     }
@@ -940,14 +1003,15 @@ export class Environment implements EnvironmentInterface {
     if (compressionNote !== null) notes.push(compressionNote);
     if (truncated) {
       if (archiveResult?.status === "saved") {
-        const archivePath = modelVisiblePath(archiveResult.path);
         if (archiveResult.archiveTruncated) {
           const limitMiB = Math.ceil(TRUNCATED_TOOL_OUTPUT_FILE_LIMIT_BYTES / (1024 * 1024));
           notes.push(
-            `[output archived (${limitMiB} MiB limit; head and tail kept): ${archivePath}]`,
+            `[output archive kept bounded head and tail (${limitMiB} MiB capture limit); ${recallMetadata(archiveResult.id, archiveResult.bytes)}; call recall_output with recall_id "${archiveResult.id}" and offset 0]`,
           );
         } else {
-          notes.push(`[output archived: ${archivePath}]`);
+          notes.push(
+            `[full output is available in this Session; ${recallMetadata(archiveResult.id, archiveResult.bytes)}; call recall_output with recall_id "${archiveResult.id}" and offset 0]`,
+          );
         }
       } else if (archiveResult?.status === "failed") {
         notes.push(`[output archive failed: ${archiveResult.code}]`);
@@ -1044,12 +1108,13 @@ export class Environment implements EnvironmentInterface {
       contentLen: number;
       toolName: string;
       toolCallId: string;
+      allowCompression: boolean;
     },
   ): Promise<{
     visible: string;
     truncated: boolean;
     note: string | null;
-    archiveSave: TruncatedToolOutputArchiveSaveResult | null;
+    archiveSave: RecallArchiveSaveResult | null;
   }> {
     // startCollector only runs when a recall store exists, so this is never null here. The
     // branch stays because Environment's contract is that it never throws: if the invariant were
@@ -1078,15 +1143,16 @@ export class Environment implements EnvironmentInterface {
         ),
         truncated: true,
         note: null,
-        archiveSave: await collector.captureHandle.save(opts.toolName, opts.toolCallId),
+        archiveSave: await saveCaptureAsRecall(archive, collector.captureHandle, opts.toolName),
       };
     }
 
-    const outcome = compressCollected(collector.kind, full, opts.headBudget + opts.tailBudget);
+    const outcome = opts.allowCompression
+      ? compressCollected(collector.kind, full, opts.headBudget + opts.tailBudget)
+      : null;
     if (outcome !== null) {
       const saved = await archive.saveRecallEntry(opts.toolName, full);
       if (saved.status === "saved") {
-        const descriptor = archive.recallDescriptor(saved.id);
         // The recall entry is the recovery copy; a second archive file would be the same bytes
         // under a second name, so the capture is released instead of saved.
         collector.captureHandle.cancel();
@@ -1095,8 +1161,8 @@ export class Environment implements EnvironmentInterface {
           truncated: false,
           note: formatCompressionNote(collector.kind, outcome, {
             id: saved.id,
-            path: saved.path,
-            lines: descriptor?.lines ?? outcome.originalLines,
+            bytes: saved.bytes,
+            lines: outcome.originalLines,
           }),
           archiveSave: null,
         };
@@ -1112,7 +1178,7 @@ export class Environment implements EnvironmentInterface {
       visible: bounded.visible,
       truncated: bounded.truncated,
       note: null,
-      archiveSave: await collector.captureHandle.save(opts.toolName, opts.toolCallId),
+      archiveSave: await saveCaptureAsRecall(archive, collector.captureHandle, opts.toolName),
     };
   }
 }

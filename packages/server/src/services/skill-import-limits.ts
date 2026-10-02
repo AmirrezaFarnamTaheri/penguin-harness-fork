@@ -8,6 +8,7 @@
 import { unzipSync } from "fflate";
 import { HttpError } from "../http/errors.js";
 import { badRequest } from "../http/validate.js";
+import { assertNoZipSymlinks } from "./zip-entry-types.js";
 
 export const MAX_ARCHIVE_FILES = 200;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -30,6 +31,7 @@ export const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
  * archive still throws whatever fflate throws, for the caller to translate.
  */
 export function unzipBounded(archive: Uint8Array): Record<string, Uint8Array> {
+  assertNoZipSymlinks(archive);
   let files = 0;
   let declared = 0;
   return unzipSync(archive, {

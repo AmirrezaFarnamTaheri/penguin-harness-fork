@@ -238,3 +238,148 @@ export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T 
 
   return visit(input) as T;
 }
+
+/**
+ * Session/request headers whose values are routine protocol metadata and may be recorded in
+ * logs, traces and exports. This is an allowlist on purpose: every other header value is
+ * replaced in full, so a vendor credential header nobody has named yet still fails closed.
+ * Allowlisted values are themselves passed through credential redaction and email masking.
+ */
+export const LOGGABLE_SESSION_HEADERS: ReadonlySet<string> = new Set([
+  "accept",
+  "accept-encoding",
+  "accept-language",
+  "anthropic-beta",
+  "anthropic-version",
+  "cache-control",
+  "connection",
+  "content-encoding",
+  "content-length",
+  "content-type",
+  "host",
+  "openai-beta",
+  "user-agent",
+  "x-request-id",
+]);
+
+export type SessionHeaderInput =
+  | Iterable<readonly [string, string]>
+  | Readonly<Record<string, string | readonly string[] | number | null | undefined>>;
+
+function isHeaderIterable(
+  headers: SessionHeaderInput,
+): headers is Iterable<readonly [string, string]> {
+  return typeof (headers as { [Symbol.iterator]?: unknown })[Symbol.iterator] === "function";
+}
+
+/**
+ * Header names are lower-cased and repeated names are joined with `, `. The result is built
+ * from own data properties only, so a header named `__proto__` cannot alter its prototype.
+ */
+export function redactSessionHeaders(headers: SessionHeaderInput): Record<string, string> {
+  const entries: Array<[string, string]> = [];
+  if (isHeaderIterable(headers)) {
+    for (const [name, value] of headers) entries.push([String(name), String(value)]);
+  } else {
+    for (const [name, value] of Object.entries(headers)) {
+      if (value === undefined || value === null) continue;
+      entries.push([
+        name,
+        Array.isArray(value) ? value.map(String).join(", ") : String(value as string | number),
+      ]);
+    }
+  }
+  const redacted = new Map<string, string>();
+  for (const [rawName, value] of entries) {
+    const name = rawName.trim().toLowerCase();
+    if (!name) continue;
+    const safe = LOGGABLE_SESSION_HEADERS.has(name)
+      ? maskEmail(redactCredentials(value))
+      : REDACTED_MARKER;
+    const previous = redacted.get(name);
+    redacted.set(name, previous === undefined ? safe : `${previous}, ${safe}`);
+  }
+  return Object.fromEntries(redacted);
+}
+
+// The look-behind anchors a match at the start of an address-character run, so a long run with
+// no `@` is scanned once instead of being retried at every position.
+const EMAIL_PATTERN =
+  /(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
+
+/** Mask e-mail addresses to their first local character and domain: `a***@example.com`. */
+export function maskEmail(text: string): string {
+  if (!text || typeof text !== "string") return text;
+  EMAIL_PATTERN.lastIndex = 0;
+  return text.replace(EMAIL_PATTERN, (_match, first: string, domain: string) => {
+    return `${first}***@${domain}`;
+  });
+}
+
+export interface SanitizedError {
+  name: string;
+  message: string;
+  code?: string;
+  cause?: SanitizedError;
+}
+
+const MAX_SANITIZED_MESSAGE = 2000;
+const MAX_SANITIZED_LABEL = 80;
+const MAX_SANITIZED_CAUSE_DEPTH = 4;
+
+function sanitizeLogText(text: string, limit: number): string {
+  // Redact before truncating so a cut can never leave the visible half of a secret behind.
+  const clean = maskEmail(redactCredentials(text));
+  return clean.length > limit ? `${clean.slice(0, limit)}…[truncated]` : clean;
+}
+
+function describeNonError(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value !== null && typeof value === "object") {
+    try {
+      return JSON.stringify(redactObject(value)) ?? "[unserializable]";
+    } catch {
+      return "[unserializable]";
+    }
+  }
+  return String(value);
+}
+
+function sanitizeErrorAt(error: unknown, depth: number, seen: WeakSet<object>): SanitizedError {
+  try {
+    if (!(error instanceof Error)) {
+      return {
+        name: "NonError",
+        message: sanitizeLogText(describeNonError(error), MAX_SANITIZED_MESSAGE),
+      };
+    }
+    if (seen.has(error)) return { name: "Error", message: "[circular cause]" };
+    seen.add(error);
+    const result: SanitizedError = {
+      name: sanitizeLogText(error.name || "Error", MAX_SANITIZED_LABEL),
+      message: sanitizeLogText(String(error.message ?? ""), MAX_SANITIZED_MESSAGE),
+    };
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" || typeof code === "number")
+      result.code = sanitizeLogText(String(code), MAX_SANITIZED_LABEL);
+    if (error.cause !== undefined) {
+      result.cause =
+        depth + 1 >= MAX_SANITIZED_CAUSE_DEPTH
+          ? { name: "Error", message: "[cause depth limit]" }
+          : sanitizeErrorAt(error.cause, depth + 1, seen);
+    }
+    return result;
+  } catch {
+    return { name: "Error", message: "[unavailable]" };
+  }
+}
+
+/**
+ * Log-safe error summary: name, message, string/number code and a bounded, cycle-safe `cause`
+ * chain. Stacks are never included (they can carry request data). Every string is credential-
+ * redacted and e-mail-masked before truncation; thrown non-Error objects are redacted
+ * structurally before they are serialized.
+ */
+export function sanitizeErrorForLog(error: unknown): SanitizedError {
+  return sanitizeErrorAt(error, 0, new WeakSet());
+}

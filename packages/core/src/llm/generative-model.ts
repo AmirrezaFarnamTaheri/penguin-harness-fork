@@ -72,6 +72,7 @@ import type {
 import { attributionHeaders } from "../state/model-catalog.js";
 import { ToolCallIdAllocator, stripToolCallIdSuffix } from "./tool-call-ids.js";
 import { ApiKeyRotator, parseApiKeys } from "./key-rotator.js";
+import { parseProviderDelay } from "./retry-delay.js";
 import {
   approximateMessagesTokens,
   approximateTokens,
@@ -1126,6 +1127,7 @@ export class GenerativeModel implements LLMInterface {
   private lastWarnedCap: number | undefined;
   /** Primary normalized API key used for single-client compatibility and default getClient calls. */
   private readonly primaryKey: string;
+  private preferPreviousAccount = false;
 
   constructor(config: GenerativeModelConfig) {
     this.config = config;
@@ -1163,6 +1165,14 @@ export class GenerativeModel implements LLMInterface {
   rotateKey(): boolean {
     if (!this.keyRotator) return false;
     return this.keyRotator.nextKey() !== undefined;
+  }
+
+  get retryPoolSize(): number {
+    return this.keyRotator?.workingKeysCount ?? 1;
+  }
+
+  retrySameAccount(): void {
+    this.preferPreviousAccount = true;
   }
 
   /**
@@ -1350,6 +1360,8 @@ export class GenerativeModel implements LLMInterface {
     params: GenerativeModelParameters,
   ): AsyncGenerator<OmniMessage, LLMOutcome> {
     const userSignal = params.signal;
+    const preferPrevious = this.preferPreviousAccount;
+    this.preferPreviousAccount = false;
 
     // Already interrupted before issuing: no streaming segment has been opened, so nothing to close out.
     if (userSignal?.aborted) return { status: "aborted" };
@@ -1365,7 +1377,11 @@ export class GenerativeModel implements LLMInterface {
       return { status: "fatal", errorCode: "invalid_input", errorMessage: describeError(err) };
     }
 
-    const activeKey = this.keyRotator ? this.keyRotator.nextKey() : this.config.apiKey;
+    const activeKey = this.keyRotator
+      ? preferPrevious
+        ? this.keyRotator.currentKey()
+        : this.keyRotator.nextKey()
+      : this.config.apiKey;
     if (this.keyRotator && !activeKey) {
       const cooldownMs = this.keyRotator.getEarliestCooldownMs();
       if (cooldownMs !== undefined && cooldownMs > 0) {
@@ -1373,6 +1389,8 @@ export class GenerativeModel implements LLMInterface {
           status: "retryable",
           errorCode: "network",
           errorMessage: `All configured API keys are cooling down due to rate limits. Earliest key available in ${Math.ceil(cooldownMs / 1000)}s.`,
+          retryDelay: { rawMs: cooldownMs, bufferedMs: cooldownMs, source: "structured" },
+          retryAccount: { rateLimited: true, poolUnavailableForMs: cooldownMs },
         };
       }
       return {
@@ -1497,6 +1515,7 @@ export class GenerativeModel implements LLMInterface {
         for (const msg of translator.pushEvent(res.value)) yield msg;
       }
     } catch (error) {
+      const retryDelay = userSignal?.aborted || timedOut ? null : parseProviderDelay(error);
       // User interruption **takes priority**: even if the idle timer fires at the same time,
       // it's classified as aborted (user intent outweighs a coincidental timeout).
       if (userSignal?.aborted) {
@@ -1513,17 +1532,20 @@ export class GenerativeModel implements LLMInterface {
           status: "retryable",
           errorCode: "malformed",
           errorMessage: describeError(error),
+          ...(retryDelay ? { retryDelay } : {}),
         };
       } else if (isRateLimitError(error)) {
         // An SDK may label every 403 as an authentication/permission exception even when
         // the parsed provider body says the account exhausted quota. Explicit quota evidence
         // takes precedence; otherwise the auth path below remains terminal for a dead key.
         this.shadowClassify(error, "cool_down");
-        this.keyRotator?.recordFailure(activeKey, "rate_limit");
+        this.keyRotator?.recordFailure(activeKey, "rate_limit", retryDelay?.bufferedMs);
         outcome = {
           status: "retryable",
           errorCode: "network",
           errorMessage: describeError(error),
+          retryAccount: { rateLimited: true },
+          ...(retryDelay ? { retryDelay } : {}),
         };
       } else if (isAuthenticationError(error)) {
         if (this.keyRotator && activeKey) {
@@ -1533,6 +1555,7 @@ export class GenerativeModel implements LLMInterface {
             outcome = {
               status: "retryable",
               errorCode: "auth",
+              ...(retryDelay ? { retryDelay } : {}),
               errorMessage: `API key authentication failed; rotating to next available key: ${describeError(error)}`,
             };
           } else {
@@ -1571,7 +1594,12 @@ export class GenerativeModel implements LLMInterface {
         // retried request.
         this.shadowClassify(error, "observe");
         this.keyRotator?.recordFailure(activeKey, "other");
-        outcome = { status: "retryable", errorCode: "network", errorMessage: describeError(error) };
+        outcome = {
+          status: "retryable",
+          errorCode: "network",
+          errorMessage: describeError(error),
+          ...(retryDelay ? { retryDelay } : {}),
+        };
       }
     } finally {
       clearTimer();
@@ -1594,6 +1622,18 @@ export class GenerativeModel implements LLMInterface {
     }
 
     if (outcome) {
+      const accountId = this.keyRotator?.accountIdentity(activeKey) ?? "primary";
+      const poolUnavailableForMs = this.keyRotator?.getEarliestCooldownMs();
+      outcome = {
+        ...outcome,
+        retryAccount: {
+          accountId,
+          rateLimited: outcome.retryAccount?.rateLimited ?? false,
+          ...(poolUnavailableForMs !== undefined && poolUnavailableForMs > 0
+            ? { poolUnavailableForMs }
+            : {}),
+        },
+      };
       // Interrupted/errored: close any opened streaming segments and backfill the complete message, producing no token_usage.
       const reason: StopReason = outcome.status === "completed" ? "retryable" : outcome.status;
       for (const msg of translator.finishInterrupted(reason)) yield msg;

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cli } from "../src/index.js";
 import { getMessages } from "../src/i18n.js";
 import { commandForArgv } from "../src/usage-error.js";
+import { suggestKnownToken } from "../src/arg-suggestions.js";
 
 let stdout: string[];
 let stderr: string[];
@@ -85,14 +86,42 @@ describe("unknown option and unknown command", () => {
 
       stderr.length = 0;
       expect(await cli(["ls", "--nope"])).toBe(1);
-      expect(err()).toContain(t.usage.unknownOption("--nope"));
+      expect(err()).toContain(t.usage.unknownOption());
+      expect(err()).not.toContain("--nope");
       expect(err()).toContain("penguin ls");
 
       stderr.length = 0;
       expect(await cli(["nosuchthing"])).toBe(1);
-      expect(err()).toContain(t.usage.unknownCommand("nosuchthing"));
+      expect(err()).toContain(t.usage.unknownCommand());
+      expect(err()).not.toContain("nosuchthing");
       expect(err()).toContain("penguin");
     }
+  });
+
+  it("suggests only a unique known command or option and never echoes the supplied token/value", async () => {
+    process.env.PENGUIN_LANG = "en";
+    expect(await cli(["versoin"])).toBe(1);
+    expect(err()).toContain("Did you mean version?");
+    expect(err()).not.toContain("versoin");
+
+    stderr.length = 0;
+    expect(await cli(["--versoin=credential-do-not-print"])).toBe(1);
+    expect(err()).toContain("Did you mean --version?");
+    expect(err()).not.toContain("versoin");
+    expect(err()).not.toContain("credential-do-not-print");
+  });
+
+  it("does not echo paths or secrets and refuses ambiguous or distant matches", async () => {
+    process.env.PENGUIN_LANG = "zh";
+    expect(await cli(["C:\\private\\api-key.txt"])).toBe(1);
+    expect(err()).toContain(getMessages("zh").usage.unknownCommand());
+    expect(err()).not.toContain("private");
+    expect(err()).not.toContain("api-key");
+    expect(err()).not.toContain("你是否想输入");
+
+    expect(suggestKnownToken("hat", ["cat", "bat"])).toBeUndefined();
+    expect(suggestKnownToken("nosuchthing", ["version", "server"])).toBeUndefined();
+    expect(suggestKnownToken("/private/secret", ["server"])).toBeUndefined();
   });
 });
 
@@ -116,6 +145,7 @@ describe("what must not change", () => {
 
 describe("commandForArgv", () => {
   const program = new Command().name("penguin");
+  program.option("--json").option("--server <url>");
   const schedule = program.command("schedule");
   const add = schedule.command("add <name>");
   const ls = program.command("ls");
@@ -126,13 +156,14 @@ describe("commandForArgv", () => {
     expect(commandForArgv(program, ["ls", "--json"])).toBe(ls);
   });
 
-  it("skips option flags and stops at the first non-command word", () => {
+  it("uses registered option arity and stops at unknown flags or positional values", () => {
     expect(commandForArgv(program, ["--json", "ls"])).toBe(ls);
     expect(commandForArgv(program, ["ls", "extra", "add"])).toBe(ls);
     expect(commandForArgv(program, [])).toBe(program);
     expect(commandForArgv(program, ["unknown"])).toBe(program);
-    // An option's value is a bare word too, and stops the walk — landing on the parent
-    // is the safe outcome, never a wrong command.
-    expect(commandForArgv(program, ["--server", "http://x", "ls"])).toBe(program);
+    expect(commandForArgv(program, ["--server", "config", "ls"])).toBe(ls);
+    // Unknown-option values that resemble subcommands cannot redirect the vocabulary owner.
+    expect(commandForArgv(program, ["--not-registered", "ls"])).toBe(program);
+    expect(commandForArgv(program, ["schedule", "--not-registered", "add"])).toBe(schedule);
   });
 });

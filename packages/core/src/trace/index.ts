@@ -1,5 +1,6 @@
 export { Writer, readTrace } from "./writer.js";
 export type { WriterOptions } from "./writer.js";
+export { BoundedStreamCapture } from "./bounded-capture.js";
 export {
   findLatestTraceFile,
   latestSessionId,

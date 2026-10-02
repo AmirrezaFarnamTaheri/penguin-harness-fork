@@ -46,7 +46,7 @@ Everything else that is not OmniMessage is Environment's management plane, descr
 
 ## LLMInterface
 
-The complete model-side contract is a single method:
+The required model-side method is:
 
 ```ts
 interface LLMInterface {
@@ -66,24 +66,23 @@ The generator yields `partial_*` fragments and complete messages, emits Token us
 
 ```ts
 interface LLMOutcome {
-  status: StopReason;   // completed | timeout | malformed | aborted | failed | auth
-  message?: string;     // failure detail: on failed/auth, and on timeout/malformed when a
-                        // concrete error was caught — carried onto request_end so the
-                        // errors panel shows the real reason behind a retried request
-  permanent?: boolean;  // marks a failed as deterministic (client-side rejection thrown before
-                        // any network I/O, e.g. fast_mode on a model without a fast tier):
-                        // the engine aborts with the message instead of retrying
+  status: StopReason; // completed | retryable | fatal | aborted
+  usage?: TokenCounts;
+  errorCode?: ErrorCode;
+  errorMessage?: string;
+  retryDelay?: { rawMs: number; source: "header" | "structured" | "text"; bufferedMs: number };
+  retryAccount?: { accountId?: string; rateLimited: boolean; poolUnavailableForMs?: number };
 }
 ```
 
+`errorCode` and `errorMessage` are copied to request events. Failed consumption is recorded when known. `retryDelay` and `retryAccount` are ephemeral engine metadata; account ids must be opaque, never credentials. An adapter can advertise `readonly retryPoolSize?: number` and implement `retrySameAccount?(): void` to participate in pool retry routing. This preference must respect account cooldown. Existing optional `keyRotator` and `rotateKey()` hooks remain available.
+
 | status | Meaning | Engine reaction |
 | --- | --- | --- |
-| `completed` | finished normally (token_usage already emitted) | proceed |
-| `timeout` | timeout / transport disconnect | auto-reconnect within the run |
-| `malformed` | response parse failure | auto-reconnect within the run |
-| `failed` | an error the classifier did not judge transient (params, …) | auto-reconnect within the run as well — the status is still reported as `failed`. Exception: with `permanent: true` (a deterministic client-side rejection, e.g. fast mode on a model without a fast tier) the run stops immediately with the message |
-| `aborted` | user interrupt | stop, hand back to the user |
-| `auth` | credentials rejected | stop, hand back to the user — the one LLM status that never retries; hosts gate input until the model's API key is updated |
+| `completed` | Finished normally | Continue |
+| `retryable` | Recoverable transport, parsing or account failure | Retry within the request's budget |
+| `fatal` | Definitive rejection, invalid input or no valid credential remains | Stop with the error detail |
+| `aborted` | User interruption | Return control to the user |
 
 Implementation constraints: never throw; no internal retries — reconnecting is the engine's job (see [The Agent Loop](/agent-loop)).
 

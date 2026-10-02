@@ -98,3 +98,12 @@ export {
   truncateKeepEnds,
 } from "./tool-call-repair.js";
 export type { ScavengedToolCall } from "./tool-call-repair.js";
+export { LengthPrefixedFrameParser } from "./frame-parser.js";
+export {
+  StreamReassembler,
+  ReasoningContentReassembler,
+  utf16IndexToByteIndex,
+} from "./stream-reassembler.js";
+export type { StreamDelta, ChannelDelta } from "./stream-reassembler.js";
+export { PoolRetryPolicy, maxRetryAttempts } from "./retry-policy.js";
+export type { RetryDecision, RetryFailure } from "./retry-policy.js";

@@ -24,8 +24,7 @@ export function quorumRoutes(deps: AppDeps): Hono<AppEnv> {
   }
 
   async function consensus(projectId: string) {
-    // The sync getSharedSwarmCoordinator uses a bare projectId key. Match cockpit HTTP/WS's
-    // root + projectId key instead, or these proposals would live in a second coordinator.
+    // Use the same resolved root and project identity as cockpit HTTP and WebSocket routes.
     const runtime = await getOrCreateProjectRuntime(projectId, {
       root: deps.config.root,
       authService: deps.authService,

@@ -74,6 +74,7 @@ import { goalOutcomeOf, goalProgressOf } from "./goal-events.js";
 import type { PendingApproval } from "./approvals.js";
 import type { ChannelHub } from "./channel.js";
 import type { ErrorSink } from "./error-recorder.js";
+import { serverLogger } from "./logger.js";
 import { LiveTailTracker } from "./live-tail.js";
 import { asSessionSource } from "./session-sources.js";
 import type { SessionSources } from "./session-sources.js";
@@ -672,7 +673,7 @@ export class SessionManager {
   private readonly now: () => Date;
 
   constructor(private readonly deps: SessionManagerDeps) {
-    this.log = deps.log ?? ((line) => console.error(line));
+    this.log = deps.log ?? ((line) => serverLogger.line(line, "error"));
     this.now = deps.now ?? (() => new Date());
     this.sweepTimer = setInterval(() => this.sweepIdle(), ENTRY_SWEEP_INTERVAL_MS);
     this.sweepTimer.unref?.();

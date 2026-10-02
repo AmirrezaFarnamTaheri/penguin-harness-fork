@@ -36,12 +36,12 @@
     "@prismshadow/penguin-cli": "workspace:*",
     "@prismshadow/penguin-core": "workspace:*",
     "@prismshadow/penguin-server": "workspace:*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.3",
     "electron": "^43.5.0",
     "electron-builder": "^26.16.1",
     "electron-updater": "^6.8.9",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }
 }

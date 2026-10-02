@@ -26,6 +26,7 @@ import {
   resolveModelEnv,
   catalogEntryFor,
   type SwarmEvent,
+  type SwarmRoleHandlers,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
 import type { ProjectService } from "../services/project-service.js";
@@ -82,6 +83,7 @@ function resolveKeyTarget(msg: Record<string, unknown>): string {
 export const RUNTIME_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 export interface CockpitWebSocketDeps {
+  swarmHandlers?: SwarmRoleHandlers;
   authService?: AuthService;
   projectService?: ProjectService;
   projectConfigService?: ProjectConfigService;
@@ -92,6 +94,7 @@ export interface CockpitWebSocketDeps {
 }
 
 export interface ProjectCockpitRuntime {
+  swarmHandlers?: SwarmRoleHandlers;
   projectId: string;
   coordinator: SwarmCoordinator;
   keyFleet: KeyFleetMonitor;
@@ -437,9 +440,38 @@ export async function createProjectShellGuardian(
 
 function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: string): string {
   if (deps.root) {
+    requireWorkspaceRoot(deps.root);
+    if (!isSafeCockpitProjectId(projectId))
+      throw new Error("Cockpit project id must be a single bounded path segment");
     return projectDir(deps.root, projectId);
   }
-  return deps.workspaceRoot ?? process.cwd();
+  return requireWorkspaceRoot(deps.workspaceRoot);
+}
+
+function requireWorkspaceRoot(root: string | undefined): string {
+  if (!root || !path.isAbsolute(root) || root.includes("\0"))
+    throw new Error("Cockpit runtime requires an explicit absolute project or workspace root");
+  return path.resolve(root);
+}
+
+/**
+ * Project ids become a directory under the data root when no ProjectService owns resolution.
+ * Accept exactly one bounded path segment: no separators, drive/stream colons, dot segments,
+ * or control characters, so a query-string id can never leave the configured root.
+ *
+ * Checked per UTF-16 unit rather than with a character class: a control-character range is easy
+ * to get wrong silently, and an invalid one is a SyntaxError that stops this module loading.
+ */
+export function isSafeCockpitProjectId(projectId: string): boolean {
+  if (projectId.length === 0 || projectId.length > 128) return false;
+  if (projectId === "." || projectId === ".." || path.isAbsolute(projectId)) return false;
+  for (let index = 0; index < projectId.length; index++) {
+    const code = projectId.charCodeAt(index);
+    // C0 controls (NUL included), DEL, `/`, `\` and `:` (drive letters and NTFS streams).
+    if (code <= 0x1f || code === 0x7f || code === 0x2f || code === 0x5c || code === 0x3a)
+      return false;
+  }
+  return true;
 }
 
 /**
@@ -460,6 +492,9 @@ export async function getOrCreateProjectRuntime(
   const runtimeKey = runtimeKeyFor(workspaceDir, projectId);
   const existing = projectRuntimes.get(runtimeKey);
   if (existing) {
+    // A runtime first created by a caller without trusted handlers (for example the quorum
+    // route) must adopt them when a configured host supplies them later.
+    if (deps.swarmHandlers !== undefined) existing.swarmHandlers = deps.swarmHandlers;
     if (existing.clients.size === 0) {
       scheduleRuntimeReap(existing, deps);
     } else {
@@ -470,7 +505,11 @@ export async function getOrCreateProjectRuntime(
 
   const inFlight = projectRuntimePromises.get(runtimeKey);
   if (inFlight) {
-    return inFlight;
+    if (deps.swarmHandlers === undefined) return inFlight;
+    return inFlight.then((runtime) => {
+      runtime.swarmHandlers = deps.swarmHandlers;
+      return runtime;
+    });
   }
 
   const creationPromise = (async () => {
@@ -489,6 +528,7 @@ export async function getOrCreateProjectRuntime(
       const clients = new Set<WebSocket>();
 
       const runtime: ProjectCockpitRuntime = {
+        swarmHandlers: deps.swarmHandlers,
         projectId,
         coordinator,
         keyFleet,
@@ -562,8 +602,9 @@ export async function getOrCreateProjectRuntime(
 
 function getOrCreateProjectRuntimeSync(
   projectId = DEFAULT_PROJECT_ID,
-  workspaceRoot = process.cwd(),
+  workspaceRoot?: string,
 ): ProjectCockpitRuntime {
+  workspaceRoot = requireWorkspaceRoot(workspaceRoot);
   const runtimeKey = runtimeKeyFor(workspaceRoot, projectId);
   let rt = projectRuntimes.get(runtimeKey);
   if (rt) {
@@ -574,7 +615,10 @@ function getOrCreateProjectRuntimeSync(
     }
     return rt;
   }
-  const coordinator = new SwarmCoordinator();
+  const coordinator = new SwarmCoordinator({
+    shellGuardian: new ShellGuardian(),
+    sessionId: `swarm-${projectId}-${Date.now()}`,
+  });
   const keyFleet = new KeyFleetMonitor();
   const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
   codeGraphWatcher.on("error", () => {});
@@ -594,22 +638,30 @@ function getOrCreateProjectRuntimeSync(
   return rt;
 }
 
-export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): SwarmCoordinator {
-  return getOrCreateProjectRuntimeSync(projectId).coordinator;
+export function getSharedSwarmCoordinator(
+  projectId = DEFAULT_PROJECT_ID,
+  workspaceRoot?: string,
+): SwarmCoordinator {
+  return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).coordinator;
 }
 
-export function getSharedKeyFleetMonitor(projectId = DEFAULT_PROJECT_ID): KeyFleetMonitor {
-  return getOrCreateProjectRuntimeSync(projectId).keyFleet;
+export function getSharedKeyFleetMonitor(
+  projectId = DEFAULT_PROJECT_ID,
+  workspaceRoot?: string,
+): KeyFleetMonitor {
+  return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).keyFleet;
 }
 
 export function getSharedCodeGraphWatcher(
-  workspaceRoot = process.cwd(),
+  workspaceRoot?: string,
   projectId = DEFAULT_PROJECT_ID,
 ): CodeGraphWatcher {
   return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).codeGraphWatcher;
 }
 
 export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocketDeps = {}): void {
+  // Fail before registering an upgrade listener or creating any runtime resources.
+  resolveProjectWorkspaceDir(deps, DEFAULT_PROJECT_ID);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   server.on("upgrade", async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -635,6 +687,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const since = parseSince(url);
     const requestedGeneration = url.searchParams.get("generation");
 
+    // Refuse before any project lookup or runtime creation; the id may become a path segment.
+    if (!isSafeCockpitProjectId(projectId)) {
+      return refuse(socket, 404, "Project Not Found");
+    }
+
     if (deps.projectService && authedUser) {
       try {
         deps.projectService.requireProjectAccess(authedUser.userId, projectId);
@@ -643,7 +700,15 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       }
     }
 
-    const runtime = await getOrCreateProjectRuntime(projectId, deps);
+    let runtime: ProjectCockpitRuntime;
+    try {
+      runtime = await getOrCreateProjectRuntime(projectId, deps);
+    } catch (err) {
+      deps.log?.(
+        `[cockpit-ws][${projectId}] runtime unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return refuse(socket, 500, "Internal Server Error");
+    }
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
       cancelRuntimeReap(runtime);
@@ -930,6 +995,22 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 : 3;
             const simulate = msg.simulate === true;
 
+            if (!simulate && !runtime.swarmHandlers?.onExecute) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "swarm_task_rejected",
+                  taskId,
+                  code: "swarm_handler_missing",
+                  status: 400,
+                  reason:
+                    "No task handler configured for this project; request simulation explicitly.",
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
             if (runtime.coordinator.getPendingTaskCount() >= 10) {
               safeSend(
                 ws,
@@ -956,14 +1037,17 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
             // Execute task asynchronously on this project's coordinator
             void runtime.coordinator
-              .runTask({
-                id: taskId,
-                goal,
-                files,
-                proposedCommands,
-                maxRounds,
-                simulate,
-              })
+              .runTask(
+                {
+                  id: taskId,
+                  goal,
+                  files,
+                  proposedCommands,
+                  maxRounds,
+                  simulate,
+                },
+                runtime.swarmHandlers,
+              )
               .then((res: unknown) => {
                 if ((res as { status?: string })?.status !== "settled") {
                   publish(runtime, {
@@ -1017,9 +1101,9 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 }
 
 export function buildCockpitSnapshot(
-  coordinator: SwarmCoordinator = getSharedSwarmCoordinator(),
-  keyFleet: KeyFleetMonitor = getSharedKeyFleetMonitor(),
-  codeGraphWatcher: CodeGraphWatcher = getSharedCodeGraphWatcher(),
+  coordinator: SwarmCoordinator,
+  keyFleet: KeyFleetMonitor,
+  codeGraphWatcher: CodeGraphWatcher,
   projectId = DEFAULT_PROJECT_ID,
 ) {
   return {

@@ -995,8 +995,9 @@ function defaultBuiltinTools(): ToolDefinitionConfig[] {
         "Record what this project's work taught you as durable findings, and read them back " +
         "later — the knowledge plane shared across sessions and agents. `report` a claim with its " +
         "subjects and evidence (duplicates merge; your later report supersedes your earlier one), " +
-        "`query` finds claims by text/subject/status, `confirm`/`refute`/`supersede` move a claim " +
-        "through its lifecycle, `link` relates two claims, `events` replays what changed. Report " +
+        "`query` finds claims by text/subject/status, `archive` pages retained evictions, and " +
+        "`recall` retrieves full oversized records. `confirm`/`refute`/`supersede` move a claim " +
+        "through its lifecycle, `link` relates two claims, and `events` pages the change log. " +
         "findings as you go rather than at the end — a claim recorded with its evidence is " +
         "re-verifiable, and the graph is what the next session will read instead of your " +
         "now-expired context.",

@@ -18,6 +18,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { unzipSync, strFromU8, zipSync } from "fflate";
+import { assertNoZipSymlinks } from "../../services/zip-entry-types.js";
 import { Hono } from "hono";
 import {
   PLUGIN_NAME_PATTERN,
@@ -151,6 +152,7 @@ function parseHookArchive(archive: Buffer): ArchiveHook {
   let total = 0;
   let entries: Record<string, Uint8Array>;
   try {
+    assertNoZipSymlinks(new Uint8Array(archive));
     entries = unzipSync(new Uint8Array(archive), {
       filter: (file) => {
         if (file.name.endsWith("/")) return false;

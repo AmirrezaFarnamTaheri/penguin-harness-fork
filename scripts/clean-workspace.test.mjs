@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -69,6 +69,26 @@ test("report mode finds debris and deletes nothing", () => {
   assert.ok(main([], { root, log: () => {} }) === 0);
   // Re-scan: everything is still there, so the first scan really did not delete.
   assert.equal(scan(root).items.length, paths.length);
+});
+
+test("package-script separator preserves tracked and deliberately ignored files", () => {
+  const root = repo();
+  const tracked = join(root, "src/keep.ts");
+  fileAt(root, ".gitignore", ".data/\nnode_modules/\n");
+  const deliberate = fileAt(root, ".data/user-notes.txt", "keep these notes");
+  const cache = fileAt(root, "node_modules/.vite/deps/cache.json", "{}");
+
+  assert.equal(main([], { root, log: () => {} }), 0);
+  assert.deepEqual(
+    scan(root).items.map((item) => item.path),
+    ["node_modules/.vite"],
+  );
+  assert.ok(existsSync(cache));
+
+  assert.equal(main(["--", "--apply"], { root, log: () => {} }), 0);
+  assert.equal(existsSync(cache), false);
+  assert.ok(existsSync(tracked));
+  assert.ok(existsSync(deliberate));
 });
 
 test("refuses to delete a directory that contains a tracked file", () => {

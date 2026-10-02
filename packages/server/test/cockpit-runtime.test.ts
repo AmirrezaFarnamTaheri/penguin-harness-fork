@@ -13,6 +13,13 @@ import {
 afterEach(() => resetCockpitRuntimesForTesting());
 
 describe("cockpit runtime ownership", () => {
+  it("rejects missing and relative roots before constructing runtime resources", async () => {
+    await expect(getOrCreateProjectRuntime("missing-root")).rejects.toThrow("explicit absolute");
+    await expect(
+      getOrCreateProjectRuntime("relative-root", { workspaceRoot: "relative" }),
+    ).rejects.toThrow("explicit absolute");
+    expect(() => getSharedCodeGraphWatcher()).toThrow("explicit absolute");
+  });
   it("scopes the default project's topology to its own root, not the server CWD", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "cockpit-root-"));
     const workspace = projectDir(root, DEFAULT_PROJECT_ID);

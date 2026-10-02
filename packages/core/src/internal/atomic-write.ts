@@ -9,7 +9,9 @@
  * makes the replacement a single atomic step: a reader sees the old bytes or the new ones.
  */
 import path from "node:path";
-import { chmod, readlink, rename, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, open, readlink, rename, rm } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 
 /**
  * Cap on symlink hops when resolving a write target, matching the kernel's own `ELOOP`
@@ -19,9 +21,9 @@ const MAX_SYMLINK_HOPS = 40;
 
 export interface AtomicWriteOptions {
   /**
-   * Permission bits for the result. Rename replaces the inode, so an existing file's bits are
-   * not inherited — pass them (or the intended mode for a secret) to keep them. Applied with an
-   * explicit chmod, which the umask does not mask, so `0o600` really is `0o600`.
+   * Permission bits for the result. Defaults to an existing regular file's bits, or 0600
+   * for a new file. The temporary file is always created privately before final permissions
+   * are applied on its descriptor; explicit permissions are not masked by the umask.
    */
   mode?: number;
   signal?: AbortSignal;
@@ -42,25 +44,67 @@ export async function atomicWriteFile(
   opts: AtomicWriteOptions = {},
 ): Promise<void> {
   const dest = opts.followSymlinks === true ? await resolveWriteTarget(target) : target;
+  opts.signal?.throwIfAborted();
+  let mode = opts.mode;
+  if (mode === undefined) {
+    try {
+      const previous = await lstat(dest);
+      if (previous.isFile()) mode = previous.mode & 0o777;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
   const tmp = path.join(
     path.dirname(dest),
-    `.${path.basename(dest)}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`,
+    `.${path.basename(dest)}.tmp-${process.pid}-${randomUUID()}`,
   );
+  let ownsTemp = false;
   try {
-    await writeFile(tmp, content, {
-      ...(typeof content === "string" ? { encoding: "utf8" as const } : {}),
-      ...(opts.mode !== undefined ? { mode: opts.mode } : {}),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-      // Rename orders the directory entry, not the data behind it: without this fsync a power
-      // loss can commit the new name over blocks that never reached the disk, which is the
-      // zero-length file the whole exercise is meant to prevent.
-      flush: true,
-    });
-    if (opts.mode !== undefined) await chmod(tmp, opts.mode);
-    await rename(tmp, dest);
+    const handle = await open(tmp, "wx", 0o600);
+    ownsTemp = true;
+    try {
+      await handle.writeFile(content, {
+        ...(typeof content === "string" ? { encoding: "utf8" as const } : {}),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      });
+      opts.signal?.throwIfAborted();
+      await handle.chmod(mode ?? 0o600);
+      // Flush the contents and final permissions before publishing the replacement name.
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    opts.signal?.throwIfAborted();
+    await renameWithWindowsReaderRetry(tmp, dest);
   } catch (err) {
-    await rm(tmp, { force: true }).catch(() => undefined);
+    // Exclusive-create failure must never delete another writer's temporary file.
+    if (ownsTemp) await rm(tmp, { force: true }).catch(() => undefined);
     throw err;
+  }
+}
+
+/**
+ * Windows can transiently deny rename-over-existing while another process still has the old
+ * destination open for reading. The temp remains complete and private, so a short bounded retry
+ * preserves atomic publication without falling back to a truncate-and-copy replacement.
+ */
+async function renameWithWindowsReaderRetry(source: string, destination: string): Promise<void> {
+  const retryDelaysMs = [5, 10, 20, 40, 80, 160];
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const waitMs = retryDelaysMs[attempt];
+      if (
+        process.platform !== "win32" ||
+        waitMs === undefined ||
+        (code !== "EPERM" && code !== "EACCES" && code !== "EBUSY")
+      )
+        throw error;
+      await delay(waitMs);
+    }
   }
 }
 

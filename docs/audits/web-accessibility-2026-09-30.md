@@ -50,3 +50,24 @@ web suite and typecheck are also required before accepting follow-up changes.
 
 The audit covers the listed surfaces and states; it is not a claim that every route, browser,
 screen reader, or user preference has been manually certified.
+
+## Follow-up verification — 2026-10-01
+
+After F1 changed the menu search, panel search, form-control, and Guardian policy focus rings to
+solid `var(--accent-bg)` `:focus-visible` rings, the same browser audit passed on the current
+worktree. The initial E2E runner build of core/server/web succeeded; after installing the missing
+Playwright Chromium runtime, the single accessibility spec passed.
+
+| Surface | Axe violations | Axe manual-review items | Keyboard stops | Missing visible focus |
+| --- | ---: | ---: | ---: | ---: |
+| Chat + sidebar, light, desktop | 0 | 1 `color-contrast` rule | 43/43 | 0 |
+| System settings, light | 0 | 1 `color-contrast` rule | 27/27 | 0 |
+| System settings, dark | 0 | 1 `color-contrast` rule | 27/27 | 0 |
+| Agent settings, dark | 0 | 1 `color-contrast` rule | 43/43 | 0 |
+| Chat + sidebar, dark, mobile | 0 | 0 | 22/22 | 0 |
+
+The four desktop manual-review rows remain the same short SVG text and overlapping hover-action
+layer documented above; Axe reports no violations. The mobile pass has no incomplete rules and
+no horizontal overflow. Reproduction from the repository root in PowerShell:
+`$env:SKIP_BUILD='1'; & 'C:\Program Files\Git\bin\bash.exe' packages/web/e2e/run.sh a11y.spec.mjs`.
+This is local worktree evidence; it is not a new exact-head CI receipt.

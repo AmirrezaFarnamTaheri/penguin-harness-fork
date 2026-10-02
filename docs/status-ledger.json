@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "claims": [
+    {
+      "id": "atomic-credential-writer",
+      "status": "Shipped",
+      "implementation": "packages/core/src/internal/atomic-write.ts",
+      "links": [
+        "packages/core/test/atomic-write-security.test.ts",
+        "docs/audits/waves-1-2-progress-2026-10-01.md"
+      ],
+      "evidence": {
+        "kind": "runtime-chain",
+        "entryConfig": "packages/core/tsup.config.ts",
+        "chain": [
+          "packages/core/src/index.ts",
+          "packages/core/src/state/index.ts",
+          "packages/core/src/state/agent-vault.ts",
+          "packages/core/src/internal/atomic-write.ts"
+        ],
+        "symbol": "atomicWriteFile"
+      }
+    },
+    {
+      "id": "provider-retry-delay",
+      "status": "Shipped",
+      "implementation": "packages/core/src/llm/retry-delay.ts",
+      "links": [
+        "packages/docs/content/agent-loop.en.md",
+        "packages/core/test/llm/retry-delay.test.ts"
+      ],
+      "evidence": {
+        "kind": "runtime-chain",
+        "entryConfig": "packages/core/tsup.config.ts",
+        "chain": [
+          "packages/core/src/index.ts",
+          "packages/core/src/llm/index.ts",
+          "packages/core/src/llm/generative-model.ts",
+          "packages/core/src/llm/retry-delay.ts"
+        ],
+        "symbol": "parseProviderDelay"
+      }
+    },
+    {
+      "id": "memory-retention-policy",
+      "status": "Experimental/unconsumed",
+      "implementation": "packages/core/src/memory/retention.ts",
+      "reason": "R7 Option B: exported helpers have no production policy consumer; C2 owns any opt-in integration.",
+      "links": ["docs/audits/2026-09-29-unified.md", "tasks/execution-cards-1.md"]
+    },
+    {
+      "id": "snapshot-stream-reassembler",
+      "status": "Experimental/unconsumed",
+      "implementation": "packages/core/src/llm/stream-reassembler.ts",
+      "reason": "The snapshot/reset utility and reasoning ordering helper are exported and tested; no current provider adapter supplies snapshots to them.",
+      "links": ["packages/core/test/llm/stream-reassembler.test.ts", "tasks/plan.md"]
+    },
+    {
+      "id": "length-prefixed-frame-parser",
+      "status": "Experimental/unconsumed",
+      "implementation": "packages/core/src/llm/frame-parser.ts",
+      "reason": "The parser is exported and tested; no provider transport consumes it yet.",
+      "links": ["packages/core/test/llm/frame-parser.test.ts", "tasks/plan.md"]
+    },
+    {
+      "id": "bounded-stream-capture",
+      "status": "Experimental/unconsumed",
+      "implementation": "packages/core/src/trace/bounded-capture.ts",
+      "reason": "The generic byte capture is exported and tested but has no production caller. B1 uses TruncatedToolOutputCapture for UTF-8-safe Session archival and recall; it does not consume this trace primitive.",
+      "links": [
+        "packages/core/test/trace/bounded-capture.test.ts",
+        "packages/core/src/environment/truncated-tool-output-archive.ts",
+        "tasks/plan.md"
+      ]
+    }
+  ]
+}
