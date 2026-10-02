@@ -363,6 +363,14 @@ export class CommandSessionManager {
     const pid = session.pid;
     if (pid === null) return;
     this.pendingGuarded.set(session, pid);
+    // A session that finishes (or fails to spawn) before it is ever registered would otherwise
+    // stay pending forever: its pid would sit in the watchdog's file for the rest of the process
+    // lifetime -- adding to the pid-reuse surface -- and `live.size` could never reach zero, so
+    // the watchdog would never be stopped before dispose. Releasing the entry on exit leaves
+    // registered sessions to registry removal, which already refreshes the file.
+    session.onceExited(() => {
+      if (this.pendingGuarded.delete(session)) this.refreshGuardian();
+    });
     this.refreshGuardian();
   }
 
@@ -382,10 +390,13 @@ export class CommandSessionManager {
       if (pid !== null) live.add(pid);
     }
     this.guardedPids = live;
-    // A session that is no longer pending once it is registered; one that left the registry
-    // without registering was removed or killed, and its refresh already dropped it here.
+    // A session stops being pending once it is registered; one that left the registry without
+    // registering was removed or killed, and its refresh already dropped it here. An entry whose
+    // session is no longer running is dropped too, which covers a watcher cleared before it
+    // could fire (clearExitWatchers) and any other path that ends a session without an exit
+    // callback reaching us.
     for (const session of [...this.pendingGuarded.keys()]) {
-      if (registered.has(session)) this.pendingGuarded.delete(session);
+      if (registered.has(session) || !session.running) this.pendingGuarded.delete(session);
     }
     const pidFile = guardianPidFile(this.guardianDir);
     if (live.size === 0) {

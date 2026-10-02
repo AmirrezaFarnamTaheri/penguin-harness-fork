@@ -703,13 +703,31 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
     try {
       // Work the Session spawned does not outlive it (E10.3): a swarm task started from this
       // conversation keeps running on the project coordinator otherwise, invisible and
-      // unstoppable from any UI, until it reaches its round cap.
-      abortSwarmTasksForSession(row.sessionId, "session deleted");
-      if (runnings.length > 0) {
+      // unstoppable from any UI, until it reaches its round cap. Signalling is not enough before
+      // the files below are removed -- a step handler takes time to stop -- so the abort also
+      // hands back a promise for the task leaving its executor, and it is awaited here with the
+      // same bound as the run wait. A handler that does not stop in time is reported, not
+      // silently raced past.
+      const swarm = abortSwarmTasksForSession(row.sessionId, "session deleted");
+      const waits: Promise<void>[] = [swarm.settled];
+      if (runnings.length > 0) waits.push(Promise.allSettled(runnings).then(() => undefined));
+      if (waits.length > 0) {
+        let timedOut = false;
         await Promise.race([
-          Promise.allSettled(runnings).then(() => undefined),
-          new Promise<void>((resolve) => setTimeout(resolve, 5000).unref?.()),
+          Promise.all(waits).then(() => undefined),
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              timedOut = true;
+              resolve();
+            }, 5000).unref?.(),
+          ),
         ]);
+        if (timedOut) {
+          const unfinished = swarm.stopped > 0 ? "a swarm task" : "a Session run";
+          console.warn(
+            `[penguin] session ${row.sessionId} deletion proceeded after 5s with ${unfinished} still stopping`,
+          );
+        }
       }
       await deps.traceService.deleteSessionTraces(row.projectId, row.agentId, row.sessionId);
       // The session-level scratchpad (model temp files + input images saved to disk for image-unsupported models) is deleted along with the session.

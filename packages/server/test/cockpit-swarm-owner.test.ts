@@ -84,12 +84,12 @@ describe("swarm tasks are owned by the Session that started them", () => {
     await sleep(100);
 
     // A deletion for a Session that owns neither task stops neither.
-    expect(abortSwarmTasksForSession("session-3", "session deleted")).toBe(0);
+    expect(abortSwarmTasksForSession("session-3", "session deleted").stopped).toBe(0);
     expect(ownerSawAbort).toBe(false);
     expect(otherSawAbort).toBe(false);
 
     // The owner's deletion stops exactly the owner's task, in whichever project it lives.
-    expect(abortSwarmTasksForSession("session-1", "session deleted")).toBe(1);
+    expect(abortSwarmTasksForSession("session-1", "session deleted").stopped).toBe(1);
     const ownerResult = await ownerRun;
     expect(ownerSawAbort).toBe(true);
     expect(ownerResult.status).toBe("timed_out");
@@ -99,7 +99,7 @@ describe("swarm tasks are owned by the Session that started them", () => {
     expect(other.coordinator.getActiveTaskId()).toBe("task-other");
 
     // And the other Session's deletion reaches its own task, not the first one again.
-    expect(abortSwarmTasksForSession("session-2", "session deleted")).toBe(1);
+    expect(abortSwarmTasksForSession("session-2", "session deleted").stopped).toBe(1);
     const otherResult = await otherRun;
     expect(otherSawAbort).toBe(true);
     expect(otherResult.status).toBe("timed_out");
@@ -109,7 +109,7 @@ describe("swarm tasks are owned by the Session that started them", () => {
     const project = "swarm-unowned";
     const runtime = await getOrCreateProjectRuntime(project, { root });
 
-    expect(abortSwarmTasksForSession("session-1", "session deleted")).toBe(0);
+    expect(abortSwarmTasksForSession("session-1", "session deleted").stopped).toBe(0);
 
     let sawAbort = false;
     const run = runtime.coordinator.runTask(
@@ -120,7 +120,7 @@ describe("swarm tasks are owned by the Session that started them", () => {
     );
     await sleep(100);
     // An untagged task belongs to no Session; deletion must not stop work it cannot attribute.
-    expect(abortSwarmTasksForSession("session-1", "session deleted")).toBe(0);
+    expect(abortSwarmTasksForSession("session-1", "session deleted").stopped).toBe(0);
     expect(sawAbort).toBe(false);
     expect(runtime.coordinator.abort("operator stop")).toBe(true);
     await run;

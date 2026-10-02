@@ -53,6 +53,22 @@ function killGroup(pid: number): void {
   }
 }
 
+describe("the shipped guardian program", () => {
+  it("sweeps process groups only, never a bare pid (CR: pid reuse)", () => {
+    // The pid file can name a group whose leader has exited, so the pid may already belong to an
+    // unrelated process. The group form (`kill(-pid)`) cannot reach a reused pid that is not the
+    // leader of that group; the bare-pid form would. Pinned on the source that is actually
+    // executed (`node -e <source>`), not on a copy.
+    expect(PARENT_DEATH_GUARDIAN_SOURCE).toContain('process.kill(-pid, "SIGKILL")');
+    // (The `process.kill(pid, 0)` liveness probe is fine: signal 0 delivers nothing.)
+    expect(PARENT_DEATH_GUARDIAN_SOURCE).not.toMatch(/process\.kill\(\s*pid\s*,\s*["']/);
+    // ...and the sweep is driven by the sanitised list, so a corrupted file still cannot turn
+    // into a dangerous target.
+    expect(PARENT_DEATH_GUARDIAN_SOURCE).toContain("readGroups()");
+    expect(PARENT_DEATH_GUARDIAN_SOURCE).toContain("pid > 1");
+  });
+});
+
 describe("guardian pid-file parsing", () => {
   it("accepts only plausible group-leader pids", () => {
     // The negative/zero/low cases matter: `kill(-1, SIGKILL)` reaches the whole session, so a
@@ -119,6 +135,32 @@ describe("manager wiring for the watchdog (E10.1)", () => {
     manager.dispose();
     expect(manager.guardedProcessGroupIds()).toEqual([]);
     expect(await fs.readFile(pidFile, "utf8").catch(() => null)).toBeNull();
+  });
+
+  it("releases a pid whose session ended before it was ever registered (CR)", async () => {
+    if (!guardianSupported()) return;
+    const dir = await fs.mkdtemp(path.join(tmpdir(), "guardian-pending-"));
+    try {
+      const stops: number[] = [];
+      const manager = new CommandSessionManager({
+        guardianDir: dir,
+        guardianSpawn: (opts) => {
+          stops.push(opts.pidFile.length);
+          return { pid: 4242, stop: () => (stops.length -= 0) };
+        },
+      });
+      const pidFile = guardianPidFile(dir);
+      // A short command that finishes inside the spawn window and is never registered: the old
+      // behaviour left its pid in the watchdog's file for the rest of the process lifetime.
+      const short = manager.spawn({ cmd: "true", cwd: dir });
+      await sleep(150);
+      expect(await fs.readFile(pidFile, "utf8").catch(() => "")).toBe("");
+      expect(manager.guardedProcessGroupIds()).toEqual([]);
+      expect(short.pid).not.toBeNull();
+      await manager.dispose();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    }
   });
 
   it("stays out of the way when no scratchpad directory is configured", async () => {

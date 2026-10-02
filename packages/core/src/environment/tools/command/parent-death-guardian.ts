@@ -66,13 +66,15 @@ function readGroups() {
 }
 function sweep() {
   for (const pid of readGroups()) {
-    // The group id equals the leader's pid (see ManagedSession's detached spawn). Kill the
-    // group; fall back to the single process if the group is already gone or was never one.
+    // The group id equals the leader's pid (see ManagedSession's detached spawn), and the pid
+    // file can list a row whose process has already exited, so the pid may since have been
+    // reused by an unrelated process. The group form only reaches a process group whose pgid is
+    // exactly that pid: a reused pid is a new process, not the leader of this group, so the
+    // group form either hits the command's own group or nothing at all. Signalling the bare pid
+    // would hit whatever now owns it, which is why there is deliberately no single-pid fallback
+    // -- every guarded command is spawned detached on POSIX, so the group form is sufficient.
     try {
       process.kill(-pid, "SIGKILL");
-    } catch {}
-    try {
-      process.kill(pid, "SIGKILL");
     } catch {}
   }
 }

@@ -123,6 +123,17 @@ export interface SwarmExecutionResult {
   log: string[];
 }
 
+/**
+ * What a Session-scoped abort did: whether a running task was signalled, and a promise for the
+ * owned task actually leaving the executor. The Session-deletion path waits on the promise (with
+ * a bound) before it removes the Session's files; without it, a step handler that takes a moment
+ * to stop would still be running against files that no longer exist.
+ */
+export interface SwarmSessionAbortOutcome {
+  stopped: boolean;
+  settled: Promise<void>;
+}
+
 export interface SwarmRoleHandlers {
   onPlan?: (
     task: SwarmTaskDefinition,
@@ -167,6 +178,16 @@ export class SwarmCoordinator {
   private activeOwnerSessionId: string | null = null;
   private logMessages: string[] = [];
   private taskQueue: Promise<unknown> = Promise.resolve();
+  /**
+   * Owner Sessions whose queued work must not start. `runTask` adds a task to the FIFO and only
+   * then does `executeTask` run, so a Session deleted while another task is active would
+   * otherwise have its queued task start afterwards, invisible and unstoppable. The set is
+   * latched on abort and consulted at the head of `executeTask`.
+   */
+  private readonly cancelledOwnerSessions = new Set<string>();
+  /** Settles when the task currently owned by a Session leaves `executeTask` (its finally). */
+  private activeTaskSettled: Promise<void> = Promise.resolve();
+  private activeTaskSettle: (() => void) | null = null;
   private loopOptions: LoopDetectorOptions;
   private readonly maxPendingTasks: number;
   private pendingTaskCount = 0;
@@ -427,15 +448,25 @@ export class SwarmCoordinator {
   }
 
   /**
-   * Stops the running task only when it belongs to `sessionId` (E10.3). Returns whether a task
-   * was actually stopped, so a Session-deletion path can call this for every project's
-   * coordinator and let exactly the owner's coordinator act. A task with no recorded owner
-   * (an older caller that did not pass one) is never aborted by a session id.
+   * Stops the work a Session owns (E10.3): the task currently running for it, and any task of its
+   * still waiting in the FIFO. Returns `stopped` (whether a running task was actually signalled)
+   * and `settled` (a promise for the owned task leaving the executor), so a Session-deletion path
+   * can both act on exactly the owner's coordinator and wait for the work to stop before it
+   * removes the Session's files. A task with no recorded owner (an older caller that did not pass
+   * one) is never aborted by a session id.
    */
-  public abortTasksForSession(sessionId: string, reason: string): boolean {
-    if (this.activeTaskId === null) return false;
-    if (this.activeOwnerSessionId === null || this.activeOwnerSessionId !== sessionId) return false;
-    return this.abort(reason);
+  public abortTasksForSession(sessionId: string, reason: string): SwarmSessionAbortOutcome {
+    const ownsActive =
+      this.activeOwnerSessionId !== null && this.activeOwnerSessionId === sessionId;
+    const ownsActiveId = ownsActive && this.activeTaskId !== null;
+    // Latched unconditionally: a task queued for this Session must not start later even while
+    // some other Session's task is the active one, and even if nothing is active right now (a
+    // queued task whose `executeTask` has not been reached yet).
+    this.cancelledOwnerSessions.add(sessionId);
+    const stopped = ownsActiveId ? this.abort(reason) : false;
+    const settled = ownsActiveId ? this.activeTaskSettled : Promise.resolve();
+    if (!stopped) this.record(`Queued work for the deleted Session will not start: ${reason}`);
+    return { stopped, settled };
   }
 
   /**
@@ -502,13 +533,44 @@ export class SwarmCoordinator {
     return queued as Promise<SwarmExecutionResult>;
   }
 
+  /**
+   * The result a task gets when it never starts (its owner Session was deleted while it waited).
+   * Shaped like every other terminal result so callers keep one code path: `unhandled` with the
+   * reason in the log, rather than a rejection the caller did not ask for.
+   */
+  private unstartedResult(taskId: string, reason: string): SwarmExecutionResult {
+    return {
+      taskId,
+      status: "unhandled",
+      rounds: 0,
+      artifacts: [],
+      safetyFindings: [],
+      log: [`[${new Date().toISOString()}] ${reason}`],
+    };
+  }
+
   private async executeTask(
     task: SwarmTaskDefinition,
     handlers?: SwarmRoleHandlers,
   ): Promise<SwarmExecutionResult> {
     const taskId = task.id ?? `task-${randomUUID().slice(0, 8)}`;
+    // The Session that queued this task may have been deleted while an earlier task was running
+    // (or before the queue reached it). Starting anyway would run work with no owner left to see
+    // or stop it, so the task is reported as unhandled instead -- and reported, not thrown, so
+    // the caller's promise still resolves.
+    const owner = task.ownerSessionId ?? null;
+    if (owner !== null && this.cancelledOwnerSessions.has(owner)) {
+      this.record(`Task '${taskId}' not started: its owner Session was deleted`);
+      return this.unstartedResult(
+        taskId,
+        "Task not started: the Session that queued it was deleted",
+      );
+    }
     this.activeTaskId = taskId;
-    this.activeOwnerSessionId = task.ownerSessionId ?? null;
+    this.activeOwnerSessionId = owner;
+    this.activeTaskSettled = new Promise<void>((resolve) => {
+      this.activeTaskSettle = resolve;
+    });
     this.logMessages = [];
     // Cleared at entry, not left to the finally: a coordinator is reusable, and a latch left
     // over from a previous task would stop this one before its first step.
@@ -940,6 +1002,9 @@ export class SwarmCoordinator {
       this.watchdog.stop();
       this.activeTaskId = null;
       this.activeOwnerSessionId = null;
+      this.activeTaskSettle?.();
+      this.activeTaskSettle = null;
+      this.activeTaskSettled = Promise.resolve();
       for (const a of this.agents.values()) {
         a.status = "idle";
         a.currentTask = undefined;

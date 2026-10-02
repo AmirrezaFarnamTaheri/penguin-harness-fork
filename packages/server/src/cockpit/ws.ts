@@ -698,12 +698,27 @@ export function getSharedSwarmCoordinator(
  * left to show it. Only the coordinator whose *active task* carries this owner id acts; every
  * other runtime answers false and is left alone. Returns how many tasks were actually stopped.
  */
-export function abortSwarmTasksForSession(sessionId: string, reason: string): number {
+export function abortSwarmTasksForSession(
+  sessionId: string,
+  reason: string,
+): SwarmSessionAbortSummary {
   let stopped = 0;
+  const waiting: Promise<void>[] = [];
   for (const runtime of projectRuntimes.values()) {
-    if (runtime.coordinator.abortTasksForSession(sessionId, reason)) stopped += 1;
+    const outcome = runtime.coordinator.abortTasksForSession(sessionId, reason);
+    if (outcome.stopped) stopped += 1;
+    waiting.push(outcome.settled);
   }
-  return stopped;
+  // Every coordinator is asked, not just the owner's: the queued-work latch is per coordinator,
+  // and a Session's task may be waiting in a runtime that is not currently executing it.
+  return { stopped, settled: Promise.all(waiting).then(() => undefined) };
+}
+
+/** What `abortSwarmTasksForSession` reports: how many tasks were signalled, and a promise for them. */
+export interface SwarmSessionAbortSummary {
+  stopped: number;
+  /** Resolves once every signalled task has left its executor (immediately when none was running). */
+  settled: Promise<void>;
 }
 
 export function getSharedKeyFleetMonitor(
