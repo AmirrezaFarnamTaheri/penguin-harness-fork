@@ -177,11 +177,13 @@ describe("scope-aware findings store", () => {
       await fs.writeFile(s.scope.filePath, raw, { mode: 0o600 });
       const read = await s.read();
       expect(read.recovery?.state).toBe("read-only");
+      expect(read.recovery?.reason).toBe(name === "version" ? "unsupported-version" : "corrupt");
+      expect(read.recovery?.quarantineError).toBeUndefined();
       expect(read.graph).toBeNull();
       expect(await fs.readFile(read.recovery!.quarantinePath!, "utf8")).toBe(raw);
-      await expect(
-        s.update(undefined, (graph) => graph.report({ title: "Unsafe repair" })),
-      ).rejects.toBeInstanceOf(FindingsRecoveryError);
+      const mutation = vi.fn((graph: FindingsGraph) => graph.report({ title: "Unsafe repair" }));
+      await expect(s.update(undefined, mutation)).rejects.toBeInstanceOf(FindingsRecoveryError);
+      expect(mutation).not.toHaveBeenCalled();
       expect(await fs.readFile(s.scope.filePath, "utf8")).toBe(raw);
       const page = await s.rawPage(0, 5);
       expect(Buffer.from(page.data, "base64").toString()).toBe(raw.slice(0, 5));
@@ -203,28 +205,88 @@ describe("scope-aware findings store", () => {
     }
   });
 
-  it("fails closed when reading or quarantining is denied", async () => {
-    const s = store();
+  it("keeps readable corrupt findings read-only when quarantine creation is denied", async () => {
+    const s = store("quarantine-denied");
+    const original = Buffer.from("garbage");
     await fs.mkdir(path.dirname(s.scope.filePath), { recursive: true });
-    await fs.writeFile(s.scope.filePath, "garbage");
+    await fs.writeFile(s.scope.filePath, original, { mode: 0o600 });
+    const authorityPath = path.join(
+      await fs.realpath(path.dirname(s.scope.filePath)),
+      path.basename(s.scope.filePath),
+    );
+    const deniedQuarantines: string[] = [];
     const open = fs.open.bind(fs);
-    vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
-      if (String(args[0]).includes(".quarantine-"))
-        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
-      return open(...args);
+    const openSpy = vi
+      .spyOn(fs, "open")
+      .mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+        if (String(args[0]).startsWith(`${authorityPath}.quarantine-`) && args[1] === "wx") {
+          deniedQuarantines.push(String(args[0]));
+          throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+        }
+        return open(...args);
+      });
+    const read = await s.read();
+    expect(openSpy).toHaveBeenCalledWith(authorityPath, "r");
+    expect(read.graph).toBeNull();
+    expect(read.recovery).toMatchObject({
+      state: "read-only",
+      reason: "corrupt",
+      quarantineError: "permission denied",
     });
-    expect((await s.read()).recovery?.quarantineError).toContain("permission denied");
-    await expect(
-      s.update(undefined, (graph) => graph.report({ title: "Rejected" })),
-    ).rejects.toBeInstanceOf(FindingsRecoveryError);
-    expect(await fs.readFile(s.scope.filePath, "utf8")).toBe("garbage");
-    vi.restoreAllMocks();
-    vi.spyOn(fs, "open").mockImplementation(async (...args: Parameters<typeof fs.open>) => {
-      if (String(args[0]) === s.scope.filePath)
-        throw Object.assign(new Error("unreadable"), { code: "EACCES" });
-      return open(...args);
+    expect(read.recovery?.quarantinePath).toBeUndefined();
+    const mutation = vi.fn((graph: FindingsGraph) => graph.report({ title: "Rejected" }));
+    await expect(s.update(undefined, mutation)).rejects.toBeInstanceOf(FindingsRecoveryError);
+    expect(mutation).not.toHaveBeenCalled();
+    expect(deniedQuarantines).toHaveLength(2);
+    expect(new Set(deniedQuarantines).size).toBe(1);
+    expect(await fs.readFile(s.scope.filePath)).toEqual(original);
+    expect(Buffer.from((await s.rawPage()).data, "base64")).toEqual(original);
+    expect(await fs.readdir(path.dirname(s.scope.filePath))).toEqual(["findings.json"]);
+    expect(FindingsStore.cacheStats().pending).toBe(0);
+  });
+
+  it("classifies a denied canonical authority read as unreadable and rejects mutation", async () => {
+    const actual = store("read-denied");
+    const original = Buffer.from(JSON.stringify(new FindingsGraph().exportSnapshot()));
+    await fs.mkdir(path.dirname(actual.scope.filePath), { recursive: true });
+    await fs.writeFile(actual.scope.filePath, original, { mode: 0o600 });
+    const authorityPath = path.join(
+      await fs.realpath(path.dirname(actual.scope.filePath)),
+      path.basename(actual.scope.filePath),
+    );
+    // A lexical alias reproduces canonical-path changes without requiring symlink privileges.
+    const s = new FindingsStore({
+      ...actual.scope,
+      filePath: `${path.dirname(actual.scope.filePath)}${path.sep}.${path.sep}${path.basename(actual.scope.filePath)}`,
     });
-    expect((await s.read()).recovery?.reason).toBe("unreadable");
+    expect(s.scope.filePath).not.toBe(authorityPath);
+    const open = fs.open.bind(fs);
+    const openSpy = vi
+      .spyOn(fs, "open")
+      .mockImplementation(async (...args: Parameters<typeof fs.open>) => {
+        if (String(args[0]) === authorityPath && args[1] === "r")
+          throw Object.assign(new Error("unreadable"), { code: "EACCES" });
+        return open(...args);
+      });
+    const read = await s.read();
+    expect(openSpy).toHaveBeenCalledWith(authorityPath, "r");
+    expect(read.graph).toBeNull();
+    expect(read.recovery).toMatchObject({ state: "read-only", reason: "unreadable" });
+    expect(read.recovery?.message).toContain("unreadable");
+    expect(read.recovery?.quarantinePath).toBeUndefined();
+    expect(read.recovery?.quarantineError).toBeUndefined();
+    const mutation = vi.fn((graph: FindingsGraph) => graph.report({ title: "Rejected" }));
+    await expect(s.update(undefined, mutation)).rejects.toBeInstanceOf(FindingsRecoveryError);
+    expect(mutation).not.toHaveBeenCalled();
+    await expect(s.rawPage()).rejects.toMatchObject({ code: "EACCES" });
+    expect(
+      openSpy.mock.calls.filter(
+        ([target, flags]) => String(target) === authorityPath && flags === "r",
+      ),
+    ).toHaveLength(3);
+    expect(await fs.readFile(actual.scope.filePath)).toEqual(original);
+    expect(await fs.readdir(path.dirname(actual.scope.filePath))).toEqual(["findings.json"]);
+    expect(FindingsStore.cacheStats().pending).toBe(0);
   });
 
   it("requires a human/reason/current revision to reset and records a preserved backup in the audit", async () => {

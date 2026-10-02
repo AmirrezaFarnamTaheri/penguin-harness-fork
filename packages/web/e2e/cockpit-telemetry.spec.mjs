@@ -32,12 +32,19 @@ const json = (route, body, status = 200) =>
 const state = async (page) =>
   JSON.parse(await page.getByLabel("Telemetry", { exact: true }).textContent());
 
-async function boot(page, telemetry = (route) => json(route, snapshot())) {
+async function boot(page, telemetry = (route) => json(route, snapshot()), { pauseClock = false } = {}) {
   const sockets = [];
   const requests = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.clock.install();
+  if (pauseClock) {
+    await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+    // Pause before mounting: reconnect timers advance only when the test drives them,
+    // so a slow CI assertion cannot miss HTTP mode by allowing an automatic reconnect.
+    await page.clock.pauseAt(new Date("2026-01-02T00:00:00Z"));
+  } else {
+    await page.clock.install();
+  }
   await page.route("http://cockpit.test/", (route) =>
     route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
   );
@@ -291,23 +298,34 @@ test("aborted old-project commands never clear the current prompt or publish sta
 });
 
 test("disconnected fallback polls repeatedly and stops after unmount", async ({ page }) => {
-  const { sockets, requests } = await boot(page);
+  const { sockets, requests, errors } = await boot(page, undefined, { pauseClock: true });
   await select(page);
-  sockets[0].close();
+  let unavailable = true;
+  await page.routeWebSocket("**/api/cockpit/stream?*", (ws) => {
+    sockets.push(ws);
+    if (unavailable) return ws.close();
+  });
+  await sockets[0].close();
   await expect.poll(async () => (await state(page)).transport).toBe("http");
-  const afterClose = requests.length;
-  await page.clock.runFor(5000);
-  await expect.poll(() => requests.length).toBeGreaterThan(afterClose);
-  await expect.poll(() => sockets.length).toBe(2);
-  sockets[1].close();
-  await expect.poll(async () => (await state(page)).transport).toBe("http");
-  const afterRetry = requests.length;
-  await page.clock.runFor(5000);
-  await expect.poll(() => requests.length).toBeGreaterThan(afterRetry);
+  for (let pollWindow = 0; pollWindow < 2; pollWindow++) {
+    const beforePoll = requests.length;
+    await page.clock.runFor(30000);
+    await expect.poll(() => requests.length).toBeGreaterThan(beforePoll);
+    await expect.poll(async () => (await state(page)).transport).toBe("http");
+  }
+  unavailable = false;
+  await page.clock.runFor(30000);
+  await expect.poll(async () => (await state(page)).transport).toBe("ws");
+  const afterRecovery = requests.length;
+  await page.clock.runFor(30000);
+  expect(requests).toHaveLength(afterRecovery);
   await page.getByRole("button", { name: "Unmount telemetry" }).click();
   const finalRequests = requests.length;
-  await page.clock.runFor(20000);
+  const finalSockets = sockets.length;
+  await page.clock.runFor(60000);
   expect(requests).toHaveLength(finalRequests);
+  expect(sockets).toHaveLength(finalSockets);
+  expect(errors).toEqual([]);
 });
 
 test("a delayed REST snapshot cannot overwrite newer WebSocket data", async ({ page }) => {

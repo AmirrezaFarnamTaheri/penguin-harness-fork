@@ -157,6 +157,7 @@ export class CodeGraphWatcher extends EventEmitter {
   private degradationWarned = false;
   // Coalesced dirty paths set to prevent timer starvation and handle burst writes efficiently
   private dirtyPaths = new Set<string>();
+  private dirtyDirectories = new Set<string>();
   private flushTimer: NodeJS.Timeout | null = null;
   private isFlushing: boolean = false;
   private trackedFiles = new Set<string>();
@@ -348,6 +349,12 @@ export class CodeGraphWatcher extends EventEmitter {
    * rename in progress, a spurious event) removes nothing.
    */
   public sweepRemovedDirectory(dirFullPath: string): void {
+    for (const watchedDir of this.dirWatchers.keys()) {
+      if (watchedDir !== dirFullPath && !watchedDir.startsWith(`${dirFullPath}${path.sep}`)) {
+        continue;
+      }
+      if (!fs.existsSync(watchedDir)) this.closeDirectoryWatcher(watchedDir);
+    }
     const prefix = path.relative(this.rootDir, dirFullPath).replace(/\\/g, "/");
     for (const rel of Array.from(this.trackedFiles)) {
       if (rel !== prefix && !rel.startsWith(`${prefix}/`)) continue;
@@ -485,7 +492,14 @@ export class CodeGraphWatcher extends EventEmitter {
     let watcher: fs.FSWatcher;
     try {
       watcher = fs.watch(resolveWatchDir(dir), (_eventType: string, filename: string | null) => {
-        if (!filename || this.isClosed) return;
+        if (this.isClosed) return;
+        if (!filename) {
+          // Node permits unnamed notifications even on macOS. Reconcile the watched
+          // directory through the same coalesced flush rather than losing its changes.
+          this.dirtyDirectories.add(dir);
+          this.scheduleFlush();
+          return;
+        }
 
         const fullPath = path.join(dir, filename);
         const relPath = path.relative(this.rootDir, fullPath).replace(/\\/g, "/");
@@ -502,13 +516,15 @@ export class CodeGraphWatcher extends EventEmitter {
           if (!this.isPathIgnored(relPath)) this.discoverDirectory(fullPath);
           return;
         }
-        if (this.dirWatchers.has(fullPath)) this.closeDirectoryWatcher(fullPath);
-        if (!exists && !this.hasSupportedExtension(relPath)) {
+        const wasWatchedDirectory = this.dirWatchers.has(fullPath);
+        if (wasWatchedDirectory) this.closeDirectoryWatcher(fullPath);
+        if (wasWatchedDirectory || (!exists && !this.hasSupportedExtension(relPath))) {
           // A watched directory was deleted or moved away. Its files are reported individually
           // on some platforms only; sweep the rest out so they cannot outlive the directory.
           // Extension-bearing entries are handled by the dirty-path flush below instead, so a
           // deleted file is not removed and announced twice.
           this.sweepRemovedDirectory(fullPath);
+          if (wasWatchedDirectory && !exists) return;
         }
         if (this.isPathIgnored(relPath) || !this.hasSupportedExtension(relPath)) return;
 
@@ -580,7 +596,13 @@ export class CodeGraphWatcher extends EventEmitter {
     const BATCH_SIZE = 10;
 
     try {
-      while (this.dirtyPaths.size > 0 && !this.isClosed) {
+      while ((this.dirtyPaths.size > 0 || this.dirtyDirectories.size > 0) && !this.isClosed) {
+        const directory = this.dirtyDirectories.values().next().value;
+        if (directory !== undefined) {
+          this.dirtyDirectories.delete(directory);
+          this.sweepRemovedDirectory(directory);
+          if (fs.existsSync(directory)) this.discoverDirectory(directory);
+        }
         const slice: string[] = [];
         for (const p of this.dirtyPaths) {
           slice.push(p);
@@ -597,14 +619,18 @@ export class CodeGraphWatcher extends EventEmitter {
           }
         }
 
-        if (this.dirtyPaths.size > 0 && !this.isClosed) {
+        if ((this.dirtyPaths.size > 0 || this.dirtyDirectories.size > 0) && !this.isClosed) {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
       }
     } finally {
       this.isFlushing = false;
       // If new dirty paths arrived while processing the final slice, schedule next pass
-      if (this.dirtyPaths.size > 0 && !this.flushTimer && !this.isClosed) {
+      if (
+        (this.dirtyPaths.size > 0 || this.dirtyDirectories.size > 0) &&
+        !this.flushTimer &&
+        !this.isClosed
+      ) {
         this.flushTimer = setTimeout(() => {
           this.flushTimer = null;
           void this.flushDirtyPaths();
@@ -634,6 +660,7 @@ export class CodeGraphWatcher extends EventEmitter {
       this.flushTimer = null;
     }
     this.dirtyPaths.clear();
+    this.dirtyDirectories.clear();
 
     if (this.fsWatcher) {
       try {
