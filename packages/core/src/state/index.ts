@@ -14,6 +14,9 @@ export * from "./model-catalog.js";
 // serves both; the matcher that reads them is core-internal).
 export * from "./command-policy-defaults.js";
 export * from "./project-config.js";
+// Foreign-config ownership + transaction contract (H1): ownership proof, version gating, and a
+// recoverable backup/atomic-write/readback/restore sequence for files we did not author.
+export * from "./foreign-config.js";
 export * from "./agent-state.js";
 export * from "./agent-vault.js";
 export * from "./memory.js";
