@@ -126,5 +126,27 @@ acceptance remains open. None of these waves is declared complete by local check
 
 The core `dist/` build used by the server is retained. The workspace cleanup report found
 nothing disposable; its apply pass was also run. User data and existing Rust build caches
-are preserved. All test/typecheck/build processes started for this review have exited;
+are preserved. All test/typecheck/build processes started for that review have exited;
 no development server was launched.
+
+## Follow-up — created-Project refresh failure (2026-10-03)
+
+**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; local
+candidate changes `packages/web/src/components/layout/sidebar.tsx` and adds the small
+`project-create-flow` helper and test. Linux x64, Node `v22.22.3`, pnpm `11.18.0`; exact-candidate
+CI is pending.
+
+**Finding/change:** the sidebar detached `reloadProjects().then(selectCreatedProject)` after a
+successful create. If the follow-up list refresh rejected during a transient disconnect, that
+promise had no rejection handler and selection correctly never occurred because the fresh list
+was not present. The new helper preserves the refresh-before-select ordering, catches the
+failure, and reports it through the existing localized error toast; it does not hide the created Project's
+refresh failure or select an ID that is absent from the current list.
+
+**Acceptance/verification:** the pure flow test proves selection happens only after a successful
+refresh and that refresh rejection is surfaced without escaping as an unhandled rejection or
+selecting the absent Project. `project-create-flow.test.ts` passed **2/2**. Web TypeScript check,
+Prettier, and `git diff --check` passed. Browser E2E was not run locally; rely on CI.
+
+**Residual:** exact-candidate CI and independent PR review remain pending. This focused UI fix does
+not close or change any numbered task row.

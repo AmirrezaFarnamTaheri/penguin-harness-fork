@@ -49,6 +49,7 @@ import { formatRelativeShort } from "../../lib/format";
 import { sessionBackgroundTasks, sessionRowActivity } from "../../lib/session-activity";
 import { forgetSession, noteSessionSeen, useSessionSeen } from "../../lib/session-seen";
 import { apiErrorText } from "../../lib/api-error";
+import { refreshAndSelectCreatedProject } from "../../lib/project-create-flow";
 import { useAuth } from "../../state/auth";
 import { useLocale } from "../../state/locale";
 import { agentDisplayName, projectDisplayName, useProject } from "../../state/project";
@@ -2713,7 +2714,12 @@ export function Sidebar({
         onClose={() => setCreateProjectOpen(false)}
         onCreated={(projectId) => {
           setCreateProjectOpen(false);
-          void reloadProjects().then(() => setCurrentProjectId(projectId));
+          void refreshAndSelectCreatedProject(
+            projectId,
+            reloadProjects,
+            setCurrentProjectId,
+            (error) => toastError(apiErrorText(error)),
+          );
         }}
       />
       {currentProject && (
