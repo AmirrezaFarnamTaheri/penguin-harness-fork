@@ -117,6 +117,36 @@ run and graph rerun, and the HTTP findings route file passes 19 tests. Core type
 also pass after the final graph changes. R11's named test cases and lifecycle coverage map are
 complete locally; exact-commit quality/CI and review gates remain open.
 
-The rebuilt core `dist/` is retained for the server. Workspace cleanup report and apply both
-found nothing disposable; user data and existing Rust caches are preserved. All processes
-started for these checks have exited. No commit, push or external-resource change was performed.
+At the end of the preceding continuation, the rebuilt core `dist/` was retained for the server.
+Workspace cleanup report and apply both found nothing disposable; user data and existing Rust
+caches were preserved. All processes started for those checks exited. That continuation made no
+commit, push or external-resource change.
+
+## Follow-up — quarantine-denied ingress coverage (2026-10-03)
+
+**Scope:** R2c's cross-ingress recovery contract, specifically the case where reading damaged
+bytes succeeds but exclusive quarantine creation is denied. This is an additional acceptance
+slice, not closure of R2c or R11.
+
+**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; local
+candidate worktree adds tests in `packages/core/test/knowledge/knowledge-graph-tool.test.ts` and
+`packages/server/test/findings-routes.test.ts`. Linux x64, Node `v22.22.3`, pnpm `11.18.0`; Node
+is below the repository's `>=24` engine. Candidate CI is pending.
+
+**Change and acceptance:** both ingress tests inject `EACCES` only for the canonical authority's
+`.quarantine-*` exclusive open, prove the injection fired, and assert that recovery remains
+read-only with `reason: corrupt` and `quarantineError`, no quarantine path is claimed, a report
+is refused, the bounded raw export remains available, and the original bytes are unchanged.
+The tool test passed as part of the focused core group. The HTTP test is included in server
+typecheck, but its local Vitest run could not resolve the generated `@prismshadow/penguin-core`
+package entry from the injected workspace snapshot; it remains for CI execution.
+
+**Verification:** direct Vitest run for `findings-store.test.ts`,
+`knowledge-graph-tool.test.ts`, and `findings-output-contract.test.ts` passed **31/31**; the
+knowledge tool file passed **12/12**, including the new denied-quarantine case. Direct core build
+and core/server/web TypeScript checks passed. Prettier and `git diff --check` passed. Browser E2E
+was not run locally; the repository instruction is to rely on CI for it.
+
+**Residual:** exact-candidate CI, the new HTTP runtime test, R11's isolated defect-detection
+ledger, R0's review gate, all remaining R2c criteria, and human review are still open. The
+affected authority and bindings remain unchanged.

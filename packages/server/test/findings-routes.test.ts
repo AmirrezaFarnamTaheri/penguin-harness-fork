@@ -119,6 +119,62 @@ describe("findings routes (persistent knowledge plane)", () => {
     expect(restored.status).toBe(200);
   });
 
+  it("keeps recovery status and raw export available when quarantine creation is denied", async () => {
+    const target = path.join(projectDir(t.root, projectId), ".findings_graph.json");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const original = Buffer.from("damaged snapshot");
+    await fs.writeFile(target, original);
+    const authorityPath = path.join(await fs.realpath(path.dirname(target)), path.basename(target));
+    const open = fs.open.bind(fs);
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      if (String(args[0]).startsWith(`${authorityPath}.quarantine-`) && args[1] === "wx")
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      return open(...args);
+    });
+    try {
+      const status = await client.get(`/api/projects/${projectId}/findings/recovery`);
+      expect(status.status).toBe(200);
+      const recovery = (await status.json()) as {
+        recovery: {
+          state: string;
+          reason: string;
+          quarantineError?: string;
+          quarantinePath?: string;
+        };
+      };
+      expect(recovery.recovery).toMatchObject({
+        state: "read-only",
+        reason: "corrupt",
+        quarantineError: "permission denied",
+      });
+      expect(recovery.recovery.quarantinePath).toBeUndefined();
+
+      const report = await client.post(`/api/projects/${projectId}/findings`, {
+        title: "Must not overwrite damage",
+      });
+      expect(report.status).toBe(409);
+      expect(((await report.json()) as { error: { code: string } }).error.code).toBe(
+        "findings_recovery_required",
+      );
+      const raw = await client.get(`/api/projects/${projectId}/findings/raw`);
+      expect(raw.status).toBe(200);
+      const page = (await raw.json()) as { data: string };
+      expect(Buffer.from(page.data, "base64")).toEqual(original);
+      expect(await fs.readFile(target)).toEqual(original);
+      expect(openSpy.mock.calls.some(([filePath]) => String(filePath) === authorityPath)).toBe(
+        true,
+      );
+      expect(
+        openSpy.mock.calls.some(
+          ([filePath, flags]) =>
+            String(filePath).startsWith(`${authorityPath}.quarantine-`) && flags === "wx",
+        ),
+      ).toBe(true);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
   it("uses the same report limits as the tool and rejects a stale report revision", async () => {
     for (const input of [
       { title: "t".repeat(301) },

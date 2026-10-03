@@ -1,7 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createKnowledgeGraphTool } from "../../src/environment/tools/knowledge-graph.js";
 import type { ToolExecutionContext } from "../../src/environment/tools/types.js";
 import { FindingsGraph } from "../../src/knowledge/findings-graph.js";
@@ -85,6 +86,60 @@ describe("knowledge_graph builtin tool", () => {
       rmSync(workspaceDir, { recursive: true, force: true });
     }
   });
+  it("keeps recovery status and raw export available when quarantine creation is denied", async () => {
+    const workspaceDir = mkdtempSync(path.join(tmpdir(), "kg-quarantine-denied-"));
+    const dir = path.join(workspaceDir, ".penguin", "knowledge");
+    mkdirSync(dir, { recursive: true });
+    const target = path.join(dir, "findings-graph.json");
+    const original = Buffer.from("damaged snapshot");
+    writeFileSync(target, original);
+    const authorityPath = path.join(await fs.realpath(dir), path.basename(target));
+    const open = fs.open.bind(fs);
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      if (String(args[0]).startsWith(`${authorityPath}.quarantine-`) && args[1] === "wx")
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" });
+      return open(...args);
+    });
+    try {
+      const recovery = JSON.parse((await run({ action: "recovery" }, workspaceDir)).output);
+      expect(recovery.recovery).toMatchObject({
+        state: "read-only",
+        reason: "corrupt",
+        quarantineError: "permission denied",
+      });
+      expect(recovery.recovery.quarantinePath).toBeUndefined();
+
+      const report = await run(
+        { action: "report", title: "Must not overwrite damage" },
+        workspaceDir,
+      );
+      expect(report.stopReason).toBe("fatal");
+      expect(JSON.parse(report.output)).toMatchObject({
+        error: "findings_recovery_required",
+        recovery: {
+          state: "read-only",
+          reason: "corrupt",
+          quarantineError: "permission denied",
+        },
+      });
+      const raw = JSON.parse((await run({ action: "raw" }, workspaceDir)).output);
+      expect(Buffer.from(raw.data, "base64")).toEqual(original);
+      expect(readFileSync(target)).toEqual(original);
+      expect(openSpy.mock.calls.some(([filePath]) => String(filePath) === authorityPath)).toBe(
+        true,
+      );
+      expect(
+        openSpy.mock.calls.some(
+          ([filePath, flags]) =>
+            String(filePath).startsWith(`${authorityPath}.quarantine-`) && flags === "wx",
+        ),
+      ).toBe(true);
+    } finally {
+      openSpy.mockRestore();
+      rmSync(workspaceDir, { recursive: true, force: true });
+    }
+  });
+
   it("shows attested authorship, status and evidence tiers separately from malicious source text", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "kg-authorship-"));
     try {
