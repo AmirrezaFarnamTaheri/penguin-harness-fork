@@ -450,7 +450,9 @@ describe("code-graph-watcher non-recursive fallback", () => {
 
     // Removing the directory invalidates its watcher; the rest of the tree must keep working.
     fs.rmSync(goneDir, { recursive: true, force: true });
-    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"));
+    // A macOS CI run exceeded the former four-second wait for directory removal. Keep this
+    // event-driven assertion but allow up to 10 seconds; a missing notification still fails.
+    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"), 10_000);
     await watcher.flush();
 
     // Its files leave the tracked set and the graph, not just the watcher.
