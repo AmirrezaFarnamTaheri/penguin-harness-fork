@@ -209,7 +209,7 @@ jobs:
             .readFileSync(logPath, "utf8")
             .split(/\r?\n/)
             .filter(Boolean)
-            .slice(-40);
+            .slice(-220);
           const message = lines.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
           console.log(`::error title=Playwright failure output::${message || "No test output captured."}`);
           NODE

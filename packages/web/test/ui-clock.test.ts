@@ -6,10 +6,11 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MIN_CLOCK_CADENCE_MS, createUiClock } from "../src/lib/ui-clock.js";
 
-const SRC = new URL("../src", import.meta.url).pathname;
+const SRC = fileURLToPath(new URL("../src", import.meta.url));
 
 /** Every .ts/.tsx file under src, so a pin cannot be dodged by moving a file. */
 function sourceFiles(dir: string = SRC): string[] {

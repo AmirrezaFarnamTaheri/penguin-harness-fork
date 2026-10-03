@@ -336,6 +336,7 @@ for (const width of [1440, 390]) {
           projectId: "alpha",
           goal: "Fix the flaky retry test; run the regression suite and report what changed.",
           maxRounds: 3,
+          sessionId: "release-review",
         });
       expect(state.requests.find((r) => r.path.endsWith("/mailbox/send"))?.body).toEqual({
         projectId: "alpha",
