@@ -785,7 +785,11 @@ export function ChatPage() {
           addSession(session);
           // A Session of an Agent the list has not loaded (company mode creates Agents
           // server-side): fetch the list, or the page has no Agent to render under.
-          if (!agents.some((a) => a.agentId === session.agentId)) void reloadAgents();
+          if (!agents.some((a) => a.agentId === session.agentId)) {
+            // A deep-link lookup is the route's recovery path; a best-effort Agent-list refresh
+            // must not turn a successful Session lookup into an unhandled page rejection.
+            void reloadAgents().catch(() => undefined);
+          }
         } else setProbeFailedKey(probeKey);
       },
       () => {
@@ -869,7 +873,10 @@ export function ChatPage() {
     if (!sameSession || selectedSessionId === null) return;
     if (prev.state !== "idle" && stream.taskState === "idle") {
       void reloadSessions();
-      void reloadAgents();
+      // Refreshing Agent metadata after a turn is best-effort. If connectivity disappeared at
+      // the same moment the stream settled, the list request can reject; surfacing that expected
+      // outage as an unhandled page error would hide the successful turn and cached transcript.
+      void reloadAgents().catch(() => undefined);
       // The turn that just ended is when the Agent's file writes landed: the Files panel's
       // listing and whatever it has open are stale from this moment on (see the browser's
       // reloadSignal), and so are the Trace panel's file list and the file it is showing —

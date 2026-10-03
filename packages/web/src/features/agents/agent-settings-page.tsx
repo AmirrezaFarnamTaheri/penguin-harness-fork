@@ -182,7 +182,7 @@ export function AgentSettingsPage() {
     (version: number) => {
       toastSuccess(S.agent.importDone(version));
       load();
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     },
     [load, reloadAgents],
   );
@@ -191,7 +191,7 @@ export function AgentSettingsPage() {
   const onConfigReset = useCallback(() => {
     toastSuccess(S.agent.resetConfigDone);
     load();
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   }, [load, reloadAgents]);
 
   /**
@@ -202,7 +202,7 @@ export function AgentSettingsPage() {
    */
   const onKernelUpdated = useCallback(() => {
     load({ keepStale: true });
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   }, [load, reloadAgents]);
 
   const save = useCallback(
@@ -228,7 +228,7 @@ export function AgentSettingsPage() {
           update.config?.description !== undefined ||
           update.config?.toolsBuiltin !== undefined
         ) {
-          void reloadAgents();
+          void reloadAgents().catch(() => undefined);
         }
       } catch (e) {
         toastError(apiErrorText(e));

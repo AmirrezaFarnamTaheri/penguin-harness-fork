@@ -135,7 +135,7 @@ export function HooksTab({
       toastSuccess(S.hooks.uninstalledToast(removing, agentName));
       await load();
       // The agent card's hook count (and its plugin-update marks) changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       toastError(apiErrorText(e));
     } finally {
@@ -172,7 +172,7 @@ export function HooksTab({
       toastSuccess(S.hooks.importDoneToast);
       await load();
       // The agent card's hook count changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === "hook_exists") {
         const name = /:\s*([A-Za-z0-9_-]+)$/.exec(e.message)?.[1] ?? fallbackName;

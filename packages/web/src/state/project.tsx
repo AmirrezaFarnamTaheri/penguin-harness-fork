@@ -158,13 +158,18 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const state = useStore(store);
 
   useEffect(() => {
-    void store.getState().reloadProjects();
+    // These shell boot reads have no caller to present a failure state; keep their existing
+    // snapshots/loading flags and let a later navigation or reload try again without an
+    // unhandled promise rejection when the server is temporarily unreachable.
+    void store.getState().reloadProjects().catch(() => undefined);
   }, [store]);
 
   const { currentProjectId } = state;
   useEffect(() => {
     store.setState({ agents: [] });
-    void store.getState().reloadAgents();
+    // Like the initial Project read above, this lifecycle refresh has no caller to present a
+    // request error; callers that need an error message await reloadAgents themselves.
+    void store.getState().reloadAgents().catch(() => undefined);
   }, [store, currentProjectId]);
 
   const value = useMemo<ProjectContextValue>(() => {

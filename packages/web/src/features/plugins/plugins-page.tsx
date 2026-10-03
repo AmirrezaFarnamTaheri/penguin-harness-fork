@@ -343,7 +343,7 @@ export function PluginsPage() {
       toastError(apiErrorText(e));
       return;
     }
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   };
 
   /**
@@ -366,7 +366,7 @@ export function PluginsPage() {
     // which this page's install map does not feed: without reloading the Agent list the dot
     // would survive the very update it led the user to. Runs after a partial failure too —
     // some Agent moved.
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   };
 
   /**

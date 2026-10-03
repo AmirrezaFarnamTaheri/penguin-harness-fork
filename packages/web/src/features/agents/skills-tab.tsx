@@ -138,7 +138,7 @@ export function SkillsTab({
       toastSuccess(`${S.skills.uninstalledToast(removing, agentName)}${S.agent.takesEffectSuffix}`);
       await load();
       // The agent card's skill count changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       toastError(apiErrorText(e));
     } finally {
@@ -196,7 +196,7 @@ export function SkillsTab({
       toastSuccess(`${S.skills.importDoneToast}${S.agent.takesEffectSuffix}`);
       await load();
       // The agent card's skill count changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409 && e.code === "skill_exists") {
         const name = /:\s*([A-Za-z0-9_-]+)$/.exec(e.message)?.[1] ?? fallbackName;
