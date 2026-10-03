@@ -30,6 +30,7 @@ import type {
   IsolatedCommand,
   IsolatedResult,
 } from "@prismshadow/penguin-core/plugin";
+import { serverLogger } from "../../runtime/logger.js";
 import {
   MicrovmError,
   MicrovmInvalidArgumentError,
@@ -149,7 +150,7 @@ export class MicrovmEscalationRuntime implements IsolatedBackend, EscalationTele
     this.client = options.client;
     this.templateId = options.templateId ?? "base";
     this.maxTelemetry = options.maxTelemetry ?? 512;
-    this.log = options.log ?? ((line) => console.error(line));
+    this.log = options.log ?? ((line) => serverLogger.line(line, "error"));
   }
 
   get recorded(): readonly ExecutionTelemetry[] {

@@ -26,6 +26,7 @@ import type { RestartResponse, UpdateJobStatus, VersionResponse } from "../../ap
 import { HttpError } from "../errors.js";
 import type { AppEnv } from "../../auth/middleware.js";
 import type { AppDeps } from "../../app.js";
+import { serverLogger } from "../../runtime/logger.js";
 
 // The classifier lives with the job now; re-exported so its unit tests keep their import.
 export { classifyUpdateRun } from "../../services/update-job.js";
@@ -76,7 +77,7 @@ export function versionRoutes(deps: AppDeps): Hono<AppEnv> {
     // Answer first, then leave: the response must be on the wire before the listener closes.
     setTimeout(() => {
       if (!deps.lifecycle.requestRestart()) {
-        console.error("[server] restart requested, but no restart trigger is registered");
+        serverLogger.error("Restart requested, but no restart trigger is registered.");
       }
     }, RESTART_DELAY_MS).unref();
     return c.json({ restarting: true } satisfies RestartResponse);

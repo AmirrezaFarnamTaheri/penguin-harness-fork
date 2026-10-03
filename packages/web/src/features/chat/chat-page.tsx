@@ -42,6 +42,7 @@ import {
   humanizeDurationLive,
   humanizeTokens,
 } from "../../lib/format";
+import { useUiClock } from "../../lib/use-ui-clock";
 import { latestConversation, withoutOrgSessions } from "../../lib/session-grouping";
 import { sessionActivity, sessionBackgroundTasks } from "../../lib/session-activity";
 import { noteSessionSeen } from "../../lib/session-seen";
@@ -203,17 +204,11 @@ function SessionElapsed({
   taskOpen: boolean;
   taskStartLocalMs: number;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!taskOpen) return;
-    // Load-bearing, not redundant: `now` still holds whatever the state last saw (mount time,
-    // or the final tick of a previous Task), and the first interval callback is a full second
-    // away. The first live render after a Task starts must not compute from that stale clock,
-    // so re-anchor immediately on entering the running state.
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [taskOpen]);
+  // The tick comes from the shared UI clock (F2), enabled only while the Task runs: when idle this
+  // component must not keep a timer alive, and the clock's immediate first notification on
+  // subscribe plays the role the old hand-written re-anchor did — the first live render after a
+  // Task starts sees the current time, not the one left over from the previous Task's last tick.
+  const now = useUiClock(1000, { enabled: taskOpen });
   if (!taskOpen) return <>{humanizeDuration(stats.sessionElapsedMs)}</>;
   return <>{humanizeDurationLive(liveSessionElapsedMs(stats, taskOpen, taskStartLocalMs, now))}</>;
 }
@@ -1655,6 +1650,11 @@ export function ChatPage() {
   const ctx: StreamRenderContext = {
     subagents: stream.subagents,
     pendingApprovals: stream.pendingApprovals,
+    // Read by the recall chip, which resolves an archived output against the Session that stored
+    // it. Note this is one of the fields the item comparator never looks at: a result whose note
+    // publishes a recall id does not change when the transcript is re-seated in a different
+    // Session, because a Session switch remounts the whole conversation anyway.
+    sessionId: selected?.sessionId,
     onApprove,
     onSendToBackground,
     origin: [],

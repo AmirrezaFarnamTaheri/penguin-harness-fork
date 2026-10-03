@@ -15,6 +15,9 @@ packages/desktop/skills/
 # rewriting vendored templates, fixtures, schemas, examples, and generated assets.
 .agents/skills/
 
+# YAML round-trip fixtures preserve hand formatting and include intentionally invalid inputs.
+packages/core/test/fixtures/yaml-edit/
+
 # All Markdown is excluded by design: the READMEs are hand-formatted prose (much of it
 # Chinese) and every skill's SKILL.md keeps the formatting of the upstream corpus it was
 # imported from. `pnpm format:check` therefore governs code, not prose.

@@ -8,6 +8,7 @@
  */
 import type { Context } from "hono";
 import type { ErrorBody } from "../api/types.js";
+import { serverLogger } from "../runtime/logger.js";
 
 export type HttpErrorKind = "expected" | "unexpected";
 
@@ -70,6 +71,6 @@ export function handleError(err: Error, c: Context): Response {
     return c.json(errorBody(err.code, err.english, err.i18nKey), err.status as 400);
   }
   // Unknown error: print the stack for diagnosis, but never expose details externally.
-  console.error(`[server] Unhandled exception: ${err.stack ?? err.message}`);
+  serverLogger.error("Unhandled HTTP exception.", { error: err });
   return c.json(errorBody("internal", "Internal server error.", "errors.byCode.internal"), 500);
 }

@@ -72,6 +72,7 @@ import type {
 import { attributionHeaders } from "../state/model-catalog.js";
 import { ToolCallIdAllocator, stripToolCallIdSuffix } from "./tool-call-ids.js";
 import { ApiKeyRotator, parseApiKeys } from "./key-rotator.js";
+import { parseProviderDelay } from "./retry-delay.js";
 import {
   approximateMessagesTokens,
   approximateTokens,
@@ -79,8 +80,16 @@ import {
   resolveContextWindow,
 } from "./context-limits.js";
 import { RATE_LIMIT_MESSAGE_PATTERNS } from "./quota-parser.js";
-import { collectFailure, observeFailure } from "../fleet/provider-gateway.js";
-import type { LegacyAction } from "../fleet/provider-gateway.js";
+import {
+  collectFailure,
+  decideAndReport,
+  FAILURE_POLICY,
+  RECOVERY,
+  resolveFailurePolicy,
+  type FailureDecision,
+  type FailurePolicy,
+  type LegacyAction,
+} from "../fleet/provider-gateway.js";
 
 // ---------------------------------------------------------------------------
 // Pure conversion function: OmniMessage[] → a single UniMessage (unit-testable, no network)
@@ -1094,6 +1103,9 @@ export class GenerativeModel implements LLMInterface {
    * parameter, not a Session invariant.
    */
   private readonly defaultThinkingLevel: ThinkingLevelName | undefined;
+  /** A1 — the resolved decider policy for this model object (frozen at construction). */
+  private readonly failurePolicy: FailurePolicy;
+
   /** Streaming idle timeout (milliseconds); <= 0 disables it. A timeout is treated as needing reconnection. */
   private readonly requestTimeoutMs: number;
   /**
@@ -1126,6 +1138,7 @@ export class GenerativeModel implements LLMInterface {
   private lastWarnedCap: number | undefined;
   /** Primary normalized API key used for single-client compatibility and default getClient calls. */
   private readonly primaryKey: string;
+  private preferPreviousAccount = false;
 
   constructor(config: GenerativeModelConfig) {
     this.config = config;
@@ -1148,6 +1161,7 @@ export class GenerativeModel implements LLMInterface {
     this.uniConfig = buildUniConfig(config);
     this.defaultThinkingLevel = config.thinkingLevel;
     this.requestTimeoutMs = config.requestTimeoutMs ?? 300000;
+    this.failurePolicy = config.failurePolicy ?? resolveFailurePolicy(process.env);
     this.toolCallIds = config.toolCallIds ?? new ToolCallIdAllocator();
     this.configuredMaxTokens = config.maxTokens;
     this.contextWindow = resolveContextWindow(config.contextWindow);
@@ -1165,24 +1179,42 @@ export class GenerativeModel implements LLMInterface {
     return this.keyRotator.nextKey() !== undefined;
   }
 
+  get retryPoolSize(): number {
+    return this.keyRotator?.workingKeysCount ?? 1;
+  }
+
+  retrySameAccount(): void {
+    this.preferPreviousAccount = true;
+  }
+
   /**
-   * **SHADOW MODE — reports only, decides nothing.**
+   * A1 — classifies the caught provider failure and returns the one action this call site is to
+   * take. `shadow` (the default) reproduces the pre-promotion behaviour exactly: the returned
+   * action is the legacy action, so the branch the error would have taken is the branch it
+   * takes, and this only reports. `active` returns the classifier's recovery instead — no
+   * message text is consulted to pick it.
    *
-   * Runs the new typed failure vocabulary (`fleet/provider-gateway.ts`) against the error at
-   * the moment the existing chain has decided what to do, and logs the two verdicts side by
-   * side. The branch it sits in still decides, the rotator is still `ApiKeyRotator`, and no
-   * outcome is affected: this release is about *measuring* whether the classification
-   * boundary agrees, so that a later flip is a reviewed act rather than a leap of faith. See
-   * the flip procedure in `provider-gateway.ts` for what to do with the log once it exists.
-   *
-   * Two things are deliberately absent from the record. It carries the provider's base URL
-   * rather than `activeKey`, because that is the secret and this is a log line — passing the
-   * key to make the line prettier would put a live credential in everyone's log aggregator.
-   * And it carries no counter, because an invented metric outlives the experiment that
-   * justified it.
+   * The record carries the provider's base URL rather than `activeKey`, because that is the
+   * secret and this is a log line.
    */
-  private shadowClassify(error: unknown, legacy: LegacyAction): void {
-    observeFailure({ failure: collectFailure(error), legacy, provider: this.config.baseUrl });
+  private decideProviderFailure(error: unknown, legacy: LegacyAction): FailureDecision {
+    return decideAndReport(
+      { failure: collectFailure(error), legacy, provider: this.config.baseUrl },
+      this.failurePolicy,
+    );
+  }
+
+  /**
+   * The pre-promotion verdict for one error, in the exact order the old chain evaluated it:
+   * rate limit first (a 403 quota body outranks the auth path), then auth, then a definitive
+   * non-429 4xx, else observe. This is the `legacy` half of the shadow comparison and it is
+   * deliberately derived from the exported predicates rather than a second implementation.
+   */
+  private legacyProviderAction(error: unknown): LegacyAction {
+    if (isRateLimitError(error)) return "cool_down";
+    if (isAuthenticationError(error)) return "evict";
+    if (isFatalProviderRejection(error)) return "none";
+    return "observe";
   }
 
   /**
@@ -1350,6 +1382,8 @@ export class GenerativeModel implements LLMInterface {
     params: GenerativeModelParameters,
   ): AsyncGenerator<OmniMessage, LLMOutcome> {
     const userSignal = params.signal;
+    const preferPrevious = this.preferPreviousAccount;
+    this.preferPreviousAccount = false;
 
     // Already interrupted before issuing: no streaming segment has been opened, so nothing to close out.
     if (userSignal?.aborted) return { status: "aborted" };
@@ -1365,7 +1399,11 @@ export class GenerativeModel implements LLMInterface {
       return { status: "fatal", errorCode: "invalid_input", errorMessage: describeError(err) };
     }
 
-    const activeKey = this.keyRotator ? this.keyRotator.nextKey() : this.config.apiKey;
+    const activeKey = this.keyRotator
+      ? preferPrevious
+        ? this.keyRotator.currentKey()
+        : this.keyRotator.nextKey()
+      : this.config.apiKey;
     if (this.keyRotator && !activeKey) {
       const cooldownMs = this.keyRotator.getEarliestCooldownMs();
       if (cooldownMs !== undefined && cooldownMs > 0) {
@@ -1373,6 +1411,8 @@ export class GenerativeModel implements LLMInterface {
           status: "retryable",
           errorCode: "network",
           errorMessage: `All configured API keys are cooling down due to rate limits. Earliest key available in ${Math.ceil(cooldownMs / 1000)}s.`,
+          retryDelay: { rawMs: cooldownMs, bufferedMs: cooldownMs, source: "structured" },
+          retryAccount: { rateLimited: true, poolUnavailableForMs: cooldownMs },
         };
       }
       return {
@@ -1497,6 +1537,7 @@ export class GenerativeModel implements LLMInterface {
         for (const msg of translator.pushEvent(res.value)) yield msg;
       }
     } catch (error) {
+      const retryDelay = userSignal?.aborted || timedOut ? null : parseProviderDelay(error);
       // User interruption **takes priority**: even if the idle timer fires at the same time,
       // it's classified as aborted (user intent outweighs a coincidental timeout).
       if (userSignal?.aborted) {
@@ -1513,65 +1554,93 @@ export class GenerativeModel implements LLMInterface {
           status: "retryable",
           errorCode: "malformed",
           errorMessage: describeError(error),
+          ...(retryDelay ? { retryDelay } : {}),
         };
-      } else if (isRateLimitError(error)) {
-        // An SDK may label every 403 as an authentication/permission exception even when
-        // the parsed provider body says the account exhausted quota. Explicit quota evidence
-        // takes precedence; otherwise the auth path below remains terminal for a dead key.
-        this.shadowClassify(error, "cool_down");
-        this.keyRotator?.recordFailure(activeKey, "rate_limit");
-        outcome = {
-          status: "retryable",
-          errorCode: "network",
-          errorMessage: describeError(error),
-        };
-      } else if (isAuthenticationError(error)) {
-        if (this.keyRotator && activeKey) {
-          this.shadowClassify(error, "evict");
-          this.keyRotator.recordFailure(activeKey, "auth");
-          if (this.keyRotator.hasWorkingKeys()) {
-            outcome = {
-              status: "retryable",
-              errorCode: "auth",
-              errorMessage: `API key authentication failed; rotating to next available key: ${describeError(error)}`,
-            };
-          } else {
-            outcome = {
-              status: "fatal",
-              errorCode: "auth",
-              errorMessage: `All configured API keys failed authentication: ${describeError(error)}`,
-            };
-          }
-        } else {
-          outcome = { status: "fatal", errorCode: "auth", errorMessage: describeError(error) };
-        }
-      } else if (this.uniConfig.fast_mode === true && isFastModeUnsupportedError(error)) {
-        // Fast mode rejected by a model without a fast tier: AgentHub throws its
-        // UnsupportedParameterError before any network I/O, so with this object's frozen
-        // config the failure is deterministic — fatal, so the engine surfaces the message
-        // immediately instead of burning the reconnect ladder on a request that can never
-        // succeed. The guard on our own config keeps the special case honest: without
-        // fast_mode on the wire this error cannot be ours to explain.
-        outcome = {
-          status: "fatal",
-          errorCode: "unsupported",
-          errorMessage: `${describeError(error)} ${FAST_MODE_UNSUPPORTED_GUIDANCE}`,
-        };
-      } else if (isFatalProviderRejection(error)) {
-        // A definitive provider 4xx rejection (408/429 excluded): the identical request
-        // fails identically on every retry, so stop now with the provider's own message.
-        this.shadowClassify(error, "none");
-        outcome = { status: "fatal", errorCode: "rejected", errorMessage: describeError(error) };
-      } else if ((error as { name?: string })?.name === "AbortError") {
-        outcome = { status: "aborted" }; // Fallback: an unexpected abort (neither timeout nor user)
       } else {
-        // Everything else — network/transport drops, 429/5xx, and anything unclassifiable —
-        // retries on the engine's ladder. The detail rides on the outcome so observability
-        // (request_end -> the Cost center's errors panel) shows the real reason behind a
-        // retried request.
-        this.shadowClassify(error, "observe");
-        this.keyRotator?.recordFailure(activeKey, "other");
-        outcome = { status: "retryable", errorCode: "network", errorMessage: describeError(error) };
+        // A1 — one decision per provider failure. The legacy action is derived in the
+        // pre-promotion order (rate limit, then auth, then a definitive rejection, else
+        // observe), so `shadow` reproduces the old branch exactly and only reports; `active`
+        // takes the typed classifier's recovery instead. No message text is consulted here.
+        const decision = this.decideProviderFailure(error, this.legacyProviderAction(error));
+        const fastModeUnsupported =
+          this.uniConfig.fast_mode === true && isFastModeUnsupportedError(error);
+        if (
+          fastModeUnsupported &&
+          (decision.policy === FAILURE_POLICY.Shadow || decision.legacy === "observe")
+        ) {
+          // Fast mode rejected by a model without a fast tier: AgentHub throws its
+          // UnsupportedParameterError before any network I/O, so with this object's frozen
+          // config the failure is deterministic — fatal, so the engine surfaces the message
+          // immediately instead of burning the reconnect ladder on a request that can never
+          // succeed. The guard on our own config keeps the special case honest: without
+          // fast_mode on the wire this error cannot be ours to explain. Kept ahead of the
+          // dispatch because it is not a provider failure at all — it never reached the wire.
+          outcome = {
+            status: "fatal",
+            errorCode: "unsupported",
+            errorMessage: `${describeError(error)} ${FAST_MODE_UNSUPPORTED_GUIDANCE}`,
+          };
+        } else if (
+          decision.action === RECOVERY.CoolDown ||
+          decision.action === RECOVERY.CoolDownUntilReset
+        ) {
+          // An SDK may label every 403 as an authentication/permission exception even when
+          // the parsed provider body says the account exhausted quota. Explicit quota evidence
+          // takes precedence; otherwise the auth path below remains terminal for a dead key.
+          this.keyRotator?.recordFailure(activeKey, "rate_limit", retryDelay?.bufferedMs);
+          outcome = {
+            status: "retryable",
+            errorCode: "network",
+            errorMessage: describeError(error),
+            retryAccount: { rateLimited: true },
+            ...(retryDelay ? { retryDelay } : {}),
+          };
+        } else if (decision.action === RECOVERY.Disable || decision.action === "evict") {
+          if (this.keyRotator && activeKey) {
+            this.keyRotator.recordFailure(activeKey, "auth");
+            if (this.keyRotator.hasWorkingKeys()) {
+              outcome = {
+                status: "retryable",
+                errorCode: "auth",
+                ...(retryDelay ? { retryDelay } : {}),
+                errorMessage: `API key authentication failed; rotating to next available key: ${describeError(error)}`,
+              };
+            } else {
+              outcome = {
+                status: "fatal",
+                errorCode: "auth",
+                errorMessage: `All configured API keys failed authentication: ${describeError(error)}`,
+              };
+            }
+          } else {
+            outcome = { status: "fatal", errorCode: "auth", errorMessage: describeError(error) };
+          }
+        } else if (decision.action === RECOVERY.Surface || decision.action === "none") {
+          // A definitive provider 4xx rejection (408/429 excluded): the identical request
+          // fails identically on every retry, so stop now with the provider's own message.
+          outcome = { status: "fatal", errorCode: "rejected", errorMessage: describeError(error) };
+        } else if ((error as { name?: string })?.name === "AbortError") {
+          outcome = { status: "aborted" }; // Fallback: an unexpected abort (neither timeout nor user)
+        } else {
+          // Everything else — network/transport drops, 5xx, and anything unclassifiable —
+          // retries on the engine's ladder. The detail rides on the outcome so observability
+          // (request_end -> the Cost center's errors panel) shows the real reason behind a
+          // retried request.
+          //
+          // A1: the one place the promotion changes the *state* rather than the shape. The
+          // classifier's `ignore` means the failure is not this credential's fault (a provider
+          // outage, a capacity signal), so under `active` nothing is counted against the key;
+          // `shadow` never returns `ignore` here, so the pre-promotion behaviour is unchanged.
+          if (decision.action !== RECOVERY.Ignore) {
+            this.keyRotator?.recordFailure(activeKey, "other");
+          }
+          outcome = {
+            status: "retryable",
+            errorCode: "network",
+            errorMessage: describeError(error),
+            ...(retryDelay ? { retryDelay } : {}),
+          };
+        }
       }
     } finally {
       clearTimer();
@@ -1594,6 +1663,18 @@ export class GenerativeModel implements LLMInterface {
     }
 
     if (outcome) {
+      const accountId = this.keyRotator?.accountIdentity(activeKey) ?? "primary";
+      const poolUnavailableForMs = this.keyRotator?.getEarliestCooldownMs();
+      outcome = {
+        ...outcome,
+        retryAccount: {
+          accountId,
+          rateLimited: outcome.retryAccount?.rateLimited ?? false,
+          ...(poolUnavailableForMs !== undefined && poolUnavailableForMs > 0
+            ? { poolUnavailableForMs }
+            : {}),
+        },
+      };
       // Interrupted/errored: close any opened streaming segments and backfill the complete message, producing no token_usage.
       const reason: StopReason = outcome.status === "completed" ? "retryable" : outcome.status;
       for (const msg of translator.finishInterrupted(reason)) yield msg;

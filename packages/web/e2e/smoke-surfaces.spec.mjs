@@ -119,7 +119,23 @@ test("smoke: every top-level route renders with no console or page error", async
     // is here to catch, and it is invisible to a unit test.
     await expect(page.locator("body")).toBeVisible();
     const headingLocator = page.locator("h1").first();
-    await expect(headingLocator, `${route} rendered no <h1>`).toBeVisible();
+    try {
+      await expect(headingLocator, `${route} rendered no <h1>`).toBeVisible();
+    } catch (error) {
+      const bodyText = (
+        await page
+          .locator("body")
+          .innerText()
+          .catch(() => "")
+      )
+        .replace(/\s+/g, " ")
+        .slice(0, 300);
+      const routeErrors = errors.slice(before).join(" | ") || "(none captured)";
+      const assertion = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${route} rendered no <h1>; body: ${bodyText}; errors: ${routeErrors}; assertion: ${assertion}`,
+      );
+    }
     const heading = await headingLocator.textContent();
     expect(heading, `${route} rendered no <h1>`).toBeTruthy();
     await shot(page, `route${route.replace(/\//g, "-")}`);

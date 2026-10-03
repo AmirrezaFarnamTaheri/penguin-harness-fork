@@ -30,7 +30,7 @@ jobs:
     name: style (prettier)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
       - name: Code style (Prettier)
         run: pnpm format:check
@@ -48,6 +48,27 @@ jobs:
       # en<->zh string parity, and provenance for the published benchmark claims.
       - name: i18n parity (en <-> zh)
         run: pnpm check:i18n
+
+      - name: Documentation status claims
+        run: |
+          node scripts/check-doc-claims.mjs
+          node --test scripts/check-doc-claims.test.mjs
+
+      # J2: every external action is pinned to a commit that the allow-list has verified, and a
+      # new mutable ref fails here rather than silently executing in this repository's CI.
+      - name: Actions pins
+        run: |
+          node scripts/check-actions-pins.mjs
+          node --test scripts/check-actions-pins.test.mjs
+
+      # J4: the scheduled retry:0 lane (flake-lane.yml) is only a guarantee if nothing can turn
+      # its retries back on — the required lanes absorb first-attempt failures on purpose, so this
+      # is the one place a flake must show up red. The checker refuses an inherited retry, a shell
+      # re-run, a dropped repetition pin and a missing artifact step.
+      - name: Flake lane (retry zero)
+        run: |
+          node scripts/check-flake-lane.mjs
+          node --test scripts/check-flake-lane.test.mjs
 
       # The published benchmark claims are consistent with both blog tables but not
       # certified by run artifacts, so every row carries a `provisional` flag and the gate
@@ -77,7 +98,7 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       # tsc runs over every package, so every package's dist has to exist -- core's test
       # files read skills' emitted types, for one.
       - uses: ./.github/actions/setup
@@ -117,7 +138,7 @@ jobs:
               @prismshadow/penguin-docs; do pnpm --filter "$pkg" test || failed=1; done;
               exit $failed
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: ${{ matrix.build }}
@@ -131,7 +152,7 @@ jobs:
   installer-e2e:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: "@prismshadow/penguin-cli...,@prismshadow/penguin-server..."
@@ -147,7 +168,7 @@ jobs:
           fi
           pnpm test:e2e
 
-  # The browser e2e: 75 specs over the real chat UI, driven by Playwright against a mock
+  # The browser e2e suite exercises the real chat UI with Playwright against a mock
   # Anthropic SSE stream. Nothing else in this workflow exercises the rendered frontend — a
   # regression that breaks the chat UI outright still passed every unit suite and shipped.
   # Linux only: the specs need a headless Chromium and the suite is not port-permitting
@@ -156,12 +177,12 @@ jobs:
   e2e-browser:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: "@prismshadow/penguin-core...,@prismshadow/penguin-server...,@prismshadow/penguin-web"
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
@@ -173,7 +194,61 @@ jobs:
       # SKIP_BUILD=1: the setup action built core/server/web above, and run.sh would build
       # them a second time for no reason.
       - name: Browser e2e (Playwright + mock LLM)
-        run: SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e
+        id: browser_e2e
+        run: |
+          set -o pipefail
+          SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+      - name: Surface Playwright failure output
+        if: ${{ failure() && steps.browser_e2e.outcome == 'failure' }}
+        run: |
+          node - "$RUNNER_TEMP/playwright.log" <<'NODE'
+          const fs = require("node:fs");
+          const logPath = process.argv[2];
+          if (!fs.existsSync(logPath)) process.exit(0);
+          const stripAnsi = (text) => text.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
+          const lines = stripAnsi(fs.readFileSync(logPath, "utf8")).split(/\r?\n/);
+          const failureStarts = [];
+          for (let index = 0; index < lines.length; index += 1) {
+            if (/^\s*\d+\)\s+.*\.spec\.mjs:\d+:\d+/.test(lines[index])) failureStarts.push(index);
+          }
+          const short = (line, limit) => line.trim().slice(0, limit);
+          const report = failureStarts.map((start, index) => {
+            const summary = lines.findIndex((line, lineIndex) => lineIndex > start && /^\s*\d+ failed\b/.test(line));
+            const end = failureStarts[index + 1] ?? (summary < 0 ? lines.length : summary);
+            const block = lines.slice(start, end).filter((line) => !line.trimStart().startsWith("{"));
+            const error = block.find((line) => /\b(?:Error|AssertionError|TimeoutError):/.test(line));
+            const comparisons = block
+              .filter((line) => /^\s*(?:[-+] (?:Expected|Received)|(?:Expected|Received)(?:[:\s]|$))/.test(line))
+              .slice(0, 2);
+            const location = block.find((line) => /^\s*at .+:\d+:\d+/.test(line) || /Error Context:/.test(line));
+            return [
+              block[0] && short(block[0], 120),
+              error && short(error, 800),
+              ...comparisons.map((line) => short(line, 80)),
+              location && short(location, 120),
+            ]
+              .filter(Boolean)
+              .join("\n");
+          });
+          for (const line of lines.filter((line) => /^\s*\d+ (?:failed|skipped|passed)\b/.test(line))) {
+            report.push(short(line, 100));
+          }
+          if (report.length === 0) {
+            report.push(
+              ...lines
+                .filter((line) => !line.trimStart().startsWith("{") && /Error:|AssertionError|Timeout|failed/i.test(line))
+                .slice(-20)
+                .map((line) => short(line, 180)),
+            );
+          }
+          let message = report.join("\n\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          while (Buffer.byteLength(message, "utf8") > 3500) {
+            const cut = message.lastIndexOf("%0A", 3450);
+            if (cut < 0) break;
+            message = message.slice(0, cut);
+          }
+          console.log(`::error title=Playwright failure summary::${message || "No test output captured."}`);
+          NODE
 
   # macOS (arm64). This is the only place the terminal's pty suites run on darwin —
   # node-pty compiles against the runner's toolchain and its darwin-only spawn-helper
@@ -204,7 +279,7 @@ jobs:
               pnpm -r --filter '!@prismshadow/penguin-core' --filter '!@prismshadow/penguin-server' test
             smoke: true
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: ${{ matrix.build }}
@@ -250,7 +325,7 @@ jobs:
             tests: >-
               pnpm -r --filter '!@prismshadow/penguin-core' --filter '!@prismshadow/penguin-server' test
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: ${{ matrix.build }}
@@ -261,11 +336,40 @@ jobs:
       # while the worker pool tears down, after every file has reported green. A real
       # regression fails both attempts.
       - name: Unit tests (vitest)
+        id: windows_vitest
         shell: bash
         run: |
-          ${{ matrix.tests }} && exit 0
-          echo "::warning::vitest failed on Windows; retrying once (see the pool-teardown note in ci.yml)"
-          ${{ matrix.tests }}
+          set -o pipefail
+          first_log="$RUNNER_TEMP/vitest-attempt-1.log"
+          retry_log="$RUNNER_TEMP/vitest-attempt-2.log"
+          if ${{ matrix.tests }} 2>&1 | tee "$first_log"; then
+            exit 0
+          else
+            first_status=$?
+          fi
+          echo "::warning::vitest failed on Windows with exit code ${first_status}; retrying once (see the pool-teardown note in ci.yml)"
+          if ${{ matrix.tests }} 2>&1 | tee "$retry_log"; then
+            exit 0
+          else
+            retry_status=$?
+            exit "$retry_status"
+          fi
+      - name: Surface Windows vitest failure output
+        if: ${{ failure() && steps.windows_vitest.outcome == 'failure' }}
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/vitest-attempt-2.log" <<'NODE'
+          const fs = require("node:fs");
+          const logPath = process.argv[2];
+          if (!fs.existsSync(logPath)) process.exit(0);
+          const lines = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .slice(-40);
+          const message = lines.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          console.log(`::error title=Vitest failure output::${message || "No test output captured."}`);
+          NODE
 
   # The Windows installer checks, in their own job rather than riding a test shard: they add
   # ~20s and have nothing to do with the suite they were attached to, which happened to be
@@ -273,7 +377,7 @@ jobs:
   installer-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           build: "@prismshadow/penguin-cli..."
@@ -327,7 +431,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
       - uses: ./.github/actions/setup
         with:
           # The web package is not a dependency of the desktop package (the app carries its
@@ -352,7 +456,7 @@ jobs:
         run: node packages/desktop/scripts/verify-packed-cli.mjs
 
       - name: Upload runtime artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: penguin-runtime-${{ runner.os }}
           if-no-files-found: error

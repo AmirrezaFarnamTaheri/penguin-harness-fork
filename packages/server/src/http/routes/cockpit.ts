@@ -2,9 +2,12 @@
  * Cockpit HTTP routes: telemetry snapshot and autonomous swarm invocation.
  */
 import { Hono } from "hono";
-import { DEFAULT_PROJECT_ID } from "@prismshadow/penguin-core";
+import { DEFAULT_PROJECT_ID, isValidId } from "@prismshadow/penguin-core";
 import type { AppEnv } from "../../auth/middleware.js";
 import type { AppDeps } from "../../app.js";
+import type { ErrorBody } from "../../api/types.js";
+import { errorBody, handleError, HttpError } from "../errors.js";
+import { readJson } from "../validate.js";
 import {
   getOrCreateProjectRuntime,
   buildCockpitSnapshot,
@@ -12,8 +15,17 @@ import {
   type ProjectCockpitRuntime,
 } from "../../cockpit/ws.js";
 
-export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
+export function cockpitRoutes(
+  deps?: AppDeps,
+  standaloneRuntime?: Pick<CockpitWebSocketDeps, "workspaceRoot" | "swarmHandlers">,
+): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  app.onError(async (error, c) => {
+    deps?.errors.record({ source: "http", err: error });
+    const response = handleError(error, c);
+    const body = (await response.json()) as ErrorBody;
+    return c.json({ success: false, ...body }, response.status as 400);
+  });
 
   function getProjectId(c: { req: { query: (k: string) => string | undefined } }): string {
     const fromQuery = c.req.query("project") || c.req.query("projectId");
@@ -34,6 +46,12 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     explicitProjectId?: string,
   ): Promise<ProjectCockpitRuntime> {
     const projectId = explicitProjectId ?? getProjectId(c);
+    if (projectId.length > 128 || !isValidId(projectId))
+      throw new HttpError(
+        400,
+        "invalid_project_id",
+        "Project id must be a valid identifier of at most 128 characters.",
+      );
     authorizeProject(c, projectId);
     const wsDeps: CockpitWebSocketDeps = deps
       ? {
@@ -41,8 +59,9 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
           projectService: deps.projectService,
           projectConfigService: deps.projectConfigService,
           root: deps.config.root,
+          swarmHandlers: deps.cockpitSwarmHandlers,
         }
-      : {};
+      : (standaloneRuntime ?? {});
     return getOrCreateProjectRuntime(projectId, wsDeps);
   }
 
@@ -67,7 +86,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/keys/probe", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await readJson(c);
     const projectId =
       typeof body.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -83,12 +102,15 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const result = await runtime.keyFleet.probeKey(provider, target);
     return c.json({
       success: result.status === "ok",
+      ...(result.status !== "ok"
+        ? errorBody("key_probe_failed", "Provider key probe did not succeed.")
+        : {}),
       result,
     });
   });
 
   app.post("/keys/action", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await readJson(c);
     const projectId =
       typeof body.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -96,11 +118,17 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const runtime = await getRuntime(c, projectId);
     const action = body.action;
 
-    if (!["revive", "cooldown", "evict", "revive_all"].includes(action)) {
+    if (
+      typeof action !== "string" ||
+      !["revive", "cooldown", "evict", "revive_all"].includes(action)
+    ) {
       return c.json(
         {
           success: false,
-          error: `Invalid or unsupported action '${action}'. Must be one of: revive, cooldown, evict, revive_all`,
+          ...errorBody(
+            "invalid_key_action",
+            "Action must be one of: revive, cooldown, evict, revive_all.",
+          ),
         },
         400,
       );
@@ -127,11 +155,20 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     }
 
     if (!provider) {
-      return c.json({ success: false, error: "Provider is required for key action" }, 400);
+      return c.json(
+        {
+          success: false,
+          ...errorBody("provider_required", "Provider is required for key action"),
+        },
+        400,
+      );
     }
     if (!target) {
       return c.json(
-        { success: false, error: "keyId or maskedKey is required for key action" },
+        {
+          success: false,
+          ...errorBody("key_required", "keyId or maskedKey is required for key action"),
+        },
         400,
       );
     }
@@ -140,7 +177,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
       return c.json(
         {
           success: false,
-          error: `Key '${target}' not found under provider '${provider}'`,
+          ...errorBody("key_not_found", "Key not found under the requested provider."),
         },
         404,
       );
@@ -167,7 +204,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/mailbox/send", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await readJson(c);
     const projectId =
       typeof body.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -182,11 +219,20 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const trimmed = content.trim();
 
     if (!trimmed) {
-      return c.json({ success: false, error: "Directive content cannot be empty" }, 400);
+      return c.json(
+        { success: false, ...errorBody("directive_empty", "Directive content cannot be empty") },
+        400,
+      );
     }
     if (trimmed.length > 8192) {
       return c.json(
-        { success: false, error: "Directive content exceeds maximum length of 8192 characters" },
+        {
+          success: false,
+          ...errorBody(
+            "directive_too_long",
+            "Directive content exceeds maximum length of 8192 characters",
+          ),
+        },
         400,
       );
     }
@@ -194,7 +240,10 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const coordinator = runtime.coordinator;
     if (!coordinator.hasAgent(to)) {
       return c.json(
-        { success: false, error: `Recipient agent '${to}' is not registered in swarm` },
+        {
+          success: false,
+          ...errorBody("recipient_not_found", "Recipient agent is not registered in swarm"),
+        },
         400,
       );
     }
@@ -203,7 +252,10 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const targetSummary = summaries[to];
     if (targetSummary && targetSummary.queueDepth >= 100) {
       return c.json(
-        { success: false, error: `Mailbox queue for '${to}' exceeds capacity (max 100 pending)` },
+        {
+          success: false,
+          ...errorBody("mailbox_capacity", "Mailbox queue exceeds capacity (max 100 pending)"),
+        },
         429,
       );
     }
@@ -222,7 +274,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/swarm/run", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await readJson(c);
     const projectId =
       typeof body.projectId === "string" && body.projectId.trim()
         ? body.projectId.trim()
@@ -231,11 +283,17 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
     const goal = typeof body.goal === "string" ? body.goal.slice(0, 4096) : "Autonomous local task";
 
     if (Array.isArray(body.files) && body.files.length > 50) {
-      return c.json({ success: false, error: "Too many files provided (maximum 50)" }, 400);
+      return c.json(
+        { success: false, ...errorBody("too_many_files", "Too many files provided (maximum 50)") },
+        400,
+      );
     }
     if (Array.isArray(body.proposedCommands) && body.proposedCommands.length > 20) {
       return c.json(
-        { success: false, error: "Too many proposed commands provided (maximum 20)" },
+        {
+          success: false,
+          ...errorBody("too_many_commands", "Too many proposed commands provided (maximum 20)"),
+        },
         400,
       );
     }
@@ -257,14 +315,60 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
         ? Math.min(Math.max(1, Math.floor(body.maxRounds)), 10)
         : 3;
     const simulate = body.simulate === true;
+    // Which Session asked for this task, when the caller knows (E10.3): the tag is what lets
+    // Session deletion stop the work instead of leaving it to run out its round cap. Absent for
+    // callers without a session context; the ownership check simply never matches then.
+    const ownerSessionId =
+      typeof body.sessionId === "string" && body.sessionId.trim()
+        ? body.sessionId.trim().slice(0, 256)
+        : undefined;
+
+    // The tag is only worth having if it names a Session that can still be asked to stop: a
+    // client-supplied id is not evidence that the Session exists, that it belongs to this
+    // project, or that it is not being deleted right now, and a task tagged with a dead id is
+    // one no deletion can ever reach (CR). The check runs as late as possible — immediately
+    // before the task is registered — and a deletion that starts right after it is still
+    // covered: `beginSessionDeletion` latches the id on the coordinator before it removes
+    // anything, and a task reaching the queue with a latched id is refused there.
+    if (ownerSessionId !== undefined) {
+      // Without the session registry there is nothing to validate against, and an unverifiable
+      // tag is refused rather than trusted (fail closed, like every other missing dependency in
+      // this route).
+      const session = deps?.sessionsRepo?.findById(ownerSessionId) ?? null;
+      if (session === null || session.projectId !== projectId) {
+        throw new HttpError(
+          404,
+          "session_not_found",
+          "Session does not exist in this project or you do not have access.",
+        );
+      }
+      if (deps?.manager?.isSessionDeleting(ownerSessionId)) {
+        throw new HttpError(
+          409,
+          "session_deleting",
+          "This Session is being deleted; not accepting new swarm tasks.",
+        );
+      }
+    }
 
     const coordinator = runtime.coordinator;
+
+    if (!simulate && !runtime.swarmHandlers?.onExecute) {
+      throw new HttpError(
+        400,
+        "swarm_handler_missing",
+        "No task handler configured for this project; request simulation explicitly.",
+      );
+    }
 
     if (coordinator.getPendingTaskCount() >= 10) {
       return c.json(
         {
           success: false,
-          error: "Swarm task queue limit reached (10). Project is under backpressure.",
+          ...errorBody(
+            "swarm_capacity",
+            "Swarm task queue limit reached (10). Project is under backpressure.",
+          ),
         },
         429,
       );
@@ -276,34 +380,44 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
           ? body.id.trim()
           : `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       void coordinator
-        .runTask({
-          id: taskId,
-          goal,
-          files,
-          proposedCommands,
-          maxRounds,
-          simulate,
-        })
+        .runTask(
+          {
+            id: taskId,
+            goal,
+            files,
+            proposedCommands,
+            maxRounds,
+            simulate,
+            ...(ownerSessionId ? { ownerSessionId } : {}),
+          },
+          runtime.swarmHandlers,
+        )
         .catch(() => {});
       return c.json({ success: true, accepted: true, taskId }, 202);
     }
 
     try {
-      const result = await coordinator.runTask({
-        id: typeof body.id === "string" && body.id.trim() ? body.id.trim() : undefined,
-        goal,
-        files,
-        proposedCommands,
-        maxRounds,
-        simulate,
-      });
+      const result = await coordinator.runTask(
+        {
+          id: typeof body.id === "string" && body.id.trim() ? body.id.trim() : undefined,
+          goal,
+          files,
+          proposedCommands,
+          maxRounds,
+          simulate,
+          ...(ownerSessionId ? { ownerSessionId } : {}),
+        },
+        runtime.swarmHandlers,
+      );
 
       if (!simulate && result && (result as { status?: string }).status === "unhandled") {
         return c.json(
           {
             success: false,
-            error:
+            ...errorBody(
+              "swarm_handler_missing",
               "Autonomous swarm execution failed: no task handler configured for project and simulation mode was not requested.",
+            ),
             result,
           },
           400,
@@ -313,7 +427,7 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
       return c.json({
         success: result.status === "settled",
         ...(result.status !== "settled"
-          ? { error: `Swarm task ended with status: ${result.status}` }
+          ? errorBody("swarm_task_failed", `Swarm task ended with status: ${result.status}`)
           : {}),
         result,
       });
@@ -324,13 +438,9 @@ export function cockpitRoutes(deps?: AppDeps): Hono<AppEnv> {
           "status" in err &&
           (err as { status: number }).status === 429) ||
         (err instanceof Error && err.message.includes("backpressure"));
-      return c.json(
-        {
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        isBackpressure ? 429 : 500,
-      );
+      if (isBackpressure)
+        throw new HttpError(429, "swarm_capacity", "Swarm task queue is at capacity.");
+      throw err;
     }
   });
 

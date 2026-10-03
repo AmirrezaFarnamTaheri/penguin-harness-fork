@@ -609,6 +609,8 @@ describe("AcpConnection", () => {
     conn.dispose();
     expect(conn.getState()).toBe("closed");
     expect(conn.getStats().state).toBe("closed");
+    expect(conn.getStats().lastFailureAt).toBeNull();
+    expect(conn.getStats().lastFailureMessage).toBeNull();
 
     await expect(conn.sendRequest("y")).rejects.toThrow("ACP connection disposed");
     await expect(conn.handleChunk('{"jsonrpc":"2.0","method":"m"}\n')).rejects.toThrow(
@@ -619,6 +621,21 @@ describe("AcpConnection", () => {
 
     conn.dispose();
     expect(conn.getState()).toBe("closed");
+  });
+
+  it("dispose rejects in-flight requests and clears the idle wait", async () => {
+    const conn = new AcpConnection(async () => undefined, 5_000);
+    await conn.handleChunk('{"jsonrpc":"2.0"');
+    const pending = conn.sendRequest("never/responds");
+    expect(conn.getStats().pendingRequests).toBe(1);
+    expect(conn.getStats().bufferedBytes).toBeGreaterThan(0);
+
+    conn.dispose();
+
+    await expect(pending).rejects.toThrow("ACP connection disposed");
+    expect(conn.getStats().pendingRequests).toBe(0);
+    expect(conn.getStats().bufferedBytes).toBe(0);
+    await expect(conn.whenIdle()).resolves.toBeUndefined();
   });
 
   it("keeps the method census bounded", async () => {

@@ -5,8 +5,8 @@ import type {
   HudActiveTask,
 } from "@prismshadow/penguin-core/browser";
 import { Button } from "../../components/ui/button";
-import { CacheWarmBadge } from "../cockpit/cache-warm-badge";
-import type { CacheUsage } from "../cockpit/cache-warm-badge";
+import { CacheWarmBadge } from "../cockpit-widgets/cache-warm-badge";
+import type { CacheUsage } from "../cockpit-widgets/cache-warm-badge";
 
 export interface HudStatuslineProps {
   /** Latest main request context occupancy, never cumulative session usage. */

@@ -43,6 +43,7 @@ import { ImpactRadiusEngine } from "./impact-radius.js";
 import { ALL_REVIEW_RULES } from "./review-presets.js";
 import { ReviewEngine, type SymbolReviewStats } from "./review-engine.js";
 import { parseDiffText } from "./diff-graph.js";
+import type { GraphStore } from "./graph-store.js";
 
 export interface BuildStats {
   files: number;
@@ -440,6 +441,11 @@ export class TopologyEngine {
         parseMs: 0,
       },
     };
+  }
+
+  /** Persist a validated snapshot through the store's versioned atomic serialization boundary. */
+  async saveSnapshot(store: GraphStore<TopologySnapshot>): Promise<void> {
+    await store.save(this.snapshot());
   }
 }
 

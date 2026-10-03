@@ -26,6 +26,20 @@ export function resolveLanguage(): Language {
 }
 
 export interface Messages {
+  /** Tiered help (H5): the three modes and the width policy live in help-modes.ts. */
+  help: {
+    modeDesc: string;
+    usageLabel: string;
+    commandsLabel: string;
+    subcommandsLabel: string;
+    optionsLabel: string;
+    /** Options declared on ancestor commands, shown in `full` where a subcommand accepts them. */
+    globalOptionsLabel: string;
+    /** Shown at the end of the concise inventories: where the rest of the commands are. */
+    moreCommands: string;
+    /** A `--help-mode` value that is not simple/default/full. Never echoes the value. */
+    invalidMode(): string;
+  };
   // —— Command/option help descriptions ——
   cliDescription: string;
   versionDesc: string;
@@ -58,8 +72,12 @@ export interface Messages {
     missingOption(flags: string): string;
     /** An option that takes a value was given none. */
     optionMissingArgument(flags: string): string;
-    unknownOption(flag: string): string;
-    unknownCommand(name: string): string;
+    unknownOption(flag?: string): string;
+    unknownCommand(name?: string): string;
+    suggestion(candidate: string): string;
+    invalidArgument(): string;
+    excessArguments(): string;
+    conflictingOptions(): string;
     /** Everything else commander rejects: its own detail rides verbatim, so nothing is swallowed. */
     other(detail: string): string;
     /** Second line of a usage error: how the command is spelled, and where its full option list is. */
@@ -155,6 +173,23 @@ export interface Messages {
     tailInvalid(value: string): string;
     /** --timeout without -f: there is no wait to bound. */
     timeoutNeedsFollow(): string;
+  };
+  /** `penguin recall`: read archived tool output by the id a result note published (F18). */
+  recall: {
+    desc: string;
+    offset: string;
+    pages: string;
+    /** The id (or whatever was typed in its place) is not a recall id at all. */
+    invalidId(value: string): string;
+    offsetInvalid(value: string): string;
+    pagesInvalid(value: string): string;
+    /** The store no longer has the entry (it is bounded, and entries age out). */
+    expired(): string;
+    unavailableIn(sessionId: string): string;
+    /** The server refused the position, with its own explanation of the text's length. */
+    offsetRejected(reason: string): string;
+    /** --pages stopped the read early; the offset continues it. */
+    moreRemaining(nextOffset: number): string;
   };
   /** `penguin agent`: agent listing and creation. */
   agent: {
@@ -836,6 +871,16 @@ function headerZh(
 }
 
 const en: Messages = {
+  help: {
+    modeDesc: "help detail: simple, default, or full",
+    usageLabel: "Usage:",
+    commandsLabel: "Commands:",
+    subcommandsLabel: "Subcommands:",
+    optionsLabel: "Options:",
+    globalOptionsLabel: "Global options:",
+    moreCommands: "Run `penguin --help-mode full` for every command and option.",
+    invalidMode: () => "help mode must be one of: simple, default, full",
+  },
   cliDescription: "PenguinHarness CLI",
   versionDesc: "output the version number",
   common: {
@@ -861,8 +906,12 @@ const en: Messages = {
     missingArgument: (name) => `missing required argument <${name}>`,
     missingOption: (flags) => `missing required option ${flags}`,
     optionMissingArgument: (flags) => `option ${flags} needs a value`,
-    unknownOption: (flag) => `unknown option ${flag}`,
-    unknownCommand: (name) => `unknown command ${name}`,
+    unknownOption: (flag) => (flag === undefined ? "unknown option" : `unknown option ${flag}`),
+    unknownCommand: (name) => (name === undefined ? "unknown command" : `unknown command ${name}`),
+    suggestion: (candidate) => `Did you mean ${candidate}?`,
+    invalidArgument: () => "invalid argument",
+    excessArguments: () => "unexpected extra argument",
+    conflictingOptions: () => "conflicting options",
     other: (detail) => detail,
     hint: (command, usage) =>
       `Usage: ${command} ${usage}  (run \`${command} --help\` for every option)`,
@@ -954,6 +1003,21 @@ const en: Messages = {
     tailInvalid: (value) => `Invalid --tail value "${value}": expected a positive integer.`,
     timeoutNeedsFollow: () =>
       "--timeout only applies to -f/--follow: without it, logs never waits.",
+  },
+  recall: {
+    desc: "Read tool output that was archived out of a result, by its recall id",
+    offset: "Start at this character offset in the stored output",
+    pages: "Read at most this many pages (continue later with the printed offset)",
+    invalidId: (value) =>
+      `"${value}" is not a recall id: an id is 12 or 32 hexadecimal characters (it names no file).`,
+    offsetInvalid: (value) => `Invalid --offset value "${value}": expected a non-negative integer.`,
+    pagesInvalid: (value) => `Invalid --pages value "${value}": expected a positive integer.`,
+    expired: () =>
+      "That archived output has expired: the Session keeps a bounded store, and this entry aged out.",
+    unavailableIn: (sessionId) =>
+      `This output id is not in session ${sessionId}'s archive. Check the id and the session.`,
+    offsetRejected: (reason) => `The server refused that position: ${reason}`,
+    moreRemaining: (nextOffset) => `[more remains] continue with --offset ${nextOffset}`,
   },
   agent: {
     desc: "Manage the project's agents",
@@ -1617,6 +1681,16 @@ const en: Messages = {
 };
 
 const zh: Messages = {
+  help: {
+    modeDesc: "帮助详细程度：simple、default 或 full",
+    usageLabel: "用法：",
+    commandsLabel: "命令：",
+    subcommandsLabel: "子命令：",
+    optionsLabel: "选项：",
+    globalOptionsLabel: "全局选项：",
+    moreCommands: "运行 `penguin --help-mode full` 查看全部命令与选项。",
+    invalidMode: () => "帮助模式必须是 simple、default 或 full 之一",
+  },
   cliDescription: "PenguinHarness CLI",
   versionDesc: "输出版本号",
   common: {
@@ -1639,8 +1713,12 @@ const zh: Messages = {
     missingArgument: (name) => `缺少必填参数 <${name}>`,
     missingOption: (flags) => `缺少必填选项 ${flags}`,
     optionMissingArgument: (flags) => `选项 ${flags} 缺少取值`,
-    unknownOption: (flag) => `未知选项 ${flag}`,
-    unknownCommand: (name) => `未知命令 ${name}`,
+    unknownOption: (flag) => (flag === undefined ? "未知选项" : `未知选项 ${flag}`),
+    unknownCommand: (name) => (name === undefined ? "未知命令" : `未知命令 ${name}`),
+    suggestion: (candidate) => `你是否想输入 ${candidate}？`,
+    invalidArgument: () => "参数无效",
+    excessArguments: () => "存在多余参数",
+    conflictingOptions: () => "选项冲突",
     other: (detail) => detail,
     hint: (command, usage) =>
       `用法：${command} ${usage}（运行 \`${command} --help\` 查看全部选项）`,
@@ -1724,6 +1802,19 @@ const zh: Messages = {
     follow: "渲染历史后继续跟随实时输出流",
     tailInvalid: (value) => `--tail 值「${value}」无效：应为正整数。`,
     timeoutNeedsFollow: () => "--timeout 只与 -f/--follow 搭配：不跟随时 logs 不等待。",
+  },
+  recall: {
+    desc: "通过召回 ID 读取已归档的工具输出",
+    offset: "从已存储输出的该字符位置开始",
+    pages: "最多读取这么多页（之后可用输出的偏移量继续）",
+    invalidId: (value) =>
+      `“${value}”不是召回 ID：ID 为 12 位或 32 位十六进制字符（它不代表任何文件）。`,
+    offsetInvalid: (value) => `--offset 值“${value}”无效：应为非负整数。`,
+    pagesInvalid: (value) => `--pages 值“${value}”无效：应为正整数。`,
+    expired: () => "该归档输出已过期：Session 的存储有上限，该条目已被淘汰。",
+    unavailableIn: (sessionId) => `该输出 ID 不在会话 ${sessionId} 的归档中。请检查 ID 与会话。`,
+    offsetRejected: (reason) => `服务端拒绝了该位置：${reason}`,
+    moreRemaining: (nextOffset) => `[仍有剩余] 使用 --offset ${nextOffset} 继续`,
   },
   agent: {
     desc: "管理 Project 的 Agent",

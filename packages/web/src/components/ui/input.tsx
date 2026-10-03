@@ -132,11 +132,14 @@ const searchSharedClass =
   `w-full bg-transparent ${sizeTextClass.sm} text-gray-700 ` +
   "placeholder:text-gray-500 focus:outline-none dark:text-gray-200 dark:placeholder:text-gray-500";
 
-export const menuSearchClass = `${searchSharedClass} rounded border border-transparent`;
+export const menuSearchClass =
+  `${searchSharedClass} rounded border border-transparent focus-visible:ring-2 ` +
+  "focus-visible:ring-[var(--accent-bg)]";
 
 export const panelSearchClass =
   `${searchSharedClass} rounded-md border border-gray-200 transition-colors ` +
-  "focus:border-gray-400 dark:border-gray-700 dark:focus:border-gray-500";
+  "focus-visible:border-[var(--accent-bg)] focus-visible:ring-2 focus-visible:ring-[var(--accent-bg)] dark:border-gray-700 " +
+  "dark:focus-visible:border-[var(--accent-bg)]";
 
 /**
  * Forwards its ref to the underlying `<input>`.

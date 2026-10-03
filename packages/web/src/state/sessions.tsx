@@ -36,6 +36,7 @@ import type {
 import { useStore } from "zustand/react";
 import { createStore } from "zustand/vanilla";
 import * as api from "../api/endpoints";
+import { ApiError } from "../api/client";
 import { openUserEvents } from "../api/sse";
 import { isCompanyEvent, publishCompanyEvent } from "./company";
 import {
@@ -206,6 +207,17 @@ interface SessionsStoreState {
  */
 const DELETED_IDS_MAX = 500;
 
+/** A failed list request is retryable when it does not prove that the server has removed the Agent or Session data. */
+function isTransientListFailure(error: unknown): boolean {
+  return (
+    !(error instanceof ApiError) ||
+    error.status === 0 ||
+    error.status === 408 ||
+    error.status === 429 ||
+    error.status >= 500
+  );
+}
+
 /**
  * Builds one Provider's store. Exported as a test seam: vitest runs this package in Node with
  * no DOM, so the list's own behaviour is exercised against the store directly rather than
@@ -297,10 +309,13 @@ export function createSessionsStore() {
                     };
                   }),
                 );
-                return { agentId, pages };
-              } catch {
-                // A single Agent's fetch failure shouldn't bring down the whole batch (e.g. its directory was deleted externally).
-                return { agentId, pages: [] };
+                return { agentId, pages, preservePrevious: false };
+              } catch (error) {
+                // One Agent's failure should not bring down the batch. For transport, rate-limit,
+                // and server errors, keep that Agent's last good rows until a later reload can
+                // prove the current list; otherwise a temporary outage looks like "no Sessions"
+                // and can navigate an open chat away from its cached transcript.
+                return { agentId, pages: [], preservePrevious: isTransientListFailure(error) };
               }
             }),
           );
@@ -314,6 +329,10 @@ export function createSessionsStore() {
             Readonly<Record<string, SessionCategoryCounts>>
           >();
           const nextWorkspaceLatest = new Map<string, Readonly<Record<string, string>>>();
+          const previous = get();
+          const preservedAgentIds = new Set(
+            results.filter((result) => result.preservePrevious).map((result) => result.agentId),
+          );
           for (const r of results) {
             for (const p of r.pages) {
               nextPageState.set(pageKey(r.agentId, p.category, p.scope), {
@@ -330,6 +349,26 @@ export function createSessionsStore() {
                 }
               }
             }
+          }
+          // Keep the last successful snapshot for Agents whose requests failed transiently;
+          // a real HTTP client error still clears that Agent's data above. This lets cached
+          // Session routes remain selected and usable while the list endpoint recovers.
+          for (const session of previous.sessions) {
+            if (!preservedAgentIds.has(session.agentId) || seen.has(session.sessionId)) continue;
+            seen.add(session.sessionId);
+            nextSessions.push(session);
+          }
+          for (const [key, position] of previous.pageState) {
+            const parsed = parsePageKey(key);
+            if (parsed && preservedAgentIds.has(parsed.agentId)) nextPageState.set(key, position);
+          }
+          for (const agentId of preservedAgentIds) {
+            const counts = previous.countsByAgent.get(agentId);
+            if (counts) nextCounts.set(agentId, counts);
+            const workspaceCounts = previous.workspaceCountsByAgent.get(agentId);
+            if (workspaceCounts) nextWorkspaceCounts.set(agentId, workspaceCounts);
+            const workspaceLatest = previous.workspaceLatestByAgent.get(agentId);
+            if (workspaceLatest) nextWorkspaceLatest.set(agentId, workspaceLatest);
           }
           set({
             sessions: nextSessions,

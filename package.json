@@ -3,11 +3,14 @@
   "version": "0.2.18",
   "private": true,
   "type": "module",
-  "description": "PenguinHarness — TypeScript AI Agent (SDK + CLI).",
+  "description": "PenguinHarness \u2014 TypeScript AI Agent (SDK + CLI).",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "clean": "node scripts/clean-workspace.mjs",
+    "check:workspace-deps": "node scripts/check-workspace-deps.mjs",
+    "check:doc-claims": "node scripts/check-doc-claims.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
@@ -15,6 +18,8 @@
     "verify:benchmark-data": "node scripts/verify-benchmark-data.mjs",
     "skills:audit": "node scripts/skills/audit.mjs",
     "skills:check": "node scripts/skills/audit.mjs --check",
+    "skills:lock:verify": "node scripts/skills/lock.mjs verify",
+    "skills:lock:pin": "node scripts/skills/lock.mjs pin",
     "skills:catalog": "node scripts/skills/catalog.mjs --json=artifacts/skill-catalog.json --markdown=artifacts/skill-catalog.md",
     "skills:readiness": "node scripts/skills/readiness.mjs --json=artifacts/skill-readiness.json --markdown=artifacts/skill-readiness.md",
     "skills:normalize": "node scripts/skills/normalize-frontmatter.mjs --write",
@@ -40,19 +45,21 @@
     "dev:docs": "node scripts/dev-prebuild.mjs --install-only && pnpm --filter @prismshadow/penguin-docs dev",
     "dev:landing": "node scripts/dev-prebuild.mjs --install-only && pnpm --filter @prismshadow/penguin-landing dev",
     "build:site": "node scripts/build-site.mjs",
-    "desktop": "pnpm -r build && node scripts/run-with-env.mjs PENGUIN_HOME=~/.penguin/dev-data -- pnpm --dir packages/desktop start"
+    "desktop": "pnpm -r build && node scripts/run-with-env.mjs PENGUIN_HOME=~/.penguin/dev-data -- pnpm --dir packages/desktop start",
+    "check:actions-pins": "node scripts/check-actions-pins.mjs",
+    "check:flake-lane": "node scripts/check-flake-lane.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.85.0",
     "@prismshadow/penguin-cli": "workspace:*",
     "@prismshadow/penguin-core": "workspace:*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.3",
     "concurrently": "^10.0.4",
     "esbuild": "^0.28.1",
     "oxlint": "^1.85.0",
     "prettier": "^3.9.4",
-    "tsx": "^4.20.0",
-    "typescript": "^5.6.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@11.18.0"

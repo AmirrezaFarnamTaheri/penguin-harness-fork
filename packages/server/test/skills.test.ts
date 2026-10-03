@@ -391,6 +391,43 @@ describe("skills api", () => {
     return Buffer.from(zip).toString("base64");
   };
 
+  it("archive: symbolic-link entries are refused before any skill is installed", async () => {
+    await createPlainAgent("symlink_skill_agent");
+    const archive = zipSync({
+      "SKILL.md": strToU8("---\nname: symlink-fixture\ndescription: fixture\n---\nContent"),
+      reference: [strToU8("destination"), { os: 3, attrs: (0o120777 << 16) >>> 0 }],
+    });
+    const response = await member.post(`${base("symlink_skill_agent")}/archive`, {
+      dataBase64: Buffer.from(archive).toString("base64"),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "zip_symlink_entry" } });
+    const list = (await (
+      await member.get(base("symlink_skill_agent"))
+    ).json()) as AgentSkillsResponse;
+    expect(list.skills).toEqual([]);
+    const content = "---\nname: symlink-fixture\ndescription: fixture\n---\nOriginal";
+    const valid = zipSync({ "SKILL.md": strToU8(content) });
+    expect(
+      (
+        await member.post(`${base("symlink_skill_agent")}/archive`, {
+          dataBase64: Buffer.from(valid).toString("base64"),
+        })
+      ).status,
+    ).toBe(201);
+    const replacement = await member.post(`${base("symlink_skill_agent")}/archive`, {
+      dataBase64: Buffer.from(archive).toString("base64"),
+      overwrite: true,
+    });
+    expect(replacement.status).toBe(400);
+    const destination = path.join(
+      skillsDir(t.root, projectId, "symlink_skill_agent"),
+      "symlink-fixture",
+    );
+    expect(await fs.readFile(path.join(destination, "SKILL.md"), "utf8")).toBe(content);
+    expect(await fs.readdir(destination)).toEqual(["SKILL.md"]);
+  });
+
   it("archive: nested top-dir layout — all files written (subdirs preserved), directory name wins over frontmatter", async () => {
     await createPlainAgent("zip_agent");
     const url = `${base("zip_agent")}/archive`;

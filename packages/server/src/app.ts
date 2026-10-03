@@ -58,7 +58,7 @@ import { SessionsRepo } from "./db/repos/sessions.js";
 import { UiPrefsRepo } from "./db/repos/ui-prefs.js";
 import { UsersRepo } from "./db/repos/users.js";
 import type { UserRow } from "./db/repos/users.js";
-import { authMiddleware, jsonOnlyWrites } from "./auth/middleware.js";
+import { authMiddleware, configAuthPolicy, jsonOnlyWrites } from "./auth/middleware.js";
 import { mintApiToken, storeApiToken } from "./auth/api-token.js";
 import type { Identity } from "./terminal/identity.js";
 import { terminalRoutes } from "./terminal/routes.js";
@@ -190,16 +190,29 @@ import { usageRoutes } from "./http/routes/usage.js";
 import { agentSessionsRoutes, sessionsRoutes } from "./http/routes/sessions.js";
 import { sessionMessagingRoutes } from "./http/routes/messaging.js";
 import { versionRoutes } from "./http/routes/version.js";
+import { healthRoutes } from "./http/routes/health.js";
 import { machinesRoutes } from "./http/routes/machines.js";
 import { AuditRecorder } from "./sandbox/audit.js";
 import { UsageRecorder } from "./runtime/usage-recorder.js";
 import { previewRoutes } from "./http/routes/preview.js";
 import { MachinesService } from "./machines/service.js";
 import { SERVER_PROXY_PREFIX, machinesProxy } from "./machines/proxy.js";
+import { requestLogContext, serverLogger, withLogContext } from "./runtime/logger.js";
+
+export interface RequestLogFields extends Record<string, unknown> {
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+}
 
 export interface AppDeps {
   config: ServerConfig;
   db: DatabaseSync;
+  /** Fast in-memory dependency status probes; readiness must not initiate network work. */
+  readinessChecks?: readonly (() => boolean)[];
+  /** Trusted host handlers for real cockpit swarm execution; absent means simulation only. */
+  cockpitSwarmHandlers?: import("@prismshadow/penguin-core").SwarmRoleHandlers;
   sessionsRepo: SessionsRepo;
   prefsRepo: UiPrefsRepo;
   /** Admin-level server-global settings (currently the proxy switches and address). */
@@ -273,6 +286,8 @@ export interface AppDeps {
   proxyControl: ProxyControl;
   /** Request log output (minimal one-liner); tests inject a noop. */
   log: (line: string) => void;
+  /** Structured request event; derives from the same adapter as `log` for test/host overrides. */
+  requestLog?: (fields: RequestLogFields) => void;
 }
 
 export interface BuildDepsOverrides {
@@ -374,7 +389,7 @@ export async function bootAppDeps(
   // Here rather than per App, for the same reason the two above are: it is a fact about
   // this PROCESS's installation, and a hot-pushed platform — compiled somewhere else
   // entirely — has no way to work out where the CLI it should point at lives.
-  const shimLog = overrides.log ?? ((line: string) => console.log(line));
+  const shimLog = overrides.log ?? ((line: string) => serverLogger.line(line));
   const shim = ensureCliShim(config.root, config.cliEntry);
   if (shim.kind === "written") {
     shimLog(`Agent CLI: ${path.join(shim.dir, "penguin")} -> ${shim.entry}`);
@@ -383,7 +398,7 @@ export async function bootAppDeps(
       "Agent CLI: no CLI entry found; commands an Agent runs resolve `penguin` on their own PATH.",
     );
   } else {
-    console.warn(`[server] could not write the penguin CLI shim: ${shim.reason}`);
+    serverLogger.warn("Could not write the penguin CLI shim.", { reason: shim.reason });
   }
 
   // The capability set buildAppDeps claims (see hmr/capabilities.ts) — every
@@ -427,6 +442,8 @@ export async function bootAppDeps(
 /** Assembles the Hono app (does not listen on a port). */
 export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  // I4: one policy per app, derived from config (never from a request) and shared by every gate.
+  const authPolicy = configAuthPolicy(deps.config);
 
   // Error recording is layered in a lambda wrapping onError: handleError stays a
   // pure function with unchanged behavior (HttpError is mapped as-is, unknown
@@ -443,12 +460,23 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
   });
   app.notFound((c) => c.json(errorBody("not_found", "Endpoint does not exist."), 404));
 
-  // Request logging: a minimal one-liner (method path status ms).
+  // Request context follows async work so logs and errors can be correlated to the request.
   app.use("*", async (c, next) => {
-    const start = performance.now();
-    await next();
-    const ms = Math.round(performance.now() - start);
-    deps.log(`${c.req.method} ${c.req.path} ${c.res.status} ${ms}ms`);
+    const context = requestLogContext(c.req.raw);
+    return withLogContext(context, async () => {
+      const start = performance.now();
+      await next();
+      c.header("x-request-id", context.requestId);
+      const ms = Math.round(performance.now() - start);
+      const fields = {
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        durationMs: ms,
+      };
+      if (deps.requestLog) deps.requestLog(fields);
+      else deps.log(`${fields.method} ${fields.path} ${fields.status} ${fields.durationMs}ms`);
+    });
   });
 
   // Canonical-host guard (loopback binds only): the App is served on one loopback name and
@@ -556,8 +584,14 @@ export function createRuntimeApp(deps: AppDeps): Hono<AppEnv> {
     // check/install back. Cookie-authed, unlike the Bearer-token shutdown above, so it
     // carries the auth middleware on its own subtree — the routes then gate on
     // `sessionVia === "desktop"`, i.e. the shell's own window.
-    app.use("/api/desktop/update", authMiddleware(deps.authService, deps.config.trustProxy));
-    app.use("/api/desktop/update/*", authMiddleware(deps.authService, deps.config.trustProxy));
+    app.use(
+      "/api/desktop/update",
+      authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
+    );
+    app.use(
+      "/api/desktop/update/*",
+      authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
+    );
     app.route("/api/desktop/update", desktopUpdateRoutes(deps));
   }
   // Hot platform APIs run their own gate — the network gate, then the SAME auth middleware
@@ -894,7 +928,11 @@ export function buildAppDeps(
   confineSpawn: () => SpawnConfiner | null = () => null,
 ): AppDeps {
   const { config, db, authState, channels, hmr } = caps;
-  const log = overrides.log ?? ((line: string) => console.log(line));
+  const log = overrides.log ?? ((line: string) => serverLogger.line(line));
+  const requestLog: NonNullable<AppDeps["requestLog"]> = overrides.log
+    ? ({ method, path: requestPath, status, durationMs }) =>
+        log(`${method} ${requestPath} ${status} ${durationMs}ms`)
+    : (fields) => serverLogger.info("HTTP request completed.", fields);
   const jevAdvisor = overrides.jevAdvisor ?? jevAdvisorFromEnv(log);
 
   // A pushed platform carries its own migrations, which is the only way the tables its
@@ -1314,6 +1352,7 @@ export function buildAppDeps(
     hmr,
     proxyControl: caps.proxyControl,
     log,
+    requestLog,
   };
 }
 
@@ -1363,6 +1402,9 @@ export function createApp(
 
   if (deps === null) return app;
 
+  // I4: the same single policy the runtime app uses — one derivation, every gate.
+  const authPolicy = configAuthPolicy(deps.config);
+
   // Runtime-owned prefixes decline before anything else runs — in particular before the
   // auth gate below, which would otherwise 401 an unauthenticated /api/auth/login instead
   // of letting the runtime's own public route serve it.
@@ -1410,7 +1452,7 @@ export function createApp(
   );
   app.all(
     `${SERVER_PROXY_PREFIX}*`,
-    authMiddleware(deps.authService, deps.config.trustProxy),
+    authMiddleware(deps.authService, deps.config.trustProxy, authPolicy),
     async (c) => {
       if (!c.var.user.isAdmin) {
         throw new HttpError(403, "admin_required", "Only an admin can reach a machine's API.");
@@ -1420,8 +1462,12 @@ export function createApp(
     },
   );
 
+  // Probes run before cookie lookup so a closed DB cannot also break liveness.
+  app.route("/api/health", healthRoutes(deps));
+  app.route("/health", healthRoutes(deps));
+
   // Protected routes: cookie -> auth_session -> user, over the runtime's auth service.
-  app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy));
+  app.use("/api/*", authMiddleware(deps.authService, deps.config.trustProxy, authPolicy));
   app.route("/api/cockpit", cockpitRoutes(deps));
   app.route("/api/me", meRoutes(deps));
   app.route("/api/version", versionRoutes(deps));

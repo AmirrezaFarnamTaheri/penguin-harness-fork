@@ -112,14 +112,14 @@ jobs:
       # On manual dispatch, check out the tag itself (not the selected branch HEAD): a tag whose Release is
       # missing (e.g. an earlier run failed before publishing) rebuilds from the tag's own source. On tag-push,
       # leaving ref empty is the default.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
 
       # pnpm version comes from package.json's packageManager field.
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -344,7 +344,7 @@ jobs:
       # go in a separate SHA256SUMS.desktop, which is also how the OSS mirror script verifies
       # them.
       - name: Collect desktop artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: desktop-*
           merge-multiple: true
@@ -400,7 +400,7 @@ jobs:
       # An empty body_path is falsy for the action and simply ignored (it never tries to read it), so the
       # fallback branch cleanly leaves generate_release_notes to compose the body on its own.
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           body_path: ${{ steps.notes.outputs.body_path }}
@@ -442,7 +442,7 @@ jobs:
     steps:
       # On workflow_dispatch, use the selected branch's current mirror scripts while downloading
       # the requested tag's immutable Release assets. A tag push naturally checks out that tag.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
 
       - name: Validate OSS environment configuration
         env:
@@ -471,7 +471,7 @@ jobs:
       # OIDC provider; this project deliberately uses `github-actions`.
       - name: Exchange GitHub OIDC token for Alibaba Cloud credentials
         id: aliyun
-        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1.1.0
         with:
           oidc-provider-arn: ${{ vars.ALIYUN_OIDC_PROVIDER_ARN }}
           role-to-assume: ${{ vars.ALIYUN_ROLE_ARN }}
@@ -528,13 +528,13 @@ jobs:
       name: npm
       url: https://www.npmjs.com/package/@prismshadow/penguin-cli
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: pnpm

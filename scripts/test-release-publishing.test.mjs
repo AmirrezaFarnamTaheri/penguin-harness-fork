@@ -129,7 +129,7 @@ test("Docker publishing is canonical-only and honors the reusable push input", (
   );
   assert.match(
     dockerWorkflow,
-    /- uses: docker\/login-action@v3\n\s+if: steps\.publish-policy\.outputs\.publish == 'true'/,
+    /- uses: docker\/login-action@[a-f0-9]{40} # v3\.\d+\.\d+\n\s+if: steps\.publish-policy\.outputs\.publish == 'true'/,
     "fork and build-only runs must skip Docker Hub login",
   );
   assert.match(

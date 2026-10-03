@@ -213,6 +213,24 @@ test("company mode: create the organization, meet the CEO, see the board and the
   await siteInput.fill(`@${ORG}_ceo 站点频道成立，先出一版信息架构。`);
   await siteInput.press("Enter");
   await expect(page.getByText("站点频道成立").first()).toBeVisible();
+  // The optimistic message can render a tick before the channel store commits it; wait for the
+  // persisted text and mention together before checking the backing API snapshot.
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(
+          api(`/organizations/${ORG}/channels/site/messages`),
+        );
+        if (!response.ok()) return false;
+        const { messages } = await response.json();
+        return messages.some(
+          (message) =>
+            message.text.includes("站点频道成立") && message.mentions.includes(`agent:${ORG}_ceo`),
+        );
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   const siteDay = await (
     await page.request.get(api(`/organizations/${ORG}/channels/site/messages`))
   ).json();

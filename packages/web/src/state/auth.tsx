@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import type { MeResponse, UploadLimits, UserInfo } from "@prismshadow/penguin-server/api";
 import * as api from "../api/endpoints";
 import { ApiError, setUnauthorizedHandler } from "../api/client";
+import { CONNECTIVITY_RECOVERED_EVENT } from "../lib/connectivity";
 
 /**
  * Stand-in until GET /api/me answers, matching the server's shipped defaults. The window is the
@@ -176,6 +177,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authGeneration.current += 1;
     };
   }, [refresh]);
+
+  useEffect(() => {
+    // If the first /api/me request failed during an outage, retry it only after the shared
+    // health monitor verifies the server following a failure or unverified link. The browser's
+    // "online" event alone cannot prove the server has recovered.
+    const onConnectivityRecovered = () => {
+      if (user === undefined || initializationFailed) void refresh().catch(() => undefined);
+    };
+    window.addEventListener(CONNECTIVITY_RECOVERED_EVENT, onConnectivityRecovered);
+    return () => window.removeEventListener(CONNECTIVITY_RECOVERED_EVENT, onConnectivityRecovered);
+  }, [initializationFailed, refresh, user]);
 
   return (
     <AuthContext.Provider

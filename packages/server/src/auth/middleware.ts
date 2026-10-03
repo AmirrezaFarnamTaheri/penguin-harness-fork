@@ -12,12 +12,23 @@
  * Accessing a protected API while logged out -> 401 `{error:{code:"unauthorized"}}`.
  * CSRF: SameSite=Lax plus a Content-Type an HTML form cannot forge (see jsonOnlyWrites).
  * That guard stays for Bearer requests too — the CLI always sends application/json.
+ *
+ * I4: WHETHER a credential is required is not decided here — it comes from the single pure
+ * resolver in auth/auth-mode.ts, passed in as an {@link AuthPolicy}. This function only applies
+ * that decision, and the decision's inputs are the configured policy and the configured bind
+ * address; nothing on the request (a header, a cookie, a forwarded-for value, a peer address)
+ * can change the mode or widen the public-path exemption. Under `all-except-health` a public
+ * path (the probes) skips the gate; under `off` a request with no credential is served as the
+ * built-in admin through the boot's local operator grant, and is refused when that grant does
+ * not exist rather than inventing one.
  */
 import type { MiddlewareHandler } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { HttpError } from "../http/errors.js";
 import type { UserRow } from "../db/repos/users.js";
 import type { AuthService, SessionVia } from "./service.js";
+import { authPolicyFromConfig, type AuthPolicy } from "./auth-mode.js";
+import type { ServerConfig } from "../config.js";
 
 /** Session cookie name. */
 export const SESSION_COOKIE = "penguin_session";
@@ -62,8 +73,19 @@ export function currentUser(c: { var: { user: UserRow } }): UserRow {
   return c.var.user;
 }
 
-export function authMiddleware(auth: AuthService, trustProxy: boolean): MiddlewareHandler<AppEnv> {
+export function authMiddleware(
+  auth: AuthService,
+  trustProxy: boolean,
+  policy: AuthPolicy,
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    // I4: the exemption is read from the policy (built once from config), not from the request.
+    // Under `off` nothing is exempt — the gate still runs so a user is always in `c.var`, it
+    // simply falls through to the local-operator grant instead of rejecting.
+    if (policy.decision.requiresAuth && policy.isPublicPath(c.req.path)) {
+      await next();
+      return;
+    }
     // Bearer first: an explicit credential on the request outranks ambient cookies, and
     // a wrong one is an error, never a silent fallback (see the module doc).
     const bearer = bearerToken(c.req.header("authorization"));
@@ -80,7 +102,28 @@ export function authMiddleware(auth: AuthService, trustProxy: boolean): Middlewa
     const token = getCookie(c, SESSION_COOKIE);
     const authed = token ? auth.authenticateWithMeta(token) : null;
     if (!authed) {
-      throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+      // A cookie that WAS supplied and did not authenticate is a rejection, not an invitation to
+      // try something else: falling through to the operator grant would serve an expired
+      // session's request as the admin, silently attributing its writes to the wrong identity
+      // (the Bearer branch rejects a bad token for the same reason). The grant is only for a
+      // request that presented nothing at all.
+      if (token) {
+        throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+      }
+      // I4 `off`: the local-operator grant. The process holds this boot's own API token (it
+      // wrote it to <root>/api-token), so on a trusted bind an anonymous request is the
+      // operator — the same authority the Bearer path encodes, without the round trip. A
+      // deployment whose boot minted no token refuses exactly like any other anonymous
+      // request: configuration is missing, so nothing is granted.
+      const grant = policy.decision.effective === "off" ? auth.localApiToken() : null;
+      const operator = grant === null ? null : auth.authenticateApiToken(grant);
+      if (operator === null) {
+        throw new HttpError(401, "unauthorized", "Not signed in or the sign-in has expired.");
+      }
+      c.set("user", operator.user);
+      c.set("sessionVia", operator.via);
+      await next();
+      return;
     }
     // Sliding renewal: the session's expiry was topped up in place, so refresh the cookie's
     // own max-age to match. The token value is unchanged — same session, longer life.
@@ -128,3 +171,11 @@ export const jsonOnlyWrites: MiddlewareHandler = async (c, next) => {
   }
   await next();
 };
+
+/**
+ * The I4 policy for a resolved configuration. Exported so the app (and only the app) derives the
+ * policy once and hands the same object to every gate it mounts.
+ */
+export function configAuthPolicy(config: Pick<ServerConfig, "authMode" | "host">): AuthPolicy {
+  return authPolicyFromConfig(config);
+}

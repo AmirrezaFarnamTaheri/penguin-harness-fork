@@ -228,6 +228,39 @@ describe("hooks api", () => {
     expect(list.hooks).toEqual([]);
   });
 
+  it("archive: symbolic-link entries are refused before any hook is installed", async () => {
+    await createPlainAgent("symlink_hook_agent");
+    const archive = zipSync({
+      ...packageFiles(),
+      "zip-hook/reference": [strToU8("destination"), { os: 3, attrs: (0o120777 << 16) >>> 0 }],
+    });
+    const response = await member.post(`${base("symlink_hook_agent")}/archive`, {
+      dataBase64: Buffer.from(archive).toString("base64"),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "zip_symlink_entry" } });
+    const list = (await (
+      await member.get(base("symlink_hook_agent"))
+    ).json()) as AgentHooksResponse;
+    expect(list.hooks).toEqual([]);
+    expect(
+      (
+        await member.post(`${base("symlink_hook_agent")}/archive`, {
+          dataBase64: zipB64(packageFiles()),
+        })
+      ).status,
+    ).toBe(201);
+    const destination = path.join(hooksDir(t.root, projectId, "symlink_hook_agent"), "zip-hook");
+    const original = await fs.readFile(path.join(destination, "hooks.json"));
+    const replacement = await member.post(`${base("symlink_hook_agent")}/archive`, {
+      dataBase64: Buffer.from(archive).toString("base64"),
+      overwrite: true,
+    });
+    expect(replacement.status).toBe(400);
+    expect(await fs.readFile(path.join(destination, "hooks.json"))).toEqual(original);
+    expect(await fs.readdir(destination)).toEqual(["hooks.json", "stop.mjs"]);
+  });
+
   it("archive: zip-slip entry paths and malformed bodies are rejected with 400, nothing written", async () => {
     await createPlainAgent("zip_shape_agent");
     const url = `${base("zip_shape_agent")}/archive`;

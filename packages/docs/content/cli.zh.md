@@ -27,6 +27,7 @@ CLI 是服务端的瘦客户端：所有会话相关命令（`run`、`chat`、`l
 - `--json` 输出原始 JSON 而非渲染 / 表格形式；`--server <url>` 指定目标服务器（见上）。
 - 调用方上下文缺省值：在 harness Agent 内部（环境里存在 `PENGUIN_SESSION_ID`）时，`run` / `chat` 新建会话的每个**未指定**字段都缺省取调用方会话的实时值——Workspace、模型对、审批模式与思考等级——与 `run_subagent` 派生子会话的继承是同一条约定，两个入口因此读作一套规则。逐字段优先级为显式选项 > 调用方值 > 普通缺省；查询失败打印一行暗色警告并回落普通缺省；不在 Agent 内时一切不变。（`--project-id` / `--agent-id` 保持上文的环境变量缺省。）
 - `--timeout <duration>`（`run`、`input` 与 `logs -f` 上）以软让出语义限定等待——即 `exec_command` yield 窗口的模型应用在 CLI 的等待上：到时命令干净脱开并以 0 退出，任务继续在服务端运行，之后可用 `penguin input` / `penguin logs` 接续。接受形式：`30s`、`5m`、`2h`，或表示秒数的纯整数；其余形式一律拒绝。`--timeout 0` 是窗口的退化形式——送达后立即返回（`--json` 下为 `{sessionId, status: "running"}`）：一个旋钮同时覆盖「不等待」。不带该选项 = 无限等待。（`run --background` 仍是**新建任务**的惯用「发完即走」：它为脚本打印裸 session id，在创建时刻即脱开。）
+- 帮助有三个深度。`penguin --help` 打印默认清单：一次普通会话会用到的命令，外加 `-h, --help`、`-v, --version` 与 `--help-mode`——由于说明按整词缩短、绝不截断单词，窄终端下也保持简短。`--help-mode simple` 进一步收窄到入门子集（`auth`、`server`、`chat`、`run`、`logs`、`recall`、`version`）；`--help-mode full` 展示全部已注册命令（含别名）与全部全局选项，在子命令页上还会列出该命令可接受的祖先选项。命令清单取自实时注册表——新增命令即便未分级也仍会出现在默认与 full 清单中，而不会消失；取值不属于这三种模式时，按普通用法错误处理。`--help`、裸 `penguin` 与 `-v, --version` 均以 0 退出。
 - 参数错误按界面语言呈现：缺少参数、缺少必填选项、未知选项或命令拼错时，打印一行本地化说明，附上该命令自身的用法与 `--help` 指引，并以非零码退出。
 - 数据根目录（仅 `config`）：`--root <dir>` 覆盖数据根目录，优先级为 `--root` > 环境变量 `PENGUIN_HOME` > `~/.penguin/data`。
 
@@ -149,6 +150,28 @@ penguin logs 402a2e24 -f
 | `--project-id <id>` | 片段检索的作用域 |
 | `--agent-id <id>` | 省略 session id 时，取哪个 Agent 的最近一次会话 |
 | `--json` / `--server <url>` | 同各处约定；`--json` 输出原始消息数组（`-f` 下按行追加到达的 JSON 消息） |
+
+## penguin recall
+
+通过结果提示中给出的召回 ID，读取已从结果中归档出去的工具输出。当工具输出太大而无法内联保留时，提示中会带一个不透明 ID（`{"recallId":"…","sizeBytes":…}`），模型用 `recall_output` 工具分页读回，本命令就是同一句柄在人工侧的使用方式。ID 为 12 位或 32 位十六进制字符，不代表任何文件：路径无法拼成合法 ID，本命令与服务端都会在任何读取之前拒绝其他形式。
+
+会话 ID 可省略，解析规则与 `penguin logs` 相同：省略时使用该 agent 最近的会话。分页内容会边到边写入 stdout（归档输出可能达数兆字节，程序中不做整体缓冲），`--pages` / `--offset` 可先读前缀、之后再继续。
+
+```bash
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718            # 全部页面，当前 agent 最近会话
+penguin recall 3f9a1c8b2d4e5f60 402a2e24 --pages 1         # 指定会话的第一页
+penguin recall 3f9a1c8b2d4e6f70a1b2c3d4e5f60718 --offset 12000 --json
+```
+
+| 选项 | 说明 |
+| --- | --- |
+| `--offset <n>` | 从已存储输出的该字符（UTF-16）位置开始；用上次打印的偏移量继续读取 |
+| `--pages <n>` | 最多读取 n 页（每页 12 000 字符），随后停止并提示可继续读取的偏移量 |
+| `--project-id <id>` / `--agent-id <id>` | 会话解析范围，与 `logs` 相同 |
+| `--json` | 每页输出一个 JSON 对象（NDJSON：`{recallId, offset, page, nextOffset, totalChars}`），仍然流式输出，绝不一次性输出整个条目 |
+| `--server <url>` | 目标服务器（见 Server connection） |
+
+失败信息会说明具体原因，因为处理方式各不相同：格式错误的 ID 在本地即被拒绝（`it names no file`）；本会话从未存过的 ID 为 `unavailable`；因有界存储淘汰而过期的条目为 `expired`；超出文本末尾（或落在 Unicode 字符中间）的位置由服务端拒绝，并给出文本真实长度。被压缩掉的输出不会对阅读会话的人丢失。
 
 ## penguin agent
 

@@ -902,6 +902,281 @@ const defaultShadowSink: ShadowSink = (record) => {
   );
 };
 
+// ---------------------------------------------------------------------------
+// A1 — the promotion: one typed decision, a reversible selector, and counters
+// ---------------------------------------------------------------------------
+
+/**
+ * Which decider a call site obeys. `shadow` is the pre-promotion behaviour (the legacy branch
+ * decides, the classifier only reports); `active` makes the classifier's recovery the decision.
+ *
+ * The selector exists because the flip is per-site and must be reversible in the field: an
+ * operator that sees a bad outcome can return to `shadow` without a rollback of the release.
+ */
+export const FAILURE_POLICY = {
+  Shadow: "shadow",
+  Active: "active",
+} as const;
+export type FailurePolicy = (typeof FAILURE_POLICY)[keyof typeof FAILURE_POLICY];
+
+/** The environment variable that selects the policy for sites that do not take one explicitly. */
+export const FAILURE_POLICY_ENV = "PENGUIN_FAILURE_CLASSIFIER";
+
+/**
+ * Resolves the policy from an environment snapshot. Anything other than the exact string
+ * `active` means `shadow`: promotion has to be a deliberate act, so an unknown or misspelled
+ * value must never silently activate a new classification boundary.
+ */
+export function resolveFailurePolicy(
+  env: Readonly<Record<string, string | undefined>>,
+): FailurePolicy {
+  return env[FAILURE_POLICY_ENV] === FAILURE_POLICY.Active
+    ? FAILURE_POLICY.Active
+    : FAILURE_POLICY.Shadow;
+}
+
+/**
+ * One decision per failure — the A1.4 property. Shape-wise the two vocabularies are kept apart
+ * rather than merged: `legacy` is what the old branch would have done, `recovery` is what the
+ * typed classifier says to do, and `action` is the one of those the configured policy obeys.
+ * A call site switches on `action` alone, which is what makes "prose never selects failure
+ * kind" checkable: no message text is consulted after this point.
+ */
+export interface FailureDecision {
+  readonly policy: FailurePolicy;
+  readonly kind: FailureKind;
+  readonly recovery: RecoveryAction;
+  readonly legacy: LegacyAction;
+  /** The action the caller must take: the legacy action under `shadow`, the recovery under `active`. */
+  readonly action: LegacyAction | RecoveryAction;
+  /** Whether the classifier's implied legacy action is the legacy action observed. */
+  readonly agrees: boolean;
+  readonly evidence: string;
+  readonly status?: number;
+  readonly at: number;
+}
+
+/**
+ * The one place a failure becomes an action. Pure: same input, same decision, no state.
+ *
+ * Note what `active` does **not** do — it does not re-rank the provider's signals. Precedence
+ * lives in `classifyFailure` (status/code first, prose never) and is documented by
+ * {@link CLASSIFICATION_PRECEDENCE}; this function only chooses which vocabulary is obeyed.
+ */
+export function decideFailure(
+  failure: ProviderFailure,
+  legacy: LegacyAction,
+  policy: FailurePolicy,
+  now: number = Date.now(),
+): FailureDecision {
+  const classification = classifyFailure(failure);
+  const equivalent = LEGACY_EQUIVALENT[classification.recovery];
+  const agrees = equivalent === legacy;
+  return {
+    policy,
+    kind: classification.kind,
+    recovery: classification.recovery,
+    legacy,
+    action: policy === FAILURE_POLICY.Active ? classification.recovery : legacy,
+    agrees,
+    evidence: classification.evidence,
+    ...(classification.status !== undefined ? { status: classification.status } : {}),
+    at: now,
+  };
+}
+
+/**
+ * A1.2 — the precedence table, written down as data so a reviewer can check the order rather
+ * than reconstruct it from `if` statements. Each row is an input class and the one kind it must
+ * produce; `test/fleet/provider-gateway.test.ts` asserts every row.
+ *
+ * The rule that generates the order: **the credential is only blamed when the provider said
+ * something about the credential.** A 429-shaped signal wins over an auth-shaped one (a
+ * throttled window is recoverable; a wrongly disabled key is not), a quota code wins over a
+ * bare 403 (403 alone says nothing about the key), and a transport/undocumented failure
+ * degrades to `unknown` — observed, never guessed.
+ */
+export const CLASSIFICATION_PRECEDENCE: ReadonlyArray<{
+  readonly input: string;
+  readonly kind: FailureKind;
+  readonly note: string;
+}> = [
+  {
+    input: "a declared credential code on any status (invalid_api_key, expired_token, …)",
+    kind: FAILURE_KIND.CredentialRejected,
+    note: "the provider named the credential, so nothing else in the response can outrank it — not even a 429",
+  },
+  {
+    input: "401 with no credential code",
+    kind: FAILURE_KIND.CredentialRejected,
+    note: "a bare 401 is the provider naming the credential too; this is the auth-first end of the resolution and it wins over a rate-limit code",
+  },
+  {
+    input: "403 carrying a quota code such as insufficient_user_quota",
+    kind: FAILURE_KIND.QuotaExhausted,
+    note: "the one genuinely ambiguous status, disambiguated by its code: quota beats the SDK's permission label",
+  },
+  {
+    input: "403 carrying a capacity code",
+    kind: FAILURE_KIND.ProviderUnavailable,
+    note: "capacity is the provider's problem; the credential is blameless",
+  },
+  {
+    input: "a bare 403 (no code at all)",
+    kind: FAILURE_KIND.RequestRejected,
+    note: "a bare 403 says nothing about the credential, so it is a request verdict — never a parked key",
+  },
+  {
+    input: "a quota code on any other status",
+    kind: FAILURE_KIND.QuotaExhausted,
+    note: "quota evidence outranks the 429 branch — the window is not the problem, the allowance is",
+  },
+  {
+    input: "429, or a declared rate-limit code",
+    kind: FAILURE_KIND.RateLimited,
+    note: "the window is over and the credential is fine: cool down, rotate, retry",
+  },
+  {
+    input: "capacity code, a 5xx/unavailable status, or 408",
+    kind: FAILURE_KIND.ProviderUnavailable,
+    note: "the provider is having a bad time; no credential is blamed and no key is parked",
+  },
+  {
+    input: "another definitive 4xx",
+    kind: FAILURE_KIND.RequestRejected,
+    note: "the request is wrong, so surface it instead of retrying or parking a key",
+  },
+  {
+    input: "nothing recognised (malformed body, prose-only error, unknown status)",
+    kind: FAILURE_KIND.Unknown,
+    note: "observed and counted, never guessed at",
+  },
+];
+
+/** Counters behind the A1.4 "classification rate" check: what the classifier saw and decided. */
+export interface FailureClassificationSnapshot {
+  readonly total: number;
+  readonly byKind: Readonly<Record<string, number>>;
+  readonly byAction: Readonly<Record<string, number>>;
+  /** Decisions where the classifier's implied action was the legacy action. */
+  readonly agreements: number;
+  /** Decisions where it was not — the population the enumeration must explain. */
+  readonly disagreements: number;
+  readonly byPolicy: Readonly<Record<string, number>>;
+}
+
+const classificationCounters: {
+  total: number;
+  byKind: Map<string, number>;
+  byAction: Map<string, number>;
+  byPolicy: Map<string, number>;
+  agreements: number;
+  disagreements: number;
+} = {
+  total: 0,
+  byKind: new Map(),
+  byAction: new Map(),
+  byPolicy: new Map(),
+  agreements: 0,
+  disagreements: 0,
+};
+
+/** Records one decision. Called by {@link decideAndReport}; exported for tests and hosts. */
+export function recordFailureDecision(decision: FailureDecision): void {
+  classificationCounters.total += 1;
+  const bump = (map: Map<string, number>, key: string): void => {
+    map.set(key, (map.get(key) ?? 0) + 1);
+  };
+  bump(classificationCounters.byKind, decision.kind);
+  bump(classificationCounters.byAction, decision.action);
+  bump(classificationCounters.byPolicy, decision.policy);
+  if (decision.agrees) classificationCounters.agreements += 1;
+  else classificationCounters.disagreements += 1;
+}
+
+export function failureClassificationSnapshot(): FailureClassificationSnapshot {
+  return {
+    total: classificationCounters.total,
+    byKind: Object.fromEntries(classificationCounters.byKind),
+    byAction: Object.fromEntries(classificationCounters.byAction),
+    byPolicy: Object.fromEntries(classificationCounters.byPolicy),
+    agreements: classificationCounters.agreements,
+    disagreements: classificationCounters.disagreements,
+  };
+}
+
+/** Test-only: counters are process-wide, so a suite that asserts rates must reset them. */
+export function resetFailureClassificationCounters(): void {
+  classificationCounters.total = 0;
+  classificationCounters.byKind.clear();
+  classificationCounters.byAction.clear();
+  classificationCounters.byPolicy.clear();
+  classificationCounters.agreements = 0;
+  classificationCounters.disagreements = 0;
+}
+
+/**
+ * The promoted entry point: decide once, count once, log one line. Returns the decision so the
+ * call site can switch on `action` — the shadow reporter's job, without its "decides nothing"
+ * limitation, because the policy decided above whether the action is the classifier's or the
+ * legacy branch's.
+ */
+export function decideAndReport(
+  input: ObserveFailureInput,
+  policy: FailurePolicy,
+  options: ShadowOptions = {},
+): FailureDecision {
+  const decision = decideFailure(input.failure, input.legacy, policy, (options.now ?? Date.now)());
+  recordFailureDecision(decision);
+  const sink = options.sink ?? defaultShadowSink;
+  sink({
+    ...(input.credentialId !== undefined ? { credentialId: input.credentialId } : {}),
+    ...(input.provider !== undefined ? { provider: input.provider } : {}),
+    legacy: input.legacy,
+    kind: decision.kind,
+    recovery: decision.recovery,
+    agrees: decision.agrees,
+    evidence: decision.evidence,
+    ...(decision.status !== undefined ? { status: decision.status } : {}),
+    at: decision.at,
+  });
+  return decision;
+}
+
+/**
+ * A dependency-free 64-bit FNV-1a hash, hex-encoded. This module deliberately imports nothing
+ * (it must be loadable next to any transport without dragging one in), so the corpus
+ * fingerprint is computed here rather than with `node:crypto`.
+ */
+function canonicalHash(text: string): string {
+  let hash = 0xcbf29ce484222325n;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= BigInt(text.charCodeAt(index));
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/** Canonical hash of a decision corpus (A1.1): frozen fixtures cannot drift unnoticed. */
+export function decisionCorpusHash(
+  rows: readonly { name: string; failure: ProviderFailure; legacy: LegacyAction }[],
+): string {
+  const canonical = rows
+    .map((row) =>
+      JSON.stringify([
+        row.name,
+        row.failure.status ?? null,
+        row.failure.code ?? null,
+        row.failure.type ?? null,
+        row.failure.retryAfterMs ?? null,
+        row.legacy,
+      ]),
+    )
+    .sort()
+    .join("\n");
+  return canonicalHash(canonical);
+}
+
 const ENVELOPE_KEYS = ["error", "body", "data", "response", "responseBody"] as const;
 
 /**

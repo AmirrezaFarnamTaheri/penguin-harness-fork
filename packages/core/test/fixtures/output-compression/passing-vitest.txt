@@ -1,0 +1,315 @@
+ RUN  v4.1.11 D:/repo/packages/core
+ ✓ test/thing-0.test.ts (1 tests) 0ms
+ ✓ test/thing-1.test.ts (2 tests) 1ms
+ ✓ test/thing-2.test.ts (3 tests) 2ms
+ ✓ test/thing-3.test.ts (4 tests) 3ms
+ ✓ test/thing-4.test.ts (5 tests) 4ms
+ ✓ test/thing-5.test.ts (6 tests) 5ms
+ ✓ test/thing-6.test.ts (7 tests) 6ms
+ ✓ test/thing-7.test.ts (8 tests) 7ms
+ ✓ test/thing-8.test.ts (9 tests) 8ms
+ ✓ test/thing-9.test.ts (10 tests) 9ms
+ ✓ test/thing-10.test.ts (11 tests) 10ms
+ ✓ test/thing-11.test.ts (12 tests) 11ms
+ ✓ test/thing-12.test.ts (13 tests) 12ms
+ ✓ test/thing-13.test.ts (14 tests) 13ms
+ ✓ test/thing-14.test.ts (15 tests) 14ms
+ ✓ test/thing-15.test.ts (16 tests) 15ms
+ ✓ test/thing-16.test.ts (17 tests) 16ms
+ ✓ test/thing-17.test.ts (18 tests) 17ms
+ ✓ test/thing-18.test.ts (19 tests) 18ms
+ ✓ test/thing-19.test.ts (20 tests) 19ms
+ ✓ test/thing-20.test.ts (21 tests) 20ms
+ ✓ test/thing-21.test.ts (22 tests) 21ms
+ ✓ test/thing-22.test.ts (23 tests) 22ms
+ ✓ test/thing-23.test.ts (24 tests) 23ms
+ ✓ test/thing-24.test.ts (25 tests) 24ms
+ ✓ test/thing-25.test.ts (26 tests) 25ms
+ ✓ test/thing-26.test.ts (27 tests) 26ms
+ ✓ test/thing-27.test.ts (28 tests) 27ms
+ ✓ test/thing-28.test.ts (29 tests) 28ms
+ ✓ test/thing-29.test.ts (30 tests) 29ms
+ ✓ test/thing-30.test.ts (31 tests) 30ms
+ ✓ test/thing-31.test.ts (32 tests) 31ms
+ ✓ test/thing-32.test.ts (33 tests) 32ms
+ ✓ test/thing-33.test.ts (34 tests) 33ms
+ ✓ test/thing-34.test.ts (35 tests) 34ms
+ ✓ test/thing-35.test.ts (36 tests) 35ms
+ ✓ test/thing-36.test.ts (37 tests) 36ms
+ ✓ test/thing-37.test.ts (38 tests) 37ms
+ ✓ test/thing-38.test.ts (39 tests) 38ms
+ ✓ test/thing-39.test.ts (40 tests) 39ms
+ ✓ test/thing-40.test.ts (41 tests) 40ms
+ ✓ test/thing-41.test.ts (42 tests) 41ms
+ ✓ test/thing-42.test.ts (43 tests) 42ms
+ ✓ test/thing-43.test.ts (44 tests) 43ms
+ ✓ test/thing-44.test.ts (45 tests) 44ms
+ ✓ test/thing-45.test.ts (46 tests) 45ms
+ ✓ test/thing-46.test.ts (47 tests) 46ms
+ ✓ test/thing-47.test.ts (48 tests) 47ms
+ ✓ test/thing-48.test.ts (49 tests) 48ms
+ ✓ test/thing-49.test.ts (50 tests) 49ms
+ ✓ test/thing-50.test.ts (51 tests) 50ms
+ ✓ test/thing-51.test.ts (52 tests) 51ms
+ ✓ test/thing-52.test.ts (53 tests) 52ms
+ ✓ test/thing-53.test.ts (54 tests) 53ms
+ ✓ test/thing-54.test.ts (55 tests) 54ms
+ ✓ test/thing-55.test.ts (56 tests) 55ms
+ ✓ test/thing-56.test.ts (57 tests) 56ms
+ ✓ test/thing-57.test.ts (58 tests) 57ms
+ ✓ test/thing-58.test.ts (59 tests) 58ms
+ ✓ test/thing-59.test.ts (60 tests) 59ms
+ ✓ test/thing-60.test.ts (61 tests) 60ms
+ ✓ test/thing-61.test.ts (62 tests) 61ms
+ ✓ test/thing-62.test.ts (63 tests) 62ms
+ ✓ test/thing-63.test.ts (64 tests) 63ms
+ ✓ test/thing-64.test.ts (65 tests) 64ms
+ ✓ test/thing-65.test.ts (66 tests) 65ms
+ ✓ test/thing-66.test.ts (67 tests) 66ms
+ ✓ test/thing-67.test.ts (68 tests) 67ms
+ ✓ test/thing-68.test.ts (69 tests) 68ms
+ ✓ test/thing-69.test.ts (70 tests) 69ms
+ ✓ test/thing-70.test.ts (71 tests) 70ms
+ ✓ test/thing-71.test.ts (72 tests) 71ms
+ ✓ test/thing-72.test.ts (73 tests) 72ms
+ ✓ test/thing-73.test.ts (74 tests) 73ms
+ ✓ test/thing-74.test.ts (75 tests) 74ms
+ ✓ test/thing-75.test.ts (76 tests) 75ms
+ ✓ test/thing-76.test.ts (77 tests) 76ms
+ ✓ test/thing-77.test.ts (78 tests) 77ms
+ ✓ test/thing-78.test.ts (79 tests) 78ms
+ ✓ test/thing-79.test.ts (80 tests) 79ms
+ ✓ test/thing-80.test.ts (81 tests) 80ms
+ ✓ test/thing-81.test.ts (82 tests) 81ms
+ ✓ test/thing-82.test.ts (83 tests) 82ms
+ ✓ test/thing-83.test.ts (84 tests) 83ms
+ ✓ test/thing-84.test.ts (85 tests) 84ms
+ ✓ test/thing-85.test.ts (86 tests) 85ms
+ ✓ test/thing-86.test.ts (87 tests) 86ms
+ ✓ test/thing-87.test.ts (88 tests) 87ms
+ ✓ test/thing-88.test.ts (89 tests) 88ms
+ ✓ test/thing-89.test.ts (90 tests) 89ms
+ ✓ test/thing-90.test.ts (91 tests) 90ms
+ ✓ test/thing-91.test.ts (92 tests) 91ms
+ ✓ test/thing-92.test.ts (93 tests) 92ms
+ ✓ test/thing-93.test.ts (94 tests) 93ms
+ ✓ test/thing-94.test.ts (95 tests) 94ms
+ ✓ test/thing-95.test.ts (96 tests) 95ms
+ ✓ test/thing-96.test.ts (97 tests) 96ms
+ ✓ test/thing-97.test.ts (98 tests) 97ms
+ ✓ test/thing-98.test.ts (99 tests) 98ms
+ ✓ test/thing-99.test.ts (100 tests) 99ms
+ ✓ test/thing-100.test.ts (101 tests) 100ms
+ ✓ test/thing-101.test.ts (102 tests) 101ms
+ ✓ test/thing-102.test.ts (103 tests) 102ms
+ ✓ test/thing-103.test.ts (104 tests) 103ms
+ ✓ test/thing-104.test.ts (105 tests) 104ms
+ ✓ test/thing-105.test.ts (106 tests) 105ms
+ ✓ test/thing-106.test.ts (107 tests) 106ms
+ ✓ test/thing-107.test.ts (108 tests) 107ms
+ ✓ test/thing-108.test.ts (109 tests) 108ms
+ ✓ test/thing-109.test.ts (110 tests) 109ms
+ ✓ test/thing-110.test.ts (111 tests) 110ms
+ ✓ test/thing-111.test.ts (112 tests) 111ms
+ ✓ test/thing-112.test.ts (113 tests) 112ms
+ ✓ test/thing-113.test.ts (114 tests) 113ms
+ ✓ test/thing-114.test.ts (115 tests) 114ms
+ ✓ test/thing-115.test.ts (116 tests) 115ms
+ ✓ test/thing-116.test.ts (117 tests) 116ms
+ ✓ test/thing-117.test.ts (118 tests) 117ms
+ ✓ test/thing-118.test.ts (119 tests) 118ms
+ ✓ test/thing-119.test.ts (120 tests) 119ms
+ ✓ test/thing-120.test.ts (121 tests) 120ms
+ ✓ test/thing-121.test.ts (122 tests) 121ms
+ ✓ test/thing-122.test.ts (123 tests) 122ms
+ ✓ test/thing-123.test.ts (124 tests) 123ms
+ ✓ test/thing-124.test.ts (125 tests) 124ms
+ ✓ test/thing-125.test.ts (126 tests) 125ms
+ ✓ test/thing-126.test.ts (127 tests) 126ms
+ ✓ test/thing-127.test.ts (128 tests) 127ms
+ ✓ test/thing-128.test.ts (129 tests) 128ms
+ ✓ test/thing-129.test.ts (130 tests) 129ms
+ ✓ test/thing-130.test.ts (131 tests) 130ms
+ ✓ test/thing-131.test.ts (132 tests) 131ms
+ ✓ test/thing-132.test.ts (133 tests) 132ms
+ ✓ test/thing-133.test.ts (134 tests) 133ms
+ ✓ test/thing-134.test.ts (135 tests) 134ms
+ ✓ test/thing-135.test.ts (136 tests) 135ms
+ ✓ test/thing-136.test.ts (137 tests) 136ms
+ ✓ test/thing-137.test.ts (138 tests) 137ms
+ ✓ test/thing-138.test.ts (139 tests) 138ms
+ ✓ test/thing-139.test.ts (140 tests) 139ms
+ ✓ test/thing-140.test.ts (141 tests) 140ms
+ ✓ test/thing-141.test.ts (142 tests) 141ms
+ ✓ test/thing-142.test.ts (143 tests) 142ms
+ ✓ test/thing-143.test.ts (144 tests) 143ms
+ ✓ test/thing-144.test.ts (145 tests) 144ms
+ ✓ test/thing-145.test.ts (146 tests) 145ms
+ ✓ test/thing-146.test.ts (147 tests) 146ms
+ ✓ test/thing-147.test.ts (148 tests) 147ms
+ ✓ test/thing-148.test.ts (149 tests) 148ms
+ ✓ test/thing-149.test.ts (150 tests) 149ms
+ ✓ test/thing-150.test.ts (151 tests) 150ms
+ ✓ test/thing-151.test.ts (152 tests) 151ms
+ ✓ test/thing-152.test.ts (153 tests) 152ms
+ ✓ test/thing-153.test.ts (154 tests) 153ms
+ ✓ test/thing-154.test.ts (155 tests) 154ms
+ ✓ test/thing-155.test.ts (156 tests) 155ms
+ ✓ test/thing-156.test.ts (157 tests) 156ms
+ ✓ test/thing-157.test.ts (158 tests) 157ms
+ ✓ test/thing-158.test.ts (159 tests) 158ms
+ ✓ test/thing-159.test.ts (160 tests) 159ms
+ ✓ test/thing-160.test.ts (161 tests) 160ms
+ ✓ test/thing-161.test.ts (162 tests) 161ms
+ ✓ test/thing-162.test.ts (163 tests) 162ms
+ ✓ test/thing-163.test.ts (164 tests) 163ms
+ ✓ test/thing-164.test.ts (165 tests) 164ms
+ ✓ test/thing-165.test.ts (166 tests) 165ms
+ ✓ test/thing-166.test.ts (167 tests) 166ms
+ ✓ test/thing-167.test.ts (168 tests) 167ms
+ ✓ test/thing-168.test.ts (169 tests) 168ms
+ ✓ test/thing-169.test.ts (170 tests) 169ms
+ ✓ test/thing-170.test.ts (171 tests) 170ms
+ ✓ test/thing-171.test.ts (172 tests) 171ms
+ ✓ test/thing-172.test.ts (173 tests) 172ms
+ ✓ test/thing-173.test.ts (174 tests) 173ms
+ ✓ test/thing-174.test.ts (175 tests) 174ms
+ ✓ test/thing-175.test.ts (176 tests) 175ms
+ ✓ test/thing-176.test.ts (177 tests) 176ms
+ ✓ test/thing-177.test.ts (178 tests) 177ms
+ ✓ test/thing-178.test.ts (179 tests) 178ms
+ ✓ test/thing-179.test.ts (180 tests) 179ms
+ ✓ test/thing-180.test.ts (181 tests) 180ms
+ ✓ test/thing-181.test.ts (182 tests) 181ms
+ ✓ test/thing-182.test.ts (183 tests) 182ms
+ ✓ test/thing-183.test.ts (184 tests) 183ms
+ ✓ test/thing-184.test.ts (185 tests) 184ms
+ ✓ test/thing-185.test.ts (186 tests) 185ms
+ ✓ test/thing-186.test.ts (187 tests) 186ms
+ ✓ test/thing-187.test.ts (188 tests) 187ms
+ ✓ test/thing-188.test.ts (189 tests) 188ms
+ ✓ test/thing-189.test.ts (190 tests) 189ms
+ ✓ test/thing-190.test.ts (191 tests) 190ms
+ ✓ test/thing-191.test.ts (192 tests) 191ms
+ ✓ test/thing-192.test.ts (193 tests) 192ms
+ ✓ test/thing-193.test.ts (194 tests) 193ms
+ ✓ test/thing-194.test.ts (195 tests) 194ms
+ ✓ test/thing-195.test.ts (196 tests) 195ms
+ ✓ test/thing-196.test.ts (197 tests) 196ms
+ ✓ test/thing-197.test.ts (198 tests) 197ms
+ ✓ test/thing-198.test.ts (199 tests) 198ms
+ ✓ test/thing-199.test.ts (200 tests) 199ms
+ ✓ test/thing-200.test.ts (201 tests) 200ms
+ ✓ test/thing-201.test.ts (202 tests) 201ms
+ ✓ test/thing-202.test.ts (203 tests) 202ms
+ ✓ test/thing-203.test.ts (204 tests) 203ms
+ ✓ test/thing-204.test.ts (205 tests) 204ms
+ ✓ test/thing-205.test.ts (206 tests) 205ms
+ ✓ test/thing-206.test.ts (207 tests) 206ms
+ ✓ test/thing-207.test.ts (208 tests) 207ms
+ ✓ test/thing-208.test.ts (209 tests) 208ms
+ ✓ test/thing-209.test.ts (210 tests) 209ms
+ ✓ test/thing-210.test.ts (211 tests) 210ms
+ ✓ test/thing-211.test.ts (212 tests) 211ms
+ ✓ test/thing-212.test.ts (213 tests) 212ms
+ ✓ test/thing-213.test.ts (214 tests) 213ms
+ ✓ test/thing-214.test.ts (215 tests) 214ms
+ ✓ test/thing-215.test.ts (216 tests) 215ms
+ ✓ test/thing-216.test.ts (217 tests) 216ms
+ ✓ test/thing-217.test.ts (218 tests) 217ms
+ ✓ test/thing-218.test.ts (219 tests) 218ms
+ ✓ test/thing-219.test.ts (220 tests) 219ms
+     ✓ case 0 is fine 0ms
+     ✓ case 1 is fine 1ms
+     ✓ case 2 is fine 2ms
+     ✓ case 3 is fine 3ms
+     ✓ case 4 is fine 4ms
+     ✓ case 5 is fine 5ms
+     ✓ case 6 is fine 6ms
+     ✓ case 7 is fine 7ms
+     ✓ case 8 is fine 8ms
+     ✓ case 9 is fine 9ms
+     ✓ case 10 is fine 10ms
+     ✓ case 11 is fine 11ms
+     ✓ case 12 is fine 12ms
+     ✓ case 13 is fine 13ms
+     ✓ case 14 is fine 14ms
+     ✓ case 15 is fine 15ms
+     ✓ case 16 is fine 16ms
+     ✓ case 17 is fine 17ms
+     ✓ case 18 is fine 18ms
+     ✓ case 19 is fine 19ms
+     ✓ case 20 is fine 20ms
+     ✓ case 21 is fine 21ms
+     ✓ case 22 is fine 22ms
+     ✓ case 23 is fine 23ms
+     ✓ case 24 is fine 24ms
+     ✓ case 25 is fine 25ms
+     ✓ case 26 is fine 26ms
+     ✓ case 27 is fine 27ms
+     ✓ case 28 is fine 28ms
+     ✓ case 29 is fine 29ms
+     ✓ case 30 is fine 30ms
+     ✓ case 31 is fine 31ms
+     ✓ case 32 is fine 32ms
+     ✓ case 33 is fine 33ms
+     ✓ case 34 is fine 34ms
+     ✓ case 35 is fine 35ms
+     ✓ case 36 is fine 36ms
+     ✓ case 37 is fine 37ms
+     ✓ case 38 is fine 38ms
+     ✓ case 39 is fine 39ms
+     ✓ case 40 is fine 40ms
+     ✓ case 41 is fine 41ms
+     ✓ case 42 is fine 42ms
+     ✓ case 43 is fine 43ms
+     ✓ case 44 is fine 44ms
+     ✓ case 45 is fine 45ms
+     ✓ case 46 is fine 46ms
+     ✓ case 47 is fine 47ms
+     ✓ case 48 is fine 48ms
+     ✓ case 49 is fine 49ms
+     ✓ case 50 is fine 50ms
+     ✓ case 51 is fine 51ms
+     ✓ case 52 is fine 52ms
+     ✓ case 53 is fine 53ms
+     ✓ case 54 is fine 54ms
+     ✓ case 55 is fine 55ms
+     ✓ case 56 is fine 56ms
+     ✓ case 57 is fine 57ms
+     ✓ case 58 is fine 58ms
+     ✓ case 59 is fine 59ms
+     ✓ case 60 is fine 60ms
+     ✓ case 61 is fine 61ms
+     ✓ case 62 is fine 62ms
+     ✓ case 63 is fine 63ms
+     ✓ case 64 is fine 64ms
+     ✓ case 65 is fine 65ms
+     ✓ case 66 is fine 66ms
+     ✓ case 67 is fine 67ms
+     ✓ case 68 is fine 68ms
+     ✓ case 69 is fine 69ms
+     ✓ case 70 is fine 70ms
+     ✓ case 71 is fine 71ms
+     ✓ case 72 is fine 72ms
+     ✓ case 73 is fine 73ms
+     ✓ case 74 is fine 74ms
+     ✓ case 75 is fine 75ms
+     ✓ case 76 is fine 76ms
+     ✓ case 77 is fine 77ms
+     ✓ case 78 is fine 78ms
+     ✓ case 79 is fine 79ms
+     ✓ case 80 is fine 80ms
+     ✓ case 81 is fine 81ms
+     ✓ case 82 is fine 82ms
+     ✓ case 83 is fine 83ms
+     ✓ case 84 is fine 84ms
+     ✓ case 85 is fine 85ms
+     ✓ case 86 is fine 86ms
+     ✓ case 87 is fine 87ms
+     ✓ case 88 is fine 88ms
+     ✓ case 89 is fine 89ms
+
+ Test Files  11 passed (11)
+      Tests  308 passed | 14 skipped (322)
+   Duration  47.94s

@@ -2,6 +2,7 @@
  * Gateway, Fallback Combos, Quota & Pricing Routes.
  */
 import { Hono } from "hono";
+import path from "node:path";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
@@ -22,6 +23,7 @@ import type {
 import { ProjectJsonStore } from "../../services/project-json-store.js";
 
 const pricingCatalog = new PricingCatalog();
+const MAX_GATEWAY_ID_LENGTH = 128;
 const ALLOWED_FALLBACK_TRIGGERS: readonly FallbackTrigger[] = [
   "rate_limit",
   "quota_exhausted",
@@ -123,15 +125,19 @@ function parseSpendSessions(value: unknown, projectId: string): SessionCostRecor
       throw badRequest(`sessions[${index}] must be an object.`);
     }
     const session = rawSession as Record<string, unknown>;
-    if (session.sessionId !== undefined && typeof session.sessionId !== "string") {
-      throw badRequest(`sessions[${index}].sessionId must be a string when provided.`);
+    for (const key of ["sessionId", "projectId"] as const) {
+      if (
+        session[key] !== undefined &&
+        (typeof session[key] !== "string" ||
+          session[key].length > MAX_GATEWAY_ID_LENGTH ||
+          !isValidId(session[key]))
+      ) {
+        throw badRequest(
+          `sessions[${index}].${key} must be a valid identifier of at most ${MAX_GATEWAY_ID_LENGTH} characters.`,
+        );
+      }
     }
-    if (session.projectId !== undefined && typeof session.projectId !== "string") {
-      throw badRequest(`sessions[${index}].projectId must be a string when provided.`);
-    }
-    if (session.projectPath !== undefined && typeof session.projectPath !== "string") {
-      throw badRequest(`sessions[${index}].projectPath must be a string when provided.`);
-    }
+    if (session.projectPath !== undefined) validateDisplayPath(session.projectPath, index);
 
     return {
       sessionId: (session.sessionId as string | undefined) ?? "",
@@ -140,6 +146,32 @@ function parseSpendSessions(value: unknown, projectId: string): SessionCostRecor
       modelBreakdown: parseSpendModelBreakdown(session.modelBreakdown, index),
     };
   });
+}
+
+/** Display metadata stays inert; reject ambiguous paths at the HTTP boundary anyway. */
+function validateDisplayPath(value: unknown, index: number): asserts value is string {
+  const label = `sessions[${index}].projectPath`;
+  if (
+    typeof value !== "string" ||
+    !value ||
+    value.length > 4096 ||
+    value.trim() !== value ||
+    /[\x00-\x1f\x7f]|%[0-9a-f]{2}|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/iu.test(
+      value,
+    )
+  ) {
+    throw badRequest(`${label} must be a non-empty normalized path of at most 4096 characters.`);
+  }
+  const windows = /^[a-z]:\\|^\\\\/i.test(value);
+  const segments = value.split(/[\\/]/);
+  if (
+    segments.some((segment) => segment === "." || segment === "..") ||
+    (windows
+      ? value.includes("/") || path.win32.normalize(value) !== value
+      : value.includes("\\") || path.posix.normalize(value) !== value)
+  ) {
+    throw badRequest(`${label} must not contain traversal or non-normalized separators.`);
+  }
 }
 
 function spendFlowLimit(value: unknown): number {
@@ -153,6 +185,13 @@ function spendFlowLimit(value: unknown): number {
     throw badRequest(`limit must be an integer between 1 and ${MAX_SPEND_FLOW_NODES}.`);
   }
   return value;
+}
+
+function requireBoundedGatewayProjectId(projectId: string): string {
+  if (projectId.length > MAX_GATEWAY_ID_LENGTH) {
+    throw notFound("Resource does not exist or you do not have access.");
+  }
+  return projectId;
 }
 
 export function isSafeSegment(segment: string): boolean {
@@ -185,13 +224,13 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   );
 
   app.get("/combos", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     return c.json({ combos: registryFrom(await combos.read(projectId)).list() });
   });
 
   app.put("/combos", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
     const body = await readJson(c);
     const id = requireString(body, "id", { minLen: 1, maxLen: 64, label: "id" });
@@ -261,7 +300,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.delete("/combos/:id", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectOwner(c.var.user.userId, projectId);
     const id = requireValidId(c, "id");
     const deleted = await combos.update(projectId, (current) => {
@@ -273,25 +312,25 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.get("/quota", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     return c.json(await getQuotaPayload(deps, projectId));
   });
 
   app.get("/status", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     return c.json(await getQuotaPayload(deps, projectId));
   });
 
   app.get("/pricing", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     return c.json({ catalog: DEFAULT_PRICING_CATALOG });
   });
 
   app.post("/cost", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
     const provider = requireString(body, "provider", { minLen: 1, maxLen: 64, label: "provider" });
@@ -319,7 +358,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/spend-flow", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
     const sessions = parseSpendSessions(body.sessions, projectId);
@@ -331,7 +370,7 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/chat/completions", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
     const model = requireString(body, "model", { minLen: 1, maxLen: 256, label: "model" });
@@ -357,12 +396,12 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
   });
 
   app.post("/webhooks/approval", async (c) => {
-    const projectId = requireValidId(c, "projectId");
+    const projectId = requireBoundedGatewayProjectId(requireValidId(c, "projectId"));
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
     const approvalId = requireString(body, "approvalId", {
       minLen: 1,
-      maxLen: 128,
+      maxLen: MAX_GATEWAY_ID_LENGTH,
       label: "approvalId",
     });
     const action = requireString(body, "action", { minLen: 1, maxLen: 32, label: "action" });
@@ -372,8 +411,12 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
 
     let sessionId: string;
     let toolCallId: string;
-    if (typeof body.sessionId === "string" && body.sessionId.length > 0) {
-      sessionId = body.sessionId;
+    if (Object.hasOwn(body, "sessionId")) {
+      sessionId = requireString(body, "sessionId", {
+        minLen: 1,
+        maxLen: MAX_GATEWAY_ID_LENGTH,
+        label: "sessionId",
+      });
       toolCallId =
         typeof body.toolCallId === "string" && body.toolCallId.length > 0
           ? body.toolCallId
@@ -385,9 +428,14 @@ export function gatewayRoutes(deps: AppDeps): Hono<AppEnv> {
     } else {
       throw notFound("Approval does not exist or is not accessible in this project.");
     }
-    if (!sessionId || !toolCallId || sessionId.length > 128 || toolCallId.length > 128) {
+    if (
+      !isValidId(sessionId) ||
+      sessionId.length > MAX_GATEWAY_ID_LENGTH ||
+      !toolCallId ||
+      toolCallId.length > MAX_GATEWAY_ID_LENGTH
+    ) {
       throw badRequest(
-        "sessionId and toolCallId must be non-empty identifiers no longer than 128 characters.",
+        `sessionId must be a valid identifier and toolCallId must be non-empty; both may be at most ${MAX_GATEWAY_ID_LENGTH} characters.`,
       );
     }
 

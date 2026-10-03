@@ -3,6 +3,7 @@ import type { MailboxSummary, MailboxMessage } from "./consensus-types";
 import type { LiveMailboxEntry } from "../agent/use-cockpit-telemetry.js";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { useUiClock } from "../../lib/use-ui-clock";
 import { Modal } from "../../components/ui/modal";
 import { RequiredMark } from "../../components/ui/field";
 import type { Locale } from "../../state/locale";
@@ -73,6 +74,11 @@ export function MailboxBureau({
       lastActivityAt: Date.now() - 1000,
     },
   ]);
+  // Live lease countdown (paused in live mode: the feed refreshes itself). The value the countdown
+  // reads and the tick that repaints it are now the same clock reading (F2), so the two can never
+  // disagree — the old code bumped a counter and re-read `Date.now()` during the render.
+  const leaseNowMs = useUiClock(1000, { enabled: entries === undefined });
+
   const displayedEntries: LiveMailboxEntry[] =
     entries ??
     mailboxes.map((mailbox) => ({
@@ -80,12 +86,12 @@ export function MailboxBureau({
       queueDepth: mailbox.queueDepth,
       pendingReplies: mailbox.pendingReplyCount,
       leaseState: mailbox.lease
-        ? mailbox.lease.expiresAt > Date.now()
+        ? mailbox.lease.expiresAt > leaseNowMs
           ? "acquired"
           : "expired"
         : "idle",
       leaseRemainingSec: mailbox.lease
-        ? Math.max(0, Math.round((mailbox.lease.expiresAt - Date.now()) / 1000))
+        ? Math.max(0, Math.round((mailbox.lease.expiresAt - leaseNowMs) / 1000))
         : undefined,
     }));
 
@@ -127,14 +133,6 @@ export function MailboxBureau({
   const [toAgent, setToAgent] = useState("agent-coder-1");
   const [eventType, setEventType] = useState("directive:sync_state");
   const [payloadText, setPayloadText] = useState('{"action": "recheck_topology"}');
-
-  // Live lease countdown tick (paused in live mode: the feed refreshes itself).
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (entries !== undefined) return;
-    const timer = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(timer);
-  }, [entries]);
 
   const handleDispatchMessage = () => {
     let parsedPayload: unknown = {};

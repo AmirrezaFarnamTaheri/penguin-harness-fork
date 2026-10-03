@@ -26,19 +26,52 @@ import {
   resolveModelEnv,
   catalogEntryFor,
   type SwarmEvent,
+  type SwarmRoleHandlers,
 } from "@prismshadow/penguin-core";
 import type { AuthService } from "../auth/service.js";
 import type { ProjectService } from "../services/project-service.js";
 import type { ProjectConfigService } from "../services/project-config-service.js";
 import { SESSION_COOKIE } from "../auth/middleware.js";
-import { CockpitEventLog } from "./event-log.js";
+import { COCKPIT_EVENT_LOG_FILE, CockpitEventLog } from "./event-log.js";
 
 const COCKPIT_STREAM_PATH = /^\/(api\/cockpit\/stream|ws\/cockpit)$/;
 const MAX_BUFFERED_AMOUNT = 64 * 1024; // 64KB backpressure guard
 
-function safeSend(ws: WebSocket, payload: string): void {
-  if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < MAX_BUFFERED_AMOUNT) {
+/** WebSocket close code for a client dropped because its view could no longer be kept whole. */
+export const COCKPIT_BACKPRESSURE_CLOSE_CODE = 1013; // "Try Again Later"
+
+/**
+ * Delivers one frame, or ends the connection when it cannot be delivered.
+ *
+ * This used to be a bare "if open and not backed up, send" — and that silently skipped frames
+ * for a client that was over the backpressure guard, which is the one failure the resume
+ * protocol exists to prevent: a connected client would keep its cursor where it was, receive
+ * every LATER frame, and look current while missing a stretch in the middle. Closing is the
+ * honest answer: the client reconnects with the cursor it actually applied, and the bounded
+ * replay fills the hole (or reports the gap if the window has moved on).
+ *
+ * Exported for the focused transport fixtures; not part of any public server surface.
+ */
+export function safeSend(ws: WebSocket, payload: string): boolean {
+  if (ws.readyState !== WebSocket.OPEN) return false;
+  if (ws.bufferedAmount >= MAX_BUFFERED_AMOUNT) {
+    try {
+      ws.close(COCKPIT_BACKPRESSURE_CLOSE_CODE, "cockpit stream backpressure");
+    } catch {
+      // A socket that cannot even be closed will be cleaned up by its own close event.
+    }
+    return false;
+  }
+  try {
     ws.send(payload);
+    return true;
+  } catch {
+    try {
+      ws.close(COCKPIT_BACKPRESSURE_CLOSE_CODE, "cockpit stream send failed");
+    } catch {
+      // Same as above: the transport owns the socket from here.
+    }
+    return false;
   }
 }
 
@@ -82,6 +115,7 @@ function resolveKeyTarget(msg: Record<string, unknown>): string {
 export const RUNTIME_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
 export interface CockpitWebSocketDeps {
+  swarmHandlers?: SwarmRoleHandlers;
   authService?: AuthService;
   projectService?: ProjectService;
   projectConfigService?: ProjectConfigService;
@@ -92,6 +126,7 @@ export interface CockpitWebSocketDeps {
 }
 
 export interface ProjectCockpitRuntime {
+  swarmHandlers?: SwarmRoleHandlers;
   projectId: string;
   coordinator: SwarmCoordinator;
   keyFleet: KeyFleetMonitor;
@@ -437,9 +472,38 @@ export async function createProjectShellGuardian(
 
 function resolveProjectWorkspaceDir(deps: CockpitWebSocketDeps, projectId: string): string {
   if (deps.root) {
+    requireWorkspaceRoot(deps.root);
+    if (!isSafeCockpitProjectId(projectId))
+      throw new Error("Cockpit project id must be a single bounded path segment");
     return projectDir(deps.root, projectId);
   }
-  return deps.workspaceRoot ?? process.cwd();
+  return requireWorkspaceRoot(deps.workspaceRoot);
+}
+
+function requireWorkspaceRoot(root: string | undefined): string {
+  if (!root || !path.isAbsolute(root) || root.includes("\0"))
+    throw new Error("Cockpit runtime requires an explicit absolute project or workspace root");
+  return path.resolve(root);
+}
+
+/**
+ * Project ids become a directory under the data root when no ProjectService owns resolution.
+ * Accept exactly one bounded path segment: no separators, drive/stream colons, dot segments,
+ * or control characters, so a query-string id can never leave the configured root.
+ *
+ * Checked per UTF-16 unit rather than with a character class: a control-character range is easy
+ * to get wrong silently, and an invalid one is a SyntaxError that stops this module loading.
+ */
+export function isSafeCockpitProjectId(projectId: string): boolean {
+  if (projectId.length === 0 || projectId.length > 128) return false;
+  if (projectId === "." || projectId === ".." || path.isAbsolute(projectId)) return false;
+  for (let index = 0; index < projectId.length; index++) {
+    const code = projectId.charCodeAt(index);
+    // C0 controls (NUL included), DEL, `/`, `\` and `:` (drive letters and NTFS streams).
+    if (code <= 0x1f || code === 0x7f || code === 0x2f || code === 0x5c || code === 0x3a)
+      return false;
+  }
+  return true;
 }
 
 /**
@@ -460,6 +524,9 @@ export async function getOrCreateProjectRuntime(
   const runtimeKey = runtimeKeyFor(workspaceDir, projectId);
   const existing = projectRuntimes.get(runtimeKey);
   if (existing) {
+    // A runtime first created by a caller without trusted handlers (for example the quorum
+    // route) must adopt them when a configured host supplies them later.
+    if (deps.swarmHandlers !== undefined) existing.swarmHandlers = deps.swarmHandlers;
     if (existing.clients.size === 0) {
       scheduleRuntimeReap(existing, deps);
     } else {
@@ -470,7 +537,11 @@ export async function getOrCreateProjectRuntime(
 
   const inFlight = projectRuntimePromises.get(runtimeKey);
   if (inFlight) {
-    return inFlight;
+    if (deps.swarmHandlers === undefined) return inFlight;
+    return inFlight.then((runtime) => {
+      runtime.swarmHandlers = deps.swarmHandlers;
+      return runtime;
+    });
   }
 
   const creationPromise = (async () => {
@@ -488,13 +559,28 @@ export async function getOrCreateProjectRuntime(
 
       const clients = new Set<WebSocket>();
 
+      // The durable tail belongs to the PROJECT, not to this runtime instance: `deps.root` is
+      // the data root in production, so a restart (or an idle reap) reloads the same stream
+      // identity and a reconnecting client resumes instead of being told the generation
+      // changed. Without a data root — the shared-coordinator path and the test harnesses —
+      // the log stays memory-only, exactly as before.
+      const streamFile = deps.root ? path.join(workspaceDir, COCKPIT_EVENT_LOG_FILE) : undefined;
+
       const runtime: ProjectCockpitRuntime = {
+        swarmHandlers: deps.swarmHandlers,
         projectId,
         coordinator,
         keyFleet,
         codeGraphWatcher,
         clients,
-        eventLog: new CockpitEventLog(),
+        eventLog: new CockpitEventLog({
+          ...(streamFile !== undefined ? { file: streamFile } : {}),
+          onPersistError: (error) => {
+            deps.log?.(
+              `[cockpit-ws][${projectId}] cockpit stream persistence failed: ${error.message}`,
+            );
+          },
+        }),
       };
       projectRuntimes.set(runtimeKey, runtime);
 
@@ -562,8 +648,9 @@ export async function getOrCreateProjectRuntime(
 
 function getOrCreateProjectRuntimeSync(
   projectId = DEFAULT_PROJECT_ID,
-  workspaceRoot = process.cwd(),
+  workspaceRoot?: string,
 ): ProjectCockpitRuntime {
+  workspaceRoot = requireWorkspaceRoot(workspaceRoot);
   const runtimeKey = runtimeKeyFor(workspaceRoot, projectId);
   let rt = projectRuntimes.get(runtimeKey);
   if (rt) {
@@ -574,7 +661,10 @@ function getOrCreateProjectRuntimeSync(
     }
     return rt;
   }
-  const coordinator = new SwarmCoordinator();
+  const coordinator = new SwarmCoordinator({
+    shellGuardian: new ShellGuardian(),
+    sessionId: `swarm-${projectId}-${Date.now()}`,
+  });
   const keyFleet = new KeyFleetMonitor();
   const codeGraphWatcher = new CodeGraphWatcher(workspaceRoot);
   codeGraphWatcher.on("error", () => {});
@@ -594,22 +684,60 @@ function getOrCreateProjectRuntimeSync(
   return rt;
 }
 
-export function getSharedSwarmCoordinator(projectId = DEFAULT_PROJECT_ID): SwarmCoordinator {
-  return getOrCreateProjectRuntimeSync(projectId).coordinator;
+export function getSharedSwarmCoordinator(
+  projectId = DEFAULT_PROJECT_ID,
+  workspaceRoot?: string,
+): SwarmCoordinator {
+  return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).coordinator;
 }
 
-export function getSharedKeyFleetMonitor(projectId = DEFAULT_PROJECT_ID): KeyFleetMonitor {
-  return getOrCreateProjectRuntimeSync(projectId).keyFleet;
+/**
+ * Stops the swarm task a Session spawned, across every live project runtime (E10.3). The
+ * coordinator's own lifetime is the project's, not the Session's, so a swarm started from a
+ * conversation used to survive that conversation's deletion and run to its round cap with no UI
+ * left to show it. Only the coordinator whose *active task* carries this owner id acts; every
+ * other runtime answers false and is left alone. Returns how many tasks were actually stopped.
+ */
+export function abortSwarmTasksForSession(
+  sessionId: string,
+  reason: string,
+): SwarmSessionAbortSummary {
+  let stopped = 0;
+  const waiting: Promise<void>[] = [];
+  for (const runtime of projectRuntimes.values()) {
+    const outcome = runtime.coordinator.abortTasksForSession(sessionId, reason);
+    if (outcome.stopped) stopped += 1;
+    waiting.push(outcome.settled);
+  }
+  // Every coordinator is asked, not just the owner's: the queued-work latch is per coordinator,
+  // and a Session's task may be waiting in a runtime that is not currently executing it.
+  return { stopped, settled: Promise.all(waiting).then(() => undefined) };
+}
+
+/** What `abortSwarmTasksForSession` reports: how many tasks were signalled, and a promise for them. */
+export interface SwarmSessionAbortSummary {
+  stopped: number;
+  /** Resolves once every signalled task has left its executor (immediately when none was running). */
+  settled: Promise<void>;
+}
+
+export function getSharedKeyFleetMonitor(
+  projectId = DEFAULT_PROJECT_ID,
+  workspaceRoot?: string,
+): KeyFleetMonitor {
+  return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).keyFleet;
 }
 
 export function getSharedCodeGraphWatcher(
-  workspaceRoot = process.cwd(),
+  workspaceRoot?: string,
   projectId = DEFAULT_PROJECT_ID,
 ): CodeGraphWatcher {
   return getOrCreateProjectRuntimeSync(projectId, workspaceRoot).codeGraphWatcher;
 }
 
 export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocketDeps = {}): void {
+  // Fail before registering an upgrade listener or creating any runtime resources.
+  resolveProjectWorkspaceDir(deps, DEFAULT_PROJECT_ID);
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 
   server.on("upgrade", async (req: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -635,6 +763,11 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
     const since = parseSince(url);
     const requestedGeneration = url.searchParams.get("generation");
 
+    // Refuse before any project lookup or runtime creation; the id may become a path segment.
+    if (!isSafeCockpitProjectId(projectId)) {
+      return refuse(socket, 404, "Project Not Found");
+    }
+
     if (deps.projectService && authedUser) {
       try {
         deps.projectService.requireProjectAccess(authedUser.userId, projectId);
@@ -643,7 +776,15 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       }
     }
 
-    const runtime = await getOrCreateProjectRuntime(projectId, deps);
+    let runtime: ProjectCockpitRuntime;
+    try {
+      runtime = await getOrCreateProjectRuntime(projectId, deps);
+    } catch (err) {
+      deps.log?.(
+        `[cockpit-ws][${projectId}] runtime unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return refuse(socket, 500, "Internal Server Error");
+    }
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
       cancelRuntimeReap(runtime);
@@ -654,11 +795,13 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
       // the backlog would deliver a NEW event to a client that has not yet been sent the OLDER
       // events it missed, and the client's applied order would be inverted. Synchronous send,
       // then register: every later event is newer than everything sent so far, always.
+      let streamHasGap = false;
       if (since !== undefined) {
         const sameGeneration = requestedGeneration === runtime.eventLog.generation;
         const replay = sameGeneration
           ? runtime.eventLog.since(since)
           : { entries: [], gap: true, missed: null, cursor: runtime.eventLog.cursor };
+        streamHasGap = replay.gap;
         if (replay.gap) {
           // The cursor fell out of the bounded window. Say so explicitly and resync from
           // state: a client told "you are behind" plus a fresh snapshot is honest, where a
@@ -708,14 +851,37 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
         runtime.codeGraphWatcher,
         projectId,
       );
+      // The convergence point: everything sent above — replay (if any) and this snapshot —
+      // was produced from one synchronous block, so no event can interleave and the cursor
+      // read here is the position the client is current through.
+      const convergedAt = runtime.eventLog.cursor;
       safeSend(
         ws,
         JSON.stringify({
           ...snapshot,
-          seq: runtime.eventLog.cursor,
+          seq: convergedAt,
           generation: runtime.eventLog.generation,
         }),
       );
+
+      // The caught-up marker, sent LAST and only on the contiguous path. Its presence is the
+      // client's proof that its delta-built feeds have no hole; the gap path sends
+      // `cockpit_stream_gap` instead and deliberately no marker, because a snapshot repairs
+      // current state but cannot recreate the events that fell out of the window. Making this
+      // message conditional is the point — "caught up" inferred from a snapshot alone would be
+      // exactly the false claim the gap signal exists to prevent.
+      if (!streamHasGap) {
+        safeSend(
+          ws,
+          JSON.stringify({
+            type: "cockpit_caught_up",
+            projectId,
+            generation: runtime.eventLog.generation,
+            cursor: convergedAt,
+            timestamp: Date.now(),
+          }),
+        );
+      }
 
       runtime.clients.add(ws);
 
@@ -930,6 +1096,22 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
                 : 3;
             const simulate = msg.simulate === true;
 
+            if (!simulate && !runtime.swarmHandlers?.onExecute) {
+              safeSend(
+                ws,
+                JSON.stringify({
+                  type: "swarm_task_rejected",
+                  taskId,
+                  code: "swarm_handler_missing",
+                  status: 400,
+                  reason:
+                    "No task handler configured for this project; request simulation explicitly.",
+                  timestamp: Date.now(),
+                }),
+              );
+              return;
+            }
+
             if (runtime.coordinator.getPendingTaskCount() >= 10) {
               safeSend(
                 ws,
@@ -956,14 +1138,17 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 
             // Execute task asynchronously on this project's coordinator
             void runtime.coordinator
-              .runTask({
-                id: taskId,
-                goal,
-                files,
-                proposedCommands,
-                maxRounds,
-                simulate,
-              })
+              .runTask(
+                {
+                  id: taskId,
+                  goal,
+                  files,
+                  proposedCommands,
+                  maxRounds,
+                  simulate,
+                },
+                runtime.swarmHandlers,
+              )
               .then((res: unknown) => {
                 if ((res as { status?: string })?.status !== "settled") {
                   publish(runtime, {
@@ -1017,9 +1202,9 @@ export function attachCockpitWebSocket(server: HttpServer, deps: CockpitWebSocke
 }
 
 export function buildCockpitSnapshot(
-  coordinator: SwarmCoordinator = getSharedSwarmCoordinator(),
-  keyFleet: KeyFleetMonitor = getSharedKeyFleetMonitor(),
-  codeGraphWatcher: CodeGraphWatcher = getSharedCodeGraphWatcher(),
+  coordinator: SwarmCoordinator,
+  keyFleet: KeyFleetMonitor,
+  codeGraphWatcher: CodeGraphWatcher,
   projectId = DEFAULT_PROJECT_ID,
 ) {
   return {

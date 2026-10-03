@@ -1,0 +1,182 @@
+{
+  "version": 1,
+  "generator": "scripts/measure-output-compression.mts",
+  "budgetChars": 16000,
+  "corpusManifest": "packages/core/test/fixtures/output-compression/manifest.json",
+  "runsPerFixture": 25,
+  "notes": "Character counts against the configured budget; latency is the median of warm runs and is machine-dependent. estimatedTokens is bytes/4 and is labelled an estimate because no tokenizer ships here. A class with shipped=false must not be enabled.",
+  "fixtures": [
+    {
+      "file": "passing-vitest.txt",
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 0,
+      "sha256": "2d7eb517bf90eaa54789dc551b7f43f3adefadaf32fdc67fa534155b4e635d13",
+      "decision": "compressed",
+      "bytesIn": 12600,
+      "charsIn": 11980,
+      "charsOut": 130,
+      "savedRatio": 0.9891,
+      "estimatedTokensIn": 3150,
+      "estimatedTokensOut": 33,
+      "medianMs": 0.4465,
+      "hiddenLines": 311
+    },
+    {
+      "file": "failing-vitest.txt",
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 1,
+      "sha256": "7c139187e52d8ef3110075a80eb5bbedbbd38b603b6ea1dcfcc4e970067b1eea",
+      "decision": "compressed",
+      "bytesIn": 83291,
+      "charsIn": 81995,
+      "charsOut": 15543,
+      "savedRatio": 0.8104,
+      "estimatedTokensIn": 20823,
+      "estimatedTokensOut": 3886,
+      "medianMs": 4.9055,
+      "hiddenLines": 2742
+    },
+    {
+      "file": "git-log.txt",
+      "class": "git-log",
+      "command": "git log -n 200 --stat",
+      "exitCode": 0,
+      "sha256": "f03169178f0a2871ab5da36e8a07a293f4345b06fefa6035e0d5002ffa65e4bb",
+      "decision": "compressed",
+      "bytesIn": 72982,
+      "charsIn": 72982,
+      "charsOut": 7668,
+      "savedRatio": 0.8949,
+      "estimatedTokensIn": 18246,
+      "estimatedTokensOut": 1917,
+      "medianMs": 0.9705,
+      "hiddenLines": 2718
+    },
+    {
+      "file": "git-status.txt",
+      "class": "git-status",
+      "command": "git status --porcelain",
+      "exitCode": 0,
+      "sha256": "fafbd0aca56ee240ec44d1402c6ec95a93536e35d74c14e5cdfe65a3f78a0e2f",
+      "decision": "compressed",
+      "bytesIn": 7829,
+      "charsIn": 7829,
+      "charsOut": 1744,
+      "savedRatio": 0.7772,
+      "estimatedTokensIn": 1958,
+      "estimatedTokensOut": 436,
+      "medianMs": 0.0697,
+      "hiddenLines": 226
+    },
+    {
+      "file": "git-diff.txt",
+      "class": "git-diff",
+      "command": "git diff HEAD",
+      "exitCode": 0,
+      "sha256": "4ffab59962978b75081c4561276b3be260188288c962f5f0374bc04bca6a410c",
+      "decision": "compressed",
+      "bytesIn": 18942,
+      "charsIn": 18942,
+      "charsOut": 7536,
+      "savedRatio": 0.6022,
+      "estimatedTokensIn": 4736,
+      "estimatedTokensOut": 1884,
+      "medianMs": 0.107,
+      "hiddenLines": 457
+    },
+    {
+      "file": "lint-findings.txt",
+      "class": "lint",
+      "command": "pnpm exec oxlint .",
+      "exitCode": 1,
+      "sha256": "93352484eadb08db2efa0cd836ab31a3581fa6544d405b7a146f839ba670bb80",
+      "decision": "compressed",
+      "bytesIn": 10472,
+      "charsIn": 10472,
+      "charsOut": 9200,
+      "savedRatio": 0.1215,
+      "estimatedTokensIn": 2618,
+      "estimatedTokensOut": 2300,
+      "medianMs": 0.1794,
+      "hiddenLines": 171
+    },
+    {
+      "file": "app-log.txt",
+      "class": "log-dedup",
+      "command": "read_file app.log",
+      "exitCode": 0,
+      "sha256": "c0668f6e1c81dc3efd2af3c5a8f04aad9d851712029a14ed820f7b0cbf88def8",
+      "decision": "compressed",
+      "bytesIn": 87812,
+      "charsIn": 87812,
+      "charsOut": 15910,
+      "savedRatio": 0.8188,
+      "estimatedTokensIn": 21953,
+      "estimatedTokensOut": 3978,
+      "medianMs": 0.8466,
+      "hiddenLines": 1027
+    },
+    {
+      "file": "small-passing-vitest.txt",
+      "class": "test-runner",
+      "command": "pnpm vitest run",
+      "exitCode": 0,
+      "sha256": "47a1e741307c8207a4a8ce66631fd777e77abab375a017fbfcd0639153554dfe",
+      "decision": "passthrough",
+      "bytesIn": 88,
+      "charsIn": 88,
+      "charsOut": 88,
+      "savedRatio": 0,
+      "estimatedTokensIn": 22,
+      "estimatedTokensOut": 22,
+      "medianMs": 0.0003,
+      "hiddenLines": 0
+    }
+  ],
+  "classes": [
+    {
+      "class": "git-log",
+      "charsIn": 72982,
+      "charsOut": 7668,
+      "savedRatio": 0.8949,
+      "shipped": true
+    },
+    {
+      "class": "test-runner",
+      "charsIn": 93975,
+      "charsOut": 15673,
+      "savedRatio": 0.8332,
+      "shipped": true
+    },
+    {
+      "class": "log-dedup",
+      "charsIn": 87812,
+      "charsOut": 15910,
+      "savedRatio": 0.8188,
+      "shipped": true
+    },
+    {
+      "class": "git-status",
+      "charsIn": 7829,
+      "charsOut": 1744,
+      "savedRatio": 0.7772,
+      "shipped": true
+    },
+    {
+      "class": "git-diff",
+      "charsIn": 18942,
+      "charsOut": 7536,
+      "savedRatio": 0.6022,
+      "shipped": true
+    },
+    {
+      "class": "lint",
+      "charsIn": 10472,
+      "charsOut": 9200,
+      "savedRatio": 0.1215,
+      "shipped": true
+    }
+  ]
+}

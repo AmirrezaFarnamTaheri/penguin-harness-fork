@@ -15,10 +15,12 @@ import type {
   TokenCounts,
   ToolDefinition,
 } from "../omnimessage/types.js";
+import type { FailurePolicy } from "../fleet/provider-gateway.js";
 import type { ThinkingLevelName } from "./shared.js";
 // Concrete class, used only as a type annotation (type-only import; no runtime dependency, no circular reference).
 import type { ToolCallIdAllocator } from "../llm/tool-call-ids.js";
 import type { ApiKeyRotator } from "../llm/key-rotator.js";
+import type { ParsedDelay } from "../llm/retry-delay.js";
 
 /**
  * GenerativeModel initialization config.
@@ -79,6 +81,13 @@ export interface GenerativeModelConfig {
    */
   requestTimeoutMs?: number;
   /**
+   * A1 — which decider owns provider-failure actions: `shadow` (default) keeps the legacy branch
+   * deciding while the typed classifier reports, `active` obeys the classifier's recovery. When
+   * omitted it is resolved from `PENGUIN_FAILURE_CLASSIFIER`, so the flip is an operator decision
+   * and is reversible without a release.
+   */
+  failurePolicy?: FailurePolicy;
+  /**
    * tool_call_id uniqueness registry (Session-level). Pass the same instance when rebuilding a new
    * GenerativeModel on compaction so the uniqueness scope covers the whole Session; defaults to a fresh
    * one. See llm/tool-call-ids.ts.
@@ -137,6 +146,10 @@ export interface LLMOutcome {
    * reason behind a retried request.
    */
   errorMessage?: string;
+  /** Provider timing hint; consumed by the engine and not copied into persisted request events. */
+  retryDelay?: ParsedDelay;
+  /** Ephemeral retry routing metadata; accountId must never contain a credential. */
+  retryAccount?: { accountId?: string; rateLimited: boolean; poolUnavailableForMs?: number };
 }
 
 /**
@@ -155,4 +168,8 @@ export interface LLMInterface {
   readonly keyRotator?: ApiKeyRotator;
   /** Advances/rotates the active API key to the next available candidate. */
   rotateKey?(): boolean;
+  /** Advertises the account pool for a bounded per-turn retry policy. */
+  readonly retryPoolSize?: number;
+  /** Prefer the previous account on the next attempt, subject to its cooldown. */
+  retrySameAccount?(): void;
 }

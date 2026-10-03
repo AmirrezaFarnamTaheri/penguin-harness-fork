@@ -22,7 +22,7 @@ import { createHash } from "node:crypto";
  * change without it moving. (The reverse — moving it with no default change — is inert rather
  * than an error: nothing is keyed by version, so there is no table to fall out of sync with.)
  */
-export const KERNEL_VERSION = "2026-09-30";
+export const KERNEL_VERSION = "2026-10-02";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -219,13 +219,17 @@ export function isKernelOutdated(kernelVersion: string | null | undefined): bool
  *   agents record claims with provenance and read them back across sessions) and `code_graph`
  *   (native code intelligence over the workspace — symbols, callers, impact). The tools tab
  *   moved.
- * - `2026-09-30` (current) — `knowledge_graph.query` accepts its documented `tags` array and
- *   applies every requested tag as a filter. The tools tab moved.
+ * - `2026-09-30` — `knowledge_graph.query` accepts its documented `tags` array and applies
+ *   every requested tag as a filter. The tools tab moved.
+ * - `2026-10-01` (current) — `knowledge_graph` gains bounded archive paging and recall, and
+ *   defaults to revision-aware version-2 output. The tools tab moved.
+ * - `2026-10-02` — the built-in toolset gains `recall_output`, which pages oversized tool
+ *   results from the current Session without exposing archive paths. The tools tab moved.
  */
 export const KERNEL_DEFAULT_TAB_HASHES: Readonly<Record<KernelTab, string>> = {
   prompt: "9b2b54a241c7b8ac92faf7177d6f42c9c87b54f2e6d89411b37c53e5061ca515",
   runtime: "5dfea06a5e801950c24f44f5527e62435ae4facc311a6587e53aa69983ab0346",
-  tools: "49c2f19f0e241060f8b3728bb0c449eb4b4adc6817869361e7a8f5a51a315a18",
+  tools: "ee8146dbd9586e75cadd68e0d70816073979b9ac6585f92867aa28adaab1d5b1",
   skills: "7e343aa692e5eaeadfc8add6bb375fb50ac33ef81ebe460490fc219b0f3d707f",
   memory: "53d190390829cc0132bb12e468a6891f2e0576ec0c4022a9b4a5d9233666900d",
   vault: "19bd36a6d4ab442b66583c423450602b817990a9a79bafa21c9b6137fb6b47d8",
@@ -267,6 +271,8 @@ export const KERNEL_SUPERSEDED_TAB_HASHES: KernelSupersededTabHashes = {
     "b4b01c3734897a60d37c845421027027d3cf4238b06e94774924a61eeb9b07f6", // before the environment_info tool joined the built-ins
     "3622b5bcad950184596fd08d0d2c6931aefdb8342f11c88b3f079d4f10f31d4a", // before knowledge_graph and code_graph joined the built-ins
     "df1a94a3f5b3805eb61ddd89aa54ec2e430a5c7db89db307647ea6cfc92a3a1e", // before knowledge_graph.query exposed plural tag filtering
+    "49c2f19f0e241060f8b3728bb0c449eb4b4adc6817869361e7a8f5a51a315a18", // before bounded findings archive paging and output version 2
+    "963ef478d08ed1261fba3337a9be31441496e2a1cb3d8f1123800142ad6c0610", // before Session-scoped oversized tool-output recall
   ],
   // The memory prompt's wording before #397 named when a fact is worth saving.
   memory: ["c28acdda755552967cd0c99ba4ced407eddfa843b3dce228a965da4674676dc7"],

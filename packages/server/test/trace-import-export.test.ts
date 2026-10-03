@@ -7,7 +7,10 @@
  * Session of the receiving Agent, and is browsable through the existing tree/detail
  * endpoints. Import is owner-only, mirroring the Agent snapshot import.
  */
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tracesDir } from "@prismshadow/penguin-core";
 import type { OmniMessage, SessionMetaPayload } from "@prismshadow/penguin-core";
 import type {
   AgentTracesResponse,
@@ -115,6 +118,55 @@ describe("trace-import-export", () => {
     expect(await res.text()).toBe(toContent(messages));
     // A plain member can export too (same rule as the snapshot export).
     expect((await member.get(`${base()}/${SID}/1/download`)).status).toBe(200);
+  });
+
+  it("I1: both read paths redact credentials and addresses, while the stored file stays raw", async () => {
+    // A sentinel credential recorded while the Session ran — tool output, a provider error, a
+    // prompt — must not leave the install through either diagnostic read path, and the file
+    // itself must stay byte-exact: it is the resume source, and `fidelity` blobs are replayed.
+    const sentinel = "sk-ant-api03-" + "S".repeat(32);
+    const messages = [
+      rec(FIRST_TS, "session_meta", metaPayload(SID)),
+      rec("2026-07-06T02:00:01.000Z", "model_msg", {
+        type: "text",
+        role: "user",
+        text: `paste the key ${sentinel} and mail ops@example.com`,
+      }),
+      rec("2026-07-06T02:00:02.000Z", "event_msg", {
+        type: "tool_call",
+        // A credential-named JSON field: only the structural pass can see this one.
+        arguments: { apiKey: sentinel, command: "echo hi" },
+      }),
+    ];
+    await writeTraceFile(t.root, projectId, "default_agent", "2026-07-06", SID, 1, messages);
+
+    const events = (await (await owner.get(`${base()}/${SID}/1`)).json()) as TraceEventsResponse;
+    const eventsText = JSON.stringify(events.events);
+    expect(eventsText).not.toContain(sentinel);
+    expect(eventsText).not.toContain("ops@example.com");
+    expect(eventsText).toContain("o***@example.com");
+    // Safe non-secret detail survives, so the page remains a usable Trace view.
+    expect(
+      (events.events[2]!.payload as unknown as { arguments: { command: string } }).arguments
+        .command,
+    ).toBe("echo hi");
+    expect((events.events[1]!.payload as { role: string }).role).toBe("user");
+
+    const download = await owner.get(`${base()}/${SID}/1/download`);
+    const downloaded = await download.text();
+    expect(downloaded).not.toContain(sentinel);
+    expect(downloaded).not.toContain("ops@example.com");
+    expect(downloaded).toContain("o***@example.com");
+    // A clean record is byte-identical to the file, so an ordinary export still re-imports.
+    expect(downloaded.split("\n")[0]).toBe(JSON.stringify(messages[0]));
+    expect(downloaded.endsWith("\n")).toBe(true);
+
+    // The file on disk is untouched: redaction serializes a copy on the way out.
+    const raw = await readFile(
+      path.join(tracesDir(t.root, projectId, "default_agent"), "2026-07-06", `${SID}_001.jsonl`),
+      "utf8",
+    );
+    expect(raw).toContain(sentinel);
   });
 
   it("export: unknown index → 404 trace_not_found; outsider → 404", async () => {
