@@ -223,7 +223,7 @@ jobs:
             const location = block.find((line) => /^\s*at .+:\d+:\d+/.test(line) || /Error Context:/.test(line));
             return [
               block[0] && short(block[0], 120),
-              error && short(error, 120),
+              error && short(error, 800),
               ...comparisons.map((line) => short(line, 80)),
               location && short(location, 120),
             ]

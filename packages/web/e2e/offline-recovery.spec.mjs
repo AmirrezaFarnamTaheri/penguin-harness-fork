@@ -60,8 +60,11 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   const sessionId = await seedSession(page);
 
   // Capture page errors for the whole run: an unhandled rejection is a failure of this spec.
+  // Keep the current phase with each error so CI tells us which offline/recovery transition
+  // produced it instead of only reporting that the final array was non-empty.
   const pageErrors = [];
-  page.on("pageerror", (error) => pageErrors.push(String(error)));
+  let phase = "open chat";
+  page.on("pageerror", (error) => pageErrors.push(`[${phase}] ${error.name}: ${error.message}`));
 
   // Count sends so a duplicate is detectable, and let the seeded turn complete.
   const sendRequests = [];
@@ -75,6 +78,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await page.goto(`${BASE}/chat/${sessionId}`);
   const composer = page.getByPlaceholder(/输入消息/);
   await composer.waitFor();
+  phase = "seeded send";
   await composer.fill(PROMPT);
   await page.getByRole("button", { name: "发送" }).click();
   // The user's own message is on screen (this is the content that must survive the outage).
@@ -86,6 +90,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await expect(workHeader.getByText("运行完毕").first()).toBeVisible({ timeout: 30_000 });
 
   // ---- browser-offline: cached content readable, measured from the offline event ----
+  phase = "browser offline";
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   const measureStart = Date.now();
@@ -101,6 +106,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await expect(banner).toContainText("已加载的内容仍可阅读");
 
   // ---- attempted write while offline: no duplicate, no unhandled rejection ----
+  phase = "offline write";
   const sendsBefore = sendRequests.length;
   await composer.fill("OFFLINE-WRITE-ATTEMPT");
   const sendButton = page.getByRole("button", { name: "发送" });
@@ -114,6 +120,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   expect(sendRequests.length, "no queued resend while offline").toBe(sendsAfterAttempt);
 
   // ---- browser back online, server still unreachable: banner must not clear ----
+  phase = "server still unreachable";
   // Install the failure route before returning the browser link: context.setOffline(false) emits
   // an `online` event too, and that event immediately starts the monitor's health probe.
   await page.route("**/api/**", (route) => route.abort("failed"));
@@ -132,6 +139,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await expect(banner).not.toHaveAttribute("data-connectivity-banner", "recovered");
 
   // ---- keyboard access to the retry control ----
+  phase = "manual retry";
   const retry = banner.getByRole("button", { name: "立即重试" });
   await expect(retry).toBeVisible();
   await retry.focus();
@@ -139,6 +147,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await page.keyboard.press("Enter"); // activates; a refused retry must not throw or navigate
 
   // ---- server restoration: only a real probe clears the banner ----
+  phase = "server recovery";
   await page.unroute("**/api/**");
   await expect(banner).toHaveAttribute("data-connectivity-banner", "recovered", {
     timeout: 20_000,
@@ -164,9 +173,12 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   }
 
   // ---- unmount cancellation: leaving the page stops probing without noise ----
+  phase = "navigate away / unmount";
   await page.goto(`${BASE}/`);
   await page.waitForTimeout(1000);
-  expect(pageErrors, "no unhandled page errors across the offline/recovery flow").toEqual([]);
+  if (pageErrors.length > 0) {
+    throw new Error(`OFFLINE_PAGE_ERRORS ${JSON.stringify(pageErrors).slice(0, 1200)}`);
+  }
 });
 
 test("offline the banner never appears while the server is reachable (no false alarm)", async ({
