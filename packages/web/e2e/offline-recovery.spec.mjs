@@ -79,7 +79,11 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   await page.getByRole("button", { name: "发送" }).click();
   // The user's own message is on screen (this is the content that must survive the outage).
   await expect(page.getByText("OFFLINE-CACHE-MARKER", { exact: false }).first()).toBeVisible();
-  await expect(page.locator("[data-group-header]")).toBeVisible({ timeout: 30_000 });
+  const workHeader = page.locator("[data-group-header]");
+  await expect(workHeader).toBeVisible({ timeout: 30_000 });
+  // Don't take the app offline while the first Task is still streaming: the recovery path may
+  // legitimately rebuild the transcript from persisted history after an SSE resync.
+  await expect(workHeader.getByText("运行完毕").first()).toBeVisible({ timeout: 30_000 });
 
   // ---- browser-offline: cached content readable, measured from the offline event ----
   await context.setOffline(true);
@@ -142,7 +146,22 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   // The banner unmounts when its posture is healthy; there is no rendered `none` attribute.
   await expect(banner).toHaveCount(0, { timeout: 20_000 });
   // And the transcript is still there, never having been replaced by an error state.
-  await expect(page.getByText("OFFLINE-CACHE-MARKER", { exact: false }).first()).toBeVisible();
+  try {
+    await expect(page.getByText("OFFLINE-CACHE-MARKER", { exact: false }).first()).toBeVisible();
+  } catch (error) {
+    const bodyText = (
+      await page
+        .locator("body")
+        .innerText()
+        .catch(() => "")
+    )
+      .replace(/\s+/g, " ")
+      .slice(0, 500);
+    const assertion = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `recovery lost the rendered transcript; body: ${bodyText}; page errors: ${pageErrors.join(" | ") || "(none)"}; assertion: ${assertion}`,
+    );
+  }
 
   // ---- unmount cancellation: leaving the page stops probing without noise ----
   await page.goto(`${BASE}/`);
