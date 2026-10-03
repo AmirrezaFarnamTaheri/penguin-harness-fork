@@ -88,8 +88,8 @@ import {
   resolveFailurePolicy,
   type FailureDecision,
   type FailurePolicy,
+  type LegacyAction,
 } from "../fleet/provider-gateway.js";
-import type { LegacyAction } from "../fleet/provider-gateway.js";
 
 // ---------------------------------------------------------------------------
 // Pure conversion function: OmniMessage[] → a single UniMessage (unit-testable, no network)

@@ -7379,7 +7379,7 @@
     },
     "penguin-harness-dev": {
       "source": ".agents/skills/penguin-harness-dev/SKILL.md",
-      "sha256": "93a227ee0efccf4143d9c7499b1620ad46b35ba0dcd5ff8bbacc6300715a2945"
+      "sha256": "db8ec069a3a6417de286db220640129b8cf7e5bb2441a6309c72c52daba2f4ad"
     },
     "penguin-harness-frontend": {
       "source": ".agents/skills/penguin-harness-frontend/SKILL.md",

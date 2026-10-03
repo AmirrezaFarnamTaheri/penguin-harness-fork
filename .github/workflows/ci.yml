@@ -194,7 +194,25 @@ jobs:
       # SKIP_BUILD=1: the setup action built core/server/web above, and run.sh would build
       # them a second time for no reason.
       - name: Browser e2e (Playwright + mock LLM)
-        run: SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e
+        id: browser_e2e
+        run: |
+          set -o pipefail
+          SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+      - name: Surface Playwright failure output
+        if: ${{ failure() && steps.browser_e2e.outcome == 'failure' }}
+        run: |
+          node - "$RUNNER_TEMP/playwright.log" <<'NODE'
+          const fs = require("node:fs");
+          const logPath = process.argv[2];
+          if (!fs.existsSync(logPath)) process.exit(0);
+          const lines = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .slice(-40);
+          const message = lines.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          console.log(`::error title=Playwright failure output::${message || "No test output captured."}`);
+          NODE
 
   # macOS (arm64). This is the only place the terminal's pty suites run on darwin —
   # node-pty compiles against the runner's toolchain and its darwin-only spawn-helper
@@ -282,11 +300,40 @@ jobs:
       # while the worker pool tears down, after every file has reported green. A real
       # regression fails both attempts.
       - name: Unit tests (vitest)
+        id: windows_vitest
         shell: bash
         run: |
-          ${{ matrix.tests }} && exit 0
-          echo "::warning::vitest failed on Windows; retrying once (see the pool-teardown note in ci.yml)"
-          ${{ matrix.tests }}
+          set -o pipefail
+          first_log="$RUNNER_TEMP/vitest-attempt-1.log"
+          retry_log="$RUNNER_TEMP/vitest-attempt-2.log"
+          if ${{ matrix.tests }} 2>&1 | tee "$first_log"; then
+            exit 0
+          else
+            first_status=$?
+          fi
+          echo "::warning::vitest failed on Windows with exit code ${first_status}; retrying once (see the pool-teardown note in ci.yml)"
+          if ${{ matrix.tests }} 2>&1 | tee "$retry_log"; then
+            exit 0
+          else
+            retry_status=$?
+            exit "$retry_status"
+          fi
+      - name: Surface Windows vitest failure output
+        if: ${{ failure() && steps.windows_vitest.outcome == 'failure' }}
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/vitest-attempt-2.log" <<'NODE'
+          const fs = require("node:fs");
+          const logPath = process.argv[2];
+          if (!fs.existsSync(logPath)) process.exit(0);
+          const lines = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .slice(-40);
+          const message = lines.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          console.log(`::error title=Vitest failure output::${message || "No test output captured."}`);
+          NODE
 
   # The Windows installer checks, in their own job rather than riding a test shard: they add
   # ~20s and have nothing to do with the suite they were attached to, which happened to be
