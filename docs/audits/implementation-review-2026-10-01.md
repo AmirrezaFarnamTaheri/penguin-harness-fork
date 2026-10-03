@@ -131,10 +131,13 @@ no development server was launched.
 
 ## Follow-up — created-Project refresh failure (2026-10-03)
 
-**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; local
-candidate changes `packages/web/src/components/layout/sidebar.tsx` and adds the small
-`project-create-flow` helper and test. Linux x64, Node `v22.22.3`, pnpm `11.18.0`; exact-candidate
-CI is pending.
+**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; code
+candidate `145b31ae58d8817c9f8d895ed0704828c2d975fd` changes
+`packages/web/src/components/layout/sidebar.tsx` and adds the small `project-create-flow` helper
+and test. Local environment: Linux x64, Node `v22.22.3`, pnpm `11.18.0`. Exact CI run
+[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240)
+passed the `test (web-cli)`, `typecheck`, `style`, and browser E2E jobs; aggregate `ci` failed in
+the separate macOS core watcher-removal test (see the [CI-02 receipt](ci-repair-2026-10-02.md#reopened-ci-02)).
 
 **Finding/change:** the sidebar detached `reloadProjects().then(selectCreatedProject)` after a
 successful create. If the follow-up list refresh rejected during a transient disconnect, that
@@ -148,5 +151,6 @@ refresh and that refresh rejection is surfaced without escaping as an unhandled 
 selecting the absent Project. `project-create-flow.test.ts` passed **2/2**. Web TypeScript check,
 Prettier, and `git diff --check` passed. Browser E2E was not run locally; rely on CI.
 
-**Residual:** exact-candidate CI and independent PR review remain pending. This focused UI fix does
-not close or change any numbered task row.
+**Residual:** the exact candidate's aggregate `ci` remains failed because of the separate CI-02
+macOS watcher timeout; independent PR review remains pending. This focused UI fix does not close
+or change any numbered task row.

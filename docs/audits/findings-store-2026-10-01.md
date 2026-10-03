@@ -128,18 +128,25 @@ commit, push or external-resource change.
 bytes succeeds but exclusive quarantine creation is denied. This is an additional acceptance
 slice, not closure of R2c or R11.
 
-**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; local
-candidate worktree adds tests in `packages/core/test/knowledge/knowledge-graph-tool.test.ts` and
-`packages/server/test/findings-routes.test.ts`. Linux x64, Node `v22.22.3`, pnpm `11.18.0`; Node
-is below the repository's `>=24` engine. Candidate CI is pending.
+**Baseline/candidate:** committed baseline `ec20a0c148a801591cb291b50236072ae9424744`; code
+candidate `145b31ae58d8817c9f8d895ed0704828c2d975fd` adds tests in
+`packages/core/test/knowledge/knowledge-graph-tool.test.ts` and
+`packages/server/test/findings-routes.test.ts`. Local environment: Linux x64, Node `v22.22.3`,
+pnpm `11.18.0`; Node is below the repository's `>=24` engine. Exact CI run
+[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240)
+passed Linux/Windows core and server test jobs, including the new cross-ingress coverage; the
+aggregate run failed only because `test-macos (core)` timed out in the separate code-graph
+watcher-removal case. The 10-second watcher-test adjustment is tracked separately under
+[CI-02](ci-repair-2026-10-02.md#reopened-ci-02).
 
 **Change and acceptance:** both ingress tests inject `EACCES` only for the canonical authority's
 `.quarantine-*` exclusive open, prove the injection fired, and assert that recovery remains
 read-only with `reason: corrupt` and `quarantineError`, no quarantine path is claimed, a report
 is refused, the bounded raw export remains available, and the original bytes are unchanged.
 The tool test passed as part of the focused core group. The HTTP test is included in server
-typecheck, but its local Vitest run could not resolve the generated `@prismshadow/penguin-core`
-package entry from the injected workspace snapshot; it remains for CI execution.
+typecheck; its local Vitest run could not resolve the generated `@prismshadow/penguin-core`
+package entry from the injected workspace snapshot, but the exact candidate's `test (server)` CI
+job passed.
 
 **Verification:** direct Vitest run for `findings-store.test.ts`,
 `knowledge-graph-tool.test.ts`, and `findings-output-contract.test.ts` passed **31/31**; the
@@ -147,6 +154,7 @@ knowledge tool file passed **12/12**, including the new denied-quarantine case. 
 and core/server/web TypeScript checks passed. Prettier and `git diff --check` passed. Browser E2E
 was not run locally; the repository instruction is to rely on CI for it.
 
-**Residual:** exact-candidate CI, the new HTTP runtime test, R11's isolated defect-detection
-ledger, R0's review gate, all remaining R2c criteria, and human review are still open. The
-affected authority and bindings remain unchanged.
+**Residual:** the exact candidate did not produce a green aggregate `ci` because of the separate
+macOS watcher-removal timeout; R11's isolated defect-detection ledger, R0's review gate, all
+remaining R2c criteria, and human review are still open. The affected authority and bindings
+remain unchanged.

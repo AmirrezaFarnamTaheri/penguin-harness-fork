@@ -3,7 +3,7 @@
 Baseline: 2026-10-02, `dcebeb20adb0aa0e246016a264eda11b67dea38d`.
 This is the canonical work-state index. Read [plan.md](plan.md), [work-orders.md](work-orders.md)
 and [implementation-guide.md](implementation-guide.md) before claiming a numbered card package.
-All 150 original IDs remain; four CI repair orders are additional operational items.
+All 150 original IDs remain; CI repairs and dated security-audit orders are tracked separately.
 Promotion work is scheduled under its owning wave.
 
 `Requires` lists integration gates. Ready discovery/model packages may start before the whole
@@ -26,17 +26,20 @@ Current runtime claims remain in [docs/status-ledger.json](../docs/status-ledger
 
 ## Release repair orders
 
-The [current incident](work-orders.md#current-release-incident) records CI on this exact baseline.
-All four orders are closed on the incident run; the two repository gates the fixtures had broken
-(`typecheck`, `style`) are repaired at `a882cda4` — see the receipt in
-[docs/audits/ci-repair-2026-10-02.md](../docs/audits/ci-repair-2026-10-02.md).
+The historical [CI incident](work-orders.md#current-release-incident) repairs passed on their
+recorded candidate, and the two repository gates the fixtures had broken (`typecheck`, `style`)
+were repaired at `a882cda4` — see [the receipt](../docs/audits/ci-repair-2026-10-02.md). CI-02 is
+reopened after a new macOS directory-removal wait timeout on candidate run `37148746240`; its
+10-second event-driven wait adjustment awaits exact-head CI. SEC-01 is a separate, newly detected
+upstream-blocked dependency-audit finding.
 
 | Check | ID / order                                                         | State    | Required proof and evidence                                                                                                             |
 | ----- | ------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | [x]   | [CI-01 — Findings denied-I/O classification](work-orders.md#ci-01) | VERIFIED | receipt; run 37038239523 `test (core)` 110941636677, `test-macos (core)` 110941636736, `test-windows (core)` 110941636849                  |
-| [x]   | [CI-02 — Nested-directory watcher fallback](work-orders.md#ci-02)  | VERIFIED | receipt; run 37038239523 `test-macos (core)` 110941636736 (macOS lane)                                                                   |
+| [ ]   | [CI-02 — Nested-directory watcher fallback](work-orders.md#ci-02)  | IMPLEMENTED | prior macOS pass 37038239523; candidate 37148746240 timed out in related directory-removal wait; 10s wait change awaits CI |
 | [x]   | [CI-03 — Quota countdown / retry-now](work-orders.md#ci-03)        | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten spec at `b8c74439`)                                                       |
 | [x]   | [CI-04 — Cockpit HTTP fallback lifecycle](work-orders.md#ci-04)    | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten cockpit spec at `09b36f78`)                                              |
+| [ ]   | [SEC-01 — Unpatched `http-cache-semantics` advisory](work-orders.md#sec-01) | GATED | upstream patch or reviewed compatible replacement; current audit finding in [receipt](../docs/audits/dependency-audit-2026-10-03.md) |
 
 ## Wave R
 
@@ -51,7 +54,7 @@ All four orders are closed on the incident run; the two repository gates the fix
 | [ ]   | [**R1c** Transition guards: cycles, liveness, dead-claim re-reports](execution-cards-1.md#r1c)    | IMPLEMENTED | R1b                           | engine+route/tool negative tests                                                     |
 | [ ]   | [**R2a** Scope-aware store + acknowledged writes](execution-cards-1.md#r2a)                       | IMPLEMENTED | R0                            | `test/knowledge/findings-store.test.ts` + integration                                |
 | [ ]   | [**R2b** Bounds parity + capacity/recovery path](execution-cards-1.md#r2b)                        | IMPLEMENTED | R2a                           | store+route+tool tests                                                               |
-| [ ]   | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c)                    | IMPLEMENTED | R2a                           | store+route+tool fault tests                                                         |
+| [ ]   | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c)                    | IMPLEMENTED | R2a                           | quarantine-denied tool+route tests pass on candidate `145b31ae`; full `ci` fails unrelated macOS watcher wait; wider criteria/review open |
 | [ ]   | [**R2d** Conditional migration after trusted workspace↔project binding](execution-cards-1.md#r2d) | GATED       | R0, R2a, R2c; trusted binding | binding proof + migration fixture matrix                                             |
 | [x]   | [**R3** Report & governance reconciliation](execution-cards-1.md#r3)                              | VERIFIED    | —                             | docs suite + contradiction/path grep                                                 |
 | [ ]   | [**R4** Route hygiene](execution-cards-1.md#r4)                                                   | IMPLEMENTED | R1b, R2b                      | `vitest run test/findings-routes`                                                    |

@@ -44,8 +44,20 @@ PR #13's baseline has passing formatting, typecheck, build, audit, Ubuntu core/s
 server/rest platform lanes, web/CLI, installer and runtime jobs. Its required
 [CI run 36986918261](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/36986918261)
 failed macOS and Windows core and browser E2E. The four failing cases have concrete
-[repair orders](work-orders.md#current-release-incident). Release remains blocked while
-independent discovery and reversible packages across all phases remain schedulable.
+[repair orders](work-orders.md#current-release-incident). That incident is historical; the
+current branch state is below.
+
+**Candidate branch snapshot — 2026-10-03:** PR [#15](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/15)
+advanced to `145b31ae58d8817c9f8d895ed0704828c2d975fd`. CI run
+[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240)
+passed typecheck, style/lint, server and web/CLI tests, browser E2E, installer and runtime jobs,
+but `test-macos (core)` failed in the directory-removal wait in `code-graph-watcher.test.ts`; the
+aggregate `ci` failed. [CI-02](work-orders.md#ci-02) is reopened, with a 10-second event-driven
+wait adjustment awaiting exact-candidate CI. The PR has no submitted reviews or review requests.
+Separately, the 2026-10-03 full dependency audit found an unpatched high
+`http-cache-semantics` advisory in the desktop build chain; [SEC-01](work-orders.md#sec-01) keeps
+the shared audit gate open. The detailed receipt is
+[dependency-audit-2026-10-03.md](../docs/audits/dependency-audit-2026-10-03.md).
 
 Existing implementations and historical completed tasks are retained in the index. A helper's
 existence, a focused pass, or this rewrite does not prove a wider task. Reconcile current source
@@ -53,9 +65,9 @@ and every required criterion before extending or closing it.
 
 ## Scope and five phase outcomes
 
-The original inventory contains 150 task IDs; four CI IDs are operational repair orders linked
-to existing contracts. Every original task remains represented. Promotion add-ons now belong
-to their execution wave.
+The original inventory contains 150 task IDs; CI and dated security-audit orders are operational
+follow-ups linked to existing contracts. Every original task remains represented. Promotion
+add-ons now belong to their execution wave.
 
 | Phase                  | Outcome                                                                                         | Required checkpoint artifacts                                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |

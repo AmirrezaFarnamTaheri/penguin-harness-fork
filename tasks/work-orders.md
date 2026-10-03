@@ -54,7 +54,13 @@ changing the expected string alone is insufficient without the I/O-path proof.
    matches an observed contract rather than hiding lost events.
 
 **Done:** an actual nested-file change invalidates the graph in the fallback mode; cleanup
-closes every watcher created by the case. **Rollback:** revert this watcher slice independently.
+closes every watcher created by the case. **Status update (2026-10-03):** reopened after exact
+candidate CI run `37148746240` failed `test-macos (core)` in the related real directory-removal
+case (`code-graph-watcher.test.ts`, former 4,000 ms wait). The deterministic directory-removal
+fixture still covers watcher closure; the native-event test now allows 10,000 ms but remains
+event-driven and still fails when no notification arrives. The focused local suite passes 15/15;
+candidate CI after this adjustment is pending. See the [follow-up receipt](../docs/audits/ci-repair-2026-10-02.md#reopened-ci-02). **Rollback:**
+revert this watcher slice independently.
 
 <a id="ci-03"></a>
 
@@ -101,14 +107,44 @@ coordinate shared cockpit state files with the protocol worker.
 **Done:** repeated fallback polls are observed and then cease after unmount; the indicator agrees
 with the real transport. **Rollback:** revert the transport lifecycle slice independently.
 
+<a id="sec-01"></a>
+
+## SEC-01 — Newly reported, unpatched `http-cache-semantics` advisory
+
+**Detected:** 2026-10-03 during the requested all-wave refresh. The current PR #15 CI run
+`37146286795` passed its required jobs on `ec20a0c1`, but it does not run `pnpm audit`; a fresh
+local audit is therefore a separate release gate.
+
+1. <a id="sec-01.1"></a>Trace the current locked path and package classification. Both paths go
+   through desktop `electron-builder` (`app-builder-lib` or `dmg-builder`) and then
+   `@electron/get > got > cacheable-request > http-cache-semantics@4.2.0`; pnpm marks the finding
+   `dev: true`, `optional: false`, `bundled: false`.
+2. <a id="sec-01.2"></a>Check the advisory and package registry before proposing an override. The
+   GitHub Advisory Database lists no patched release; pnpm's registry query reports 4.2.0 as
+   latest and 4.2.1 as not found. Do not force a nonexistent version or change majors blindly.
+3. <a id="sec-01.3"></a>Keep the audit gate visible while investigating a compatible builder/dependency
+   path that removes the vulnerable package. Any temporary suppression needs an explicit
+   security/release-owner decision with scope, expiry, and a tracking/reopen condition; a
+   suppressed finding is not a patched dependency.
+4. <a id="sec-01.4"></a>After an upstream patch or accepted compatible replacement is available, record
+   the resolved lockfile path, rerun the high-severity audit, and exercise the desktop package
+   matrix before closing this order.
+
+**Done:** the vulnerable path is gone or resolves to a published patched release, the audit
+result is accepted, and desktop packaging remains compatible. **Current disposition:** GATED;
+no override or suppression has been applied. **Rollback:** if the alternative breaks packaging,
+restore the last known-compatible dependency graph and keep release blocked until a reviewed fix
+or explicit time-bounded exception is accepted.
+
 ## Parallel dispatch after assigning the incident owners
 
 These are candidate streams, not declarations that their code is missing. Inspect the current
 implementation and choose the highest-ROI ready package within each stream.
 
-| Phase | Next valuable packages                                                             | Entry/exit constraint                                                             |
-| ----- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| R     | R2c/R11 denied-I/O repair; R1/R2/R4/R5/R8 acceptance reconciliation                | Persistence/lifecycle owners coordinate; preserve distinct scopes                 |
+| Phase     | Next valuable packages                                                             | Entry/exit constraint                                                              |
+| --------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Operations | CI-02 macOS watcher revalidation; SEC-01 compatible remediation/adjudication      | Green exact macOS lane; no dependency suppression without explicit owner approval |
+| R         | R2c/R11 denied-I/O repair; R1/R2/R4/R5/R8 acceptance reconciliation                | Persistence/lifecycle owners coordinate; preserve distinct scopes                 |
 | 1     | F1/F3/F6, G5, J11 receipt and integration gaps                                     | Reuse shipped/local work; resolve the remaining criterion before expanding scope  |
 | 2     | I1 trace/export routing; E6/E9 contract audit; E2 adjudication; B1 acceptance      | Keep one shared error/redaction/recall contract and complete actual consumers     |
 | 3     | D7/H7 acceptance, D6 snapshot boundary; D1/D2 baseline; C1 scope-aware flow        | D10 promotion waits for measured gates; design/fixtures can start independently   |
