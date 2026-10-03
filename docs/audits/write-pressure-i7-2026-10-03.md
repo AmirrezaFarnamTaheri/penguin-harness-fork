@@ -239,7 +239,18 @@ could not fetch native `node-pty` build headers. No native PTY process is used b
 checks.
 
 The **97 focused core/server tests and local type/build/format checks do not constitute full CI**.
-This follow-up is an uncommitted candidate on `arena/01a10111-penguin-harness-fork`; no CI result or
-review approval is claimed for it. Candidate CI, review, and the repository-wide check matrix remain
-open. The write-pressure thresholds, exemption inventory, and observational `resource_pressure`
-contract were not changed in this follow-up.
+At the time of this follow-up, the work was an uncommitted candidate; the later PR verification is
+recorded below. The write-pressure thresholds, exemption inventory, and observational
+`resource_pressure` contract were not changed in this follow-up.
+
+## Follow-up (2026-10-03): PR CI result and review status
+
+The candidate was committed and pushed on `arena/01a10111-penguin-harness-fork`. GitHub Actions run
+[37145205562](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37145205562)
+passed the repository-wide gate at PR head `8430b0a8ed6148b6486c09e9bcf0314fcb2391c9`, including
+browser E2E, typecheck, formatting, and the platform test matrix. This supersedes the earlier
+pending-CI statements above.
+
+PR #15 remains open and unmerged. It has no submitted reviews or requested reviewers; CodeRabbit's
+check passed but did not submit a review. Human review remains outstanding, so the I7 card remains
+`IMPLEMENTED` rather than `VERIFIED` and its checkbox stays open until review/acceptance.
