@@ -187,3 +187,59 @@ Repaired in the same session: messages for both codes added to `packages/web/src
 and `packages/web/src/lib/strings-zh.ts`; `pnpm check:i18n` now reports "i18n parity check passed".
 Recorded as an addendum rather than a rewrite of the receipt above: the I7 implementation is
 unchanged, and the acceptance table's "route 4/4" evidence still holds.
+
+## Follow-up (2026-10-03): production Agent composition and live grant path
+
+This follow-up supersedes the earlier residual that named I7.2 production injection and left the
+probe path as an open design question. The implementation now uses the exact Session scratchpad
+path; it does not substitute the Workspace or data root.
+
+### Production wiring and integration evidence
+
+- `Agent.createSession` computes the Session scratchpad path once and passes it to both
+  `Environment` and `createSessionWritePressureGate`. The gate's default `ResourcePressureProbe`
+  measures that exact path, and the same path is its volume key and the base for
+  `sessionPressureOverridePath`.
+- The unavailable-measurement behavior remains warn-only: the Agent wiring test verifies the
+  missing target produces `write_pressure_probe_unavailable`, the exact Session volume path, and
+  `freeBytes: null`.
+- The policy composition test persists a matching grant at the production override path, admits
+  its first low-space write, then blocks the replay after the durable single-use grant is consumed.
+- The server route test now drives an authenticated `tool-output-archive` grant through a live
+  Agent-created Session and its actual Environment archive. With the measured Session volume
+  deterministically set below the block threshold, the granted archive write is saved; the live
+  gate refuses a retry and an unrelated call, then a fresh gate confirms the durable grant is
+  consumed. The existing archive destination is byte-for-byte unchanged. The fake probe is
+  test-only; the production factory still constructs the real statfs probe. The test reaches the
+  archive through a test-only private-field cast; no production API was widened.
+- Boundary review found that a refused truncation-archive write returned before releasing its
+  serialization queue, which could strand later writes after capacity recovered. The release now
+  runs in an outer `finally`; a regression test blocks one write, restores admission, and verifies
+  the next write completes.
+
+### Local checks for this follow-up
+
+| Check | Result |
+|---|---|
+| Core tests: `agent.test.ts` + `write-pressure-policy.test.ts` | **69 passed** |
+| Core tests: `write-pressure-boundary.test.ts` + `truncated-tool-output-archive.test.ts` | **24 passed**, including post-refusal archive recovery |
+| Server test: `pressure-override-route.test.ts` | **4 passed**, including the live Agent/archive case |
+| Core TypeScript check | **passed** (`tsc --noEmit -p tsconfig.json`) |
+| Server TypeScript check | **passed** (`tsc --noEmit -p tsconfig.json`) |
+| Core package build | **passed** (ESM and declaration build) |
+| Prettier check on changed TypeScript source and tests | **passed** (Markdown is excluded by repository config) |
+| `git diff --check` | **passed** |
+| Oxlint with `--deny-warnings` | **not verified**: the native process aborted in `oxc_allocator` with a Tokio worker panic before emitting diagnostics, including with `--threads=1` |
+
+Verification ran under Node **v24.21.0**, obtained with `npm exec --package=node@24`, because the
+sandbox's default Node v22.22.3 is below the repository's `>=24` engine requirement. Corepack
+provided pnpm 11.18.0. The server route test needed a core package build first; the workspace install
+was completed with `--frozen-lockfile --ignore-scripts` after the initial Node 22 install attempt
+could not fetch native `node-pty` build headers. No native PTY process is used by these focused
+checks.
+
+The **97 focused core/server tests and local type/build/format checks do not constitute full CI**.
+This follow-up is an uncommitted candidate on `arena/01a10111-penguin-harness-fork`; no CI result or
+review approval is claimed for it. Candidate CI, review, and the repository-wide check matrix remain
+open. The write-pressure thresholds, exemption inventory, and observational `resource_pressure`
+contract were not changed in this follow-up.

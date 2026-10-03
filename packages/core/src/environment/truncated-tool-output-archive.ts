@@ -611,11 +611,11 @@ export class TruncatedToolOutputArchive {
       release = resolve;
     });
     await previous;
-    // Admitted before the first filesystem call: a refused write must not create the directory,
-    // touch the ledger or leave a partial file for the next reader to trip over.
-    const admission = await this.admitWrite("tool-output-archive", toolCallId);
-    if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
     try {
+      // Admitted before the first filesystem call: a refused write must not create the directory,
+      // touch the ledger or leave a partial file for the next reader to trip over.
+      const admission = await this.admitWrite("tool-output-archive", toolCallId);
+      if (admission.blocked) return { status: "failed", code: "PRESSURE_BLOCKED" };
       // Create shared Session ancestors with their existing/default policy, then apply the
       // archive's private directory mode only to the archive directory itself.
       await mkdir(path.dirname(this.rootDir), { recursive: true });
@@ -646,6 +646,7 @@ export class TruncatedToolOutputArchive {
       );
       return { status: "failed", code };
     } finally {
+      // A refusal is still a completed queue entry: never strand later writes behind it.
       release();
     }
   }

@@ -77,7 +77,10 @@
  */
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { ResourcePressureReport } from "../agent/resource/pressure-probe.js";
+import {
+  ResourcePressureProbe,
+  type ResourcePressureReport,
+} from "../agent/resource/pressure-probe.js";
 import { atomicWriteFile } from "./atomic-write.js";
 
 /** 200 MiB, in bytes — the number statfs reports (`bsize * bavail`). */
@@ -582,6 +585,36 @@ export function createProbeWritePressureGate(options: {
       });
     },
   };
+}
+
+/**
+ * Compose the production gate for one Agent Session's archive writes.
+ *
+ * The probe measures the exact Session scratchpad directory where the archive writes, and that
+ * same path is used for the write key and authenticated override file. This avoids substituting
+ * the Workspace or a presumed data-root volume. If the scratchpad does not exist yet or cannot
+ * be measured, `readVolumePressure` turns that into a warning with no byte count; it never
+ * invents a full disk or blocks on an unavailable measurement.
+ *
+ * `probe` is injectable for deterministic policy fixtures; production callers omit it and get a
+ * Session-local, TTL-cached statfs probe.
+ */
+export function createSessionWritePressureGate(options: {
+  sessionId: string;
+  sessionScratchpadDir: string;
+  probe?: PressureReportSource;
+}): WritePressureGate {
+  const { sessionId, sessionScratchpadDir } = options;
+  const probe = options.probe ?? new ResourcePressureProbe({ paths: [sessionScratchpadDir] });
+  const overrides = new PressureOverrideStore({
+    persistPath: sessionPressureOverridePath(sessionScratchpadDir),
+  });
+  return createProbeWritePressureGate({
+    probe,
+    volumePath: sessionScratchpadDir,
+    sessionId,
+    overrides,
+  });
 }
 
 /** The probing half the boundary needs; `ResourcePressureProbe.probe` satisfies it. */

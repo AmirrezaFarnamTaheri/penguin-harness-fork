@@ -17,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  createSessionWritePressureGate,
   evaluateWritePressure,
   NONESSENTIAL_PRODUCERS,
   PRESSURE_BLOCK_BELOW_BYTES,
@@ -24,10 +25,12 @@ import {
   PRESSURE_WARN_BELOW_BYTES,
   PressureOverrideStore,
   readVolumePressure,
+  sessionPressureOverridePath,
   WRITE_PRODUCER_INVENTORY,
   writeProducerEntry,
 } from "../src/internal/write-pressure-policy.js";
 import type { PressureReading, PressureWriteKey } from "../src/internal/write-pressure-policy.js";
+import type { ResourcePressureReport } from "../src/agent/resource/pressure-probe.js";
 
 const MiB = 1024 * 1024;
 const VOLUME = "/data";
@@ -43,6 +46,36 @@ const measured = (freeBytes: number, volumePath = VOLUME): PressureReading => ({
   volumePath,
   freeBytes,
 });
+
+function pressureReport(volumePath: string, freeBytes: number): ResourcePressureReport {
+  return {
+    memory: {
+      kind: "os-counter",
+      freeBytes: 1,
+      totalBytes: 2,
+      usedBytes: 1,
+      usedRatio: 0.5,
+      sampledAt: 0,
+      ageMs: 0,
+      caveat: "test",
+    },
+    disks: [
+      {
+        path: volumePath,
+        kind: "statfs-cache",
+        freeBytes,
+        totalBytes: 2,
+        usedBytes: 1,
+        usedRatio: 0.5,
+        sampledAt: 0,
+        ageMs: 0,
+        servedFromCache: false,
+      },
+    ],
+    droppedPathCount: 0,
+    diskTtlMs: 5000,
+  };
+}
 
 async function decide(
   reading: PressureReading | null,
@@ -451,5 +484,41 @@ describe("I7.3 a grant is recorded durably and stays single-use across processes
       volumePath: "/data",
     });
     expect(reloaded.list()[0]).toMatchObject({ grantedBy: "approval", grantedAt: 42 });
+  });
+
+  it("composes the Agent gate on the same scratchpad volume used by authenticated grants", async () => {
+    const persistPath = await tempPath();
+    const sessionScratchpadDir = path.dirname(persistPath);
+    const sessionId = "session-gate";
+    const toolCallId = "call-gate";
+    expect(sessionPressureOverridePath(sessionScratchpadDir)).toBe(persistPath);
+
+    const grantor = new PressureOverrideStore({ persistPath });
+    const grant = await grantor.grant({
+      sessionId,
+      producerId: "recall-store",
+      toolCallId,
+      volumePath: sessionScratchpadDir,
+      grantedBy: "operator",
+      reason: "the operator accepted this one write",
+    });
+    const gate = createSessionWritePressureGate({
+      sessionId,
+      sessionScratchpadDir,
+      probe: { probe: async () => pressureReport(sessionScratchpadDir, 1) },
+    });
+
+    const admitted = await gate.admit({ producerId: "recall-store", toolCallId });
+    expect(admitted).toMatchObject({
+      action: "allow",
+      volumePath: sessionScratchpadDir,
+      overrideId: grant.overrideId,
+    });
+    // Consumption is durable and single-use through the production composition too.
+    expect(await gate.admit({ producerId: "recall-store", toolCallId })).toMatchObject({
+      action: "block",
+      volumePath: sessionScratchpadDir,
+      overrideId: null,
+    });
   });
 });

@@ -29,6 +29,7 @@ import {
   PressureOverrideStore,
 } from "../src/internal/write-pressure-policy.js";
 import type { ResourcePressureReport } from "../src/agent/resource/pressure-probe.js";
+import type { WritePressureGate } from "../src/internal/write-pressure-policy.js";
 
 const MiB = 1024 * 1024;
 const VOLUME = "/volume";
@@ -144,6 +145,52 @@ describe("I7.2 a blocked nonessential write does not touch the destination", () 
     }
     const entries = await readdir(root).catch(() => []);
     expect(entries).toEqual([]);
+  });
+
+  it("releases the archive write queue after a refusal so a later write can recover", async () => {
+    const root = path.join(await tempRoot(), "scratchpad");
+    const requests: Array<{
+      producerId: "tool-output-archive" | "recall-store";
+      toolCallId: string;
+    }> = [];
+    let shouldBlock = true;
+    const gate: WritePressureGate = {
+      admit: async (request) => {
+        requests.push(request);
+        return {
+          action: shouldBlock ? "block" : "allow",
+          signal: null,
+          producerId: request.producerId,
+          volumePath: VOLUME,
+          freeBytes: shouldBlock ? 1 : null,
+          reason: shouldBlock ? "below the block threshold" : "space recovered",
+          overrideId: null,
+        };
+      },
+    };
+    const archive = new TruncatedToolOutputArchive({ rootDir: root, writePressure: gate });
+
+    const refused = archive.startCapture();
+    refused.append("the denied write");
+    expect(await refused.save("exec_command", "call-blocked")).toEqual({
+      status: "failed",
+      code: "PRESSURE_BLOCKED",
+    });
+    await expect(readdir(root)).rejects.toMatchObject({ code: "ENOENT" });
+
+    // A subsequent admission represents recovered capacity. It must not wait forever behind
+    // the refused call's serialization promise.
+    shouldBlock = false;
+    const recovered = archive.startCapture();
+    recovered.append("the write after recovery");
+    expect(await recovered.save("exec_command", "call-recovered")).toMatchObject({
+      status: "saved",
+    });
+    expect(requests).toEqual([
+      { producerId: "tool-output-archive", toolCallId: "call-blocked" },
+      { producerId: "tool-output-archive", toolCallId: "call-recovered" },
+    ]);
+    expect(await readdir(root)).toHaveLength(1);
   });
 
   it("still refuses when an override was granted for a different write", async () => {

@@ -8,19 +8,23 @@
  * scratchpad (where its archive lives), the record lands in that scratchpad, and the request can
  * name only the producer and the tool call it lifts.
  *
- * The last case drives the whole loop with a real archive: a store the route wrote admits exactly
- * the one write it was granted for, and nothing else.
+ * The last case drives the route's durable grant through a live Agent Session's production gate
+ * and archive, then verifies the consumed grant refuses a retry without changing the destination.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PressureOverrideStore,
+  ResourcePressureProbe,
   TruncatedToolOutputArchive,
+  createAgent,
   createProbeWritePressureGate,
+  saveProjectConfig,
   sessionPressureOverridePath,
   sessionScratchpadDir,
 } from "@prismshadow/penguin-core";
+import type { ResourcePressureReport, Session } from "@prismshadow/penguin-core";
 import type { SessionRow } from "../src/db/repos/sessions.js";
 import { apiClient, createTestApp, provisionUser } from "./helpers.js";
 import type { TestApp } from "./helpers.js";
@@ -55,11 +59,11 @@ async function setup(): Promise<{ t: TestApp; api: ReturnType<typeof apiClient> 
   return { t, api };
 }
 
-/** A probe report with a chosen amount of free space, shaped exactly as the probe's own. */
-function reportWithFree(freeBytes: number) {
+/** A probe report with a chosen amount of free space on the measured Session volume. */
+function reportWithFree(volumePath: string, freeBytes: number): ResourcePressureReport {
   return {
     memory: {
-      kind: "os-counter" as const,
+      kind: "os-counter",
       freeBytes: 1,
       totalBytes: 2,
       usedBytes: 1,
@@ -68,14 +72,14 @@ function reportWithFree(freeBytes: number) {
       ageMs: 0,
       caveat: "test",
     },
-    disks: (volumePath: string) => [
+    disks: [
       {
         path: volumePath,
-        kind: "statfs-cache" as const,
+        kind: "statfs-cache",
         freeBytes,
-        totalBytes: 0,
-        usedBytes: 0,
-        usedRatio: 0,
+        totalBytes: 2,
+        usedBytes: 1,
+        usedRatio: 0.5,
         sampledAt: 0,
         ageMs: 0,
         servedFromCache: false,
@@ -200,48 +204,116 @@ describe("POST /api/sessions/:id/pressure-overrides (I7.3)", () => {
     }
   });
 
-  it("admits exactly the write the recorded grant names — and only that one", async () => {
+  it("drives the authenticated grant through a live Agent's Session archive", async () => {
     const { t, api } = await setup();
+    let session: Session | undefined;
+    let restoreProbe: (() => void) | undefined;
     try {
-      const scratchpad = sessionScratchpadDir(t.deps.config.root, PROJECT_ID, AGENT_ID, SID);
-      await api.post(`/api/sessions/${SID}/pressure-overrides`, {
-        producerId: "recall-store",
-        toolCallId: "call-granted",
-        reason: "one write",
+      await saveProjectConfig(t.deps.config.root, PROJECT_ID, {
+        default_model: { provider: "anthropic", model_id: "claude-sonnet-4-6" },
+        models: [{ provider: "anthropic", model_id: "claude-sonnet-4-6", context_window: 1000 }],
       });
-      // A store reading the route's record file — the same convention a host's gate uses.
-      const gate = createProbeWritePressureGate({
-        probe: {
-          probe: async () => {
-            const base = reportWithFree(1); // far below the block threshold
-            return { ...base, disks: base.disks(scratchpad) };
-          },
-        },
+      const agent = await createAgent({
+        root: t.deps.config.root,
+        projectId: PROJECT_ID,
+        agentId: AGENT_ID,
+      });
+      const workspaceDir = path.join(t.root, "agent-workspace");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      session = await agent.createSession({ workspaceDir });
+      t.deps.sessionsRepo.insert({
+        ...sessionRow(session.sessionId),
+        provider: session.provider,
+        modelId: session.modelId,
+        workspace: session.workspaceDir,
+      });
+
+      const scratchpad = sessionScratchpadDir(
+        t.deps.config.root,
+        PROJECT_ID,
+        AGENT_ID,
+        session.sessionId,
+      );
+      const probe = vi
+        .spyOn(ResourcePressureProbe.prototype, "probe")
+        .mockImplementation(async () => reportWithFree(scratchpad, 1));
+      restoreProbe = () => probe.mockRestore();
+
+      const grant = await api.post(`/api/sessions/${session.sessionId}/pressure-overrides`, {
+        producerId: "tool-output-archive",
+        toolCallId: "call-granted",
+        reason: "one archive write",
+      });
+      expect(grant.status).toBe(201);
+      expect((await grant.json()) as Record<string, unknown>).toMatchObject({
+        producerId: "tool-output-archive",
+        toolCallId: "call-granted",
         volumePath: scratchpad,
-        sessionId: SID,
-        // A fresh store per call would defeat single-use, so this mirrors one live gate.
+        grantedBy: "operator",
+      });
+
+      // The Agent's real Session owns this Environment and the archive wired to its gate.
+      // This private-field read keeps the test at the composition boundary rather than
+      // replacing production wiring with a hand-built gate or archive.
+      const environment = (
+        session as unknown as {
+          environment: {
+            truncatedToolOutputArchive: TruncatedToolOutputArchive | null;
+          };
+        }
+      ).environment;
+      const archive = environment.truncatedToolOutputArchive;
+      if (archive === null) throw new Error("Agent Session did not construct its output archive");
+      const capture = archive.startCapture();
+      capture.append("granted text from the live Session archive");
+      expect(await capture.save("exec_command", "call-granted")).toMatchObject({
+        status: "saved",
+      });
+      expect(probe).toHaveBeenCalledTimes(1);
+
+      const archiveDir = path.join(scratchpad, "truncated-tool-output");
+      const filesBeforeRefusal = await fs.readdir(archiveDir);
+      expect(filesBeforeRefusal).toHaveLength(1);
+      const archivedPath = path.join(archiveDir, filesBeforeRefusal[0]!);
+      const archivedText = await fs.readFile(archivedPath, "utf8");
+      expect(archivedText).toBe("granted text from the live Session archive");
+
+      // The live Agent archive refuses a replay of the consumed grant and a different call.
+      // Each refusal happens before touching the existing destination, and the archive queue
+      // remains usable after a pressure block.
+      const retry = archive.startCapture();
+      retry.append("this retry must not reach disk");
+      expect(await retry.save("exec_command", "call-granted")).toEqual({
+        status: "failed",
+        code: "PRESSURE_BLOCKED",
+      });
+      const unrelated = archive.startCapture();
+      unrelated.append("this unrelated call must not reach disk");
+      expect(await unrelated.save("exec_command", "call-not-granted")).toEqual({
+        status: "failed",
+        code: "PRESSURE_BLOCKED",
+      });
+      expect(await fs.readdir(archiveDir)).toEqual(filesBeforeRefusal);
+      expect(await fs.readFile(archivedPath, "utf8")).toBe(archivedText);
+
+      // A fresh gate/store also sees the durable consumption, not just this Agent's memory.
+      const freshGate = createProbeWritePressureGate({
+        probe: { probe: async () => reportWithFree(scratchpad, 1) },
+        volumePath: scratchpad,
+        sessionId: session.sessionId,
         overrides: new PressureOverrideStore({
           persistPath: sessionPressureOverridePath(scratchpad),
         }),
       });
-      const archive = new TruncatedToolOutputArchive({
-        rootDir: path.join(scratchpad, "truncated-tool-output"),
-        writePressure: gate,
-      });
-      // The granted call is admitted (and consumed), the same call again is refused, and a call
-      // the grant does not name is refused.
       expect(
-        (await archive.saveRecallEntry("exec_command", "granted text", "call-granted")).status,
-      ).toBe("saved");
-      expect(await archive.saveRecallEntry("exec_command", "again", "call-granted")).toEqual({
-        status: "failed",
-        code: "PRESSURE_BLOCKED",
-      });
-      expect(await archive.saveRecallEntry("exec_command", "other", "call-other")).toEqual({
-        status: "failed",
-        code: "PRESSURE_BLOCKED",
-      });
+        await freshGate.admit({
+          producerId: "tool-output-archive",
+          toolCallId: "call-granted",
+        }),
+      ).toMatchObject({ action: "block", volumePath: scratchpad });
     } finally {
+      restoreProbe?.();
+      session?.dispose();
       await t.cleanup();
     }
   });
