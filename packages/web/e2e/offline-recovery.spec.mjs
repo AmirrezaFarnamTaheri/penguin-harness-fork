@@ -159,7 +159,7 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
       .slice(0, 500);
     const assertion = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `recovery lost the rendered transcript; body: ${bodyText}; page errors: ${pageErrors.join(" | ") || "(none)"}; assertion: ${assertion}`,
+      `recovery lost the rendered transcript at ${page.url()}; body: ${bodyText}; page errors: ${pageErrors.join(" | ") || "(none)"}; assertion: ${assertion}`,
     );
   }
 
