@@ -1584,71 +1584,79 @@ export class SessionManager {
    * outlived its own deletion.
    */
   private disposeRemoved(entry: RuntimeEntry): Promise<DisposeOutcome> {
-    let disposeOnce: () => void;
+    let resolveDisposed!: (outcome: DisposeOutcome) => void;
     const disposed = new Promise<DisposeOutcome>((resolve) => {
-      let done = false;
-      disposeOnce = (): void => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        // Cleanup must never reject the caller's deletion path; the process kill it owns is
-        // best-effort by the same rule as the rest of dispose(). "Best-effort" is not
-        // "successful" though: a throw AND a rejected promise are recorded as their own outcome,
-        // so the deletion path and its metrics can tell a released environment from a leaked one
-        // (and an async rejection can no longer escape as an unhandled rejection).
-        const finish = (outcome: DisposeOutcome): void => {
-          // Recorded before the resolve so a caller woken by the promise always finds it.
-          this.disposeSettled.set(entry.sessionId, disposed);
-          this.disposeOutcomes.set(entry.sessionId, outcome);
-          if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
-            for (const key of this.disposeOutcomes.keys()) {
-              if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
-              this.disposeOutcomes.delete(key);
-              this.disposeSettled.delete(key);
-            }
-          }
-          resolve(outcome);
-        };
-        const fail = (err: unknown): void => {
-          this.disposeFailures += 1;
-          this.log(
-            `[session-manager] dispose failed for ${entry.sessionId}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-          finish("dispose-failed");
-        };
-        let pending: unknown;
-        try {
-          pending = entry.session.dispose?.();
-        } catch (err) {
-          fail(err);
-          return;
-        }
-        if (pending !== null && typeof (pending as { then?: unknown }).then === "function") {
-          // The cleanup returned a promise: the outcome is the promise's, not the call's. A
-          // rejection here is a failure to release, exactly like a synchronous throw.
-          void Promise.resolve(pending).then(
-            () => finish(timedOut ? "disposed-after-timeout" : "disposed"),
-            (err: unknown) => fail(err),
-          );
-          return;
-        }
-        finish(timedOut ? "disposed-after-timeout" : "disposed");
-      };
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        this.disposeTimeouts += 1;
-        this.log(
-          `[session-manager] ${entry.sessionId} did not settle within ${RUNTIME_DISPOSE_GRACE_MS}ms; disposing anyway so its background processes cannot outlive it`,
-        );
-        disposeOnce();
-      }, RUNTIME_DISPOSE_GRACE_MS);
-      timer.unref?.();
-      if (entry.running) void entry.running.then(disposeOnce, disposeOnce);
-      else disposeOnce();
+      resolveDisposed = resolve;
     });
+    let done = false;
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    // Cleanup must never reject the caller's deletion path; the process kill it owns is
+    // best-effort by the same rule as the rest of dispose(). "Best-effort" is not
+    // "successful" though: a throw AND a rejected promise are recorded as their own outcome,
+    // so the deletion path and its metrics can tell a released environment from a leaked one
+    // (and an async rejection can no longer escape as an unhandled rejection).
+    const finish = (outcome: DisposeOutcome): void => {
+      // Recorded before the resolve so a caller woken by the promise always finds it.
+      this.disposeSettled.set(entry.sessionId, disposed);
+      this.disposeOutcomes.set(entry.sessionId, outcome);
+      if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
+        for (const key of this.disposeOutcomes.keys()) {
+          if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
+          this.disposeOutcomes.delete(key);
+          this.disposeSettled.delete(key);
+        }
+      }
+      resolveDisposed(outcome);
+    };
+    const fail = (err: unknown): void => {
+      this.disposeFailures += 1;
+      this.log(
+        `[session-manager] dispose failed for ${entry.sessionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      finish("dispose-failed");
+    };
+    const disposeOnce = (): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      let pending: unknown;
+      try {
+        pending = entry.session.dispose?.();
+      } catch (err) {
+        fail(err);
+        return;
+      }
+      if (
+        pending !== null &&
+        pending !== undefined &&
+        typeof (pending as { then?: unknown }).then === "function"
+      ) {
+        // The cleanup returned a promise: the outcome is the promise's, not the call's. A
+        // rejection here is a failure to release, exactly like a synchronous throw.
+        void Promise.resolve(pending).then(
+          () => finish(timedOut ? "disposed-after-timeout" : "disposed"),
+          (err: unknown) => fail(err),
+        );
+        return;
+      }
+      finish(timedOut ? "disposed-after-timeout" : "disposed");
+    };
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      this.disposeTimeouts += 1;
+      this.log(
+        `[session-manager] ${entry.sessionId} did not settle within ${RUNTIME_DISPOSE_GRACE_MS}ms; disposing anyway so its background processes cannot outlive it`,
+      );
+      disposeOnce();
+    }, RUNTIME_DISPOSE_GRACE_MS);
+    timer.unref?.();
+    if (entry.running) void entry.running.then(disposeOnce, disposeOnce);
+    else disposeOnce();
     return disposed;
   }
 

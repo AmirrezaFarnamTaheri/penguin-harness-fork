@@ -1015,6 +1015,25 @@ describe("session-manager", () => {
     manager.endSessionDeletion("session-1");
   });
 
+  it("E10.2: a synchronous void dispose is recorded as a successful cleanup", async () => {
+    sessions.updateApprovalMode("session-1", "allow-all");
+    let disposed = false;
+    const fake: RuntimeSession = {
+      ...approvalFakeSession("session-1"),
+      dispose: () => {
+        disposed = true;
+      },
+    };
+    const manager = makeManager(loaderOf(fake));
+    await manager.startTask("session-1", [userText("go")]);
+    await waitFor(() => manager.statusOf("session-1") === "idle");
+
+    await manager.shutdown();
+
+    expect(disposed).toBe(true);
+    expect(manager.disposeOutcomeOf("session-1")).toBe("disposed");
+  });
+
   it("E10.2: a drive that never settles cannot stop the removed environment from being disposed", async () => {
     // The leak this fixes: disposeRemoved waited on entry.running forever, so a hung run
     // meant dispose() never ran — the entry left the active table, the route answered 204,

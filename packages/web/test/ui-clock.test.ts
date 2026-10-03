@@ -296,7 +296,9 @@ describe("shared UI clock migration (F2.3)", () => {
     // The exact shape every migrated view used to carry. A new one is a regression of this card no
     // matter which file it appears in.
     const offenders = sourceFiles()
-      .filter((path) => /setInterval\(\(\) => setNow\(Date\.now\(\)\)/.test(readFileSync(path, "utf8")))
+      .filter((path) =>
+        /setInterval\(\(\) => setNow\(Date\.now\(\)\)/.test(readFileSync(path, "utf8")),
+      )
       .map((path) => relative(SRC, path));
     expect(offenders).toEqual([]);
   });

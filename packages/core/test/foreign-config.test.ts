@@ -94,6 +94,8 @@ const shaOf = async (file: string): Promise<string> => {
     .digest("hex");
 };
 
+const modeOf = async (file: string): Promise<number> => (await stat(file)).mode & 0o777;
+
 const backupsIn = async (): Promise<string[]> =>
   (await readdir(backupDirectory)).filter((name) => name.includes(".penguin-backup-"));
 
@@ -114,6 +116,7 @@ describe("H1.1 — ownership, version, and the preview record", () => {
   it("records bytes, hash, permissions, version and managed ownership at preview", async () => {
     await write(MANAGED);
     await chmod(configPath, 0o640);
+    const expectedMode = await modeOf(configPath);
     const result = await previewForeignConfig(configPath, adapter);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -121,7 +124,7 @@ describe("H1.1 — ownership, version, and the preview record", () => {
     expect(preview.adapterId).toBe("demo-provider");
     expect(preview.bytes).toBe(Buffer.byteLength(MANAGED, "utf8"));
     expect(preview.sha256).toBe(await shaOf(configPath));
-    expect(preview.mode).toBe(0o640);
+    expect(preview.mode).toBe(expectedMode);
     expect(preview.mtimeMs).toBeGreaterThan(0);
     expect(preview.version).toBe(1);
     expect(preview.marker).toBe("true");
@@ -155,6 +158,7 @@ describe("H1.2 — the transaction", () => {
   it("backs up, writes atomically, reads back redacted, and names every stage", async () => {
     const before = await write(MANAGED);
     await chmod(configPath, 0o640);
+    const expectedMode = await modeOf(configPath);
     const preview = await previewForeignConfig(configPath, adapter);
     if (!preview.ok) throw new Error("expected a preview");
 
@@ -170,9 +174,9 @@ describe("H1.2 — the transaction", () => {
     expect(result.afterSha256).toBe(await shaOf(configPath));
     // The backup holds the original bytes exactly, at the mode the original had.
     expect(await readFile(result.backupPath, "utf8")).toBe(before);
-    expect((await stat(result.backupPath)).mode & 0o777).toBe(0o640);
+    expect(await modeOf(result.backupPath)).toBe(expectedMode);
     // The new file keeps the mode too, and carries the patch plus the marker/version.
-    expect((await stat(configPath)).mode & 0o777).toBe(0o640);
+    expect(await modeOf(configPath)).toBe(expectedMode);
     const written = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
     expect(written.endpoint).toBe("https://new.example");
     expect(written.configVersion).toBe(1);
@@ -465,6 +469,7 @@ describe("H1.4 — restoration", () => {
     const backupPath = backupPathFor(configPath, await shaOf(configPath));
     await copyFile(configPath, backupPath);
     await chmod(backupPath, 0o600);
+    const expectedMode = await modeOf(backupPath);
     await write(
       `${JSON.stringify({ penguinManaged: "true", configVersion: 1, endpoint: "https://edited.example" })}\n`,
     );
@@ -472,7 +477,7 @@ describe("H1.4 — restoration", () => {
 
     expect(await restoreForeignConfig(backupPath, configPath)).toBe(true);
     expect(await readFile(configPath, "utf8")).toBe(before);
-    expect((await stat(configPath)).mode & 0o777).toBe(0o600);
+    expect(await modeOf(configPath)).toBe(expectedMode);
   });
 
   it("reports a failed restore instead of claiming success", async () => {
