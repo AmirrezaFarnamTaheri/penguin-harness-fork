@@ -47,16 +47,16 @@ failed macOS and Windows core and browser E2E. The four failing cases have concr
 [repair orders](work-orders.md#current-release-incident). That incident is historical; the
 current branch state is below.
 
-**Candidate branch snapshot — 2026-10-03:** PR [#15](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/15)
-advanced to `145b31ae58d8817c9f8d895ed0704828c2d975fd`. CI run
-[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240)
-passed typecheck, style/lint, server and web/CLI tests, browser E2E, installer and runtime jobs,
-but `test-macos (core)` failed in the directory-removal wait in `code-graph-watcher.test.ts`; the
-aggregate `ci` failed. [CI-02](work-orders.md#ci-02) is reopened, with a 10-second event-driven
-wait adjustment awaiting exact-candidate CI. The PR has no submitted reviews or review requests.
-Separately, the 2026-10-03 full dependency audit found an unpatched high
-`http-cache-semantics` advisory in the desktop build chain; [SEC-01](work-orders.md#sec-01) keeps
-the shared audit gate open. The detailed receipt is
+**Latest validated source candidate — 2026-10-03:** PR [#15](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/15)
+source head `fe633e0ffeacbc1b0b92dc56b01169a4cc8800d8` passed exact run
+[37149941481](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37149941481),
+21/21 jobs including macOS core and aggregate `ci`. This followed run
+[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240),
+which failed only `test-macos (core)` on a 4-second directory-removal wait; the test now retains
+its event-driven assertion with a 10-second bound, so [CI-02](work-orders.md#ci-02) is
+revalidated. PR #15 has no submitted reviews or review requests. Separately, the 2026-10-03 full
+dependency audit found an unpatched high `http-cache-semantics` advisory in the desktop build
+chain; [SEC-01](work-orders.md#sec-01) keeps the shared audit gate open. The detailed receipt is
 [dependency-audit-2026-10-03.md](../docs/audits/dependency-audit-2026-10-03.md).
 
 Existing implementations and historical completed tasks are retained in the index. A helper's

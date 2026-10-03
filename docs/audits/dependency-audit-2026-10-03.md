@@ -32,6 +32,17 @@ published release; querying `http-cache-semantics@4.2.1` returns `ERR_PNPM_PACKA
 The advisory JSON consumed by pnpm advertises `>=4.2.1`, but that release is not present in the
 registry, so a version override would not produce a valid install.
 
+The compatibility investigation also checked the current builder line. Registry metadata lists
+`electron-builder@26.17.0` (the unqualified `version` field returned `26.15.3`); the desktop range
+`^26.16.1` admits 26.17.0, and it still selects `app-builder-lib`/`dmg-builder@26.17.0`, which
+declare `@electron/get: ^3.0.0`.
+`@electron/get@3.1.0` still declares `got: ^11.8.5`; `got@11` selects `cacheable-request@7`, which
+depends on `http-cache-semantics@^4.0.0`. The `@electron/get@4.0.3` line also retains the package
+through `got@14 > cacheable-request@13 > http-cache-semantics@^4.2.0`. While `@electron/get@5.1.0`
+no longer declares `got`, the stable builder line does not allow that major; forcing it would be
+an unreviewed cross-major override. No compatible published builder path that removes the
+finding was established.
+
 ## Decision and gate
 
 Do not add an override to a nonexistent release, silently suppress the advisory, or claim the
