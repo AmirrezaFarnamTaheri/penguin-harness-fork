@@ -136,10 +136,11 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
 
   // ---- server restoration: only a real probe clears the banner ----
   await page.unroute("**/api/**");
-  await expect(banner).toHaveAttribute("data-connectivity-banner", /recovered|none/, {
+  await expect(banner).toHaveAttribute("data-connectivity-banner", "recovered", {
     timeout: 20_000,
   });
-  await expect(banner).toHaveAttribute("data-connectivity-banner", "none", { timeout: 20_000 });
+  // The banner unmounts when its posture is healthy; there is no rendered `none` attribute.
+  await expect(banner).toHaveCount(0, { timeout: 20_000 });
   // And the transcript is still there, never having been replaced by an error state.
   await expect(page.getByText("OFFLINE-CACHE-MARKER", { exact: false }).first()).toBeVisible();
 
