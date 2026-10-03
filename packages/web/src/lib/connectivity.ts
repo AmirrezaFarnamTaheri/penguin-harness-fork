@@ -20,6 +20,9 @@
  * package's test environment has no DOM, by policy).
  */
 
+/** Browser event emitted when a probe verifies the server after a failure or unverified link. */
+export const CONNECTIVITY_RECOVERED_EVENT = "penguin:connectivity-recovered";
+
 /** What the app believes about reaching the server right now. */
 export type ConnectivityPosture =
   /** A probe succeeded; the server answered. */
@@ -195,9 +198,10 @@ function applyFlags(
   const unreachableAt = FAILURE_THRESHOLD;
   let posture: ConnectivityPosture;
   if (!flags.browserOnline) posture = "browser-offline";
-  else if (flags.lastProbe === "success") posture = "online";
   else if (flags.consecutiveFailures >= unreachableAt) posture = "server-unreachable";
-  else if (flags.needsVerification || flags.consecutiveFailures > 0) posture = "reconnecting";
+  else if (flags.needsVerification) posture = "reconnecting";
+  else if (flags.lastProbe === "success") posture = "online";
+  else if (flags.consecutiveFailures > 0) posture = "reconnecting";
   else posture = "checking";
 
   let banner: ConnectivityBanner;
@@ -226,7 +230,7 @@ function applyFlags(
       // A link that came back after a real outage, before a probe confirms the server: writes are
       // attempted only once there is evidence they can land. A first transient failure is NOT
       // that evidence — blocking a send on one hiccup would be its own kind of false report.
-      (flags.needsVerification && flags.outageSeen && flags.lastProbe !== "success"),
+      (flags.needsVerification && flags.outageSeen),
     autoRetriesExhausted: flags.needsVerification ? state.autoRetriesExhausted : false,
     retry: { allowed: !flags.probing && posture !== "online", reason: null },
     sinceMs: state.posture === posture ? state.sinceMs : atMs,

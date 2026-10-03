@@ -17,6 +17,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  CONNECTIVITY_RECOVERED_EVENT,
   createConnectivityMonitor,
   initialConnectivityState,
   type ConnectivityMonitor,
@@ -66,9 +67,20 @@ class ConnectivityStore {
     );
     this.monitor = createConnectivityMonitor({
       probe: probeHealth,
-      onSnapshot: (state) => {
+      onSnapshot: (state, previous) => {
         this.state = state;
         for (const listener of this.listeners) listener();
+        // A successful probe after a failed probe or unverified link proves API requests may work
+        // again. AuthProvider listens to this edge and retries its failed initial /api/me request;
+        // a plain browser "online" event alone is not enough evidence.
+        if (
+          state.posture === "online" &&
+          previous.posture !== "online" &&
+          (previous.lastProbe === "failure" || previous.outageSeen || !previous.browserOnline) &&
+          typeof window !== "undefined"
+        ) {
+          window.dispatchEvent(new Event(CONNECTIVITY_RECOVERED_EVENT));
+        }
       },
     });
   }

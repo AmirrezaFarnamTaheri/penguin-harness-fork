@@ -101,6 +101,21 @@ describe("connectivity posture (F17.1)", () => {
     expect(verified.writesBlocked).toBe(false);
   });
 
+  it("treats a success from before an outage as stale until the server is probed again", () => {
+    const healthy = reduceConnectivity(initialConnectivityState(0), {
+      type: "probe-succeeded",
+      atMs: 1,
+    });
+    const offline = reduceConnectivity(healthy, { type: "browser-offline", atMs: 2 });
+    const back = reduceConnectivity(offline, { type: "browser-online", atMs: 3 });
+
+    // Keep the historical result for diagnostics, but do not let it mask the unverified link.
+    expect(back.lastProbe).toBe("success");
+    expect(back.posture).toBe("reconnecting");
+    expect(back.banner).toBe("reconnecting");
+    expect(back.writesBlocked).toBe(true);
+  });
+
   it("keeps the browser-offline posture while the device is offline, whatever the server probe says", () => {
     const offline = reduceConnectivity(initialConnectivityState(0), {
       type: "browser-offline",

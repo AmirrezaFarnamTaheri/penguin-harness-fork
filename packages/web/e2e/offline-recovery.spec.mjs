@@ -110,8 +110,10 @@ test("offline: cached transcript stays readable, sends fail honestly, recovery i
   expect(sendRequests.length, "no queued resend while offline").toBe(sendsAfterAttempt);
 
   // ---- browser back online, server still unreachable: banner must not clear ----
-  await context.setOffline(false);
+  // Install the failure route before returning the browser link: context.setOffline(false) emits
+  // an `online` event too, and that event immediately starts the monitor's health probe.
   await page.route("**/api/**", (route) => route.abort("failed"));
+  await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(banner).toHaveAttribute(
     "data-connectivity-banner",

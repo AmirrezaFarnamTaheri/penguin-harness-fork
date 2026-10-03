@@ -217,11 +217,17 @@ jobs:
             const end = failureStarts[index + 1] ?? (summary < 0 ? lines.length : summary);
             const block = lines.slice(start, end).filter((line) => !line.trimStart().startsWith("{"));
             const error = block.find((line) => /\b(?:Error|AssertionError|TimeoutError):/.test(line));
-            const comparison = block.find((line) => /^\s*(?:[-+] (?:Expected|Received)|(?:Expected|Received)(?:[:\s]|$))/.test(line));
+            const comparisons = block
+              .filter((line) => /^\s*(?:[-+] (?:Expected|Received)|(?:Expected|Received)(?:[:\s]|$))/.test(line))
+              .slice(0, 2);
             const location = block.find((line) => /^\s*at .+:\d+:\d+/.test(line) || /Error Context:/.test(line));
-            return [block[0], error, comparison, location]
+            return [
+              block[0] && short(block[0], 120),
+              error && short(error, 120),
+              ...comparisons.map((line) => short(line, 80)),
+              location && short(location, 120),
+            ]
               .filter(Boolean)
-              .map((line, field) => short(line, [120, 120, 80, 120][field]))
               .join("\n");
           });
           for (const line of lines.filter((line) => /^\s*\d+ (?:failed|skipped|passed)\b/.test(line))) {
