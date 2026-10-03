@@ -153,10 +153,16 @@ describe("manager wiring for the watchdog (E10.1)", () => {
       // A short command that finishes inside the spawn window and is never registered: the old
       // behaviour left its pid in the watchdog's file for the rest of the process lifetime.
       const short = manager.spawn({ cmd: "true", cwd: dir });
-      await sleep(150);
+      expect(short.pid).not.toBeNull();
+      expect(readGuardedPids(pidFile)).toEqual([short.pid]);
+      // CI can take longer than 150 ms to schedule the shell's exit event; poll the contract
+      // instead of making this a scheduler-sensitive fixed sleep.
+      const deadline = Date.now() + 2_000;
+      while (readGuardedPids(pidFile).length > 0 && Date.now() < deadline) {
+        await sleep(25);
+      }
       expect(await fs.readFile(pidFile, "utf8").catch(() => "")).toBe("");
       expect(manager.guardedProcessGroupIds()).toEqual([]);
-      expect(short.pid).not.toBeNull();
       await manager.dispose();
     } finally {
       await fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });

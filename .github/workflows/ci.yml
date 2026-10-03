@@ -205,13 +205,43 @@ jobs:
           const fs = require("node:fs");
           const logPath = process.argv[2];
           if (!fs.existsSync(logPath)) process.exit(0);
-          const lines = fs
-            .readFileSync(logPath, "utf8")
-            .split(/\r?\n/)
-            .filter(Boolean)
-            .slice(-220);
-          const message = lines.join("\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-          console.log(`::error title=Playwright failure output::${message || "No test output captured."}`);
+          const stripAnsi = (text) => text.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
+          const lines = stripAnsi(fs.readFileSync(logPath, "utf8")).split(/\r?\n/);
+          const failureStarts = [];
+          for (let index = 0; index < lines.length; index += 1) {
+            if (/^\s*\d+\)\s+.*\.spec\.mjs:\d+:\d+/.test(lines[index])) failureStarts.push(index);
+          }
+          const short = (line, limit) => line.trim().slice(0, limit);
+          const report = failureStarts.map((start, index) => {
+            const summary = lines.findIndex((line, lineIndex) => lineIndex > start && /^\s*\d+ failed\b/.test(line));
+            const end = failureStarts[index + 1] ?? (summary < 0 ? lines.length : summary);
+            const block = lines.slice(start, end).filter((line) => !line.trimStart().startsWith("{"));
+            const error = block.find((line) => /\b(?:Error|AssertionError|TimeoutError):/.test(line));
+            const comparison = block.find((line) => /^\s*(?:[-+] (?:Expected|Received)|(?:Expected|Received)(?:[:\s]|$))/.test(line));
+            const location = block.find((line) => /^\s*at .+:\d+:\d+/.test(line) || /Error Context:/.test(line));
+            return [block[0], error, comparison, location]
+              .filter(Boolean)
+              .map((line, field) => short(line, [120, 120, 80, 120][field]))
+              .join("\n");
+          });
+          for (const line of lines.filter((line) => /^\s*\d+ (?:failed|skipped|passed)\b/.test(line))) {
+            report.push(short(line, 100));
+          }
+          if (report.length === 0) {
+            report.push(
+              ...lines
+                .filter((line) => !line.trimStart().startsWith("{") && /Error:|AssertionError|Timeout|failed/i.test(line))
+                .slice(-20)
+                .map((line) => short(line, 180)),
+            );
+          }
+          let message = report.join("\n\n").replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          while (Buffer.byteLength(message, "utf8") > 3500) {
+            const cut = message.lastIndexOf("%0A", 3450);
+            if (cut < 0) break;
+            message = message.slice(0, cut);
+          }
+          console.log(`::error title=Playwright failure summary::${message || "No test output captured."}`);
           NODE
 
   # macOS (arm64). This is the only place the terminal's pty suites run on darwin —
