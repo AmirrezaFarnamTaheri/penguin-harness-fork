@@ -17,15 +17,19 @@
  * per-instance counter.
  *
  * The faults below are real, not stubbed: a ledger path under a regular file (ENOTDIR), a
- * read-only ledger whose atomic replacement fails (EPERM), a corrupt ledger, a directory in the
- * ledger's place, and a symlinked ledger. Every one is checked against the value the policy is
- * required to return, and the concurrent cases use separate store instances over one file — the
- * shape that failed before the repair.
+ * corrupt ledger, a directory in the ledger's place, and a symlinked ledger. The one fault that
+ * no filesystem can produce on every platform — a replacement that fails after the read
+ * succeeded — is injected at the ledger write instead (see {@link saveFaultStore}); it is the
+ * only way to reach that step, because the ledger's directory also holds the lock reservation
+ * that a read-only directory would fail first. Every one is checked against the value the policy
+ * is required to return, and the concurrent cases use separate store instances over one file —
+ * the shape that failed before the repair.
  */
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { atomicWriteFile } from "../src/internal/atomic-write.js";
 import { TruncatedToolOutputArchive } from "../src/environment/truncated-tool-output-archive.js";
 import {
   PressureOverrideStore,
@@ -80,7 +84,6 @@ const grantFor = (
 let roots: string[] = [];
 afterEach(async () => {
   for (const root of roots) {
-    await chmod(path.join(root, "ledger.json"), 0o600).catch(() => {});
     await rm(root, { recursive: true, force: true }).catch(() => {});
   }
   roots = [];
@@ -102,6 +105,33 @@ async function unreachableLedgerStore(): Promise<PressureOverrideStore> {
   const blocker = path.join(root, "blocker");
   await writeFile(blocker, "not a directory");
   return new PressureOverrideStore({ persistPath: path.join(blocker, "ledger.json") });
+}
+
+/**
+ * A store over a real ledger file whose save can be made to fail on demand.
+ *
+ * Every other fault here is produced by the filesystem; this one cannot be. Making the ledger
+ * file unwritable refuses the replacement only on Windows, because POSIX decides rename by the
+ * directory rather than the file's mode, and making the directory unwritable fails the lock
+ * reservation beside it before a replacement is attempted. So the fault lands on the write
+ * itself, where the read has already succeeded and the consumption is otherwise durable.
+ */
+async function saveFaultStore(): Promise<{
+  file: string;
+  store: PressureOverrideStore;
+  failSave: (failing: boolean) => void;
+}> {
+  const file = await ledgerPath();
+  let failing = false;
+  const store = new PressureOverrideStore({
+    persistPath: file,
+    writeLedger: async (target, payload) => {
+      if (failing)
+        throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+      await atomicWriteFile(target, payload, { mode: 0o600 });
+    },
+  });
+  return { file, store, failSave: (next) => (failing = next) };
 }
 
 const readLedger = async (file: string): Promise<{ records: Record<string, unknown>[] }> =>
@@ -144,12 +174,11 @@ describe("PRR-03 a durable override failure never downgrades a measured block", 
   });
 
   it("blocks when a granted override cannot be durably consumed", async () => {
-    const file = await ledgerPath();
-    const store = new PressureOverrideStore({ persistPath: file });
+    const { store, failSave } = await saveFaultStore();
     await grantFor(store);
 
-    // The read succeeds; the atomic replacement that would record consumption cannot.
-    await chmod(file, 0o444);
+    // The read succeeds; the replacement that would record consumption cannot.
+    failSave(true);
     const decision = await decide(lowReading(), store);
 
     expect(decision.action).toBe("block");
@@ -158,10 +187,9 @@ describe("PRR-03 a durable override failure never downgrades a measured block", 
   });
 
   it("claims no durable consumption when the consume save failed", async () => {
-    const file = await ledgerPath();
-    const store = new PressureOverrideStore({ persistPath: file });
+    const { file, store, failSave } = await saveFaultStore();
     await grantFor(store);
-    await chmod(file, 0o444);
+    failSave(true);
 
     await expect(store.consume(KEY)).rejects.toThrow();
 
@@ -172,16 +200,15 @@ describe("PRR-03 a durable override failure never downgrades a measured block", 
   });
 
   it("recovers: once the fault clears, the same grant consumes exactly once", async () => {
-    const file = await ledgerPath();
-    const store = new PressureOverrideStore({ persistPath: file });
+    const { store, failSave } = await saveFaultStore();
     await grantFor(store);
-    await chmod(file, 0o444);
+    failSave(true);
     await expect(decide(lowReading(), store)).resolves.toMatchObject({
       action: "block",
       signal: "write_pressure_override_unavailable",
     });
 
-    await chmod(file, 0o600);
+    failSave(false);
     expect(await decide(lowReading(), store)).toMatchObject({
       action: "allow",
       overrideId: expect.stringContaining("pressure-override-"),
@@ -425,12 +452,11 @@ describe("PRR-04 durable overrides are serialized and single-use", () => {
   });
 
   it("discards cached grants after an authority failure instead of admitting them", async () => {
-    const file = await ledgerPath();
-    const store = new PressureOverrideStore({ persistPath: file });
+    const { store, failSave } = await saveFaultStore();
     await grantFor(store);
     expect(store.list().some((record) => record.consumedAt === undefined)).toBe(true);
 
-    await chmod(file, 0o444);
+    failSave(true);
     await expect(store.consume(KEY)).rejects.toThrow();
 
     // The failed transaction cleared this process's cached authority, so nothing it still

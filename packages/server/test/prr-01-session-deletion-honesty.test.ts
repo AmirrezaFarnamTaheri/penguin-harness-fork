@@ -323,7 +323,8 @@ describe("PRR-01 DELETE reports cleanup that never resolved", () => {
 
     // The review's case: a swarm handler that ignores its abort signal. The coordinator's step
     // deadline is far below the route's own 5s budget, so the executor gives up first — which is
-    // exactly the state the repair has to notice.
+    // exactly the state the repair has to notice. Waiting that budget out is the point, so the
+    // test carries a timeout above vitest's 5s default.
     const runtime = await getOrCreateProjectRuntime(projectId, { root: t.root });
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
@@ -366,7 +367,7 @@ describe("PRR-01 DELETE reports cleanup that never resolved", () => {
     expect(retryStatus).toBe(204);
     expect(await exists(scratchpad(sessionId))).toBe(false);
     resetCockpitRuntimesForTesting();
-  });
+  }, 20_000);
 
   it("does not recreate removed files with cleanup writes after a successful deletion", async () => {
     const sessionId = await newSession();

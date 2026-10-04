@@ -293,11 +293,31 @@ export class PressureOverrideStore {
   private readonly persistPath: string | undefined;
   /** The last serialized state this process wrote or read — used to skip a redundant re-read. */
   private loadedText: string | null = null;
+  /** How a serialized ledger reaches the disk. See {@link PressureOverrideStore} for the seam. */
+  private readonly writeLedger: (file: string, payload: string) => Promise<void>;
 
-  constructor(options: { now?: () => number; persistPath?: string } = {}) {
+  constructor(
+    options: {
+      now?: () => number;
+      persistPath?: string;
+      /**
+       * How a ledger write lands on disk; defaults to the shared atomic replace.
+       *
+       * This exists so a *save* failure can be exercised everywhere. No filesystem fault can
+       * produce one portably: the ledger's directory also holds the lock reservation and its
+       * recovery database, so making the directory unwritable fails the transaction at lock
+       * acquisition instead — a different fault — while making only the ledger file unwritable
+       * leaves the POSIX replacement unaffected (rename is governed by the directory). It is
+       * the same shape as the fault knob `foreign-config.ts` exposes on its adapter.
+       */
+      writeLedger?: (file: string, payload: string) => Promise<void>;
+    } = {},
+  ) {
     this.now = options.now ?? Date.now;
     this.persistPath =
       options.persistPath === undefined ? undefined : path.resolve(options.persistPath);
+    this.writeLedger =
+      options.writeLedger ?? ((file, payload) => atomicWriteFile(file, payload, { mode: 0o600 }));
   }
 
   /**
@@ -424,7 +444,7 @@ export class PressureOverrideStore {
 
   private async saveToDisk(file: string): Promise<void> {
     const payload = JSON.stringify({ schemaVersion: 1, records: [...this.records.values()] });
-    await atomicWriteFile(file, payload, { mode: 0o600 });
+    await this.writeLedger(file, payload);
     this.loadedText = payload;
   }
 }
