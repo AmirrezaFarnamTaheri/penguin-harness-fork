@@ -4134,6 +4134,8 @@ Benchmark：
       workspace_missing: "该 Session 的 Workspace 已不存在。",
       workspace_not_found: "该 Workspace 不存在或不是目录。",
       session_not_found: "该 Session 已不存在，或你没有访问权限。",
+      session_cleanup_pending: "该 Session 的任务仍在停止中。文件已保留，请稍后重试删除。",
+      session_cleanup_failed: "该 Session 的后台进程未能释放。文件已保留，请重试删除。",
       recall_id_invalid: "召回 ID 必须是 12 位或 32 位十六进制字符。",
       recall_unavailable: "该输出 ID 在当前 Session 中不可用。",
       recall_expired: "该 Session 的归档输出条目已过期。",

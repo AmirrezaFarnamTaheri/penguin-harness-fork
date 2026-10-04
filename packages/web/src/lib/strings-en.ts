@@ -4213,6 +4213,10 @@ Scenarios:
       workspace_missing: "This Session's Workspace no longer exists.",
       workspace_not_found: "That Workspace does not exist, or is not a directory.",
       session_not_found: "This Session no longer exists, or you do not have access.",
+      session_cleanup_pending:
+        "This Session's work is still stopping. Its files were kept, so try deleting it again shortly.",
+      session_cleanup_failed:
+        "This Session's background processes could not be released. Its files were kept, so try deleting it again.",
       recall_id_invalid: "A recall id is 12 or 32 hexadecimal characters.",
       recall_unavailable: "This output id is unavailable in this Session.",
       recall_expired: "This Session's archived output entry has expired.",

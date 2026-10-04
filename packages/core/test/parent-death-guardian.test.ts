@@ -89,7 +89,10 @@ describe("manager wiring for the watchdog (E10.1)", () => {
     dir = await fs.mkdtemp(path.join(tmpdir(), "penguin-guardian-wiring-"));
   });
   afterEach(async () => {
-    await fs.rm(dir, { recursive: true, force: true });
+    // The command children are killed, not waited for: on win32 the killed process can still be
+    // releasing the scratchpad it was spawned in, so the removal needs the same retry treatment
+    // the rest of this suite's Windows cleanup gets.
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it("starts one watchdog for live background commands and stops it when none remain", async () => {
@@ -109,6 +112,22 @@ describe("manager wiring for the watchdog (E10.1)", () => {
     const first = manager.spawn({ cmd: "sleep 30", cwd: dir });
     await new Promise((resolve) => setTimeout(resolve, 100));
     const firstId = manager.register(first);
+
+    if (!guardianSupported()) {
+      // Windows keeps the documented Job Object gap: no watchdog exists to start, so nothing is
+      // published for one to sweep. PRR-05 made `refreshGuardian` platform-gated as well as
+      // `guardSession`, so this is the contract on this platform rather than an accident of the
+      // test never having looked — a pid file written where no guardian runs is exactly the stale
+      // identity F5 is about.
+      expect(started).toHaveLength(0);
+      expect(readGuardedPids(pidFile)).toEqual([]);
+      expect(manager.guardedProcessGroupIds()).toEqual([]);
+      expect(await fs.readFile(pidFile, "utf8").catch(() => null)).toBeNull();
+      manager.kill(firstId);
+      manager.dispose();
+      return;
+    }
+
     expect(started).toHaveLength(1);
     // The pid file lists the live group leader, which is what the watchdog sweeps.
     expect(readGuardedPids(pidFile)).toEqual([first.pid]);

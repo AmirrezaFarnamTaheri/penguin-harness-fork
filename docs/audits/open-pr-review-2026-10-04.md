@@ -194,9 +194,25 @@ All five findings have local implementations on `codex/pr-15-review-fixes`:
   preserve surviving owned descendants and refuse unprovable ownership.
 
 The existing guardian parent-death fixture is adapted to the signed ownership protocol.
-No new local test suite was added or run. Candidate CI and complete repair acceptance remain
-pending. Windows Job Object coverage and commands that strip the inherited ownership
-environment remain explicit limits. Follow [current work orders](../../tasks/work-orders.md#review-repair-orders).
+
+**Acceptance completed 2026-10-04** — see the
+[PRR acceptance receipt](prr-acceptance-2026-10-04.md): 63 core cases (4 POSIX-only skipped) and 68
+server cases, plus eight revert-and-see mutations confirming each suite fails without its repair.
+Two things the acceptance surfaced:
+
+- **PRR-05 had regressed the Windows core lane.** `refreshGuardian` became platform-gated, so on
+  win32 the existing E10.1 wiring case no longer found a populated pid file. That case now asserts
+  the platform's actual contract — no watchdog started, nothing published to sweep — instead of the
+  POSIX behaviour, and its temp-dir cleanup gained retries.
+- **Every server-level test had been running against a stale injected snapshot of core**, so none
+  of these five repairs was reachable from the server package at all. Core must be rebuilt *through
+  pnpm* (`pnpm --filter @prismshadow/penguin-core build`) before any cross-package verification;
+  neither `tsup` nor `pnpm install` refreshes that snapshot.
+
+Candidate CI remains pending — nothing has been pushed — and the POSIX-only real-process guardian
+cases have not executed on any platform. Windows Job Object coverage and commands that strip the
+inherited ownership environment remain explicit limits. Follow
+[current work orders](../../tasks/work-orders.md#review-repair-orders).
 
 ## Method and limits
 
