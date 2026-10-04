@@ -11,14 +11,17 @@ Operational repairs supplement each task's wider acceptance criteria.
 
 | Phase | Total | Verified | Implemented; acceptance remaining | Open | Gated | N/A |
 | --- | --- | --- | --- | --- | --- | --- |
-| Wave R | 21 | 9 | 11 | 0 | 1 | 0 |
+| Wave R | 21 | 19 | 1 | 0 | 1 | 0 |
 | Wave 1 | 12 | 6 | 5 | 0 | 0 | 1 |
 | Wave 2 | 29 | 2 | 27 | 0 | 0 | 0 |
 | Wave 3 | 50 | 1 | 13 | 36 | 0 | 0 |
 | Wave 4 | 38 | 0 | 0 | 38 | 0 | 0 |
 
-Counts preserve recorded evidence; this refresh newly verifies no task. I1 has trace/export
+Counts preserve recorded evidence; this refresh verifies ten Wave R rows against their criteria,
+with the green `c5159d6c6` CI run discharging the exact-commit gate each of those rows carried.
+I1 has trace/export
 integration evidence but needs incomplete-tail repair acceptance. R2d remains binding-gated.
+R11 keeps its implementation and loses its closure: its two named ledger artifacts are unwritten.
 G7 retains its scoped N/A disposition.
 
 ## State and update rules
@@ -58,23 +61,23 @@ Every state change cites a revision, criterion result, limits, and next work.
 | [x] | [**R13** Repair PR #12 browser E2E and record exact-head CI](execution-cards-1.md#r13) | VERIFIED | — | named Playwright case, full E2E, `gh pr checks 12` |
 | [x] | [**R14a** Upgrade Electron past four high advisories](execution-cards-1.md#r14a) | VERIFIED | — | `pnpm audit --audit-level high` + desktop/installer matrix |
 | [x] | [**R14b** Repair runtime/build undici advisory paths](execution-cards-1.md#r14b) | VERIFIED | — | `pnpm audit --json` + server/packaging smokes |
-| [ ] | [**R0** Findings scope and authority contract](execution-cards-1.md#r0) | IMPLEMENTED | — | tool/route identity fixtures |
-| [ ] | [**R1a** Eviction policy truth & reference hygiene](execution-cards-1.md#r1a) | IMPLEMENTED | R2a | graph eviction + store fault/restart tests |
-| [ ] | [**R1b** Lifecycle state machine + evidence gate + actor](execution-cards-1.md#r1b) | IMPLEMENTED | R1a, R2a | engine+tool+route tests |
-| [ ] | [**R1c** Transition guards: cycles, liveness, dead-claim re-reports](execution-cards-1.md#r1c) | IMPLEMENTED | R1b | engine+route/tool negative tests |
-| [ ] | [**R2a** Scope-aware store + acknowledged writes](execution-cards-1.md#r2a) | IMPLEMENTED | R0 | `test/knowledge/findings-store.test.ts` + integration |
-| [ ] | [**R2b** Bounds parity + capacity/recovery path](execution-cards-1.md#r2b) | IMPLEMENTED | R2a | store+route+tool tests |
-| [ ] | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c) | IMPLEMENTED | R2a | quarantine-denied tool+route tests pass; run 37149941481 core/server + 21/21 full CI; wider criteria/review open |
-| [ ] | [**R2d** Conditional migration after trusted workspace↔project binding](execution-cards-1.md#r2d) | GATED | R0, R2a, R2c; trusted binding | binding proof + migration fixture matrix |
+| [x] | [**R0** Findings scope and authority contract](execution-cards-1.md#r0) | VERIFIED | — | isolation, alias, and cross-user denial reconciled at `c5159d6c6` + this pass; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md). No UI labels the scopes yet; reopens when a findings UI lands |
+| [x] | [**R1a** Eviction policy truth & reference hygiene](execution-cards-1.md#r1a) | VERIFIED | — | rank order, rotation, all bounds, `maxFindings = 0` rejection, no loss copy; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R1b** Lifecycle state machine + evidence gate + actor](execution-cards-1.md#r1b) | VERIFIED | — | matrix agrees at engine/tool/route; denial now proves no event is appended; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R1c** Transition guards: cycles, liveness, dead-claim re-reports](execution-cards-1.md#r1c) | VERIFIED | — | chains, stable revisions, reopen contract now documented with its evidence semantics; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R2a** Scope-aware store + acknowledged writes](execution-cards-1.md#r2a) | VERIFIED | — | 50-update restart, cross-process lock, same-size edits, no false acknowledgement; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R2b** Bounds parity + capacity/recovery path](execution-cards-1.md#r2b) | VERIFIED | — | both ingresses, largest-allowed report, capacity export/recovery, parse-once; hydration measurement reopens only if a cap is raised; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c) | VERIFIED | — | every damage class byte-preserved, coexisting quarantines per revision, denied quarantine still blocks; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R2d** Conditional migration after trusted workspace↔project binding](execution-cards-1.md#r2d) | GATED | R0, R2a, R2c; trusted binding | R0 now reconciled, but no approved binding exists; binding proof + migration fixture matrix |
 | [x] | [**R3** Report & governance reconciliation](execution-cards-1.md#r3) | VERIFIED | — | docs suite + contradiction/path grep |
-| [ ] | [**R4** Route hygiene](execution-cards-1.md#r4) | IMPLEMENTED | R1b, R2b | `vitest run test/findings-routes` |
-| [ ] | [**R5** Revision-aware, byte-bounded output](execution-cards-1.md#r5) | IMPLEMENTED | R1b, R2a, R2b | tool/consumer contract tests |
+| [x] | [**R4** Route hygiene](execution-cards-1.md#r4) | VERIFIED | — | enum ownership, 400/404/409/500 mapping, access before mutation; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
+| [x] | [**R5** Revision-aware, byte-bounded output](execution-cards-1.md#r5) | VERIFIED | — | 500-record traversal, restart on changed revision, byte-exact recall, legacy path; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
 | [x] | [**R6** code_graph resource discipline](execution-cards-1.md#r6) | VERIFIED | — | cache/tool tests + full core suite/typecheck |
 | [x] | [**R7** Memory-plane honesty (Option B selected)](execution-cards-1.md#r7) | VERIFIED | — | core memory/findings tests + frozen recall fixture |
-| [ ] | [**R8** Accurate provenance on read-back](execution-cards-1.md#r8) | IMPLEMENTED | R1b | tool/route tests + docs |
+| [x] | [**R8** Accurate provenance on read-back](execution-cards-1.md#r8) | VERIFIED | — | provenance survives rotation and recall; an override is not an author change; both guides updated; [receipt](../docs/audits/wave-r-acceptance-2026-10-05.md) |
 | [x] | [**R9** Bounded batch fan-out (8 concurrent)](execution-cards-1.md#r9) | VERIFIED | — | `test/all-settled-bounded.test.ts` + full web suite/typecheck |
 | [x] | [**R10** Tool-schema token measurement](execution-cards-1.md#r10) | VERIFIED | — | `tools/measure-default-tool-schema.mts` + audit report |
-| [ ] | [**R11** Findings-plane test battery](execution-cards-1.md#r11) | IMPLEMENTED | R1a–c, R2a–c, R4, R5, R8 | `vitest run test/knowledge` |
+| [ ] | [**R11** Findings-plane test battery](execution-cards-1.md#r11) | IMPLEMENTED | R1a–c, R2a–c, R4, R5, R8 | all 11 named cases have assertions, but R11.1's layer/fixture matrix and R11.3's per-case regression ledger are unwritten; detecting the pre-fix defect is assumed, not shown |
 | [x] | [**R12** A11y verification pass (axe + keyboard/focus/dark/target)](execution-cards-1.md#r12) | VERIFIED | — | `e2e/a11y.spec.mjs` + [audit report](../docs/audits/web-accessibility-2026-09-30.md) |
 
 ## Wave 1

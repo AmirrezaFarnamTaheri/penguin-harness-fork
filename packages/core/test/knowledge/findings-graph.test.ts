@@ -516,6 +516,11 @@ describe("FindingsGraph lifecycle", () => {
     });
     event.actor!.id = "changed again";
     expect(graph.since().at(-1)!.actor!.id).toBe("human");
+    // The override attributed the transition, not the claim. An authenticated human confirming a
+    // claim does not retroactively make that human its author, and does not invent provenance for
+    // a claim that never had any.
+    expect(graph.readback(claim.id).status).toBe("confirmed");
+    expect(graph.readback(claim.id).authoredBy).toBe("legacy-unknown");
     const legacy = graph.exportSnapshot();
     legacy.events!.forEach((e) => {
       delete e.actor;

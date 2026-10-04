@@ -576,6 +576,55 @@ describe("findings routes (persistent knowledge plane)", () => {
     expect(events.events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  it("denies an unrelated user every project-scope read and write, and appends no event", async () => {
+    const outsider = apiClient(t.app, (await provisionUser(t.app, "findings_outsider")).cookie);
+    const claimed = (await (
+      await client.post(`/api/projects/${projectId}/findings`, {
+        title: "Owner-only claim",
+        evidence: [{ tier: "runtime" }],
+      })
+    ).json()) as { finding: { id: string } };
+    const base = `/api/projects/${projectId}/findings`;
+    const id = encodeURIComponent(claimed.finding.id);
+
+    // Reads reveal nothing: claims, event log, snapshot, and the recovery/raw surface are all
+    // indistinguishable from a project that does not exist.
+    expect((await outsider.get(base)).status).toBe(404);
+    expect((await outsider.get(`${base}/events?since=0`)).status).toBe(404);
+    expect((await outsider.get(`${base}/snapshot`)).status).toBe(404);
+    expect((await outsider.get(`${base}/recovery`)).status).toBe(404);
+    expect((await outsider.get(`${base}/raw`)).status).toBe(404);
+
+    // Writes are denied at the same boundary, including the privileged recovery operations.
+    expect((await outsider.post(base, { title: "Injected claim" })).status).toBe(404);
+    expect((await outsider.post(`${base}/${id}/confirm`, { note: "forged" })).status).toBe(404);
+    expect((await outsider.post(`${base}/${id}/refute`, { note: "forged" })).status).toBe(404);
+    expect((await outsider.post(`${base}/${id}/reopen`, { reason: "forged" })).status).toBe(404);
+    expect((await outsider.post(`${base}/${id}/supersede`, { replacement_id: id })).status).toBe(
+      404,
+    );
+    expect((await outsider.post(`${base}/recovery/reset`, {})).status).toBe(404);
+
+    // Every denial left the owner's authority and event sequence exactly as they were.
+    const events = (await (await client.get(`${base}/events?since=0`)).json()) as {
+      events: Array<{ type: string; seq: number }>;
+    };
+    expect(events.events.map((e) => e.type)).toEqual(["ingest"]);
+    expect(events.events.map((e) => e.seq)).toEqual([1]);
+    const read = (await (await client.get(base)).json()) as { findings: Array<{ id: string }> };
+    expect(read.findings.map((f) => f.id)).toEqual([claimed.finding.id]);
+
+    // Positive control: the very same call the outsider was denied succeeds for the owner, so the
+    // 404s above are caused by the caller and not by the fixture.
+    expect((await client.post(`${base}/${id}/confirm`, { note: "verified in tests" })).status).toBe(
+      200,
+    );
+    const after = (await (await client.get(`${base}/events?since=0`)).json()) as {
+      events: Array<{ type: string; seq: number }>;
+    };
+    expect(after.events.map((e) => e.type)).toEqual(["ingest", "update"]);
+  });
+
   it("answers 404 for unknown findings and 400 for malformed input", async () => {
     const missing = await client.post(
       `/api/projects/${projectId}/findings/${encodeURIComponent("no-such-finding")}/confirm`,

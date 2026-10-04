@@ -134,11 +134,17 @@ explicitly override that gate with `override: true` and a non-empty `note`; the 
 cannot override it. Supersession requires a live replacement and rejects cycles or chains
 longer than 64 hops. Refuted re-reports create deterministic contradiction revisions rather
 than changing the falsification. Only a human can reopen a refuted claim through the separate
-HTTP `reopen` action with a reason. Superseded claims stay terminal. `events` records the host
+HTTP `reopen` action with a reason. Reopening sets the claim back to `open` and keeps its
+recorded evidence, so the next `confirm` still has to satisfy the evidence gate on its own.
+Superseded claims stay terminal. `events` records the host
 actor, method, and reason.
 
 State lives in one authority snapshot per Workspace at `.penguin/knowledge/findings-graph.json`.
 The tool and HTTP routes use the same store implementation with independent scope paths.
+Those two authorities stay separate: a Workspace tool store and an HTTP Project store are
+different scopes and are never merged, including when they share a display name or either side is
+renamed. Unifying them would need an explicit, audited binding that is not enabled. The tool's
+`recovery` action names the scope it answered from.
 Updates run under a cross-process lock and return success only after an atomic write. Optional
 tool `revision` and HTTP `If-Match` prevent stale mutations. A content fingerprint invalidates
 cached reads even after a same-size external replacement; the cache holds at most eight scopes.
