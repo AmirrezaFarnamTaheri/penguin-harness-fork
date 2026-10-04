@@ -6,7 +6,15 @@
 # - Pushes to main (and manual dispatch) build + deploy. The site is served from the
 #   custom apex domain https://penguin.ooo/ (Settings -> Pages -> Custom domain), so
 #   BASE_PATH is "/" — assets resolve from the domain root, not a /<repo>/ subpath.
-# First-time setup: repository Settings -> Pages -> Source = "GitHub Actions".
+# - A FORK builds and validates exactly the same, but never deploys: Pages is configured on the
+#   upstream repository (source = GitHub Actions, CNAME = penguin.ooo), and every other clone
+#   inherits this workflow. Without the gate, a fork's push to main reaches deploy-pages,
+#   which fails with a bare `HttpError: Not Found` — a 404 from createPagesDeployment because no
+#   Pages site exists on that repository, not a broken build. That red run is a repo setting,
+#   not code, so it cannot be fixed from the workflow and must not be "fixed" by claiming a
+#   domain the fork does not own. Gate on `fork`, not on a repository name, so a second clone
+#   behaves the same without an edit here.
+# First-time setup (upstream repository only): Settings -> Pages -> Source = "GitHub Actions".
 name: Deploy Site
 
 on:
@@ -57,14 +65,15 @@ jobs:
           BASE_PATH: /
         run: pnpm build:site
 
-      # Only the deploying runs need the Pages artifact (PRs stop at the build check).
-      - if: github.event_name != 'pull_request'
+      # Only the deploying runs need the Pages artifact (PRs stop at the build check,
+      # and so does a fork — see the header note on why it must not deploy upstream's domain).
+      - if: github.event_name != 'pull_request' && !github.event.repository.fork
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: packages/landing/dist
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !github.event.repository.fork
     needs: build
     runs-on: ubuntu-latest
     environment:
