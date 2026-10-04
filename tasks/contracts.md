@@ -1,6 +1,10 @@
 # Implementation contracts and decisions
 
-These constraints apply to the task cards. Current task state is in [todo.md](todo.md); dispatch order is in [work-orders.md](work-orders.md). The v3 source and historical adjudications are preserved in [the archive](archive/plan-v3-2026-10-02.md). Changing a selected decision requires concrete evidence, the affected paths/version, and a reversible implementation; a failed promotion gate keeps the proven default active.
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
+These constraints apply to the task cards. Current task state is in [todo.md](todo.md); dispatch order is in [work-orders.md](work-orders.md). The v3 source and historical adjudications are preserved in [the archive](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md). Changing a selected decision requires concrete evidence, the affected paths/version, and a reversible implementation; a failed promotion gate keeps the proven default active.
 
 ## Architecture decisions
 

@@ -1,5 +1,9 @@
 # Implementation agent guide
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Use this guide whenever executing a task from [todo.md](todo.md). Read the selected card, its
 dependencies, and [contracts.md](contracts.md) sections that apply. Use [tooling-guide.md](tooling-guide.md)
 when navigating or editing code. The current human request and applicable repository instructions

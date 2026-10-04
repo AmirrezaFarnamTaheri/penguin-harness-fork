@@ -1,6 +1,6 @@
 # Findings scope and authority matrix
 
-Planning baseline: 2026-10-02, `dcebeb20adb0aa0e246016a264eda11b67dea38d`.
+Documentation reconciled: 2026-10-04. Reviewed baseline: 9f589c721a7cf09c9fb7ec116319161e76218f7c.
 [todo.md](todo.md) owns current R0/R2 acceptance state; the source/test paths below identify the
 recorded implementation, not a new verification run. PR #12 has merged. The current authorities
 remain separate, and R2d requires a trusted, authorized binding plus migration/recovery evidence

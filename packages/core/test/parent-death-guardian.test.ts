@@ -227,9 +227,13 @@ const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const [guardianSource, pidFile] = process.argv.slice(1);
 // The "background command": detached, so it leads its own process group and would survive.
-const group = spawn("sh", ["-c", "sleep 120"], { detached: true, stdio: "ignore" });
+const owner = "0123456789abcdef0123456789abcdef";
+const group = spawn("sh", ["-c", "sleep 120"], {
+  detached: true, stdio: "ignore",
+  env: { ...process.env, PENGUIN_GUARDIAN_OWNER: owner },
+});
 group.unref();
-fs.writeFileSync(pidFile, group.pid + "\\n", { mode: 0o600 });
+fs.writeFileSync(pidFile, group.pid + ":" + owner + "\\n", { mode: 0o600 });
 const guardian = spawn(process.execPath, ["-e", guardianSource, String(process.pid), pidFile], {
   detached: true,
   stdio: "ignore",

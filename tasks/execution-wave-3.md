@@ -1,11 +1,15 @@
 # Wave 3 execution cards
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Read [the implementation guide](implementation-guide.md), [contracts](contracts.md), and the
 selected row in [todo.md](todo.md). **Current work state is in todo.md; these cards define
 acceptance, not completion.** These 50 cards retain
 the 43 original Wave 3 IDs and seven promotions. The archived
-[requirements](archive/plan-v3-2026-10-02.md) and
-[boundary contracts](archive/execution-cards-2-v3-2026-10-02.md) remain historical evidence.
+[requirements](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md) and
+[boundary contracts](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/execution-cards-2-v3-2026-10-02.md) remain historical evidence.
 
 Claim a numbered package and its files. Inspect existing code before rebuilding it; an existing
 primitive needs contract reconciliation and consumer proof. Discovery packages can run while

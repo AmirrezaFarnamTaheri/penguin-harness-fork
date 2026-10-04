@@ -187,6 +187,8 @@ export class SwarmCoordinator {
   private readonly cancelledOwnerSessions = new Set<string>();
   /** Settles when the task currently owned by a Session leaves `executeTask` (its finally). */
   private activeTaskSettled: Promise<void> = Promise.resolve();
+  /** Underlying handlers can outlive the executor's deadline race; deletion must await them. */
+  private readonly ownedHandlers = new Map<string, Set<Promise<void>>>();
   private activeTaskSettle: (() => void) | null = null;
   private loopOptions: LoopDetectorOptions;
   private readonly maxPendingTasks: number;
@@ -464,7 +466,10 @@ export class SwarmCoordinator {
     // queued task whose `executeTask` has not been reached yet).
     this.cancelledOwnerSessions.add(sessionId);
     const stopped = ownsActiveId ? this.abort(reason) : false;
-    const settled = ownsActiveId ? this.activeTaskSettled : Promise.resolve();
+    const executor = ownsActiveId ? this.activeTaskSettled : Promise.resolve();
+    const settled = executor.then(async () => {
+      await Promise.all(this.ownedHandlers.get(sessionId) ?? []);
+    });
     if (!stopped) this.record(`Queued work for the deleted Session will not start: ${reason}`);
     return { stopped, settled };
   }
@@ -606,7 +611,25 @@ export class SwarmCoordinator {
       const stepController = new AbortController();
       stepAbortControllers.push(stepController);
       this.activeStepControllers.add(stepController);
-      const promise = factory(stepController.signal);
+      const promise = Promise.resolve().then(() => {
+        if (stepController.signal.aborted) throw new Error("Swarm task step aborted");
+        return factory(stepController.signal);
+      });
+      if (owner !== null) {
+        const handlers = this.ownedHandlers.get(owner) ?? new Set<Promise<void>>();
+        this.ownedHandlers.set(owner, handlers);
+        const completion = promise.then(
+          () => undefined,
+          () => undefined,
+        );
+        handlers.add(completion);
+        void completion.then(() => {
+          handlers.delete(completion);
+          if (handlers.size === 0 && this.ownedHandlers.get(owner) === handlers) {
+            this.ownedHandlers.delete(owner);
+          }
+        });
+      }
 
       let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<never>((_, reject) => {

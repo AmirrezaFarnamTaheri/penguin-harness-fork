@@ -685,6 +685,8 @@ export class SessionManager {
   private readonly deletingAgents = new Set<string>();
   /** Sessions currently being deleted (guards against the entry/Trace file being rebuilt and reviving it inside the deletion race window). */
   private readonly deletingSessions = new Set<string>();
+  /** Removed runtimes retained until deletion cleanup succeeds, including failed disposal retries. */
+  private readonly deletingEntries = new Map<string, RuntimeEntry>();
   /** Removed entries whose in-flight drive did not settle inside the dispose grace (E10.2). */
   private disposeTimeouts = 0;
   /** Removed entries whose dispose() threw, so their environment may not have been released. */
@@ -1588,6 +1590,8 @@ export class SessionManager {
     const disposed = new Promise<DisposeOutcome>((resolve) => {
       resolveDisposed = resolve;
     });
+    this.disposeOutcomes.delete(entry.sessionId);
+    this.disposeSettled.set(entry.sessionId, disposed);
     let done = false;
     let timedOut = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -1604,6 +1608,7 @@ export class SessionManager {
       if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
         for (const key of this.disposeOutcomes.keys()) {
           if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
+          if (this.deletingEntries.has(key)) continue;
           this.disposeOutcomes.delete(key);
           this.disposeSettled.delete(key);
         }
@@ -1713,23 +1718,33 @@ export class SessionManager {
    * always rejected with 409 (assertSessionNotDeleting), closing the race window where
    * a new task recreates the entry and Trace file, reviving an already-deleted Session
    * between the abort snapshot and the file removal. The caller must call
-   * endSessionDeletion once deletion finishes (success or failure). Returns the
+   * endSessionDeletion once cleanup is confirmed; failed/pending cleanup retains the guard.
+   * Returns the
    * in-flight drive Promise: the caller should await it before deleting the Trace file,
    * so cleanup writes don't recreate the file.
    */
   beginSessionDeletion(sessionId: string): Promise<void>[] {
     this.deletingSessions.add(sessionId);
-    const entry = this.entries.get(sessionId);
+    const entry = this.entries.get(sessionId) ?? this.deletingEntries.get(sessionId);
     if (!entry) return [];
     entry.approvals.denyAll();
     entry.abort?.abort();
-    this.entries.delete(sessionId);
-    void this.disposeRemoved(entry);
+    if (this.entries.delete(sessionId)) {
+      this.deletingEntries.set(sessionId, entry);
+      void this.disposeRemoved(entry);
+    } else if (this.disposeOutcomes.get(sessionId) === "dispose-failed") {
+      void this.disposeRemoved(entry);
+    }
     return entry.running ? [entry.running] : [];
   }
 
   endSessionDeletion(sessionId: string): void {
     this.deletingSessions.delete(sessionId);
+    this.deletingEntries.delete(sessionId);
+  }
+
+  hasPendingSessionCleanup(sessionId: string): boolean {
+    return this.deletingEntries.has(sessionId);
   }
 
   /**
@@ -1781,12 +1796,18 @@ export class SessionManager {
   ): Promise<DisposeOutcome | undefined> {
     const pending = this.disposeSettled.get(sessionId);
     if (pending === undefined) return this.disposeOutcomes.get(sessionId);
-    return Promise.race([
-      pending,
-      new Promise<undefined>((resolve) => {
-        setTimeout(() => resolve(undefined), timeoutMs).unref?.();
-      }),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        pending,
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), timeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /** Graceful shutdown: reject new tasks (503), interrupt all active runs, and wait for them to finish (default ≤5s). */
@@ -1794,7 +1815,8 @@ export class SessionManager {
     this.closed = true;
     clearInterval(this.sweepTimer);
     const pending: Promise<void>[] = [];
-    for (const entry of this.entries.values()) {
+    const shutdownEntries = new Map([...this.deletingEntries, ...this.entries]);
+    for (const entry of shutdownEntries.values()) {
       entry.approvals.denyAll();
       entry.abort?.abort();
       if (entry.running) pending.push(entry.running);
@@ -1804,7 +1826,12 @@ export class SessionManager {
       // App's freshly resumed Session starts with an empty process list, so the stop
       // control has gone blind. Sequenced after the in-flight drive settles, the same
       // ordering disposeRemoved uses.
-      void this.disposeRemoved(entry); // bounded, like every other removal path (E10.2)
+      if (
+        !this.deletingEntries.has(entry.sessionId) ||
+        this.disposeOutcomes.get(entry.sessionId) === "dispose-failed"
+      ) {
+        void this.disposeRemoved(entry);
+      }
     }
     this.entries.clear();
     if (pending.length === 0) return;

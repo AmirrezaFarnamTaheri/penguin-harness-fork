@@ -1,5 +1,9 @@
 # Execution Cards — Vol. 1: Wave R + Wave 1
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Companion to [plan.md](plan.md) (architecture, readiness, sources) and [todo.md](todo.md)
 (canonical checklist and current work-state authority). Historical verification below is
 evidence for its recorded revision, never a new completion declaration from this rewrite.
@@ -1088,12 +1092,12 @@ integration test; a simple external-import count is insufficient for same-packag
 claim and a valid same-package consumer fixture; only the false claim fails with file/line and
 reason. Rollback: keep the evidence table and run checker as advisory while false positives are
 fixed, with an owner and expiry.
-The machine-checked JSON ledger is the only live claim source; the [archived v3 Status Ledger](archive/plan-v3-2026-10-02.md)
+The machine-checked JSON ledger is the only live claim source; the [archived v3 Status Ledger](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md)
 remains a historical inventory and must not be used as current runtime evidence.
 
 **Ordered work packages:**
 
-1. <a id="j11.1"></a>**J11.1 — Define the live claim ledger contract.** Use the machine-checked JSON ledger as the sole live claim source; validate version/status/path/evidence-anchor syntax and label the [archived v3 Status Ledger](archive/plan-v3-2026-10-02.md) historical. **Output:** schema/checker rules and ledger inventory.
+1. <a id="j11.1"></a>**J11.1 — Define the live claim ledger contract.** Use the machine-checked JSON ledger as the sole live claim source; validate version/status/path/evidence-anchor syntax and label the [archived v3 Status Ledger](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md) historical. **Output:** schema/checker rules and ledger inventory.
 2. <a id="j11.2"></a>**J11.2 — Verify runtime evidence beyond imports.** Resolve entrypoint chains, dynamic-registry fixtures, or integration evidence, accepting same-package consumers and Experimental/unconsumed distinctly. **Output:** per-claim evidence resolution after J6/R7 reconciliation.
 3. <a id="j11.3"></a>**J11.3 — Exercise true/false claim fixtures and CI.** Plant a false Shipped claim and a valid same-package consumer; wire the checker after their opposite outcomes are established. **Output:** false-claim file/line/reason diagnostics and valid-consumer success.
 

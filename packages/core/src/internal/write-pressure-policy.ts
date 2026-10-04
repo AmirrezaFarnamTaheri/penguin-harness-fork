@@ -75,13 +75,15 @@
  * `truncated-tool-output-archive.ts`). Removing the injection restores the previous behavior
  * exactly; no persisted format depends on the policy.
  */
-import { mkdir, readFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   ResourcePressureProbe,
   type ResourcePressureReport,
 } from "../agent/resource/pressure-probe.js";
 import { atomicWriteFile } from "./atomic-write.js";
+import { withFileLock } from "./file-lock.js";
 
 /** 200 MiB, in bytes — the number statfs reports (`bsize * bavail`). */
 export const PRESSURE_WARN_BELOW_BYTES = 200 * 1024 * 1024; // 209_715_200
@@ -227,7 +229,8 @@ export type PressureSignal =
   | "write_pressure_low"
   | "write_pressure_probe_unavailable"
   | "write_pressure_wrong_volume"
-  | "write_pressure_blocked";
+  | "write_pressure_blocked"
+  | "write_pressure_override_unavailable";
 
 /** What the boundary does with one write. */
 export interface PressureDecision {
@@ -285,7 +288,6 @@ export interface PressureOverrideRecord extends PressureWriteKey {
  */
 export class PressureOverrideStore {
   private readonly records = new Map<string, PressureOverrideRecord>();
-  private sequence = 0;
   private readonly now: () => number;
   /** When set, grants are recorded here and re-read before a consume, so a grant survives a restart. */
   private readonly persistPath: string | undefined;
@@ -294,7 +296,8 @@ export class PressureOverrideStore {
 
   constructor(options: { now?: () => number; persistPath?: string } = {}) {
     this.now = options.now ?? Date.now;
-    this.persistPath = options.persistPath;
+    this.persistPath =
+      options.persistPath === undefined ? undefined : path.resolve(options.persistPath);
   }
 
   /**
@@ -311,7 +314,6 @@ export class PressureOverrideStore {
       write?: boolean;
     },
   ): Promise<PressureOverrideRecord> {
-    this.sequence += 1;
     const record: PressureOverrideRecord = {
       sessionId: request.sessionId,
       producerId: request.producerId,
@@ -319,13 +321,15 @@ export class PressureOverrideStore {
       volumePath: request.volumePath,
       grantedBy: request.grantedBy,
       reason: request.reason,
-      overrideId: `pressure-override-${this.sequence}`,
+      overrideId: `pressure-override-${randomUUID()}`,
       grantedAt: this.now(),
     };
-    await this.loadFromDisk();
-    this.records.set(overrideKey(record), record);
-    if (this.persistPath !== undefined && request.write !== false) await this.saveToDisk();
-    return record;
+    return this.transaction(async (file) => {
+      await this.loadFromDisk(file);
+      this.records.set(overrideKey(record), record);
+      if (file !== undefined && request.write !== false) await this.saveToDisk(file);
+      return record;
+    });
   }
 
   /**
@@ -336,14 +340,16 @@ export class PressureOverrideStore {
    * the same grant to two writes.
    */
   async consume(key: PressureWriteKey): Promise<PressureOverrideRecord | null> {
-    await this.loadFromDisk();
-    const lookup = overrideKey(key);
-    const record = this.records.get(lookup);
-    if (record === undefined || record.consumedAt !== undefined) return null;
-    const consumed: PressureOverrideRecord = { ...record, consumedAt: this.now() };
-    this.records.set(lookup, consumed);
-    if (this.persistPath !== undefined) await this.saveToDisk();
-    return consumed;
+    return this.transaction(async (file) => {
+      await this.loadFromDisk(file);
+      const lookup = overrideKey(key);
+      const record = this.records.get(lookup);
+      if (record === undefined || record.consumedAt !== undefined) return null;
+      const consumed: PressureOverrideRecord = { ...record, consumedAt: this.now() };
+      this.records.set(lookup, consumed);
+      if (file !== undefined) await this.saveToDisk(file);
+      return consumed;
+    });
   }
 
   /** Every grant this store has accepted, consumed ones included — the record the card asks for. */
@@ -352,44 +358,73 @@ export class PressureOverrideStore {
   }
 
   /**
-   * Reads the durable records, tolerating every failure mode by *not* inventing grants: a missing
-   * file is an empty store, and a corrupt one is treated as empty (and left alone) rather than
-   * parsed into something that could admit a write. The refusal that would have needed a grant
-   * still stands, which is the safe direction.
+   * Reads authoritative records under the ledger lock. A missing file is empty; unreadable,
+   * corrupt, or unsupported authority refuses the transaction and clears cached grants.
+   * The caller preserves the measured pressure block when consumption cannot be recorded.
    */
-  private async loadFromDisk(): Promise<void> {
-    if (this.persistPath === undefined) return;
+  private async transaction<T>(work: (file: string | undefined) => Promise<T>): Promise<T> {
+    if (this.persistPath === undefined) return work(undefined);
+    await mkdir(path.dirname(this.persistPath), { recursive: true });
+    const root = await realpath(path.dirname(this.persistPath));
+    const file = path.join(root, path.basename(this.persistPath));
+    return withFileLock(file, root, async () => {
+      try {
+        const info = await lstat(file);
+        if (!info.isFile() || info.isSymbolicLink())
+          throw new Error("Invalid override ledger file");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      try {
+        return await work(file);
+      } catch (error) {
+        // A failed persistence step cannot leave cached authorization available to another call.
+        this.records.clear();
+        this.loadedText = null;
+        throw error;
+      }
+    });
+  }
+
+  private async loadFromDisk(file: string | undefined): Promise<void> {
+    if (file === undefined) return;
     let text: string;
     try {
-      text = await readFile(this.persistPath, "utf8");
-    } catch {
+      text = await readFile(file, "utf8");
+    } catch (error) {
+      this.records.clear();
       this.loadedText = null;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       return;
     }
     if (text === this.loadedText) return;
     try {
-      const parsed = JSON.parse(text) as { records?: unknown };
+      const parsed = JSON.parse(text) as { schemaVersion?: unknown; records?: unknown };
+      if (parsed.schemaVersion !== 1) throw new Error("Unsupported override ledger schema");
       if (!Array.isArray(parsed.records)) throw new Error("records is not an array");
       const next = new Map<string, PressureOverrideRecord>();
+      const ids = new Set<string>();
       for (const candidate of parsed.records) {
         const record = asPressureOverrideRecord(candidate);
-        if (record !== null) next.set(overrideKey(record), record);
+        if (record === null || next.has(overrideKey(record)) || ids.has(record.overrideId)) {
+          throw new Error("Invalid or duplicate override ledger record");
+        }
+        ids.add(record.overrideId);
+        next.set(overrideKey(record), record);
       }
       this.records.clear();
       for (const [key, record] of next) this.records.set(key, record);
       this.loadedText = text;
-    } catch {
-      // Corrupt file: ignore it, keep whatever this process already knew. Nothing is admitted
-      // because of it, and nothing is overwritten until the next explicit grant.
+    } catch (error) {
+      this.records.clear();
       this.loadedText = null;
+      throw error;
     }
   }
 
-  private async saveToDisk(): Promise<void> {
-    if (this.persistPath === undefined) return;
+  private async saveToDisk(file: string): Promise<void> {
     const payload = JSON.stringify({ schemaVersion: 1, records: [...this.records.values()] });
-    await mkdir(path.dirname(this.persistPath), { recursive: true });
-    await atomicWriteFile(this.persistPath, payload, { mode: 0o600 });
+    await atomicWriteFile(file, payload, { mode: 0o600 });
     this.loadedText = payload;
   }
 }
@@ -416,7 +451,11 @@ function asPressureOverrideRecord(value: unknown): PressureOverrideRecord | null
     record.grantedBy !== "approval"
   )
     return null;
-  if (record.consumedAt !== undefined && typeof record.consumedAt !== "number") return null;
+  if (
+    record.consumedAt !== undefined &&
+    (typeof record.consumedAt !== "number" || !Number.isFinite(record.consumedAt))
+  )
+    return null;
   const consumedAt = record.consumedAt as number | undefined;
   return {
     sessionId: record.sessionId as string,
@@ -489,7 +528,19 @@ export async function evaluateWritePressure(options: {
   }
 
   if (measured < PRESSURE_BLOCK_BELOW_BYTES) {
-    const override = (await overrides?.consume(writeKey)) ?? null;
+    let override: PressureOverrideRecord | null;
+    try {
+      override = (await overrides?.consume(writeKey)) ?? null;
+    } catch {
+      return {
+        ...base,
+        action: "block",
+        signal: "write_pressure_override_unavailable",
+        freeBytes: measured,
+        reason: "low disk space requires an override, but its durable consumption failed",
+        overrideId: null,
+      };
+    }
     if (override !== null) {
       return {
         ...base,

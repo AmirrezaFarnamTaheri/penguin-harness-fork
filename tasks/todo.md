@@ -1,230 +1,240 @@
-# Task index — v4
+# Task register — Phase R and Waves 1–4
 
-Baseline: 2026-10-02, `dcebeb20adb0aa0e246016a264eda11b67dea38d`.
-This is the canonical work-state index. Read [plan.md](plan.md), [work-orders.md](work-orders.md)
-and [implementation-guide.md](implementation-guide.md) before claiming a numbered card package.
-All 150 original IDs remain; CI repairs and dated security-audit orders are tracked separately.
-Promotion work is scheduled under its owning wave.
+Updated: 2026-10-04. Reviewed baseline: `9f589c721a7cf09c9fb7ec116319161e76218f7c`.
+Work branch: `codex/pr-15-review-fixes`; local review repairs await candidate acceptance.
 
-`Requires` lists integration gates. Ready discovery/model packages may start before the whole
-producer task is complete; integrate only against an accepted producer subcontract. Conditional
-dependencies are described in the card and must not be interpreted as permission to omit them.
+Canonical state for all **150 original task IDs**. Read [plan](plan.md), [work orders](work-orders.md),
+[implementation guide](implementation-guide.md), then the whole linked execution card.
+Operational repairs supplement each task's wider acceptance criteria.
 
-| State       | Meaning                                                                 | Completion rule                                                              |
-| ----------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| OPEN        | Full acceptance has not been established; code may already exist        | Inspect baseline, execute missing packages, produce receipt                  |
-| IMPLEMENTED | A local/committed implementation is recorded; acceptance/review remains | Reconcile every card criterion and candidate CI/review                       |
-| PARTIAL     | Named consumers or contract branches remain incomplete                  | Finish the concrete remaining package, then acceptance                       |
-| GATED       | A specific binding/promotion prerequisite is absent                     | Complete ready discovery/dependencies; retain unmet scope                    |
-| VERIFIED    | Previously checked completion retained with its scoped receipt          | Historical proof applies to its recorded revision, not all later changes     |
-| N/A         | Applicability was explicitly adjudicated                                | Preserve evidence/reopen condition; do not fabricate a replacement subsystem |
+## Recorded progress
 
-The original 16 checked tasks are preserved. No task was newly verified by this rewrite.
-`G7` has a recorded N/A disposition despite its old unchecked row. `R2d` remains binding-gated.
-I1 remains partial because logger wiring exists while trace/export routing is incomplete.
-Current runtime claims remain in [docs/status-ledger.json](../docs/status-ledger.json).
+| Phase | Total | Verified | Implemented; acceptance remaining | Open | Gated | N/A |
+| --- | --- | --- | --- | --- | --- | --- |
+| Wave R | 21 | 9 | 11 | 0 | 1 | 0 |
+| Wave 1 | 12 | 6 | 5 | 0 | 0 | 1 |
+| Wave 2 | 29 | 2 | 27 | 0 | 0 | 0 |
+| Wave 3 | 50 | 1 | 13 | 36 | 0 | 0 |
+| Wave 4 | 38 | 0 | 0 | 38 | 0 | 0 |
+
+Counts preserve recorded evidence; this refresh newly verifies no task. I1 has trace/export
+integration evidence but needs incomplete-tail repair acceptance. R2d remains binding-gated.
+G7 retains its scoped N/A disposition.
+
+## State and update rules
+
+| State | Meaning | Required next step |
+| --- | --- | --- |
+| OPEN | Full acceptance is not established; relevant code may exist | Inspect, finish numbered packages, attach evidence |
+| IMPLEMENTED | Code exists; wider acceptance/review remains | Reconcile each criterion against the candidate |
+| PARTIAL | A named branch or consumer is incomplete | Finish that concrete branch/consumer |
+| GATED | A specific prerequisite is missing | Complete ready discovery/dependencies and retain the gate |
+| VERIFIED | Complete scoped acceptance is recorded | Preserve receipt; revisit relevant changed boundaries |
+| N/A | Applicability was explicitly adjudicated | Retain rationale, evidence, and reopen condition |
+
+Checked rows mean VERIFIED or evidenced N/A. Checkbox and state must agree.
+Requires names integration prerequisites; conditional card gates remain binding.
+Every state change cites a revision, criterion result, limits, and next work.
 
 ## Release repair orders
 
-The historical [CI incident](work-orders.md#current-release-incident) repairs passed on their
-recorded candidates, and the two repository gates the fixtures had broken (`typecheck`, `style`)
-were repaired at `a882cda4` — see [the receipt](../docs/audits/ci-repair-2026-10-02.md). CI-02 was
-revalidated after its macOS directory-removal wait timeout: the 10-second event-driven wait passed
-in the focused suite and the exact macOS lane on run `37149941481`. SEC-01 is a separate,
-upstream-blocked dependency-audit finding.
-
-| Check | ID / order                                                         | State    | Required proof and evidence                                                                                                             |
-| ----- | ------------------------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [x]   | [CI-01 — Findings denied-I/O classification](work-orders.md#ci-01) | VERIFIED | receipt; run 37038239523 `test (core)` 110941636677, `test-macos (core)` 110941636736, `test-windows (core)` 110941636849                  |
-| [x]   | [CI-02 — Nested-directory watcher fallback](work-orders.md#ci-02)  | VERIFIED | 10s event-driven removal wait; `code-graph-watcher.test.ts` 15/15; run 37149941481 `test-macos (core)` 111281442461 + `ci` 111283961443 |
-| [x]   | [CI-03 — Quota countdown / retry-now](work-orders.md#ci-03)        | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten spec at `b8c74439`)                                                       |
-| [x]   | [CI-04 — Cockpit HTTP fallback lifecycle](work-orders.md#ci-04)    | VERIFIED | receipt; run 37038239523 `e2e-browser` 110941636766 (rewritten cockpit spec at `09b36f78`)                                              |
-| [ ]   | [SEC-01 — Unpatched `http-cache-semantics` advisory](work-orders.md#sec-01) | GATED | upstream patch or reviewed compatible replacement; current audit finding in [receipt](../docs/audits/dependency-audit-2026-10-03.md) |
+| ID | State | Current acceptance requirement |
+| --- | --- | --- |
+| [CI-01](work-orders.md#ci-01) | VERIFIED | Historical platform-classification receipt retained |
+| [CI-02](work-orders.md#ci-02) | VERIFIED | Event-driven watcher assertion retained; reopen on recurrence |
+| [CI-03](work-orders.md#ci-03) | VERIFIED | Historical countdown/retry-now browser receipt retained |
+| [CI-04](work-orders.md#ci-04) | VERIFIED | Historical fallback/unmount browser receipt retained |
+| [PRR-01](work-orders.md#prr-01) | IMPLEMENTED | Pending/failed Session cleanup cannot produce deletion success |
+| [PRR-02](work-orders.md#prr-02) | IMPLEMENTED | Complete and incomplete JSON credentials are masked |
+| [PRR-03](work-orders.md#prr-03) | IMPLEMENTED | Valid low-disk refusal survives override persistence failure |
+| [PRR-04](work-orders.md#prr-04) | IMPLEMENTED | Serialized durable single-use authority; unique override IDs |
+| [PRR-05](work-orders.md#prr-05) | IMPLEMENTED | Guardian validates current group ownership before signalling |
+| [SEC-01](work-orders.md#sec-01) | GATED | Published compatible dependency fix or explicit owner adjudication |
 
 ## Wave R
 
-| Check | Task / execution card                                                                             | State       | Requires                      | Proof / remaining acceptance                                                         |
-| ----- | ------------------------------------------------------------------------------------------------- | ----------- | ----------------------------- | ------------------------------------------------------------------------------------ |
-| [x]   | [**R13** Repair PR #12 browser E2E and record exact-head CI](execution-cards-1.md#r13)            | VERIFIED    | —                             | named Playwright case, full E2E, `gh pr checks 12`                                   |
-| [x]   | [**R14a** Upgrade Electron past four high advisories](execution-cards-1.md#r14a)                  | VERIFIED    | —                             | `pnpm audit --audit-level high` + desktop/installer matrix                           |
-| [x]   | [**R14b** Repair runtime/build undici advisory paths](execution-cards-1.md#r14b)                  | VERIFIED    | —                             | `pnpm audit --json` + server/packaging smokes                                        |
-| [ ]   | [**R0** Findings scope and authority contract](execution-cards-1.md#r0)                           | IMPLEMENTED | —                             | tool/route identity fixtures                                                         |
-| [ ]   | [**R1a** Eviction policy truth & reference hygiene](execution-cards-1.md#r1a)                     | IMPLEMENTED | R2a                           | graph eviction + store fault/restart tests                                           |
-| [ ]   | [**R1b** Lifecycle state machine + evidence gate + actor](execution-cards-1.md#r1b)               | IMPLEMENTED | R1a, R2a                      | engine+tool+route tests                                                              |
-| [ ]   | [**R1c** Transition guards: cycles, liveness, dead-claim re-reports](execution-cards-1.md#r1c)    | IMPLEMENTED | R1b                           | engine+route/tool negative tests                                                     |
-| [ ]   | [**R2a** Scope-aware store + acknowledged writes](execution-cards-1.md#r2a)                       | IMPLEMENTED | R0                            | `test/knowledge/findings-store.test.ts` + integration                                |
-| [ ]   | [**R2b** Bounds parity + capacity/recovery path](execution-cards-1.md#r2b)                        | IMPLEMENTED | R2a                           | store+route+tool tests                                                               |
-| [ ]   | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c)                    | IMPLEMENTED | R2a                           | quarantine-denied tool+route tests pass; run 37149941481 core/server + 21/21 full CI; wider criteria/review open |
-| [ ]   | [**R2d** Conditional migration after trusted workspace↔project binding](execution-cards-1.md#r2d) | GATED       | R0, R2a, R2c; trusted binding | binding proof + migration fixture matrix                                             |
-| [x]   | [**R3** Report & governance reconciliation](execution-cards-1.md#r3)                              | VERIFIED    | —                             | docs suite + contradiction/path grep                                                 |
-| [ ]   | [**R4** Route hygiene](execution-cards-1.md#r4)                                                   | IMPLEMENTED | R1b, R2b                      | `vitest run test/findings-routes`                                                    |
-| [ ]   | [**R5** Revision-aware, byte-bounded output](execution-cards-1.md#r5)                             | IMPLEMENTED | R1b, R2a, R2b                 | tool/consumer contract tests                                                         |
-| [x]   | [**R6** code_graph resource discipline](execution-cards-1.md#r6)                                  | VERIFIED    | —                             | cache/tool tests + full core suite/typecheck                                         |
-| [x]   | [**R7** Memory-plane honesty (Option B selected)](execution-cards-1.md#r7)                        | VERIFIED    | —                             | core memory/findings tests + frozen recall fixture                                   |
-| [ ]   | [**R8** Accurate provenance on read-back](execution-cards-1.md#r8)                                | IMPLEMENTED | R1b                           | tool/route tests + docs                                                              |
-| [x]   | [**R9** Bounded batch fan-out (8 concurrent)](execution-cards-1.md#r9)                            | VERIFIED    | —                             | `test/all-settled-bounded.test.ts` + full web suite/typecheck                        |
-| [x]   | [**R10** Tool-schema token measurement](execution-cards-1.md#r10)                                 | VERIFIED    | —                             | `tools/measure-default-tool-schema.mts` + audit report                               |
-| [ ]   | [**R11** Findings-plane test battery](execution-cards-1.md#r11)                                   | IMPLEMENTED | R1a–c, R2a–c, R4, R5, R8      | `vitest run test/knowledge`                                                          |
-| [x]   | [**R12** A11y verification pass (axe + keyboard/focus/dark/target)](execution-cards-1.md#r12)     | VERIFIED    | —                             | `e2e/a11y.spec.mjs` + [audit report](../docs/audits/web-accessibility-2026-09-30.md) |
+| Check | Task / execution card | State | Requires | Evidence / remaining acceptance |
+| --- | --- | --- | --- | --- |
+| [x] | [**R13** Repair PR #12 browser E2E and record exact-head CI](execution-cards-1.md#r13) | VERIFIED | — | named Playwright case, full E2E, `gh pr checks 12` |
+| [x] | [**R14a** Upgrade Electron past four high advisories](execution-cards-1.md#r14a) | VERIFIED | — | `pnpm audit --audit-level high` + desktop/installer matrix |
+| [x] | [**R14b** Repair runtime/build undici advisory paths](execution-cards-1.md#r14b) | VERIFIED | — | `pnpm audit --json` + server/packaging smokes |
+| [ ] | [**R0** Findings scope and authority contract](execution-cards-1.md#r0) | IMPLEMENTED | — | tool/route identity fixtures |
+| [ ] | [**R1a** Eviction policy truth & reference hygiene](execution-cards-1.md#r1a) | IMPLEMENTED | R2a | graph eviction + store fault/restart tests |
+| [ ] | [**R1b** Lifecycle state machine + evidence gate + actor](execution-cards-1.md#r1b) | IMPLEMENTED | R1a, R2a | engine+tool+route tests |
+| [ ] | [**R1c** Transition guards: cycles, liveness, dead-claim re-reports](execution-cards-1.md#r1c) | IMPLEMENTED | R1b | engine+route/tool negative tests |
+| [ ] | [**R2a** Scope-aware store + acknowledged writes](execution-cards-1.md#r2a) | IMPLEMENTED | R0 | `test/knowledge/findings-store.test.ts` + integration |
+| [ ] | [**R2b** Bounds parity + capacity/recovery path](execution-cards-1.md#r2b) | IMPLEMENTED | R2a | store+route+tool tests |
+| [ ] | [**R2c** Corruption quarantine + read-only recovery](execution-cards-1.md#r2c) | IMPLEMENTED | R2a | quarantine-denied tool+route tests pass; run 37149941481 core/server + 21/21 full CI; wider criteria/review open |
+| [ ] | [**R2d** Conditional migration after trusted workspace↔project binding](execution-cards-1.md#r2d) | GATED | R0, R2a, R2c; trusted binding | binding proof + migration fixture matrix |
+| [x] | [**R3** Report & governance reconciliation](execution-cards-1.md#r3) | VERIFIED | — | docs suite + contradiction/path grep |
+| [ ] | [**R4** Route hygiene](execution-cards-1.md#r4) | IMPLEMENTED | R1b, R2b | `vitest run test/findings-routes` |
+| [ ] | [**R5** Revision-aware, byte-bounded output](execution-cards-1.md#r5) | IMPLEMENTED | R1b, R2a, R2b | tool/consumer contract tests |
+| [x] | [**R6** code_graph resource discipline](execution-cards-1.md#r6) | VERIFIED | — | cache/tool tests + full core suite/typecheck |
+| [x] | [**R7** Memory-plane honesty (Option B selected)](execution-cards-1.md#r7) | VERIFIED | — | core memory/findings tests + frozen recall fixture |
+| [ ] | [**R8** Accurate provenance on read-back](execution-cards-1.md#r8) | IMPLEMENTED | R1b | tool/route tests + docs |
+| [x] | [**R9** Bounded batch fan-out (8 concurrent)](execution-cards-1.md#r9) | VERIFIED | — | `test/all-settled-bounded.test.ts` + full web suite/typecheck |
+| [x] | [**R10** Tool-schema token measurement](execution-cards-1.md#r10) | VERIFIED | — | `tools/measure-default-tool-schema.mts` + audit report |
+| [ ] | [**R11** Findings-plane test battery](execution-cards-1.md#r11) | IMPLEMENTED | R1a–c, R2a–c, R4, R5, R8 | `vitest run test/knowledge` |
+| [x] | [**R12** A11y verification pass (axe + keyboard/focus/dark/target)](execution-cards-1.md#r12) | VERIFIED | — | `e2e/a11y.spec.mjs` + [audit report](../docs/audits/web-accessibility-2026-09-30.md) |
 
 ## Wave 1
 
-| Check | Task / execution card                                                                                 | State       | Requires                     | Proof / remaining acceptance                                                                                                |
-| ----- | ----------------------------------------------------------------------------------------------------- | ----------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| [x]   | [**A2** FailureStatusTracker + localized HttpError metadata/error rendering](execution-cards-1.md#a2) | VERIFIED    | —                            | Core tracker + findings suites; server error/findings suites; web API error tests; typechecks/build; `check:i18n`; Prettier |
-| [x]   | [**A3** Retry-delay provenance + Retry-After](execution-cards-1.md#a3)                                | VERIFIED    | —                            | `vitest run test/llm*`                                                                                                      |
-| [x]   | [**B2** BoundedStreamCapture head+tail](execution-cards-1.md#b2)                                      | VERIFIED    | —                            | `test/trace/bounded-capture.test.ts` — four focused cases passed; core typecheck passed                                     |
-| [ ]   | [**F1** Input focus rings (3 sites)](execution-cards-1.md#f1)                                         | IMPLEMENTED | —                            | local web 2,533/2,533 + R12 pass; exact-commit gate pending                                                                 |
-| [ ]   | [**F3** Comment-lies + `features/canvas` removal + cockpit dir rename](execution-cards-1.md#f3)       | IMPLEMENTED | —                            | web suite + grep (human-reviewed deletion)                                                                                  |
-| [ ]   | [**F6** STREAM_BANNER_FRAME dedup across six compact notice modules](execution-cards-1.md#f6)         | IMPLEMENTED | —                            | local rendered classes + web 2,533/2,533; exact-commit gate pending                                                         |
-| [ ]   | [**G5** TLS verification fix + sweep](execution-cards-1.md#g5)                                        | IMPLEMENTED | —                            | no active bypass; direct downloader smoke against `https://example.com/` passed with TLS verification enabled               |
-| —     | [**G7** Anti-slop installer path fix](execution-cards-1.md#g7)                                        | N/A         | —                            | source audit recorded locally; exact-commit gate pending                                                                    |
-| [x]   | [**J1** `clean` npm script wiring](execution-cards-1.md#j1)                                           | VERIFIED    | —                            | `pnpm clean` report passed; cleaner fixture suite passed                                                                    |
-| [x]   | [**J6** CI/docs drift sweep ("75 specs")](execution-cards-1.md#j6)                                    | VERIFIED    | —                            | docs suite passed; workflow parsed; numeric claim removed                                                                   |
-| [x]   | [**T0.3** Workspace dependency freshness guard](execution-cards-1.md#t0.3)                            | VERIFIED    | —                            | injected-snapshot fixture: stale fails, supported reinstall + build sync passes                                             |
-| [ ]   | [**J11** Docs-claims consistency gate](execution-cards-1.md#j11)                                      | IMPLEMENTED | J6, R7 claim reconciliations | local fixtures/checker/CI step pass; exact-commit gate pending                                                              |
+| Check | Task / execution card | State | Requires | Evidence / remaining acceptance |
+| --- | --- | --- | --- | --- |
+| [x] | [**A2** FailureStatusTracker + localized HttpError metadata/error rendering](execution-cards-1.md#a2) | VERIFIED | — | Core tracker + findings suites; server error/findings suites; web API error tests; typechecks/build; `check:i18n`; Prettier |
+| [x] | [**A3** Retry-delay provenance + Retry-After](execution-cards-1.md#a3) | VERIFIED | — | `vitest run test/llm*` |
+| [x] | [**B2** BoundedStreamCapture head+tail](execution-cards-1.md#b2) | VERIFIED | — | `test/trace/bounded-capture.test.ts` — four focused cases passed; core typecheck passed |
+| [ ] | [**F1** Input focus rings (3 sites)](execution-cards-1.md#f1) | IMPLEMENTED | — | local web 2,533/2,533 + R12 pass; exact-commit gate pending |
+| [ ] | [**F3** Comment-lies + `features/canvas` removal + cockpit dir rename](execution-cards-1.md#f3) | IMPLEMENTED | — | web suite + grep (human-reviewed deletion) |
+| [ ] | [**F6** STREAM_BANNER_FRAME dedup across six compact notice modules](execution-cards-1.md#f6) | IMPLEMENTED | — | local rendered classes + web 2,533/2,533; exact-commit gate pending |
+| [ ] | [**G5** TLS verification fix + sweep](execution-cards-1.md#g5) | IMPLEMENTED | — | no active bypass; direct downloader smoke against `https://example.com/` passed with TLS verification enabled |
+| [x] | [**G7** Anti-slop installer path fix](execution-cards-1.md#g7) | N/A | — | source audit recorded locally; exact-commit gate pending |
+| [x] | [**J1** `clean` npm script wiring](execution-cards-1.md#j1) | VERIFIED | — | `pnpm clean` report passed; cleaner fixture suite passed |
+| [x] | [**J6** CI/docs drift sweep ("75 specs")](execution-cards-1.md#j6) | VERIFIED | — | docs suite passed; workflow parsed; numeric claim removed |
+| [x] | [**T0.3** Workspace dependency freshness guard](execution-cards-1.md#t0.3) | VERIFIED | — | injected-snapshot fixture: stale fails, supported reinstall + build sync passes |
+| [ ] | [**J11** Docs-claims consistency gate](execution-cards-1.md#j11) | IMPLEMENTED | J6, R7 claim reconciliations | local fixtures/checker/CI step pass; exact-commit gate pending |
 
 ## Wave 2
 
-| Check | Task / execution card                                                                                                     | State       | Requires                                        | Proof / remaining acceptance                                                                                                                         |
-| ----- | ------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ ]   | [**A1** Classifier flip shadow→active (attach the `agrees=false` scan)](execution-wave-2.md#a1)                           | IMPLEMENTED | A2,A3                                           | promotions via `PENGUIN_FAILURE_CLASSIFIER` (default shadow, reversible); hashed 15-row census `ada6536ebea92dd2`, 10-row precedence table; both consumers wired; see [failure-classifier-a1-2026-10-02.md](../docs/audits/failure-classifier-a1-2026-10-02.md) |
-| [ ]   | [**A4** Pool-shape-aware retry budget + once-per-account grace](execution-wave-2.md#a4)                                   | IMPLEMENTED | A3                                              | policy branch table + fake-timer runtime checks; see Wave 1–2 evidence                                                                               |
-| [ ]   | [**A5** Snapshot→delta stream reassembler](execution-wave-2.md#a5)                                                        | IMPLEMENTED | —                                               | 500-sequence property test; see Wave 1–2 evidence                                                                                                    |
-| [x]   | [**A6** Length-prefixed frame parser](execution-wave-2.md#a6)                                                             | VERIFIED    | —                                               | Five reference shapes pass; core typecheck passes; exported primitive awaits provider integration                                                    |
-| [ ]   | [**B1** Large-output spill + recall id](execution-wave-2.md#b1)                                                           | IMPLEMENTED | B2                                              | failures remain useful inline; Session-scoped paged recall reproduces persisted UTF-8 text after redaction                                           |
-| [ ]   | [**B3** Tool-output compression + honest savings table](execution-wave-2.md#b3)                                           | IMPLEMENTED | B1                                              | frozen 8-fixture corpus with hashed manifest + reproducible table (classes 12.2–89.5% saved, all >=10%); log-dedup tail fix; see [tool-output-compression-b3-2026-10-02.md](../docs/audits/tool-output-compression-b3-2026-10-02.md) |
-| [ ]   | [**B4** Transactional compaction + prune frontier](execution-wave-2.md#b4)                                                | IMPLEMENTED | —                                               | byte-identical on failure (opener refused before the swap); frontier no-reread with `examined: 0`; see [transactional-compaction-b4-2026-10-02.md](../docs/audits/transactional-compaction-b4-2026-10-02.md) 
-| [ ]   | [**C8** Offline e2e](execution-wave-2.md#c8)                                                                              | IMPLEMENTED | —                                               | no client-side store exists, so the flow asserts the honest states; named fixture + <100ms cached-render measurement + duplicate/unhandled-rejection assertions in [offline-posture-2026-10-02.md](../docs/audits/offline-posture-2026-10-02.md); browser receipt = CI e2e-browser on a392554f |
-| [ ]   | [**E1** Cockpit sync-seam residuals](execution-wave-2.md#e1)                                                              | IMPLEMENTED | —                                               | `vitest run test/cockpit*`                                                                                                                           |
-| [ ]   | [**E5** trigger_swarm non-simulate](execution-wave-2.md#e5)                                                               | IMPLEMENTED | —                                               | cockpit ws tests                                                                                                                                     |
-| [ ]   | [**E6** Cockpit error-shape unification](execution-wave-2.md#e6)                                                          | IMPLEMENTED | —                                               | structured malformed/invalid/unexpected failures and unsuccessful task outcomes use `{ success:false, error:{code,message} }`; see Wave 1–2 evidence |
-| [ ]   | [**E7** Gateway input validation](execution-wave-2.md#e7)                                                                 | IMPLEMENTED | —                                               | gateway tests; URL/body identifiers and approval session IDs bounded before lookup                                                                   |
-| [ ]   | [**E8** /health + readiness](execution-wave-2.md#e8)                                                                      | IMPLEMENTED | —                                               | `health.test.ts` covers serving, DB-closed, degradation, and recovery                                                                                |
-| [ ]   | [**E9** Structured logger + rejection counter](execution-wave-2.md#e9)                                                    | IMPLEMENTED | —                                               | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks                                                               |
-| [ ]   | [**E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap)](execution-wave-2.md#e10)              | IMPLEMENTED | —                                               | four independent commits (da46a7c0, a2aa1622, 8b7676e3, a3b60a81) + real-process/mutation evidence in [leak-fixes-2026-10-02.md](../docs/audits/leak-fixes-2026-10-02.md); Windows Job Object boundary recorded, not claimed |
-| [ ]   | [**E2** acp.ts 8-defect sweep (verified/refuted table)](execution-wave-2.md#e2)                                           | IMPLEMENTED | —                                               | 8/8 rows adjudicated with revert-and-see mutations in [acp-defect-sweep-2026-10-02.md](../docs/audits/acp-defect-sweep-2026-10-02.md); `acp-connection.test.ts` 28/28; exact-commit gate pending |
-| [ ]   | [**E3** ACP connection resume](execution-wave-2.md#e3)                                                                    | IMPLEMENTED | E2                                              | contract + bounded replay/ack/expiry fixtures (19) in [acp-resume-2026-10-02.md](../docs/audits/acp-resume-2026-10-02.md); UI wiring gated on the first production ACP host; exact-commit gate pending |
-| [ ] | [**E4** Durable SSE tail + safeSend gap signal](execution-wave-2.md#e4) | VERIFIED | E3 | durable tail + caught-up/gap markers with 14-case restart suite and 6 revert-and-see mutations in [cockpit-durable-stream-2026-10-02.md](../docs/audits/cockpit-durable-stream-2026-10-02.md); run 37049972446 `e2e-browser` 110980641658, `test (server)` 110980642088, `typecheck` 110980641451, `ci` 110983984408 — 21/21 jobs success |
-| [ ]   | [**G1** validate-agent-skills CI gate](execution-wave-2.md#g1)                                                            | IMPLEMENTED | —                                               | corpus passes or triaged                                                                                                                             |
-| [ ]   | [**G3** skills-lock pin + resolver](execution-wave-2.md#g3)                                                               | IMPLEMENTED | —                                               | pin→verify→drift covered                                                                                                                             |
-| [ ]   | [**G4** local.patch / superseded hygiene](execution-wave-2.md#g4)                                                         | IMPLEMENTED | —                                               | ledger `scripts/skills/patch-ledger.mjs` + versioned table `artifacts/skill-patch-ledger.json`: 56 applied / 1 pending / 0 unresolved, 14 supersessions resolve, 0 ambiguous; dispositions in [skill-patch-ledger-2026-10-02.md](../docs/audits/skill-patch-ledger-2026-10-02.md) |
-| [ ]   | [**H3** Atomic credential write 5-step audit](execution-wave-2.md#h3)                                                     | IMPLEMENTED | —                                               | internal tests ×5 steps                                                                                                                              |
-| [ ]   | [**I1** Redaction completions](execution-wave-2.md#i1)                                                                    | IMPLEMENTED | —                                               | allowlist + sanitizer + trace read/export routing in [redaction-boundaries-2026-10-02.md](../docs/audits/redaction-boundaries-2026-10-02.md); sentinel scans on reads/download with 4 revert-and-see mutations; CI verdict pending on the I1 head |
-| [ ]   | [**I2** Command-policy completions](execution-wave-2.md#i2)                                                               | IMPLEMENTED | —                                               | spawn-refusal test                                                                                                                                   |
-| [ ]   | [**I3** Zip symlink-entry refusal](execution-wave-2.md#i3)                                                                | IMPLEMENTED | —                                               | symlink fixture test                                                                                                                                 |
-| [ ]   | [**I4** effective_auth_mode matrix](execution-wave-2.md#i4)                                                               | IMPLEMENTED | —                                               | one pure resolver + policy wired through every gate in [auth-mode-2026-10-02.md](../docs/audits/auth-mode-2026-10-02.md); 10 matrix/boundary cases, 5 mutations; default stays `all-except-health` with recorded reopen condition |
-| [ ]   | [**F17** Offline posture banner](execution-wave-2.md#f17)                                                                 | IMPLEMENTED | C8 integration group                            | evidence-based posture (13 unit cases, 4 mutations red) + en/zh copy + keyboard retry; integrated with C8's browser flow in [offline-posture-2026-10-02.md](../docs/audits/offline-posture-2026-10-02.md) |
-| [ ]   | [**F18** Spill/recall UI affordance + `penguin recall`](execution-wave-2.md#f18)                                          | IMPLEMENTED | B1                                              | core seam + server route + `penguin recall` + web chip, all four surfaces path-free by construction (ids contain no separator) and negative-matrix tested (server 5 mutations, CLI 5, web 7, chip 3) in [recall-f18-2026-10-03.md](../docs/audits/recall-f18-2026-10-03.md); chip DOM-level keyboard/screen-reader pass and PR review pending |
-| [ ]   | [**I7** Pressure-aware write guard (warn below 200 MiB / block below 50 MiB / override recorded)](execution-wave-2.md#i7) | IMPLEMENTED | target-volume probe and command-policy contract | policy + boundary + durable single-use override + authenticated grant route in [write-pressure-i7-2026-10-03.md](../docs/audits/write-pressure-i7-2026-10-03.md); thresholds pinned at 209,715,200 / 52,428,800 bytes with boundary readings exact; 18 revert-and-see mutations; Agent injects a Session gate probing the exact scratchpad volume and warns on unavailable measurements; 97 focused core/server tests pass, including live authenticated route→Agent→archive grant-and-consumption and post-refusal archive recovery; CI run 37145205562 passed at 8430b0a8 including browser E2E; PR #15 is open with no review submitted or requested |
+| Check | Task / execution card | State | Requires | Evidence / remaining acceptance |
+| --- | --- | --- | --- | --- |
+| [ ] | [**A1** Classifier flip shadow→active (attach the `agrees=false` scan)](execution-wave-2.md#a1) | IMPLEMENTED | A2,A3 | promotions via `PENGUIN_FAILURE_CLASSIFIER` (default shadow, reversible); hashed 15-row census `ada6536ebea92dd2`, 10-row precedence table; both consumers wired; see [failure-classifier-a1-2026-10-02.md](../docs/audits/failure-classifier-a1-2026-10-02.md) |
+| [ ] | [**A4** Pool-shape-aware retry budget + once-per-account grace](execution-wave-2.md#a4) | IMPLEMENTED | A3 | policy branch table + fake-timer runtime checks; see Wave 1–2 evidence |
+| [ ] | [**A5** Snapshot→delta stream reassembler](execution-wave-2.md#a5) | IMPLEMENTED | — | 500-sequence property test; see Wave 1–2 evidence |
+| [x] | [**A6** Length-prefixed frame parser](execution-wave-2.md#a6) | VERIFIED | — | Five reference shapes pass; core typecheck passes; exported primitive awaits provider integration |
+| [ ] | [**B1** Large-output spill + recall id](execution-wave-2.md#b1) | IMPLEMENTED | B2 | failures remain useful inline; Session-scoped paged recall reproduces persisted UTF-8 text after redaction |
+| [ ] | [**B3** Tool-output compression + honest savings table](execution-wave-2.md#b3) | IMPLEMENTED | B1 | frozen 8-fixture corpus with hashed manifest + reproducible table (classes 12.2–89.5% saved, all >=10%); log-dedup tail fix; see [tool-output-compression-b3-2026-10-02.md](../docs/audits/tool-output-compression-b3-2026-10-02.md) |
+| [ ] | [**B4** Transactional compaction + prune frontier](execution-wave-2.md#b4) | IMPLEMENTED | — |  |
+| [ ] | [**C8** Offline e2e](execution-wave-2.md#c8) | IMPLEMENTED | — | no client-side store exists, so the flow asserts the honest states; named fixture + <100ms cached-render measurement + duplicate/unhandled-rejection assertions in [offline-posture-2026-10-02.md](../docs/audits/offline-posture-2026-10-02.md); browser receipt = CI e2e-browser on a392554f |
+| [ ] | [**E1** Cockpit sync-seam residuals](execution-wave-2.md#e1) | IMPLEMENTED | — | `vitest run test/cockpit*` |
+| [ ] | [**E5** trigger_swarm non-simulate](execution-wave-2.md#e5) | IMPLEMENTED | — | cockpit ws tests |
+| [ ] | [**E6** Cockpit error-shape unification](execution-wave-2.md#e6) | IMPLEMENTED | — | structured malformed/invalid/unexpected failures and unsuccessful task outcomes use `{ success:false, error:{code,message} }`; see Wave 1–2 evidence |
+| [ ] | [**E7** Gateway input validation](execution-wave-2.md#e7) | IMPLEMENTED | — | gateway tests; URL/body identifiers and approval session IDs bounded before lookup |
+| [ ] | [**E8** /health + readiness](execution-wave-2.md#e8) | IMPLEMENTED | — | `health.test.ts` covers serving, DB-closed, degradation, and recovery |
+| [ ] | [**E9** Structured logger + rejection counter](execution-wave-2.md#e9) | IMPLEMENTED | — | logger/request context, sink-failure/idempotence, and `/health/metrics` focused checks |
+| [ ] | [**E10** Leak fixes ×4 (orphan reaping / hung dispose / swarm abort / archive cap)](execution-wave-2.md#e10) | IMPLEMENTED | — | four independent commits (da46a7c0, a2aa1622, 8b7676e3, a3b60a81) + real-process/mutation evidence in [leak-fixes-2026-10-02.md](../docs/audits/leak-fixes-2026-10-02.md); Windows Job Object boundary recorded, not claimed; review repairs await candidate acceptance: [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md) |
+| [ ] | [**E2** acp.ts 8-defect sweep (verified/refuted table)](execution-wave-2.md#e2) | IMPLEMENTED | — | 8/8 rows adjudicated with revert-and-see mutations in [acp-defect-sweep-2026-10-02.md](../docs/audits/acp-defect-sweep-2026-10-02.md); `acp-connection.test.ts` 28/28; exact-commit gate pending |
+| [ ] | [**E3** ACP connection resume](execution-wave-2.md#e3) | IMPLEMENTED | E2 | contract + bounded replay/ack/expiry fixtures (19) in [acp-resume-2026-10-02.md](../docs/audits/acp-resume-2026-10-02.md); UI wiring gated on the first production ACP host; exact-commit gate pending |
+| [x] | [**E4** Durable SSE tail + safeSend gap signal](execution-wave-2.md#e4) | VERIFIED | E3 | durable tail + caught-up/gap markers with 14-case restart suite and 6 revert-and-see mutations in [cockpit-durable-stream-2026-10-02.md](../docs/audits/cockpit-durable-stream-2026-10-02.md); run 37049972446 `e2e-browser` 110980641658, `test (server)` 110980642088, `typecheck` 110980641451, `ci` 110983984408 — 21/21 jobs success |
+| [ ] | [**G1** validate-agent-skills CI gate](execution-wave-2.md#g1) | IMPLEMENTED | — | corpus passes or triaged |
+| [ ] | [**G3** skills-lock pin + resolver](execution-wave-2.md#g3) | IMPLEMENTED | — | pin→verify→drift covered |
+| [ ] | [**G4** local.patch / superseded hygiene](execution-wave-2.md#g4) | IMPLEMENTED | — | ledger `scripts/skills/patch-ledger.mjs` + versioned table `artifacts/skill-patch-ledger.json`: 56 applied / 1 pending / 0 unresolved, 14 supersessions resolve, 0 ambiguous; dispositions in [skill-patch-ledger-2026-10-02.md](../docs/audits/skill-patch-ledger-2026-10-02.md) |
+| [ ] | [**H3** Atomic credential write 5-step audit](execution-wave-2.md#h3) | IMPLEMENTED | — | internal tests ×5 steps |
+| [ ] | [**I1** Redaction completions](execution-wave-2.md#i1) | IMPLEMENTED | — | allowlist + sanitizer + trace read/export routing in [redaction-boundaries-2026-10-02.md](../docs/audits/redaction-boundaries-2026-10-02.md); sentinel scans on reads/download with 4 revert-and-see mutations; CI verdict pending on the I1 head; review repairs await candidate acceptance: [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md) |
+| [ ] | [**I2** Command-policy completions](execution-wave-2.md#i2) | IMPLEMENTED | — | spawn-refusal test |
+| [ ] | [**I3** Zip symlink-entry refusal](execution-wave-2.md#i3) | IMPLEMENTED | — | symlink fixture test |
+| [ ] | [**I4** effective_auth_mode matrix](execution-wave-2.md#i4) | IMPLEMENTED | — | one pure resolver + policy wired through every gate in [auth-mode-2026-10-02.md](../docs/audits/auth-mode-2026-10-02.md); 10 matrix/boundary cases, 5 mutations; default stays `all-except-health` with recorded reopen condition |
+| [ ] | [**F17** Offline posture banner](execution-wave-2.md#f17) | IMPLEMENTED | C8 integration group | evidence-based posture (13 unit cases, 4 mutations red) + en/zh copy + keyboard retry; integrated with C8's browser flow in [offline-posture-2026-10-02.md](../docs/audits/offline-posture-2026-10-02.md) |
+| [ ] | [**F18** Spill/recall UI affordance + `penguin recall`](execution-wave-2.md#f18) | IMPLEMENTED | B1 | core seam + server route + `penguin recall` + web chip, all four surfaces path-free by construction (ids contain no separator) and negative-matrix tested (server 5 mutations, CLI 5, web 7, chip 3) in [recall-f18-2026-10-03.md](../docs/audits/recall-f18-2026-10-03.md); chip DOM-level keyboard/screen-reader pass and PR review pending |
+| [ ] | [**I7** Pressure-aware write guard (warn below 200 MiB / block below 50 MiB / override recorded)](execution-wave-2.md#i7) | IMPLEMENTED | target-volume probe and command-policy contract | policy + boundary + durable single-use override + authenticated grant route in [write-pressure-i7-2026-10-03.md](../docs/audits/write-pressure-i7-2026-10-03.md); thresholds pinned at 209,715,200 / 52,428,800 bytes with boundary readings exact; 18 revert-and-see mutations; Agent injects a Session gate probing the exact scratchpad volume and warns on unavailable measurements; 97 focused core/server tests pass, including live authenticated route→Agent→archive grant-and-consumption and post-refusal archive recovery; CI run 37145205562 passed at 8430b0a8 including browser E2E; review repairs await candidate acceptance: [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md) |
 
 ## Wave 3
 
-| Check | Task / execution card                                                                                     | State       | Requires                                        | Proof / remaining acceptance                                                       |
-| ----- | --------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [ ]   | [**D1** Optional lazy TS/JS grammar pack + manifest](execution-wave-3.md#d1)                              | OPEN        | —                                               | pinned assets, license/hash manifest, missing-asset fallback and resource baseline |
-| [ ]   | [**D2** .scm packs TS/JS + extractor→IR](execution-wave-3.md#d2)                                          | OPEN        | D1                                              | CONTRACT 6-behavior goldens                                                        |
-| [ ]   | [**D3** Optional language packs python/go/rust/java](execution-wave-3.md#d3)                              | OPEN        | D10                                             | per-language goldens and rerun quality/resource gate before each promotion         |
-| [ ]   | [**D4a** Symbol table + import resolution](execution-wave-3.md#d4a)                                       | OPEN        | D2                                              | cross-file edges; homonym clamp                                                    |
-| [ ]   | [**D4b** Call-resolution ladder + overload scoring](execution-wave-3.md#d4b)                              | OPEN        | D4a                                             | fixture per step; zero fake edges                                                  |
-| [ ]   | [**D5** callstack-diff + graph_diff tool](execution-wave-3.md#d5)                                         | OPEN        | D4b                                             | LCS/entry-inference tests                                                          |
-| [ ]   | [**D6** git-snapshot reader](execution-wave-3.md#d6)                                                      | VERIFIED    | —                                               | guarantees inventoried to assertions; 6 new cases (invalid revision, maxEntries/maxTreeBytes bounds, all Git env overrides at once, bare-repo read, index bytes unchanged); reader contract on the class; 87 codegraph tests; [git-snapshot-reader-d6-2026-10-02.md](../docs/audits/git-snapshot-reader-d6-2026-10-02.md) |
-| [ ]   | [**D7** GraphStore interface + versioning](execution-wave-3.md#d7)                                        | IMPLEMENTED | D4a                                             | migration, corruption, interruption and concurrent-reader fixtures                 |
-| [ ]   | [**D8** Seeded Louvain + god nodes](execution-wave-3.md#d8)                                               | OPEN        | D4b                                             | byte-identical runs                                                                |
-| [ ]   | [**D9** Tool-surface upgrade (explore-first/budgets/formatters/hints)](execution-wave-3.md#d9)            | OPEN        | D5,D8                                           | budget + hint tests                                                                |
-| [ ]   | [**D10** Benchmark: AST vs regex (quality/resource gate)](execution-wave-3.md#d10)                        | OPEN        | D9                                              | frozen five-scenario corpus, false-edge/precision/recall and resource table        |
-| [ ]   | [**C1** Findings cockpit UI](execution-wave-3.md#c1)                                                      | OPEN        | R2b                                             | 8 routes + a11y + demo transcript                                                  |
-| [ ]   | [**C2** Memory recall baseline and opt-in policy boundary](execution-wave-3.md#c2)                        | OPEN        | R7                                              | frozen recall/write/latency baseline; no destructive default policy                |
-| [ ]   | [**C3** Consolidation runner](execution-wave-3.md#c3)                                                     | OPEN        | C2                                              | gates fire exactly at thresholds; no unproven retention enablement                 |
-| [ ]   | [**C4** RRF hybrid retrieval](execution-wave-3.md#c4)                                                     | OPEN        | C3                                              | reference fixtures                                                                 |
-| [ ]   | [**C5** Bitemporal edges + asOf](execution-wave-3.md#c5)                                                  | OPEN        | C4                                              | last-week reconstruction                                                           |
-| [ ]   | [**C6** Supersession cascade → stale](execution-wave-3.md#c6)                                             | OPEN        | C5                                              | 0.7/0.4 thresholds                                                                 |
-| [ ]   | [**C7** Influence receipts](execution-wave-3.md#c7)                                                       | OPEN        | R1b                                             | round-trip test                                                                    |
-| [ ]   | [**C9** MEMORY.md ⇄ findings interop](execution-wave-3.md#c9)                                             | OPEN        | C1                                              | round-trip test                                                                    |
-| [ ]   | [**F2** Shared clock](execution-wave-3.md#f2)                                                             | IMPLEMENTED | —                                               | one page-scoped timer (multi-cadence, visibility wakeup, last-subscriber cleanup); 7 display tickers migrated; key-health cooldown now converges after sleep; 12 clock cases + 3 source pins; [shared-clock-f2-2026-10-02.md](../docs/audits/shared-clock-f2-2026-10-02.md) |
-| [ ]   | [**F4** Nav-collapse migration](execution-wave-3.md#f4)                                                   | OPEN        | —                                               | web + e2e nav                                                                      |
-| [ ]   | [**F5** Dock tab dedup](execution-wave-3.md#f5)                                                           | OPEN        | —                                               | e2e dock                                                                           |
-| [ ]   | [**F8** Contrast module + token-colors fixes](execution-wave-3.md#f8)                                     | IMPLEMENTED | —                                               | `lib/contrast` primitives (alpha compositing + role requirements incl. explicit disabled exemption); two measured gutter failures fixed (2.54→4.83, 2.78→8.27); 4 mutations red; [contrast-f8-2026-10-02.md](../docs/audits/contrast-f8-2026-10-02.md) |
-| [ ]   | [**F9** Calendar grid + ticket nested button](execution-wave-3.md#f9)                                     | OPEN        | —                                               | a11y checks                                                                        |
-| [ ]   | [**F7a** Sidebar split step 4](execution-wave-3.md#f7a)                                                   | OPEN        | F4,F5                                           | verbatim-check script                                                              |
-| [ ]   | [**F7b** ChatInput split](execution-wave-3.md#f7b)                                                        | OPEN        | —                                               | verbatim-check + web suite                                                         |
-| [ ]   | [**F7c** Workspace-browser split](execution-wave-3.md#f7c)                                                | OPEN        | —                                               | verbatim-check + web suite                                                         |
-| [ ]   | [**G2** Skill routing probes](execution-wave-3.md#g2)                                                     | IMPLEMENTED | G1                                              | 12-probe frozen corpus (hashes + bounded candidate sets) run through the real resolver; 4 mutation fixtures + drift check; gate in skill-integrity.yml with JSON artifact; see [skill-routing-probes-g2-2026-10-02.md](../docs/audits/skill-routing-probes-g2-2026-10-02.md) |
-| [ ]   | [**G6** Skill capability manifests](execution-wave-3.md#g6)                                               | OPEN        | G1                                              | named scripts declare + pass                                                       |
-| [ ]   | [**H1** foreign-config contract](execution-wave-3.md#h1)                                                  | IMPLEMENTED | H3                                              | ownership/version/transaction contract + fixture matrix (unmanaged, version, changed-since-preview x2, permission, rename, readback, symlink; byte-exact restore); see [foreign-config-h1-2026-10-02.md](../docs/audits/foreign-config-h1-2026-10-02.md) |
-| [ ]   | [**H2** YAML round-trip (comments survive)](execution-wave-3.md#h2)                                       | IMPLEMENTED | —                                               | `state/yaml-edit` adapter (targeted setIn; styled stringify; 5 coded non-mutating refusals); 18 frozen fixtures + byte goldens; 29 new tests, 73 over touched paths; kernel-update rewired; [yaml-round-trip-h2-2026-10-02.md](../docs/audits/yaml-round-trip-h2-2026-10-02.md) |
-| [ ]   | [**H4** Redacted config preview and reversible apply](execution-wave-3.md#h4)                             | OPEN        | H1,H2,H3                                        | dry-run, secret-safe diff, fault rollback on Windows/POSIX                         |
-| [ ]   | [**H5** Tiered help](execution-wave-3.md#h5)                                                              | IMPLEMENTED | —                                               | three help depths (`--help-mode` simple/default/full) over one live registry; width clamps 56–100 (default 80); unclassified commands fail open; full mode lists inherited root options and wraps the depths pointer; unknown-command suggestion fixed in `usage-error`; 13 cases, 5/5 mutants red, CLI suite 471 pass; tsc/prettier/check-doc-claims clean; [tiered-help-h5-2026-10-03.md](../docs/audits/tiered-help-h5-2026-10-03.md) · `6a7db4a1` |
-| [ ]   | [**H6** Command-hint graph](execution-wave-3.md#h6)                                                       | OPEN        | H5                                              | hint rendering tests                                                               |
-| [ ]   | [**H7** Levenshtein arg suggestions](execution-wave-3.md#h7)                                              | IMPLEMENTED | —                                               | `test/usage-error.test.ts`: typo, ambiguity, distance and no-echo cases            |
-| [ ]   | [**I6** Payload audit compaction](execution-wave-3.md#i6)                                                 | IMPLEMENTED | I1 ✅                                           | redact-then-digest `details` under a documented 2048-byte ceiling (correlation verbatim, bodies size+hash); nested-error and circular-payload fixes; reader untouched (bounds intact); 20 new cases, 39 over the audit suites, 4/5 mutations red; [audit-compaction-i6-2026-10-02.md](../docs/audits/audit-compaction-i6-2026-10-02.md) |
-| [ ]   | [**J2** Actions SHA pinning](execution-wave-3.md#j2)                                                      | IMPLEMENTED | —                                               | 45 external uses pinned to full SHAs + release comments; scanner + allow-list + 9 negative fixtures gate in ci.yml; actionlint 0 errors; see [actions-pinning-j2-2026-10-02.md](../docs/audits/actions-pinning-j2-2026-10-02.md) |
-| [ ]   | [**J3** Coverage instrumentation](execution-wave-3.md#j3)                                                 | OPEN        | —                                               | threshold gate green                                                               |
-| [ ]   | [**J4** retry:0 flake lane](execution-wave-3.md#j4)                                                       | IMPLEMENTED | —                                               | `flake-lane.yml` (daily 03:40 UTC cron + dispatch; Linux core/server/web/cli + macOS/Windows core; every vitest `--retry=0`, Playwright `--retries=0 --repeat-each=1 --trace=retain-on-failure`; first-attempt logs + traces kept 14 days; no shell re-run); retry probe fails attempt 1 / passes attempt 2 under an inherited `retry: 2`, so the lane's self-check proves effective retry 0 (A/B: exit 0 masked vs exit 1 caught); `scripts/check-flake-lane.mjs` + 18 cases gate the lane from ci.yml; actionlint + J2 pins clean; lane is not in the `ci` aggregate; [flake-lane-j4-2026-10-03.md](../docs/audits/flake-lane-j4-2026-10-03.md) |
-| [ ]   | [**J5** Desktop Electron smoke](execution-wave-3.md#j5)                                                   | OPEN        | —                                               | `_electron` test                                                                   |
-| [ ]   | [**J7** 3-variant Dockerfiles](execution-wave-3.md#j7)                                                    | OPEN        | —                                               | all three build                                                                    |
-| [ ]   | [**J8** AGENTS.md constitution (4 rules)](execution-wave-3.md#j8)                                         | IMPLEMENTED | —                                               | four tracked rules — boundary, evidence, incremental landing + external-action authorization, provenance/refusals — in `docs/policies/agent-contribution-rules.md`, pointed to from both CONTRIBUTING guides and the development skill (lock re-pinned); 39 links / 8 anchors / 49 paths ground clean in a tracked-files-only checkout, four scenario decisions recorded; [agent-constitution-j8-2026-10-03.md](../docs/audits/agent-constitution-j8-2026-10-03.md) |
-| [ ]   | [**J9** Postmortem template + checklists](execution-wave-3.md#j9)                                         | IMPLEMENTED | —                                               | `docs/postmortems/TEMPLATE.md` — 11 required fields (timezoned timeline, affected SHA, impact, detection, causes vs contributing factors, response, raw proof, owned follow-ups, rollback, acceptance evidence) + incident and release checklists + the five review negatives; filled 2026-10-02 CI-lane example keeps observed facts, the flake hypothesis and pending repairs apart with four owned follow-ups; 9 links/4 anchors ground clean; [postmortem-template-j9-2026-10-03.md](../docs/audits/postmortem-template-j9-2026-10-03.md) |
-| [ ]   | [**C10** Session briefing injection (confirmed, non-stale, ≤1,200 tokens)](execution-wave-3.md#c10)       | OPEN        | R0, R2a, R1b, R8, K18                           | scope/trust/budget/injection tests                                                 |
-| [ ]   | [**C11** Source-revision-driven finding staleness](execution-wave-3.md#c11)                               | OPEN        | R0, R2a, R1b; C5/C6 or bounded D7 revision seam | content-change vs touch-only tests                                                 |
-| [ ]   | [**C12** Findings chat-native surface (composer action + badge + drill-through)](execution-wave-3.md#c12) | OPEN        | C1, R8                                          | web unit + e2e flow                                                                |
-| [ ]   | [**K18** Verification workflow gating briefings (user-actor confirm/refute)](execution-wave-3.md#k18)     | OPEN        | R1b, R8                                         | override-dialog + strict-briefing tests                                            |
-| [ ]   | [**D11** Impact-aware write advisory (≤1 line, cache-hit only)](execution-wave-3.md#d11)                  | OPEN        | D4b or fresh regex impact; R6, D9               | notice presence/absence tests                                                      |
-| [ ]   | [**J12** PR annotations (coverage, stale docs, verified findings-on-diff)](execution-wave-3.md#j12)       | OPEN        | J3, J11, R1b                                    | untrusted-path/fork-permission fixture tests                                       |
-| [ ]   | [**G8** Skills doctor + health badges](execution-wave-3.md#g8)                                            | OPEN        | G1, G3; G2 routing and G6 capability producers  | doctor exit codes + badge mapping                                                  |
+| Check | Task / execution card | State | Requires | Evidence / remaining acceptance |
+| --- | --- | --- | --- | --- |
+| [ ] | [**D1** Optional lazy TS/JS grammar pack + manifest](execution-wave-3.md#d1) | OPEN | — | pinned assets, license/hash manifest, missing-asset fallback and resource baseline |
+| [ ] | [**D2** .scm packs TS/JS + extractor→IR](execution-wave-3.md#d2) | OPEN | D1 | CONTRACT 6-behavior goldens |
+| [ ] | [**D3** Optional language packs python/go/rust/java](execution-wave-3.md#d3) | OPEN | D10 | per-language goldens and rerun quality/resource gate before each promotion |
+| [ ] | [**D4a** Symbol table + import resolution](execution-wave-3.md#d4a) | OPEN | D2 | cross-file edges; homonym clamp |
+| [ ] | [**D4b** Call-resolution ladder + overload scoring](execution-wave-3.md#d4b) | OPEN | D4a | fixture per step; zero fake edges |
+| [ ] | [**D5** callstack-diff + graph_diff tool](execution-wave-3.md#d5) | OPEN | D4b | LCS/entry-inference tests |
+| [x] | [**D6** git-snapshot reader](execution-wave-3.md#d6) | VERIFIED | — | guarantees inventoried to assertions; 6 new cases (invalid revision, maxEntries/maxTreeBytes bounds, all Git env overrides at once, bare-repo read, index bytes unchanged); reader contract on the class; 87 codegraph tests; [git-snapshot-reader-d6-2026-10-02.md](../docs/audits/git-snapshot-reader-d6-2026-10-02.md) |
+| [ ] | [**D7** GraphStore interface + versioning](execution-wave-3.md#d7) | IMPLEMENTED | D4a | migration, corruption, interruption and concurrent-reader fixtures |
+| [ ] | [**D8** Seeded Louvain + god nodes](execution-wave-3.md#d8) | OPEN | D4b | byte-identical runs |
+| [ ] | [**D9** Tool-surface upgrade (explore-first/budgets/formatters/hints)](execution-wave-3.md#d9) | OPEN | D5,D8 | budget + hint tests |
+| [ ] | [**D10** Benchmark: AST vs regex (quality/resource gate)](execution-wave-3.md#d10) | OPEN | D9 | frozen five-scenario corpus, false-edge/precision/recall and resource table |
+| [ ] | [**C1** Findings cockpit UI](execution-wave-3.md#c1) | OPEN | R2b | 8 routes + a11y + demo transcript |
+| [ ] | [**C2** Memory recall baseline and opt-in policy boundary](execution-wave-3.md#c2) | OPEN | R7 | frozen recall/write/latency baseline; no destructive default policy |
+| [ ] | [**C3** Consolidation runner](execution-wave-3.md#c3) | OPEN | C2 | gates fire exactly at thresholds; no unproven retention enablement |
+| [ ] | [**C4** RRF hybrid retrieval](execution-wave-3.md#c4) | OPEN | C3 | reference fixtures |
+| [ ] | [**C5** Bitemporal edges + asOf](execution-wave-3.md#c5) | OPEN | C4 | last-week reconstruction |
+| [ ] | [**C6** Supersession cascade → stale](execution-wave-3.md#c6) | OPEN | C5 | 0.7/0.4 thresholds |
+| [ ] | [**C7** Influence receipts](execution-wave-3.md#c7) | OPEN | R1b | round-trip test |
+| [ ] | [**C9** MEMORY.md ⇄ findings interop](execution-wave-3.md#c9) | OPEN | C1 | round-trip test |
+| [ ] | [**F2** Shared clock](execution-wave-3.md#f2) | IMPLEMENTED | — | one page-scoped timer (multi-cadence, visibility wakeup, last-subscriber cleanup); 7 display tickers migrated; key-health cooldown now converges after sleep; 12 clock cases + 3 source pins; [shared-clock-f2-2026-10-02.md](../docs/audits/shared-clock-f2-2026-10-02.md) |
+| [ ] | [**F4** Nav-collapse migration](execution-wave-3.md#f4) | OPEN | — | web + e2e nav |
+| [ ] | [**F5** Dock tab dedup](execution-wave-3.md#f5) | OPEN | — | e2e dock |
+| [ ] | [**F8** Contrast module + token-colors fixes](execution-wave-3.md#f8) | IMPLEMENTED | — | `lib/contrast` primitives (alpha compositing + role requirements incl. explicit disabled exemption); two measured gutter failures fixed (2.54→4.83, 2.78→8.27); 4 mutations red; [contrast-f8-2026-10-02.md](../docs/audits/contrast-f8-2026-10-02.md) |
+| [ ] | [**F9** Calendar grid + ticket nested button](execution-wave-3.md#f9) | OPEN | — | a11y checks |
+| [ ] | [**F7a** Sidebar split step 4](execution-wave-3.md#f7a) | OPEN | F4,F5 | verbatim-check script |
+| [ ] | [**F7b** ChatInput split](execution-wave-3.md#f7b) | OPEN | — | verbatim-check + web suite |
+| [ ] | [**F7c** Workspace-browser split](execution-wave-3.md#f7c) | OPEN | — | verbatim-check + web suite |
+| [ ] | [**G2** Skill routing probes](execution-wave-3.md#g2) | IMPLEMENTED | G1 | 12-probe frozen corpus (hashes + bounded candidate sets) run through the real resolver; 4 mutation fixtures + drift check; gate in skill-integrity.yml with JSON artifact; see [skill-routing-probes-g2-2026-10-02.md](../docs/audits/skill-routing-probes-g2-2026-10-02.md) |
+| [ ] | [**G6** Skill capability manifests](execution-wave-3.md#g6) | OPEN | G1 | named scripts declare + pass |
+| [ ] | [**H1** foreign-config contract](execution-wave-3.md#h1) | IMPLEMENTED | H3 | ownership/version/transaction contract + fixture matrix (unmanaged, version, changed-since-preview x2, permission, rename, readback, symlink; byte-exact restore); see [foreign-config-h1-2026-10-02.md](../docs/audits/foreign-config-h1-2026-10-02.md) |
+| [ ] | [**H2** YAML round-trip (comments survive)](execution-wave-3.md#h2) | IMPLEMENTED | — | `state/yaml-edit` adapter (targeted setIn; styled stringify; 5 coded non-mutating refusals); 18 frozen fixtures + byte goldens; 29 new tests, 73 over touched paths; kernel-update rewired; [yaml-round-trip-h2-2026-10-02.md](../docs/audits/yaml-round-trip-h2-2026-10-02.md) |
+| [ ] | [**H4** Redacted config preview and reversible apply](execution-wave-3.md#h4) | OPEN | H1,H2,H3 | dry-run, secret-safe diff, fault rollback on Windows/POSIX |
+| [ ] | [**H5** Tiered help](execution-wave-3.md#h5) | IMPLEMENTED | — | three help depths (`--help-mode` simple/default/full) over one live registry; width clamps 56–100 (default 80); unclassified commands fail open; full mode lists inherited root options and wraps the depths pointer; unknown-command suggestion fixed in `usage-error`; 13 cases, 5/5 mutants red, CLI suite 471 pass; tsc/prettier/check-doc-claims clean; [tiered-help-h5-2026-10-03.md](../docs/audits/tiered-help-h5-2026-10-03.md) · `6a7db4a1` |
+| [ ] | [**H6** Command-hint graph](execution-wave-3.md#h6) | OPEN | H5 | hint rendering tests |
+| [ ] | [**H7** Levenshtein arg suggestions](execution-wave-3.md#h7) | IMPLEMENTED | — | `test/usage-error.test.ts`: typo, ambiguity, distance and no-echo cases |
+| [ ] | [**I6** Payload audit compaction](execution-wave-3.md#i6) | IMPLEMENTED | I1 ✅ | redact-then-digest `details` under a documented 2048-byte ceiling (correlation verbatim, bodies size+hash); nested-error and circular-payload fixes; reader untouched (bounds intact); 20 new cases, 39 over the audit suites, 4/5 mutations red; [audit-compaction-i6-2026-10-02.md](../docs/audits/audit-compaction-i6-2026-10-02.md) |
+| [ ] | [**J2** Actions SHA pinning](execution-wave-3.md#j2) | IMPLEMENTED | — | 45 external uses pinned to full SHAs + release comments; scanner + allow-list + 9 negative fixtures gate in ci.yml; actionlint 0 errors; see [actions-pinning-j2-2026-10-02.md](../docs/audits/actions-pinning-j2-2026-10-02.md) |
+| [ ] | [**J3** Coverage instrumentation](execution-wave-3.md#j3) | OPEN | — | threshold gate green |
+| [ ] | [**J4** retry:0 flake lane](execution-wave-3.md#j4) | IMPLEMENTED | — | `flake-lane.yml` (daily 03:40 UTC cron + dispatch; Linux core/server/web/cli + macOS/Windows core; every vitest `--retry=0`, Playwright `--retries=0 --repeat-each=1 --trace=retain-on-failure`; first-attempt logs + traces kept 14 days; no shell re-run); retry probe fails attempt 1 / passes attempt 2 under an inherited `retry: 2`, so the lane's self-check proves effective retry 0 (A/B: exit 0 masked vs exit 1 caught); `scripts/check-flake-lane.mjs` + 18 cases gate the lane from ci.yml; actionlint + J2 pins clean; lane is not in the `ci` aggregate; [flake-lane-j4-2026-10-03.md](../docs/audits/flake-lane-j4-2026-10-03.md) |
+| [ ] | [**J5** Desktop Electron smoke](execution-wave-3.md#j5) | OPEN | — | `_electron` test |
+| [ ] | [**J7** 3-variant Dockerfiles](execution-wave-3.md#j7) | OPEN | — | all three build |
+| [ ] | [**J8** AGENTS.md constitution (4 rules)](execution-wave-3.md#j8) | IMPLEMENTED | — | four tracked rules — boundary, evidence, incremental landing + external-action authorization, provenance/refusals — in `docs/policies/agent-contribution-rules.md`, pointed to from both CONTRIBUTING guides and the development skill (lock re-pinned); 39 links / 8 anchors / 49 paths ground clean in a tracked-files-only checkout, four scenario decisions recorded; [agent-constitution-j8-2026-10-03.md](../docs/audits/agent-constitution-j8-2026-10-03.md) |
+| [ ] | [**J9** Postmortem template + checklists](execution-wave-3.md#j9) | IMPLEMENTED | — | `docs/postmortems/TEMPLATE.md` — 11 required fields (timezoned timeline, affected SHA, impact, detection, causes vs contributing factors, response, raw proof, owned follow-ups, rollback, acceptance evidence) + incident and release checklists + the five review negatives; filled 2026-10-02 CI-lane example keeps observed facts, the flake hypothesis and pending repairs apart with four owned follow-ups; 9 links/4 anchors ground clean; [postmortem-template-j9-2026-10-03.md](../docs/audits/postmortem-template-j9-2026-10-03.md) |
+| [ ] | [**C10** Session briefing injection (confirmed, non-stale, ≤1,200 tokens)](execution-wave-3.md#c10) | OPEN | R0, R2a, R1b, R8, K18 | scope/trust/budget/injection tests |
+| [ ] | [**C11** Source-revision-driven finding staleness](execution-wave-3.md#c11) | OPEN | R0, R2a, R1b; C5/C6 or bounded D7 revision seam | content-change vs touch-only tests |
+| [ ] | [**C12** Findings chat-native surface (composer action + badge + drill-through)](execution-wave-3.md#c12) | OPEN | C1, R8 | web unit + e2e flow |
+| [ ] | [**K18** Verification workflow gating briefings (user-actor confirm/refute)](execution-wave-3.md#k18) | OPEN | R1b, R8 | override-dialog + strict-briefing tests |
+| [ ] | [**D11** Impact-aware write advisory (≤1 line, cache-hit only)](execution-wave-3.md#d11) | OPEN | D4b or fresh regex impact; R6, D9 | notice presence/absence tests |
+| [ ] | [**J12** PR annotations (coverage, stale docs, verified findings-on-diff)](execution-wave-3.md#j12) | OPEN | J3, J11, R1b | untrusted-path/fork-permission fixture tests |
+| [ ] | [**G8** Skills doctor + health badges](execution-wave-3.md#g8) | OPEN | G1, G3; G2 routing and G6 capability producers | doctor exit codes + badge mapping |
 
 ## Wave 4
 
-| Check | Task / execution card                                                                                   | State | Requires                                     | Proof / remaining acceptance                                                            |
-| ----- | ------------------------------------------------------------------------------------------------------- | ----- | -------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [ ]   | [**A7** CanonicalUsage + Anthropic healing](execution-wave-4.md#a7)                                     | OPEN  | —                                            | usage tests                                                                             |
-| [ ]   | [**A8** Token estimator + calibration](execution-wave-4.md#a8)                                          | OPEN  | —                                            | estimator tests                                                                         |
-| [ ]   | [**A9** Content-addressed session fingerprinting](execution-wave-4.md#a9)                               | OPEN  | —                                            | fingerprint tests                                                                       |
-| [ ]   | [**K4** Self-diagnosing failure mode (failureTrace)](execution-wave-4.md#k4)                            | OPEN  | A1,A2,B2; I1 redaction                       | failure-story test                                                                      |
-| [ ]   | [**K2** Cost ledger + `penguin why`](execution-wave-4.md#k2)                                            | OPEN  | A7,A8; I1 redaction                          | decomposition demo                                                                      |
-| [ ]   | [**K3** Trustworthy CLI configurator](execution-wave-4.md#k3)                                           | OPEN  | H1,H2,H3,H4                                  | configure E2E                                                                           |
-| [ ]   | [**K1a** Turn ledger core](execution-wave-4.md#k1a)                                                     | OPEN  | A5,A9; I1 redaction                          | resume test                                                                             |
-| [ ]   | [**K1b** Cross-protocol resume demo](execution-wave-4.md#k1b)                                           | OPEN  | K1a                                          | provider-switch demo                                                                    |
-| [ ]   | [**K5** Tool-schema normalisation surface](execution-wave-4.md#k5)                                      | OPEN  | —                                            | corpus fixtures (cluster-A #7 pattern)                                                  |
-| [ ]   | [**K14a** Permission-plane adapter design note](execution-wave-4.md#k14a)                               | OPEN  | K5                                           | one authoritative approval trace for direct/retry/delegated calls                       |
-| [ ]   | [**K14b** ToolRouter + permission vocabulary](execution-wave-4.md#k14b)                                 | OPEN  | K14a                                         | gate-ladder tests                                                                       |
-| [ ]   | [**K6** Interruption politeness (digest/preferences/conditions)](execution-wave-4.md#k6)                | OPEN  | E9                                           | digest coalescing test                                                                  |
-| [ ]   | [**K7** HITL suspend/resume plane](execution-wave-4.md#k7)                                              | OPEN  | E3                                           | suspend→resume E2E                                                                      |
-| [ ]   | [**K8** Eval plane + scorers-as-loop-guards + skill-evals](execution-wave-4.md#k8)                      | OPEN  | C4                                           | gate/threshold tests                                                                    |
-| [ ]   | [**K9** Fleet state machine + worktree-per-agent](execution-wave-4.md#k9)                               | OPEN  | —                                            | slot-state tests                                                                        |
-| [ ]   | [**K10** Rules engine + context providers + system-message tools](execution-wave-4.md#k10)              | OPEN  | —                                            | per-plane tests                                                                         |
-| [ ]   | [**K11a** Orchestration contract note](execution-wave-4.md#k11a)                                        | OPEN  | K8                                           | note approved                                                                           |
-| [ ]   | [**K11b** Orchestration implementation](execution-wave-4.md#k11b)                                       | OPEN  | K11a                                         | WorkRouter composition tests                                                            |
-| [ ]   | [**K12** Agent-ops dashboards](execution-wave-4.md#k12)                                                 | OPEN  | C1                                           | UI + a11y                                                                               |
-| [ ]   | [**K13** PiX graph-of-turns + patch codec](execution-wave-4.md#k13)                                     | OPEN  | K1b                                          | codec round-trip                                                                        |
-| [ ]   | [**K16a** Audit-protocol mapping (existing status + labels + checklist data)](execution-wave-4.md#k16a) | OPEN  | R1b                                          | compatibility and mapping tests; no new candidate status by default                     |
-| [ ]   | [**K16b** Versioned checklist verification in tooling](execution-wave-4.md#k16b)                        | OPEN  | K16a                                         | new verified label checklist-gated; legacy confirm evidence-gated and marked unverified |
-| [ ]   | [**K17** Benchmark ledger + README section](execution-wave-4.md#k17)                                    | OPEN  | D10,C4; R0,R2a,R1b,R8 for open auto-findings | README renders from ledger                                                              |
-| [ ]   | [**F10a** Semantic-token measurement (live site count)](execution-wave-4.md#f10a)                       | OPEN  | F8                                           | contrast/migration cost report against [Q6](contracts.md#selected-decisions-q1q8)       |
-| [ ]   | [**F10b.1** Conditional semantic token map](execution-wave-4.md#f10b.1)                                 | OPEN  | F10a                                         | Q6 gate, alias/state and contrast receipts                                              |
-| [ ]   | [**F10b.2** Component-family migration](execution-wave-4.md#f10b.2)                                     | OPEN  | F10b.1                                       | per-family screenshots and keyboard review                                              |
-| [ ]   | [**F10b.3** Obsolete-token cleanup](execution-wave-4.md#f10b.3)                                         | OPEN  | F10b.2                                       | dynamic usage search and visual pass                                                    |
-| [ ]   | [**F11a** Topology signals and store](execution-wave-4.md#f11a)                                         | OPEN  | —                                            | stable identity and update tests                                                        |
-| [ ]   | [**F11b** Topology culling and camera](execution-wave-4.md#f11b)                                        | OPEN  | F11a                                         | large graph, viewport and reduced-motion tests                                          |
-| [ ]   | [**F11c** Topology elbow routing](execution-wave-4.md#f11c)                                             | OPEN  | F11b                                         | deterministic geometry tests                                                            |
-| [ ]   | [**F12a** Workflow graph model](execution-wave-4.md#f12a)                                               | OPEN  | K11b                                         | state/event mapping tests                                                               |
-| [ ]   | [**F12b** Workflow renderer](execution-wave-4.md#f12b)                                                  | OPEN  | F12a                                         | narrow viewport and keyboard tests                                                      |
-| [ ]   | [**F13a** Authorized export DTO](execution-wave-4.md#f13a)                                              | OPEN  | I1 redaction/export coverage                 | contract and scope tests                                                                |
-| [ ]   | [**F13b** PPTX/PDF/print renderers](execution-wave-4.md#f13b)                                           | OPEN  | F13a                                         | artifact goldens and print review                                                       |
-| [ ]   | [**F13c** Export queue](execution-wave-4.md#f13c)                                                       | OPEN  | F13b                                         | restart, cancel, auth and retention tests                                               |
-| [ ]   | [**F14** Cowork UX (badge/reconciliation/warmup/queue)](execution-wave-4.md#f14)                        | OPEN  | K9                                           | UI tests                                                                                |
-| [ ]   | [**F15** Chart architecture + palettes](execution-wave-4.md#f15)                                        | OPEN  | F8                                           | chart a11y                                                                              |
-| [ ]   | [**J13** Health → alerting (deduped degradations)](execution-wave-4.md#j13)                             | OPEN  | E8, E9, K6                                   | K6 notification/recovery tests; Wave 2 health remains separate                          |
+| Check | Task / execution card | State | Requires | Evidence / remaining acceptance |
+| --- | --- | --- | --- | --- |
+| [ ] | [**A7** CanonicalUsage + Anthropic healing](execution-wave-4.md#a7) | OPEN | — | usage tests |
+| [ ] | [**A8** Token estimator + calibration](execution-wave-4.md#a8) | OPEN | — | estimator tests |
+| [ ] | [**A9** Content-addressed session fingerprinting](execution-wave-4.md#a9) | OPEN | — | fingerprint tests |
+| [ ] | [**K4** Self-diagnosing failure mode (failureTrace)](execution-wave-4.md#k4) | OPEN | A1,A2,B2; I1 redaction | failure-story test |
+| [ ] | [**K2** Cost ledger + `penguin why`](execution-wave-4.md#k2) | OPEN | A7,A8; I1 redaction | decomposition demo |
+| [ ] | [**K3** Trustworthy CLI configurator](execution-wave-4.md#k3) | OPEN | H1,H2,H3,H4 | configure E2E |
+| [ ] | [**K1a** Turn ledger core](execution-wave-4.md#k1a) | OPEN | A5,A9; I1 redaction | resume test |
+| [ ] | [**K1b** Cross-protocol resume demo](execution-wave-4.md#k1b) | OPEN | K1a | provider-switch demo |
+| [ ] | [**K5** Tool-schema normalisation surface](execution-wave-4.md#k5) | OPEN | — | corpus fixtures (cluster-A #7 pattern) |
+| [ ] | [**K14a** Permission-plane adapter design note](execution-wave-4.md#k14a) | OPEN | K5 | one authoritative approval trace for direct/retry/delegated calls |
+| [ ] | [**K14b** ToolRouter + permission vocabulary](execution-wave-4.md#k14b) | OPEN | K14a | gate-ladder tests |
+| [ ] | [**K6** Interruption politeness (digest/preferences/conditions)](execution-wave-4.md#k6) | OPEN | E9 | digest coalescing test |
+| [ ] | [**K7** HITL suspend/resume plane](execution-wave-4.md#k7) | OPEN | E3 | suspend→resume E2E |
+| [ ] | [**K8** Eval plane + scorers-as-loop-guards + skill-evals](execution-wave-4.md#k8) | OPEN | C4 | gate/threshold tests |
+| [ ] | [**K9** Fleet state machine + worktree-per-agent](execution-wave-4.md#k9) | OPEN | — | slot-state tests |
+| [ ] | [**K10** Rules engine + context providers + system-message tools](execution-wave-4.md#k10) | OPEN | — | per-plane tests |
+| [ ] | [**K11a** Orchestration contract note](execution-wave-4.md#k11a) | OPEN | K8 | note approved |
+| [ ] | [**K11b** Orchestration implementation](execution-wave-4.md#k11b) | OPEN | K11a | WorkRouter composition tests |
+| [ ] | [**K12** Agent-ops dashboards](execution-wave-4.md#k12) | OPEN | C1 | UI + a11y |
+| [ ] | [**K13** PiX graph-of-turns + patch codec](execution-wave-4.md#k13) | OPEN | K1b | codec round-trip |
+| [ ] | [**K16a** Audit-protocol mapping (existing status + labels + checklist data)](execution-wave-4.md#k16a) | OPEN | R1b | compatibility and mapping tests; no new candidate status by default |
+| [ ] | [**K16b** Versioned checklist verification in tooling](execution-wave-4.md#k16b) | OPEN | K16a | new verified label checklist-gated; legacy confirm evidence-gated and marked unverified |
+| [ ] | [**K17** Benchmark ledger + README section](execution-wave-4.md#k17) | OPEN | D10,C4; R0,R2a,R1b,R8 for open auto-findings | README renders from ledger |
+| [ ] | [**F10a** Semantic-token measurement (live site count)](execution-wave-4.md#f10a) | OPEN | F8 | contrast/migration cost report against [Q6](contracts.md#selected-decisions-q1q8) |
+| [ ] | [**F10b.1** Conditional semantic token map](execution-wave-4.md#f10b.1) | OPEN | F10a | Q6 gate, alias/state and contrast receipts |
+| [ ] | [**F10b.2** Component-family migration](execution-wave-4.md#f10b.2) | OPEN | F10b.1 | per-family screenshots and keyboard review |
+| [ ] | [**F10b.3** Obsolete-token cleanup](execution-wave-4.md#f10b.3) | OPEN | F10b.2 | dynamic usage search and visual pass |
+| [ ] | [**F11a** Topology signals and store](execution-wave-4.md#f11a) | OPEN | — | stable identity and update tests |
+| [ ] | [**F11b** Topology culling and camera](execution-wave-4.md#f11b) | OPEN | F11a | large graph, viewport and reduced-motion tests |
+| [ ] | [**F11c** Topology elbow routing](execution-wave-4.md#f11c) | OPEN | F11b | deterministic geometry tests |
+| [ ] | [**F12a** Workflow graph model](execution-wave-4.md#f12a) | OPEN | K11b | state/event mapping tests |
+| [ ] | [**F12b** Workflow renderer](execution-wave-4.md#f12b) | OPEN | F12a | narrow viewport and keyboard tests |
+| [ ] | [**F13a** Authorized export DTO](execution-wave-4.md#f13a) | OPEN | I1 redaction/export coverage | contract and scope tests |
+| [ ] | [**F13b** PPTX/PDF/print renderers](execution-wave-4.md#f13b) | OPEN | F13a | artifact goldens and print review |
+| [ ] | [**F13c** Export queue](execution-wave-4.md#f13c) | OPEN | F13b | restart, cancel, auth and retention tests |
+| [ ] | [**F14** Cowork UX (badge/reconciliation/warmup/queue)](execution-wave-4.md#f14) | OPEN | K9 | UI tests |
+| [ ] | [**F15** Chart architecture + palettes](execution-wave-4.md#f15) | OPEN | F8 | chart a11y |
+| [ ] | [**J13** Health → alerting (deduped degradations)](execution-wave-4.md#j13) | OPEN | E8, E9, K6 | K6 notification/recovery tests; Wave 2 health remains separate |
 
 ## Shared closure gates
 
-- [ ] Every original task and all added repair orders have criterion-by-criterion evidence or a specifically authorized, evidenced conditional disposition.
-- [ ] Phase R review findings F1–F7/N1–N12 have explicit resolved/declined mappings.
-- [ ] A1 decision corpus, A4 policy table, B3 raw savings/drop table and E2 adjudication are accepted.
-- [ ] D10's frozen quality/resource decision and required findings/config/strategic demos are recorded.
-- [ ] Required candidate-SHA CI, audit, review, migration/rollback and claims checks pass.
-- [ ] Temporary processes and generated debris from the run are cleaned according to local instructions.
+- [ ] All 150 tasks and added repair orders have criterion-by-criterion acceptance.
+- [ ] PR #12 review labels F1–F7/N1–N12 have retained mappings and explicit dispositions.
+- [ ] A1 corpus, A4 policy table, B3 savings/drop table, and E2 adjudication are accepted.
+- [ ] D10's frozen quality/resource decision and findings/configuration/strategic demos are accepted.
+- [ ] Required candidate CI, audit, review, claims, migration, and rollback gates pass.
+- [ ] Current PR repairs are accepted and the contained stack is reconciled after merge.
+- [ ] Run-owned processes and disposable output are cleaned according to local instructions.
 
-See [the audit receipts](../docs/audits/) for original local and historical evidence. The
-[v3 task snapshot](archive/todo-v3-2026-10-02.md) preserves all earlier progress paragraphs.
-When updating a state, cite a new receipt; update dependencies here and in the card together.
+[Dated receipts](../docs/audits/) retain historical results. Update rows and affected cards together
+when dependencies change. A green aggregate CI job or a rewrite does not establish phase completion.

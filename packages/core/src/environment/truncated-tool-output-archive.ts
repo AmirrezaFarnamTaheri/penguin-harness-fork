@@ -803,7 +803,10 @@ export class TruncatedToolOutputArchive {
         },
       };
     }
-    if (decision.action === "block") return { blocked: true, warning: null };
+    if (decision.action === "block") {
+      process.stderr.write(`[penguin] ${decision.signal}: ${decision.reason}\n`);
+      return { blocked: true, warning: null };
+    }
     if (decision.action === "warn" && decision.signal !== null) {
       return {
         blocked: false,

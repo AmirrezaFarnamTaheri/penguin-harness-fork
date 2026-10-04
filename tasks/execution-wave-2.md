@@ -1,9 +1,13 @@
 # Wave 2 — Core hardening execution cards
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Read [implementation-guide.md](implementation-guide.md) first. State is recorded only in
 [todo.md](todo.md). Inspect existing implementations before extending them. Dependencies gate
 consumer integration; independent discovery and fixtures may run across all phases in parallel.
-The current release failures are separate [CI orders](work-orders.md).
+Current release repairs are recorded separately in [work orders](work-orders.md#review-repair-orders).
 
 ## Verification lanes used below
 

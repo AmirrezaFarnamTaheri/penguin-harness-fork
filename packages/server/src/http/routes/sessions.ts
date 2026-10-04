@@ -708,8 +708,9 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
     // entry and Trace after abort but before the files are deleted, reviving an
     // already-deleted Session. Interrupt cleanup writes the Trace asynchronously, so we
     // wait for it to finish (≤5s cap) before deleting the files and index row; the
-    // being-deleted marker is cleared once deletion finishes (success or failure).
+    // The deleting marker and resources survive a pending/failed cleanup for a later retry.
     const runnings = deps.manager.beginSessionDeletion(row.sessionId);
+    let cleanupComplete = false;
     try {
       // Work the Session spawned does not outlive it (E10.3): a swarm task started from this
       // conversation keeps running on the project coordinator otherwise, invisible and
@@ -723,19 +724,26 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       if (runnings.length > 0) waits.push(Promise.allSettled(runnings).then(() => undefined));
       if (waits.length > 0) {
         let timedOut = false;
-        await Promise.race([
-          Promise.all(waits).then(() => undefined),
-          new Promise<void>((resolve) =>
-            setTimeout(() => {
-              timedOut = true;
-              resolve();
-            }, 5000).unref?.(),
-          ),
-        ]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            Promise.all(waits).then(() => undefined),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(() => {
+                timedOut = true;
+                resolve();
+              }, 5000);
+              timer.unref?.();
+            }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
         if (timedOut) {
-          const unfinished = swarm.stopped > 0 ? "a swarm task" : "a Session run";
-          console.warn(
-            `[penguin] session ${row.sessionId} deletion proceeded after 5s with ${unfinished} still stopping`,
+          throw new HttpError(
+            503,
+            "session_cleanup_pending",
+            "Session work is still stopping. Its resources were retained; retry deletion after cleanup completes.",
           );
         }
       }
@@ -744,11 +752,20 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       // Session's files are going away next, so nothing else will ever be able to stop them.
       const disposeOutcome = await deps.manager.disposeOutcomeWithin(row.sessionId, 5000);
       if (disposeOutcome === "dispose-failed") {
-        console.warn(
-          `[penguin] session ${row.sessionId} was deleted but its runtime cleanup failed; ` +
-            `background processes it started may still be running (disposeFailureCount=${deps.manager.disposeFailureCount})`,
+        throw new HttpError(
+          503,
+          "session_cleanup_failed",
+          "Session runtime cleanup failed. Its resources were retained; retry deletion to retry cleanup.",
         );
       }
+      if (disposeOutcome === undefined && deps.manager.hasPendingSessionCleanup(row.sessionId)) {
+        throw new HttpError(
+          503,
+          "session_cleanup_pending",
+          "Session runtime cleanup is still pending. Its resources were retained; retry deletion after cleanup completes.",
+        );
+      }
+      cleanupComplete = true;
       await deps.traceService.deleteSessionTraces(row.projectId, row.agentId, row.sessionId);
       // The session-level scratchpad (model temp files + input images saved to disk for image-unsupported models) is deleted along with the session.
       await fs.rm(
@@ -764,7 +781,7 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       // may leave stale entries; session ids are never reused, so they are never matched).
       deps.sessionSources.delete(row.sessionId);
     } finally {
-      deps.manager.endSessionDeletion(row.sessionId);
+      if (cleanupComplete) deps.manager.endSessionDeletion(row.sessionId);
     }
     return c.body(null, 204);
   });

@@ -1,9 +1,13 @@
 # Wave 4 execution cards
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Read [the task index](todo.md), [implementation guide](implementation-guide.md), and
 [contracts and selected Q1–Q8 decisions](contracts.md) before claiming a package. Requirements
-come from the [v3 strategic inventory](archive/plan-v3-2026-10-02.md) and
-[v3 acceptance cards](archive/execution-cards-2-v3-2026-10-02.md); historical upstream labels
+come from the [v3 strategic inventory](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md) and
+[v3 acceptance cards](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/execution-cards-2-v3-2026-10-02.md); historical upstream labels
 are provenance, not permission to copy encumbered source. Follow the
 [porting boundary](../docs/policies/porting-and-refusals.md).
 

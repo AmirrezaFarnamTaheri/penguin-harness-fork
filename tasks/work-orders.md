@@ -1,179 +1,197 @@
-# Dispatch orders and immediate priorities
+# Work orders — current delivery queue
 
-This file turns [todo.md](todo.md) into concrete assignments. Re-evaluate priorities after a
-completed package, changed dependency, new CI result, or user correction. All five phases may
-run concurrently under the ownership and dependency rules in [plan.md](plan.md).
+Updated: 2026-10-04. Work branch: `codex/pr-15-review-fixes`.
+Reviewed PR #15 head: `9f589c721a7cf09c9fb7ec116319161e76218f7c`.
+The active request is: refresh documents first, fix reviewed defects, merge, then complete
+Phase R and Waves 1–4. [Todo](todo.md) is the status authority; cards define full acceptance.
 
 ## Current release incident
 
-Observed on 2026-10-02: PR #13 head `dcebeb20adb0aa0e246016a264eda11b67dea38d`,
-[CI run 36986918261](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/36986918261)
-completed with failure. Prettier, typecheck, build, audit, Ubuntu core/server, all server/rest
-platform lanes, web/CLI, installer and runtime lanes passed. The four failing cases below are
-the first repair orders. The aggregate `ci` job failed because its required lanes failed.
+PR #15 includes the changes in #13 and #14. Its reviewed head has green CI, but five defects
+remain in the [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md).
+Repairs exist locally and have not been accepted on a new candidate SHA.
+A separate high dependency advisory keeps SEC-01 open.
 
-<a id="ci-01"></a>
+Deliver one corrected consolidated candidate; preserve stack history. Do not merge the earlier
+failing heads independently. Review the changed source and exact candidate checks before merge.
 
-## CI-01 — Findings denied-I/O classification on macOS and Windows
+## Documentation-first order
 
-**Parent contracts:** R2c, R11. **Owner boundary:** one worker owns the store failure fixture;
-production edits, if reproduced, remain with the findings persistence owner.
+1. Rewrite plan, todo, work orders, and English/Chinese changelog summaries.
+2. Preserve every original task ID, card criterion, selected contract, and dated receipt.
+3. Remove superseded planning copies and replace inbound references with current cards or pinned history.
+4. Check ID counts, checkbox/state agreement, local links/anchors, references to removed files,
+   and formatting. This is document inspection, not runtime acceptance.
+5. Record changed/removed files and evidence limits in the refresh receipt.
+6. Resume the five repair orders below; update documents with actual results.
 
-1. <a id="ci-01.1"></a>**CI-01.1:** inspect `packages/core/test/knowledge/findings-store.test.ts`, especially
-   `fails closed when reading or quarantining is denied`, and the actual read/quarantine calls
-   in `packages/core/src/knowledge/store.ts`. Record which injected operation and error code each
-   platform executes. CI at line 227 expected `unreadable` and received `corrupt`.
-2. <a id="ci-01.2"></a>**CI-01.2:** isolate denied read from successfully read corrupt content and from denied
-   quarantine. Give each branch its own fixture and exact expected recovery reason; confirm
-   whether the cause is test injection, platform I/O behavior, or production classification.
-3. <a id="ci-01.3"></a>**CI-01.3:** repair the reproduced cause while preserving fail-closed writes, original bytes,
-   raw export behavior, and audited recovery. Prove no denied operation returns mutation success.
-4. <a id="ci-01.4"></a>**CI-01.4:** attach focused evidence and the macOS/Windows core job receipts on the candidate
-   SHA. Keep R2c/R11 open until their other criteria also pass.
+## Review repair orders
 
-**Done:** the two platform lanes pass this case with distinct, meaningful failure branches;
-changing the expected string alone is insufficient without the I/O-path proof.
-**Rollback:** independently revert the fixture/production repair; retain the branch adjudication.
+One integration owner holds the shared redactor, pressure store, Session deletion route/runtime,
+swarm coordinator, and guardian. Never overwrite another owner's concurrent edits.
 
-<a id="ci-02"></a>
+<a id="prr-01"></a>
 
-## CI-02 — Nested-directory watcher fallback on macOS
+### PRR-01 — Honest Session deletion after bounded cancellation
 
-**Parent contracts:** R6, codegraph resource discipline. **Owner boundary:** watcher source and
-`packages/core/test/code-graph-watcher.test.ts`; no concurrent edits to those files.
+**Parents:** E10, E6. **Files:** core swarm coordinator; server Session runtime and deletion route.
 
-1. <a id="ci-02.1"></a>**CI-02.1:** trace the non-recursive fallback's directory registration, file-change callback,
-   debounce, invalidation, and disposal. The named nested-directory observation case timed out
-   in `waitFor` after 4,000 ms on macOS; cite its source at the candidate revision.
-2. <a id="ci-02.2"></a>**CI-02.2:** prove the watcher is subscribed before the fixture mutation. Distinguish missing
-   subscription/event from a legitimate bounded debounce; inspect platform event semantics.
-3. <a id="ci-02.3"></a>**CI-02.3:** repair the lost registration/event or deterministic test synchronization, as
-   indicated by the reproducer. Preserve single-flight scans, watcher closes, capped caches,
-   subdirectory coverage and disposal/cancellation behavior.
-4. <a id="ci-02.4"></a>**CI-02.4:** verify the focused watcher suite and macOS core lane. Record why any timeout change
-   matches an observed contract rather than hiding lost events.
+1. Track raw handler completion independently of executor deadline races. Cancel owned queued
+   and active work and retain the per-Session cancellation latch.
+2. Abort the Session runtime before removing its files. Retain pending/failed cleanup state across
+   deletion retries; retry failed disposal without forgetting the runtime.
+3. Return typed 503 pending/failed errors when cleanup is unresolved. Retain row, files, and
+   deletion guard; return deletion success only after confirmed cleanup.
+4. Retain pending cleanup outcomes despite bounded history eviction. Shutdown must include
+   removed runtimes still awaiting cleanup.
+5. Accept cooperative cancellation, uncooperative handler timeout, late settlement, disposal
+   rejection/retry, and recreation refusal. Confirm no cleanup writes recreate removed files.
 
-**Done:** an actual nested-file change invalidates the graph in the fallback mode; cleanup
-closes every watcher created by the case. **Status update (2026-10-03):** the 4,000 ms native
-directory-removal wait timed out in run `37148746240`; it was widened to 10,000 ms while retaining
-the event-driven state-transition assertion. Focused `code-graph-watcher.test.ts` passes 15/15,
-and exact CI run `37149941481` passes the macOS core job `111281442461` and aggregate `ci`
-`111283961443` (21/21 jobs). CI-02 is revalidated as VERIFIED; no production watcher code
-changed. The earlier failure remains in the [follow-up receipt](../docs/audits/ci-repair-2026-10-02.md#reopened-ci-02). **Rollback:**
-revert this watcher slice independently.
+**Local state:** implemented; candidate acceptance pending.
+**Rollback:** revert the coordinator/runtime/route slice together; retain defect evidence.
 
-<a id="ci-03"></a>
+<a id="prr-02"></a>
 
-## CI-03 — Quota retry countdown and retry-now browser flow
+### PRR-02 — Credential masking for incomplete JSON trace tails
 
-**Parent contracts:** A3, A4; user-visible retry recovery.
-**Owner boundary:** `packages/web/e2e/llm-errors.spec.mjs` and its own mock scenario; coordinate
-mock-file ownership before editing `packages/web/e2e/mock-llm.mjs`.
+**Parent:** I1. **Files:** shared credential redactor and its trace read/export consumers.
 
-1. <a id="ci-03.1"></a>**CI-03.1:** capture the request-end `attempt`/`retry_in_ms` sequence, browser arrival times,
-   reconnect-line state, and mock request count. The attempt-2 countdown locator at line 92 is
-   absent at failure; the local focused run also failed after the recovery answer arrived.
-2. <a id="ci-03.2"></a>**CI-03.2:** trace the engine budget through `ReconnectItem` and `ReconnectLine`. Determine
-   whether the countdown is never rendered, rendered with a different contract, or missed by
-   test synchronization. Record this before editing source or expectations.
-3. <a id="ci-03.3"></a>**CI-03.3:** implement the demonstrated UI/state fix or stable synchronization with the real
-   retry event. Retain one visible line per ladder, a decreasing countdown, working retry-now,
-   and the final recovered answer. Use the policy's announced jitter; retain bounded delay checks.
-4. <a id="ci-03.4"></a>**CI-03.4:** prove retry-now sends before the scheduled wait expires, preserve both retryable
-   trace records/provider detail, and prove the composer remains usable with no abort record.
+1. Recognize sensitive JSON field names through the shared sensitive-key policy.
+2. Mask complete values, short opaque credentials, escaped field names, and a quoted value cut
+   at EOF, including a trailing escape character.
+3. Preserve ordinary fields and valid structured trace rendering. Do not expose raw fallback bytes.
+4. Accept complete/incomplete read and download paths using the same sentinel matrix.
 
-**Done:** the complete browser interaction passes in the full E2E lane and focused replay.
-The previous speculative locator-order change was reverted and supplies no completion evidence.
-**Rollback:** revert one test/UI slice; preserve trace compatibility and the policy budget.
+**Local state:** implemented; candidate acceptance pending.
+**Rollback:** revert the masking rule independently; keep disclosure finding open until repaired.
 
-<a id="ci-04"></a>
+<a id="prr-03"></a>
 
-## CI-04 — Cockpit disconnected fallback and unmount cleanup
+### PRR-03 — Preserve low-disk refusal when override persistence fails
 
-**Parent contracts:** E1, E3/E4 composition; cockpit HTTP/WS transport lifecycle.
-**Owner boundary:** `packages/web/e2e/cockpit-telemetry.spec.mjs` and the traced telemetry owner;
-coordinate shared cockpit state files with the protocol worker.
+**Parent:** I7. **Files:** write-pressure policy and tool-output archive boundary.
 
-1. <a id="ci-04.1"></a>**CI-04.1:** inspect `disconnected fallback polls repeatedly and stops after unmount`.
-   CI at line 297 expected transport `http` but received `ws`. Map the disconnect trigger,
-   reconnect timer, HTTP fallback activation and transport indicator transitions.
-2. <a id="ci-04.2"></a>**CI-04.2:** distinguish an unperformed socket disconnect from an actual fallback bug. Make
-   the fixture deterministically establish the disconnected state before asserting HTTP mode.
-3. <a id="ci-04.3"></a>**CI-04.3:** preserve repeated bounded polling during the outage, transition back to WS after
-   real recovery, and cancel polls/listeners/timers on unmount. Prove no post-unmount request.
-4. <a id="ci-04.4"></a>**CI-04.4:** record focused and full browser-job results on the candidate SHA; document the
-   observed timing boundaries and transport state, rather than treating an immediate read as a wait.
+1. Keep a valid below-50-MiB measurement distinct from unavailable probing.
+2. Treat grant/consume read, lock, or write failure as unavailable override authority.
+3. Return block with measured bytes and a typed diagnostic; never convert durable authorization
+   failure into the archive's probe-unavailable warning.
+4. Accept ENOSPC/EACCES/corrupt-store refusal and no false durable consumption acknowledgement.
+   Preserve ordinary unavailable-probe warnings and named policy exemptions.
 
-**Done:** repeated fallback polls are observed and then cease after unmount; the indicator agrees
-with the real transport. **Rollback:** revert the transport lifecycle slice independently.
+**Local state:** implemented; candidate acceptance pending.
+**Rollback:** revert the policy/boundary slice together.
+
+<a id="prr-04"></a>
+
+### PRR-04 — Serialize durable, single-use pressure overrides
+
+**Parent:** I7. **Files:** pressure override store and authenticated grant/consume boundaries.
+
+1. Canonicalize the store root and reject nonplain/symlink authority files.
+2. Lock the complete reload → validate → mutate → atomic-save transaction across instances/processes.
+3. Generate globally unique override IDs; retain trusted Session/producer/tool-call/volume binding.
+4. Fail closed on unreadable/malformed authority. Discard cached grants after authority failure.
+5. Accept concurrent grant preservation, exactly one consumption, no consumed-grant resurrection,
+   restart behavior, corrupt ledger refusal, and failed-save state preservation.
+
+**Local state:** implemented; candidate acceptance pending.
+**Rollback:** revert the store transaction slice independently without resetting durable records.
+
+<a id="prr-05"></a>
+
+### PRR-05 — Validate current process-group ownership
+
+**Parent:** E10. **Files:** command Session manager and parent-death guardian; existing fixture contract.
+
+1. Attach a random command ownership nonce to spawned POSIX groups and inherited descendants.
+2. Persist signed group records atomically. Refresh on both registered and pending exits.
+3. Retain surviving owned descendants after their group leader exits; drop dead groups.
+4. On parent death, inspect current group members for the nonce before negative-PGID signalling.
+   Reject unsigned/unprovable groups; never fall back to a bare PID.
+5. Accept recycled unrelated groups, surviving owned descendants, ordinary exit/kill cleanup,
+   and parent-death behavior. Keep the Windows Job Object gap explicit.
+
+**Local state:** implemented; candidate acceptance pending. Commands that strip the inherited
+ownership environment cannot be safely authorized for guardian signalling; document that limit.
+**Rollback:** revert the guardian/manager/fixture protocol slice together.
 
 <a id="sec-01"></a>
 
-## SEC-01 — Newly reported, unpatched `http-cache-semantics` advisory
+## SEC-01 — Desktop build dependency audit gate
 
-**Detected:** 2026-10-03 during the requested all-wave refresh. At detection, the latest PR #15 CI
-run `37146286795` had passed its required jobs on `ec20a0c1`, but the CI workflow does not run
-`pnpm audit`; the full local audit is a separate release gate. The later exact candidate run
-`37149941481` passed 21/21 CI jobs without changing dependency files, so it does not resolve this
-finding.
+**Observed 2026-10-04:** `http-cache-semantics@4.2.0`, high
+[GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp).
+Both locked paths run through desktop `electron-builder > app-builder-lib > @electron/get >
+got > cacheable-request`. The audit reports one high, zero critical.
 
-1. <a id="sec-01.1"></a>Trace the current locked path and package classification. Both paths go
-   through desktop `electron-builder` (`app-builder-lib` or `dmg-builder`) and then
-   `@electron/get > got > cacheable-request > http-cache-semantics@4.2.0`; pnpm marks the finding
-   `dev: true`, `optional: false`, `bundled: false`.
-2. <a id="sec-01.2"></a>Check the advisory and package registry before proposing an override. The
-   GitHub Advisory Database lists no patched release; pnpm's registry query reports 4.2.0 as
-   latest and 4.2.1 as not found. Do not force a nonexistent version or change majors blindly.
-3. <a id="sec-01.3"></a>Check compatible builder updates before proposing a lock change. Registry-listed
-   `electron-builder@26.17.0` (within the current `^26.16.1` range) still selects
-   `@electron/get@^3`; its `3.1.0` line retains `got@11 > cacheable-request`, while the
-   `@electron/get@4` line also retains vulnerable `http-cache-semantics@^4.2.0`. `@electron/get@5.1.0`
-   removes `got` but is outside the builder's declared range; a cross-major override is not
-   accepted as a compatibility fix.
-   Full evidence is in the [audit receipt](../docs/audits/dependency-audit-2026-10-03.md).
-4. <a id="sec-01.4"></a>Keep the audit gate visible while investigating compatible removal. Any temporary
-   suppression needs an explicit security/release-owner decision with scope, expiry, and a
-   tracking/reopen condition; a suppressed finding is not a patched dependency.
-5. <a id="sec-01.5"></a>After an upstream patch or accepted compatible replacement is available, record
-   the resolved lockfile path, rerun the high-severity audit, and exercise the desktop package
-   matrix before closing this order.
+1. <a id="sec-01.1"></a>Record the locked dependency paths, package classification, advisory, and
+   current registry availability. Audit now advertises `>=4.2.1`; the 4.2.1 registry query still
+   reports package-not-found. Recheck publication before selecting a version.
+2. <a id="sec-01.2"></a>Prefer a published compatible patched transitive release. Record integrity
+   and exact resolved paths; never pin a nonexistent release.
+3. <a id="sec-01.3"></a>If unavailable, assess compatible builder/dependency replacement and actual
+   caching behavior. Cross-major overrides require compatibility evidence, not an audit-only change.
+4. <a id="sec-01.4"></a>No suppression without explicit owner adjudication recording scope, expiry,
+   risk, and reopen condition. Keep the release gate open while adjudication is absent.
+5. <a id="sec-01.5"></a>Close only after the high-severity audit is accepted and required desktop
+   packaging checks pass on the candidate.
 
-**Done:** the vulnerable path is gone or resolves to a published patched release, the audit
-result is accepted, and desktop packaging remains compatible. **Current disposition:** GATED;
-no override or suppression has been applied. **Rollback:** if the alternative breaks packaging,
-restore the last known-compatible dependency graph and keep release blocked until a reviewed fix
-or explicit time-bounded exception is accepted.
+**State:** GATED. No override or suppression applied.
+Historical investigation: [2026-10-03 receipt](../docs/audits/dependency-audit-2026-10-03.md).
+Rollback restores the compatible graph and leaves this gate visible.
 
-## Parallel dispatch after assigning the incident owners
+## Earlier CI repairs — retained history
 
-These are candidate streams, not declarations that their code is missing. Inspect the current
-implementation and choose the highest-ROI ready package within each stream.
+These orders are accepted at their recorded candidates. They are not current red lanes.
+[Receipt](../docs/audits/ci-repair-2026-10-02.md) retains exact platform/job evidence.
 
-| Phase     | Next valuable packages                                                             | Entry/exit constraint                                                              |
-| --------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Operations | SEC-01 compatible remediation/adjudication; monitor CI-02 native watcher stability | No dependency suppression without explicit owner approval; re-open CI-02 on recurrence |
-| R         | R2c/R11 acceptance reconciliation (quarantine-denied ingress tests now pass); R1/R2/R4/R5/R8 proof gaps | R11 defect-detection ledger and wider card criteria remain open; keep scopes distinct |
-| 1     | F1/F3/F6, G5, J11 receipt and integration gaps                                     | Reuse shipped/local work; resolve the remaining criterion before expanding scope  |
-| 2     | I1 trace/export routing; E6/E9 contract audit; E2 adjudication; B1 acceptance      | Keep one shared error/redaction/recall contract and complete actual consumers     |
-| 3     | D7/H7 acceptance, D6 snapshot boundary; D1/D2 baseline; C1 scope-aware flow        | D10 promotion waits for measured gates; design/fixtures can start independently   |
-| 4     | K14a permission adapter note; K16a compatibility mapping; A7/A8 baseline contracts | Specific prerequisites govern integration; existing controls remain authoritative |
+<a id="ci-01"></a>
+<a id="ci-01.1"></a><a id="ci-01.2"></a><a id="ci-01.3"></a><a id="ci-01.4"></a>
 
-With four available agent slots, one coordinator and three disjoint work owners are the default
-dispatch shape. Reassign a freed slot across phases after its receipt is integrated. Keep all
-five queues visible; use prerequisite bundles instead of forcing one worker into every phase.
+- **CI-01 / R2c/R11:** distinguish denied read, corrupt bytes, and denied quarantine; preserve
+  fail-closed mutation. Run 37038239523's core platform lanes accepted the repair.
+
+<a id="ci-02"></a>
+<a id="ci-02.1"></a><a id="ci-02.2"></a><a id="ci-02.3"></a><a id="ci-02.4"></a>
+
+- **CI-02 / R6:** nested-directory watcher fallback; retain event-driven state assertions and
+  owned watcher cleanup. The 10-second removal bound was revalidated at run 37149941481.
+  Reopen on a new missing event rather than increasing the wait automatically.
+
+<a id="ci-03"></a>
+<a id="ci-03.1"></a><a id="ci-03.2"></a><a id="ci-03.3"></a><a id="ci-03.4"></a>
+
+- **CI-03 / A3/A4:** retry countdown and retry-now browser interaction accepted at run
+  37038239523. Preserve the recovered answer, trace ladder, and usable composer.
+
+<a id="ci-04"></a>
+<a id="ci-04.1"></a><a id="ci-04.2"></a><a id="ci-04.3"></a><a id="ci-04.4"></a>
+
+- **CI-04 / E1:** disconnected HTTP fallback and unmount cleanup accepted in that browser lane.
+  Preserve repeated outage polling, WS recovery, and no post-unmount requests.
+
+## Implementation queue after release repairs
+
+| Phase | Next concrete work | Integration prerequisite |
+| --- | --- | --- |
+| R | Reconcile each R1/R2/R4/R5/R8/R11 acceptance criterion against current receipts | Scoped identity, durable authority, and recovery |
+| 1 | Finish F1/F3/F6, G5, J11 consumer/receipt gaps | Existing foundation contracts and current claims |
+| 2 | Accept I1/E6/E9, E2 adjudication, B1 and F18 consumer proof | Shared error, redaction, recall, and protocol contracts |
+| 3 | D1/D2 baseline → D4 chain; C1 scoped findings flow; H4 configuration integration | Frozen quality/resource gates and accepted store/config contracts |
+| 4 | K5 → K14a/b permission plane; K16a/b compatibility mapping; A7/A8 foundations | Existing controls stay authoritative; sensitive data uses I1 |
+
+For an OPEN task, read its whole card and current source before deciding what code is absent.
+Split a broad card into its existing numbered packages. Deliver working success, failure,
+cancellation, cleanup, compatibility, and restart branches together at the real consumer.
+No placeholder, silent defer, or exported-but-unconsumed helper closes a task.
 
 ## Priority decision record
 
-Before dispatch, record each ready candidate's benefit, risk reduction, dependencies unlocked,
-confidence in that estimate, effort including prerequisites, and files held by another owner.
-Use ordinal points 1–5 for benefit/risk/effort and 0–1 for confidence; the score is
-`(benefit + risk reduction + dependencies unlocked) × confidence / total effort`.
-The points are planning estimates with a reason, not measured product outcomes. Active data loss,
-credential disclosure, accepted-but-unexecuted actions and release failures take priority over
-cosmetic or speculative work regardless of a noisy score. Break ties by more unlocked tasks,
-smaller ownership boundary, then lower task ID.
+Choose by benefit, risk reduction, dependencies unlocked, confidence, and total effort including
+prerequisites. Record one selected package, actual file ownership, unmet contract, acceptance
+artifact, and rollback before edits. Data loss, credential disclosure, false success, and release
+failures take priority over cosmetic/speculative work. Re-evaluate after each accepted package.
 
-Count the entire prerequisite bundle when scoring a blocked high-value task. Implement a
-lower-ROI dependency first when it is the cheapest path to the higher-value outcome. A ready
-package must have an owned file boundary, available prerequisite contract, and observable exit
-criterion. If it lacks one, dispatch its bounded discovery package first and record the result.
+Before merge record candidate SHA, CI run/jobs, audit disposition, and review repair acceptance.
+After merge record main/PR states, then continue the remaining register. No work order alone
+permits extra tests or external actions beyond the active human authorization.

@@ -1,8 +1,12 @@
 # PR #12 review requirement map
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 This preserves the 2026-09-29 review adjudication as requirement provenance. `F1`–`F7` and
 `N1`–`N12` below are **review labels**, not the similarly named wave task IDs. Original probe
-details and dated line numbers are in [the v3 review section](archive/plan-v3-2026-10-02.md#3-review-feedback-adjudication-pr-12-external-review-2026-09-29).
+details and dated line numbers are in [the v3 review section](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/blob/9f589c721a7cf09c9fb7ec116319161e76218f7c/tasks/archive/plan-v3-2026-10-02.md#3-review-feedback-adjudication-pr-12-external-review-2026-09-29).
 Current implementation state is exclusively [todo.md](todo.md); every linked card still needs
 its complete scoped evidence. A historical probe is not a current source anchor.
 

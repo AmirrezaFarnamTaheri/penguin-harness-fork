@@ -82,6 +82,23 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
     replace: (_match, scheme, user) => `${scheme}${user}:${REDACTED_MARKER}@`,
   },
   {
+    name: "json_credential_string",
+    // The closing quote is optional only at the end of the input. A torn JSONL tail may
+    // stop inside either the secret or its last escape; neither may escape the text fallback.
+    pattern: /("((?:[^"\\]|\\.)+)"\s*:\s*)("(?:[^"\\]|\\[\s\S])*(?:"|\\?$))/g,
+    replace: (match, prefix, encodedKey) => {
+      let key: string;
+      try {
+        key = JSON.parse(`"${encodedKey}"`) as string;
+      } catch {
+        return match;
+      }
+      return isSensitiveField(key, buildSensitiveFieldSet())
+        ? `${prefix}"${REDACTED_MARKER}"`
+        : match;
+    },
+  },
+  {
     name: "generic_assignment",
     pattern:
       // `"?` after the name is what makes a JSON-serialized assignment match at all: the field

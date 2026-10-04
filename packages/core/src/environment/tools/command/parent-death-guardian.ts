@@ -23,11 +23,14 @@
  * native handle this package does not carry (see the E10.1 receipt — recorded, not claimed).
  */
 import { spawn } from "node:child_process";
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 /** How often the guardian checks whether the harness is still alive. */
 export const GUARDIAN_POLL_MS = 500;
+/** Inherited by group descendants; a recycled numeric PID cannot acquire this ownership nonce. */
+export const GUARDIAN_OWNER_ENV = "PENGUIN_GUARDIAN_OWNER";
 
 /**
  * The guardian program, as source text for `node -e` / `node <file>`.
@@ -42,6 +45,8 @@ export const PARENT_DEATH_GUARDIAN_SOURCE = `const [parentPidArg, pidFile] = pro
 const parentPid = Number(parentPidArg);
 const pollMs = ${GUARDIAN_POLL_MS};
 const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const ownerEnv = ${JSON.stringify(GUARDIAN_OWNER_ENV)};
 function alive(pid) {
   try {
     process.kill(pid, 0);
@@ -55,24 +60,52 @@ function readGroups() {
     return fs
       .readFileSync(pidFile, "utf8")
       .split("\\n")
-      .map((line) => Number(line.trim()))
+      .map((line) => {
+        const match = /^(\\d+):([a-f0-9]{32})$/.exec(line.trim());
+        return match ? { pid: Number(match[1]), owner: match[2] } : null;
+      })
       // Load-bearing: a negative target with pid 1 reaches every process in the session, pid 0
       // the guardian's own group, and a stray negative pid something unrelated. A corrupted pid
       // file must therefore produce an EMPTY list, never a dangerous one.
-      .filter((pid) => Number.isInteger(pid) && pid > 1);
+      .filter((entry) => entry !== null && Number.isInteger(entry.pid) && entry.pid > 1);
   } catch {
     return [];
   }
 }
 function sweep() {
-  for (const pid of readGroups()) {
-    // The group id equals the leader's pid (see ManagedSession's detached spawn), and the pid
-    // file can list a row whose process has already exited, so the pid may since have been
-    // reused by an unrelated process. The group form only reaches a process group whose pgid is
-    // exactly that pid: a reused pid is a new process, not the leader of this group, so the
-    // group form either hits the command's own group or nothing at all. Signalling the bare pid
-    // would hit whatever now owns it, which is why there is deliberately no single-pid fallback
-    // -- every guarded command is spawned detached on POSIX, so the group form is sufficient.
+  const result = spawnSync("ps", ["-axo", "pid=,pgid="], {
+    encoding: "utf8", timeout: 2000, maxBuffer: 2 * 1024 * 1024,
+  });
+  if (result.status !== 0 || result.error) return;
+  const members = new Map();
+  for (const line of result.stdout.split("\\n")) {
+    const match = /^\\s*(\\d+)\\s+(\\d+)\\s*$/.exec(line);
+    if (!match) continue;
+    const member = Number(match[1]);
+    const group = Number(match[2]);
+    const list = members.get(group) || [];
+    list.push(member);
+    members.set(group, list);
+  }
+  function owns(member, owner) {
+    try {
+      if (process.platform === "linux") {
+        return fs.readFileSync("/proc/" + member + "/environ", "utf8")
+          .split("\\0").includes(ownerEnv + "=" + owner);
+      }
+      const env = spawnSync("ps", ["eww", "-p", String(member), "-o", "command="], {
+        encoding: "utf8", timeout: 2000, maxBuffer: 1024 * 1024,
+      });
+      return env.status === 0 && !env.error &&
+        new RegExp("(?:^|\\\\s)" + ownerEnv + "=" + owner + "(?:\\\\s|$)").test(env.stdout);
+    } catch { return false; }
+  }
+  for (const { pid, owner } of readGroups()) {
+    // A numeric pgid alone is not proof of ownership: even a group leader's pid can be reused.
+    // Never fall back to a bare-pid kill or to a group whose ownership cannot be established.
+    // A live group member must carry this command's nonce. This also covers descendants
+    // after their shell exits; an unrelated group that reuses the pgid carries no such proof.
+    if (!(members.get(pid) || []).some((member) => owns(member, owner))) continue;
     try {
       process.kill(-pid, "SIGKILL");
     } catch {}
@@ -155,12 +188,26 @@ export function startParentDeathGuardian(opts: StartGuardianOptions): ParentDeat
  * leave a file that lists exactly the groups that may still be running, never a stale pid that
  * the guardian would later kill on a reuse.
  */
-export function writeGuardedPids(pidFile: string, pids: readonly number[]): void {
+export function writeGuardedPids(
+  pidFile: string,
+  pids: readonly number[],
+  owners: ReadonlyMap<number, string> = new Map(),
+): void {
+  const temporary = `${pidFile}.${randomUUID()}.tmp`;
   try {
-    writeFileSync(pidFile, pids.map((pid) => `${pid}\n`).join(""), { mode: 0o600 });
+    writeFileSync(temporary, pids.map((pid) => `${pid}:${owners.get(pid) ?? ""}\n`).join(""), {
+      mode: 0o600,
+    });
+    renameSync(temporary, pidFile);
   } catch {
     // A scratchpad that cannot be written only costs this Session its watchdog; spawning a
     // command must not fail because of it.
+  } finally {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      /* Rename succeeded or the write was refused. */
+    }
   }
 }
 
@@ -186,7 +233,10 @@ export function readGuardedPids(pidFile: string): number[] {
 export function parseGuardedPids(body: string): number[] {
   return body
     .split("\n")
-    .map((line) => Number(line.trim()))
+    .map((line) => {
+      const match = /^(\d+)(?::[a-f0-9]{32})?$/.exec(line.trim());
+      return match ? Number(match[1]) : NaN;
+    })
     .filter((pid) => Number.isInteger(pid) && pid > 1);
 }
 

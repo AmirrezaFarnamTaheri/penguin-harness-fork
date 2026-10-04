@@ -1,5 +1,9 @@
 # Code navigation and editing tools for implementation agents
 
+Documentation reconciled on 2026-10-04. Current status and release gates are in
+[todo.md](todo.md) and [work-orders.md](work-orders.md); these requirements and historical
+observations do not certify the changed working tree.
+
 Use this with [implementation-guide.md](implementation-guide.md). Research was checked on
 2026-10-02 against the exposed tool manuals and the primary sources linked below. A project
 name is not proof that its server is configured, its index is current, or an action is safe.

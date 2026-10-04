@@ -1,151 +1,130 @@
-# Absorption and hardening plan — v4
+# Delivery plan — Phase R and Waves 1–4
 
-Baseline: 2026-10-02; repository `D:/GitHub/penguin-harness-fork`; branch
-`codex/wave-1-2-hardening`; PR #13 head `dcebeb20adb0aa0e246016a264eda11b67dea38d`.
-Re-check HEAD and changed files before execution. The user's objective is to complete Phase R
-and Waves 1–4 in parallel, choosing the highest-ROI available work, including prerequisites
-from other phases.
+Updated: 2026-10-04. Objective: complete every existing task and its acceptance criteria.
+Current work branch: `codex/pr-15-review-fixes`.
+Reviewed baseline: `9f589c721a7cf09c9fb7ec116319161e76218f7c`, PR #15.
+Local review fixes and this documentation refresh await commit and candidate acceptance.
 
 ## Start here
 
-1. Read [todo.md](todo.md) for canonical task state and prerequisites.
-2. Read [work-orders.md](work-orders.md) for current incidents, assignments and ROI ranking.
-3. Read [implementation-guide.md](implementation-guide.md) before claiming a package.
-4. Read the selected card and the [contracts.md](contracts.md) decisions it uses.
-5. Use [tooling-guide.md](tooling-guide.md) for CodeGraph/Serena navigation and editing.
+1. [Todo](todo.md): canonical task state, dependencies, and evidence.
+2. [Work orders](work-orders.md): current incidents and actionable repair packages.
+3. [Implementation guide](implementation-guide.md): execution and acceptance procedure.
+4. Read the whole selected card: [R/1](execution-cards-1.md), [2](execution-wave-2.md),
+   [3](execution-wave-3.md), or [4](execution-wave-4.md).
+5. Apply [contracts](contracts.md), [findings scope](findings-scope-matrix.md), and
+   [CodeGraph/Serena guidance](tooling-guide.md).
 
-| Document                                            | Authority                                                       | Update trigger                                |
-| --------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------- |
-| This plan                                           | Scope, phase outcomes, scheduling and checkpoints               | Objective/architecture changes                |
-| [Task index](todo.md)                               | One work-state record per task                                  | Implementation or acceptance evidence changes |
-| [Work orders](work-orders.md)                       | Dispatch and current incident evidence                          | A package completes or priority changes       |
-| [R + Wave 1 cards](execution-cards-1.md)            | Review/foundation requirements and numbered packages            | Contract/decomposition changes                |
-| [Wave 2 cards](execution-wave-2.md)                 | Resilience, security and server contracts                       | Corresponding contract changes                |
-| [Wave 3 cards](execution-wave-3.md)                 | Expansion and promotion contracts                               | Corresponding contract changes                |
-| [Wave 4 cards](execution-wave-4.md)                 | Strategic/control/product contracts                             | Corresponding contract changes                |
-| [Contracts](contracts.md)                           | Architecture, budgets and Q1–Q8 decisions                       | Evidence justifies a decision revision        |
-| [Scope matrix](findings-scope-matrix.md)            | Findings authority and authorized binding                       | Identity/persistence changes                  |
-| [Review map](review-map.md)                         | Historical PR #12 review labels mapped to retained requirements | A requirement's adjudication changes          |
-| [Runtime claims ledger](../docs/status-ledger.json) | Machine-checked shipped/experimental claims                     | Actual runtime claim changes                  |
-| [Audits](../docs/audits/)                           | Source, review, test, benchmark and CI receipts                 | A receipt is produced                         |
-| [v3 archive](archive/plan-v3-2026-10-02.md)         | Historical requirements/adjudications                           | Provenance lookup; current cards govern work  |
+## Current source and release state
 
-[execution-cards-2.md](execution-cards-2.md) is retained as a routing pointer. Historical
-collage/cluster labels identify investigations; they are not completion evidence. Source-transfer
-and license boundaries remain in [the source policy](../docs/policies/porting-and-refusals.md).
+| Item | Observed state | Required next action |
+| --- | --- | --- |
+| Main | PR #12 merged at `fc44861a4730a43c58d9accdbc9e15ee27003d8b` | Preserve base compatibility |
+| PR #13 | Draft, `09b36f788333393de48268939df99d57f5e580fa` | Reconcile contained changes after #15 merge |
+| PR #14 | Draft, `73ab5144bcaa2a5ba191acb551dfb6011cefbddf`; contains #13 | Reconcile contained changes after #15 merge |
+| PR #15 | Ready, reviewed head `9f589c721a7cf09c9fb7ec116319161e76218f7c`; contains #14 | Commit repairs, pass new candidate gates, merge |
+| Five review repairs | Local implementation present | Complete [PRR-01–05](work-orders.md#review-repair-orders) acceptance |
+| Dependency audit | One high desktop build-dependency advisory | Resolve [SEC-01](work-orders.md#sec-01) |
 
-## Current evidence and release state
+At the reviewed PR #15 head, 25 checks succeeded and 2 were skipped; none failed.
+[CI run 37151015054](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37151015054)
+and auxiliary checks certify their recorded source, not the changed working tree.
+Read the [review receipt](../docs/audits/open-pr-review-2026-10-04.md) for scope and limitations.
 
-PR #12 merged on 2026-09-30 as `fc44861a4730a43c58d9accdbc9e15ee27003d8b`.
-Its complete CI receipt applies to head `68148d15baf95a941cc98a7d3b41086b1b2a6ae7`;
-see [the historical receipt](../docs/audits/pr-12-ci-2026-09-30.md).
+The 2026-10-04 audit advertises a fix at `>=4.2.1`, but the registry lookup for 4.2.1 returns
+package-not-found. Keep the release audit gate open until a compatible fix is published or an
+explicit owner adjudication is recorded. A suppressed finding is not a patched dependency.
 
-PR #13's baseline has passing formatting, typecheck, build, audit, Ubuntu core/server, all
-server/rest platform lanes, web/CLI, installer and runtime jobs. Its required
-[CI run 36986918261](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/36986918261)
-failed macOS and Windows core and browser E2E. The four failing cases have concrete
-[repair orders](work-orders.md#current-release-incident). That incident is historical; the
-current branch state is below.
+## Scope and phase outcomes
 
-**Latest validated source candidate — 2026-10-03:** PR [#15](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/pull/15)
-source head `fe633e0ffeacbc1b0b92dc56b01169a4cc8800d8` passed exact run
-[37149941481](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37149941481),
-21/21 jobs including macOS core and aggregate `ci`. This followed run
-[37148746240](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37148746240),
-which failed only `test-macos (core)` on a 4-second directory-removal wait; the test now retains
-its event-driven assertion with a 10-second bound, so [CI-02](work-orders.md#ci-02) is
-revalidated. PR #15 has no submitted reviews or review requests. Separately, the 2026-10-03 full
-dependency audit found an unpatched high `http-cache-semantics` advisory in the desktop build
-chain; [SEC-01](work-orders.md#sec-01) keeps the shared audit gate open. The detailed receipt is
-[dependency-audit-2026-10-03.md](../docs/audits/dependency-audit-2026-10-03.md).
+All 150 original task IDs remain in [todo.md](todo.md). Operational repairs are additional work.
+Its summary counts recorded states and does not grant new acceptance.
 
-Existing implementations and historical completed tasks are retained in the index. A helper's
-existence, a focused pass, or this rewrite does not prove a wider task. Reconcile current source
-and every required criterion before extending or closing it.
+| Phase | Required outcome | Mandatory checkpoint evidence |
+| --- | --- | --- |
+| R | Scoped, durable, attributable, bounded, recoverable findings | Identity matrix, lifecycle/store proof, output contracts, defect-detection battery |
+| 1 | Foundation fixes and provenance/capture helpers reach consumers | Error corpus, focus/deletion flows, TLS/applicability and runtime claims |
+| 2 | Runtime, transport, security, and recovery compose correctly | Retry/output bounds, recall privacy, cockpit errors, credentials and offline recovery |
+| 3 | Code intelligence, memory, configuration, and UI meet measured gates | AST quality/resources, scoped findings, configuration rollback, platform/accessibility |
+| 4 | Turn, cost, permission, evaluation, fleet, and export planes compose | Permission traces, checklists, strategic demos, restart/export artifacts, visual decisions |
 
-## Scope and five phase outcomes
+IMPLEMENTED means acceptance/review remains. OPEN can include existing code worth completing.
+VERIFIED evidence is scoped to its recorded revision; revisit affected boundaries after changes.
+Conditional requirements retain their explicit scope, decision evidence, and reopen conditions.
 
-The original inventory contains 150 task IDs; CI and dated security-audit orders are operational
-follow-ups linked to existing contracts. Every original task remains represented. Promotion
-add-ons now belong to their execution wave.
+## Immediate execution sequence
 
-| Phase                  | Outcome                                                                                         | Required checkpoint artifacts                                                                                              |
-| ---------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| R — review absorptions | Findings are scoped, durable, attributable, bounded and recoverable                             | R0 identity matrix; R1/R2 lifecycle/store proof; R4/R5 contracts; R11 battery; [review-label adjudication](review-map.md)  |
-| 1 — foundations        | Quick fixes, capture/provenance helpers, docs and skill safeguards work in their stated scope   | A2/A3/B2 acceptance; focus/banner/deletion proof; TLS/applicability receipts; J11 claims gate                              |
-| 2 — core hardening     | Typed failures, bounded retries/output, actual cockpit operations, safe imports and credentials | A1 corpus; A4 branch table; B1 recall/privacy; B3 savings/drop table; E2 eight-item table; security/offline recovery proof |
-| 3 — expansion          | Optional AST and scoped knowledge/memory/config/UI meet measured gates                          | D10 quality/resource table; findings/briefing demo; recall baseline; configuration rollback; platform/a11y receipts        |
-| 4 — strategic/product  | Turn, cost, permission, evaluation and export planes compose with existing controls             | K4/K2/K3 demos; permission trace; versioned verification; export/restart artifacts; Q6 visual decision                     |
+1. Finish this requested documentation refresh and reconcile IDs, links, status, and changelog.
+2. Accept all five review repairs: honest Session deletion, incomplete-tail masking, durable
+   pressure refusal, serialized override authority, and current process-group ownership.
+3. Resolve SEC-01 through a published compatible remediation or explicit security adjudication.
+4. Review the actual diff, commit, and push the corrected consolidated PR #15 candidate.
+5. Await the exact candidate's required CI and review gates. Fix failures before merging.
+6. Merge #15 preserving the contained stack's history; reconcile #13/#14 rather than accepting
+   their stale failing heads independently.
+7. Resume R/1/2 acceptance gaps and ready Wave 3/4 implementation. Inspect existing code and
+   receipts first, name the missing criterion, then finish the real producer-to-consumer path.
+8. Close phases only after every scoped criterion and shared closure gate is accepted.
 
-Completion requires every card's deliverables and criteria. A conditional item first produces
-its decision evidence; a rejected promotion retains the proven default and records disposition
-and reopen conditions. A missing dependency keeps the unmet requirement visible and routes
-work to that prerequisite. The full objective remains open until all five phase audits pass.
+The active human request governs verification frequency. Batch permitted checks after coherent
+changes; avoid repeated full suites during implementation. This plan does not authorize tests
+beyond the current request. Candidate CI supplies the requested merge gate.
 
-## Scheduling across phases
+## Dependencies
 
-Wave labels group scope; they are not serial barriers. Readiness comes from dependency contracts,
-file ownership, observability, and the task's specific promotion/authorization gate.
+Principal chains:
 
-1. Refresh incidents, source and candidate state at HEAD.
-2. Rank available packages with the [ROI procedure](work-orders.md#priority-decision-record).
-3. Score a valuable task together with its smallest unmet prerequisite bundle, even across phases.
-4. Run disjoint packages concurrently. Discovery, fixtures and design can progress while an
-   integration prerequisite is still being completed.
-5. Integrate a dependent consumer after its required producer contract is accepted. Production
-   promotion and release await the specified evidence, license and CI gates.
-6. Integrate the receipt and choose again. Keep all five queues visible until they close.
+- R0 → R2a → lifecycle, bounded output, durable persistence, and recovery.
+- A2/A3 → A1; A3 → A4; B2 → B1 → B3.
+- E2 → E3 → E4; E8/E9 → notification consumers.
+- D1 → D2 → D4a → D4b → D5/D8 → D9 → D10 → D3.
+- C2 → C3 → C4 → C5 → C6.
+- H3 → H1; H1/H2/H3 → H4 → K3.
+- K5 → K14a → K14b; K8 → K11a → K11b.
+- A5/A9 → K1a → K1b → K13.
 
-Principal chains: R0 → R2a → storage/lifecycle/output; A2/A3 → A1 and A3 → A4;
-B2 → B1 → B3; E2 → E3 → E4; D1 → D2 → D4a → D4b → D5/D8 → D9 → D10 → D3;
-C2 → C3 → C4 → C5 → C6; H3 → H1 and H1/H2/H3 → H4 → K3;
-K5 → K14a → K14b; K8 → K11a → K11b; A5/A9 → K1a → K1b → K13.
-The task index/card names exact gates. A package may consume a separately accepted subcontract
-without waiting for unrelated packages in that parent.
+Rows/cards define exact integration gates. Discovery can establish a separately accepted producer
+subcontract; it cannot bypass authorization, privacy, migration, resource, license, or evidence gates.
+R2d needs trusted workspace↔project binding. C8/F17 share offline composition. ACP resume and
+cockpit SSE cursors have distinct contracts. Sensitive K1a/K2/K4/F13a consumers need the relevant
+I1 redaction contract. K17 automated findings consume R0/R2a/R1b/R8. C11 needs a persisted
+source-content revision seam. G8 diagnostics can precede product badges.
 
-C8/F17 share an offline integration group; develop fixtures/banner concurrently. ACP and cockpit
-SSE cursors are distinct and meet through an explicit UI composition contract. R2d activates
-only after trusted workspace↔project binding exists; shared store code does not establish it.
+## Ownership and prioritization
 
-Sensitive persistence/display in K1a/K2/K4/F13a integrates only after I1's relevant redaction
-contract is accepted. K17 auto-findings consume R0/R2a/R1b/R8 and remain open. C11 consumes a
-persisted source-content revision seam; G8 doctor work can precede its G2/G6 product badges.
-These gates preserve parallel discovery while preventing incomplete producers from reaching users.
+A package names task ID, numbered card package, actual files, prerequisite evidence, observable
+outcome, acceptance cases, and rollback. Shared exports, default config/kernel history, findings
+store/graph, route composition, redactors, protocol state, and browser mocks have one integration
+owner. Preserve concurrent edits and deliberate user state.
 
-## Ownership and integration
+Choose ready work by benefit, risk reduction, dependencies unlocked, confidence, and effort
+including prerequisites. Data loss, credential disclosure, false success, and release failures
+take priority. Keep all five phase queues visible. Use parallel owners only when the active
+instructions authorize delegation and their files do not conflict.
 
-Claim one task package and its actual paths before edits. Parallel workers share the checkout,
-preserve each other's changes, and hand a reproducer to the owner when another file needs repair.
-One integration owner holds overlapping edits to:
+For each slice update the row, receipt, current order, and changelog. Update
+`docs/status-ledger.json` only when the actual runtime claim changes. A new export alone does
+not establish production integration.
 
-- `packages/core/src/index.ts`
-- `packages/core/src/state/default-config.ts`
-- `packages/core/src/state/kernel-history.ts`
-- `packages/core/src/knowledge/findings-graph.ts`
-- `packages/core/src/knowledge/store.ts`
-- Shared server route composition, redactors and protocol state
-- Shared browser mocks and fixtures
+## Document authority
 
-A package normally changes one to three files at one observable boundary. Split work spanning
-more than five files or unrelated persistence/protocol boundaries into numbered packages while
-preserving the parent outcome. Package completion differs from task completion. Default/export
-changes include kernel-hash and tool-alias updates when their guards require them.
+| Document | Authority | Update trigger |
+| --- | --- | --- |
+| Plan | Scope, sequence, phase checkpoints | Objective or architecture changes |
+| Todo | One status record per task | Implementation, dependency, or acceptance changes |
+| Work orders | Current repair and implementation packages | Priority, blocker, CI, or owner changes |
+| Cards/contracts | Detailed requirements and decisions | Evidenced contract changes |
+| [Review map](review-map.md) | PR #12 requirement provenance | Mapped requirement adjudication |
+| [Audits](../docs/audits/) | Dated observations and evidence | New evidence |
+| [Changelog](../CHANGELOG.md) | Released history and explicitly unreleased behavior | User-visible changes |
 
-## Acceptance and release
+Retired planning copies are removed from the checkout; pinned Git history preserves provenance.
+The [refresh receipt](../docs/audits/documentation-refresh-2026-10-04.md) lists removed paths.
+Keep dated audits and published release details. Do not create a competing live status ledger.
 
-The [implementation guide](implementation-guide.md) owns the evidence procedure. Each card
-names its positive, negative, fault, cancellation and compatibility cases. Map every criterion
-to a meaningful existing test, justified new coverage, measurement, review or artifact.
+## Shared closure
 
-A phase checkpoint closes after its required task criteria and evidence are accepted, with
-explicit conditional dispositions. Checkpoints govern acceptance/promotion, not permission to
-investigate another phase. Shared release requires the candidate SHA, all required CI lanes,
-dependency audit, required review, truthful runtime/docs claims, compatible migration/rollback
-evidence and process/artifact cleanup. A prior SHA or another platform cannot close a red lane.
-
-Capture fixture/corpus hash, revisions, command, OS/runtime, repeated samples where required,
-raw artifacts and the decision. Freeze budgets before candidate runs. Numeric limits and
-rationale live in [contracts.md](contracts.md), including B3/Q3, D10/Q4 and F10/Q6.
-Stateful rollout first reads old snapshots, preserves the authority, rehearses failure/rollback
-on copied fixtures, then widens after counts/hashes and restart behavior agree. A denied durable
-write preserves the acknowledged prior state and remains observable to its caller.
+Every task needs criterion-by-criterion evidence or an explicitly authorized conditional
+disposition with scope and reopen condition. Required candidate CI, audit, review, claims,
+migration, and rollback gates must pass. Clean run-owned debris and stop owned processes before
+reporting completion. The overall objective stays open while any required item remains.
