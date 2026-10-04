@@ -940,6 +940,13 @@ export class SessionManager {
       toolApprovalTarget: (name, rawArguments) =>
         entry.session.toolApprovalTarget?.(name, rawArguments),
       registry: entry.approvals,
+      // The one cross-cutting approval override: an organization's sessions run with nobody
+      // watching, so a call their approval mode would hand to a person is denied here instead
+      // of waiting for an answer that is never coming (see `unattended` in approvals.ts). The
+      // marker is the row's durable `client = "org"` stamp — desk, ticket and the sub-sessions
+      // that inherit it — read per decision, so a row the reconcile pass stamps later is
+      // covered from its next decision on.
+      unattended: () => this.deps.sessions.findById(entry.sessionId)?.client === "org",
       publishRequest: (pending) =>
         this.publishEvent(entry, {
           type: "approval_request",

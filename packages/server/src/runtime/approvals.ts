@@ -100,7 +100,8 @@ export class ApprovalRegistry {
 /**
  * Build the approve callback: re-reads the approval mode on every call; when routed to
  * manual approval, registers a pending entry and suspends after pushing an
- * `approval_request` server event via `publishRequest`.
+ * `approval_request` server event via `publishRequest` — unless the Session is unattended,
+ * in which case that one route answers deny immediately.
  */
 export function makeApprove(args: {
   getMode: () => ApprovalMode;
@@ -109,9 +110,21 @@ export function makeApprove(args: {
   toolApprovalTarget?: (name: string, rawArguments?: string) => ToolApprovalTarget | undefined;
   registry: ApprovalRegistry;
   publishRequest: (pending: PendingApproval) => void;
+  /**
+   * Whether nobody is watching this Session — an organization's desk, ticket and spawned
+   * sessions, the only unattended ones the server drives. Re-read per decision like the
+   * mode. It changes exactly one route: a call the mode would hand to a person is denied at
+   * once instead of parking for an answer that is never coming, and no `approval_request`
+   * is pushed. The automatic answers (allow-all, deny-all, read-only's read tools) and the
+   * command policy's veto are untouched — they never asked anyone in the first place.
+   * Absent (development mode) keeps the suspending behaviour.
+   */
+  unattended?: () => boolean;
 }): ApproveFn {
-  const { getMode, toolPermission, toolApprovalTarget, registry, publishRequest } = args;
+  const { getMode, toolPermission, toolApprovalTarget, registry, publishRequest, unattended } =
+    args;
   const manual = (toolCall: OmniMessage<ToolCallPayload>): Promise<ApprovalDecision> => {
+    if (unattended?.() === true) return Promise.resolve<ApprovalDecision>("deny");
     const approvalTarget = toolApprovalTarget?.(toolCall.payload.name, toolCall.payload.arguments);
     const promise = registry.wait(toolCall, approvalTarget);
     publishRequest({
