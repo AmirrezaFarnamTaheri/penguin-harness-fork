@@ -8,12 +8,20 @@ Phase R and Waves 1–4. [Todo](todo.md) is the status authority; cards define f
 ## Current release incident
 
 PR #15 includes the changes in #13 and #14. Its reviewed head has green CI, but five defects
-remain in the [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md).
-Repairs exist locally and have not been accepted on a new candidate SHA.
+remain in the [2026-10-04 review](../docs/audits/open-pr-review-2026-10-04.md). All five repairs
+are now accepted against the local working tree — see the
+[PRR acceptance receipt](../docs/audits/prr-acceptance-2026-10-04.md) — but they are not yet
+certified on a candidate SHA, because nothing has been pushed.
 A separate high dependency advisory keeps SEC-01 open.
 
 Deliver one corrected consolidated candidate; preserve stack history. Do not merge the earlier
 failing heads independently. Review the changed source and exact candidate checks before merge.
+
+Any verification of these repairs from the server or web package must rebuild core *through pnpm*
+(`pnpm --filter @prismshadow/penguin-core build`). `packages/server` resolves core through a pnpm
+injected snapshot, and neither `tsup` nor `pnpm install` refreshes it — a stale snapshot makes
+every cross-package suite pass against pre-repair core while reporting a runtime error that reads
+like a product defect.
 
 ## Documentation-first order
 
@@ -47,7 +55,7 @@ swarm coordinator, and guardian. Never overwrite another owner's concurrent edit
 5. Accept cooperative cancellation, uncooperative handler timeout, late settlement, disposal
    rejection/retry, and recreation refusal. Confirm no cleanup writes recreate removed files.
 
-**Local state:** implemented; candidate acceptance pending.
+**Local state:** accepted 2026-10-04; see [receipt](../docs/audits/prr-acceptance-2026-10-04.md).
 **Rollback:** revert the coordinator/runtime/route slice together; retain defect evidence.
 
 <a id="prr-02"></a>
@@ -62,7 +70,7 @@ swarm coordinator, and guardian. Never overwrite another owner's concurrent edit
 3. Preserve ordinary fields and valid structured trace rendering. Do not expose raw fallback bytes.
 4. Accept complete/incomplete read and download paths using the same sentinel matrix.
 
-**Local state:** implemented; candidate acceptance pending.
+**Local state:** accepted 2026-10-04; see [receipt](../docs/audits/prr-acceptance-2026-10-04.md).
 **Rollback:** revert the masking rule independently; keep disclosure finding open until repaired.
 
 <a id="prr-03"></a>
@@ -78,7 +86,7 @@ swarm coordinator, and guardian. Never overwrite another owner's concurrent edit
 4. Accept ENOSPC/EACCES/corrupt-store refusal and no false durable consumption acknowledgement.
    Preserve ordinary unavailable-probe warnings and named policy exemptions.
 
-**Local state:** implemented; candidate acceptance pending.
+**Local state:** accepted 2026-10-04; see [receipt](../docs/audits/prr-acceptance-2026-10-04.md).
 **Rollback:** revert the policy/boundary slice together.
 
 <a id="prr-04"></a>
@@ -94,7 +102,7 @@ swarm coordinator, and guardian. Never overwrite another owner's concurrent edit
 5. Accept concurrent grant preservation, exactly one consumption, no consumed-grant resurrection,
    restart behavior, corrupt ledger refusal, and failed-save state preservation.
 
-**Local state:** implemented; candidate acceptance pending.
+**Local state:** accepted 2026-10-04; see [receipt](../docs/audits/prr-acceptance-2026-10-04.md).
 **Rollback:** revert the store transaction slice independently without resetting durable records.
 
 <a id="prr-05"></a>
@@ -111,7 +119,7 @@ swarm coordinator, and guardian. Never overwrite another owner's concurrent edit
 5. Accept recycled unrelated groups, surviving owned descendants, ordinary exit/kill cleanup,
    and parent-death behavior. Keep the Windows Job Object gap explicit.
 
-**Local state:** implemented; candidate acceptance pending. Commands that strip the inherited
+**Local state:** accepted 2026-10-04; see [receipt](../docs/audits/prr-acceptance-2026-10-04.md). Commands that strip the inherited
 ownership environment cannot be safely authorized for guardian signalling; document that limit.
 **Rollback:** revert the guardian/manager/fixture protocol slice together.
 
@@ -125,19 +133,27 @@ Both locked paths run through desktop `electron-builder > app-builder-lib > @ele
 got > cacheable-request`. The audit reports one high, zero critical.
 
 1. <a id="sec-01.1"></a>Record the locked dependency paths, package classification, advisory, and
-   current registry availability. Audit now advertises `>=4.2.1`; the 4.2.1 registry query still
-   reports package-not-found. Recheck publication before selecting a version.
+   current registry availability. **Done** — see the 2026-10-04 receipt below.
 2. <a id="sec-01.2"></a>Prefer a published compatible patched transitive release. Record integrity
-   and exact resolved paths; never pin a nonexistent release.
+   and exact resolved paths; never pin a nonexistent release. **Contradicted 2026-10-04:** no
+   patched release exists. `4.2.1` is still unpublished; `4.3.0` shipped 2026-10-04T02:56Z but
+   does not contain the fix, and adopting it would silence the audit without remediating.
 3. <a id="sec-01.3"></a>If unavailable, assess compatible builder/dependency replacement and actual
    caching behavior. Cross-major overrides require compatibility evidence, not an audit-only change.
+   **Done** — no published builder line removes the chain; the vulnerable code is provably
+   uninstantiated in this repository.
 4. <a id="sec-01.4"></a>No suppression without explicit owner adjudication recording scope, expiry,
    risk, and reopen condition. Keep the release gate open while adjudication is absent.
+   **Outstanding** — this is the only remaining decision, and it requires a named owner.
 5. <a id="sec-01.5"></a>Close only after the high-severity audit is accepted and required desktop
-   packaging checks pass on the candidate.
+   packaging checks pass on the candidate. **Not met** — `pnpm audit --audit-level high` exits 1.
 
-**State:** GATED. No override or suppression applied.
-Historical investigation: [2026-10-03 receipt](../docs/audits/dependency-audit-2026-10-03.md).
+**State:** GATED. No override or suppression applied. Only sec-01.4 remains, and it is an
+ownership decision rather than an engineering one.
+
+Current investigation: [2026-10-04 reachability receipt](../docs/audits/sec-01-http-cache-semantics-2026-10-04.md).
+Historical investigation: [2026-10-03 receipt](../docs/audits/dependency-audit-2026-10-03.md);
+its "no patched release published" statement is superseded by the 2026-10-04 registry recheck.
 Rollback restores the compatible graph and leaves this gate visible.
 
 ## Earlier CI repairs — retained history

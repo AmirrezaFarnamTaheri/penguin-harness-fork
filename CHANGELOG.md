@@ -16,7 +16,7 @@ Unreleased entries describe the current candidate and are not a new published ve
 - Removed superseded planning copies; their source remains available through pinned Git history.
 - Clarified CodeGraph/Serena freshness, task ownership, acceptance, and documentation updates.
 
-### Runtime fixes in the local candidate — acceptance pending
+### Runtime fixes in the local candidate — accepted, CI pending
 
 - Session deletion retains files and returns a typed retryable failure while owned handlers or
   runtime disposal remain unresolved; disposal retries and shutdown retain cleanup ownership.
@@ -25,12 +25,21 @@ Unreleased entries describe the current candidate and are not a new published ve
 - Pressure grants use unique IDs and locked reload/mutate/save transactions across store instances.
 - The POSIX parent-death guardian validates an inherited ownership nonce on current group
   members before signalling, including surviving descendants after their leader exits.
+- All five are covered by new acceptance suites (63 core cases with 4 POSIX-only skipped, 68 server
+  cases) that are shown to fail against each reverted repair. Two problems surfaced while
+  accepting them: the guardian change had regressed the Windows core lane, and every server-side
+  suite was resolving a stale injected snapshot of core, so none of these fixes was reachable from
+  the server package until core was rebuilt through pnpm.
 
 ### Release gates
 
 - Corrected-candidate CI and review acceptance remain pending; no merge has been recorded.
-- One high desktop build-dependency advisory remains open. The audit names a patched range,
-  but the registry query did not find version 4.2.1.
+- One high desktop build-dependency advisory remains open. Its audit entry names a patched range,
+  but no patched release exists: 4.2.1 was never published, and the 4.3.0 release that appeared on
+  2026-10-04 leaves the cited `max-stale` code byte-identical, so taking it would clear the audit
+  without fixing anything. A separate assessment shows the vulnerable code is never instantiated
+  by this repository's packaging configuration. The gate now waits only on a named owner's
+  adjudication; no suppression was applied and the lockfile is unchanged.
 - Windows parent-death Job Object ownership and commands that remove the POSIX ownership
   environment retain their documented limits.
 

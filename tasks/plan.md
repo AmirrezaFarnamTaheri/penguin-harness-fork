@@ -23,17 +23,21 @@ Local review fixes and this documentation refresh await commit and candidate acc
 | PR #13 | Draft, `09b36f788333393de48268939df99d57f5e580fa` | Reconcile contained changes after #15 merge |
 | PR #14 | Draft, `73ab5144bcaa2a5ba191acb551dfb6011cefbddf`; contains #13 | Reconcile contained changes after #15 merge |
 | PR #15 | Ready, reviewed head `9f589c721a7cf09c9fb7ec116319161e76218f7c`; contains #14 | Commit repairs, pass new candidate gates, merge |
-| Five review repairs | Local implementation present | Complete [PRR-01–05](work-orders.md#review-repair-orders) acceptance |
-| Dependency audit | One high desktop build-dependency advisory | Resolve [SEC-01](work-orders.md#sec-01) |
+| Five review repairs | Accepted 2026-10-04 on the local tree; not yet on a candidate SHA | Push the corrected candidate and pass its CI ([receipt](../docs/audits/prr-acceptance-2026-10-04.md)) |
+| Dependency audit | One high desktop build-dependency advisory; reachability disproved, remediation still absent | Record owner adjudication for [SEC-01](work-orders.md#sec-01) ([receipt](../docs/audits/sec-01-http-cache-semantics-2026-10-04.md)) |
 
 At the reviewed PR #15 head, 25 checks succeeded and 2 were skipped; none failed.
 [CI run 37151015054](https://github.com/AmirrezaFarnamTaheri/penguin-harness-fork/actions/runs/37151015054)
 and auxiliary checks certify their recorded source, not the changed working tree.
 Read the [review receipt](../docs/audits/open-pr-review-2026-10-04.md) for scope and limitations.
 
-The 2026-10-04 audit advertises a fix at `>=4.2.1`, but the registry lookup for 4.2.1 returns
-package-not-found. Keep the release audit gate open until a compatible fix is published or an
-explicit owner adjudication is recorded. A suppressed finding is not a patched dependency.
+The 2026-10-04 audit advertises a fix at `>=4.2.1`, but no such release exists. A `4.3.0`
+release published 2026-10-04T02:56Z sorts outside the affected `<=4.2.0` range but was verified
+byte-for-byte not to touch the cited `max-stale` branch, so adopting it would clear the audit
+without remediating anything. The [SEC-01 reachability receipt](../docs/audits/sec-01-http-cache-semantics-2026-10-04.md)
+traces the vulnerable code as uninstantiated in this repository. Keep the release audit gate
+open until a genuine fix is published or an explicit owner adjudication is recorded.
+A suppressed finding is not a patched dependency.
 
 ## Scope and phase outcomes
 

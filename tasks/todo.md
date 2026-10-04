@@ -44,12 +44,12 @@ Every state change cites a revision, criterion result, limits, and next work.
 | [CI-02](work-orders.md#ci-02) | VERIFIED | Event-driven watcher assertion retained; reopen on recurrence |
 | [CI-03](work-orders.md#ci-03) | VERIFIED | Historical countdown/retry-now browser receipt retained |
 | [CI-04](work-orders.md#ci-04) | VERIFIED | Historical fallback/unmount browser receipt retained |
-| [PRR-01](work-orders.md#prr-01) | IMPLEMENTED | Pending/failed Session cleanup cannot produce deletion success |
-| [PRR-02](work-orders.md#prr-02) | IMPLEMENTED | Complete and incomplete JSON credentials are masked |
-| [PRR-03](work-orders.md#prr-03) | IMPLEMENTED | Valid low-disk refusal survives override persistence failure |
-| [PRR-04](work-orders.md#prr-04) | IMPLEMENTED | Serialized durable single-use authority; unique override IDs |
-| [PRR-05](work-orders.md#prr-05) | IMPLEMENTED | Guardian validates current group ownership before signalling |
-| [SEC-01](work-orders.md#sec-01) | GATED | Published compatible dependency fix or explicit owner adjudication |
+| [PRR-01](work-orders.md#prr-01) | VERIFIED | Pending/failed Session cleanup cannot produce deletion success; coordinator tracks owned handlers past the executor race; 503 retains row/files/guard and a retry completes deletion ([receipt](../docs/audits/prr-acceptance-2026-10-04.md)) |
+| [PRR-02](work-orders.md#prr-02) | VERIFIED | Complete and incomplete JSON credentials are masked, with sentinel controls proving the field-name rule fires ([receipt](../docs/audits/prr-acceptance-2026-10-04.md)) |
+| [PRR-03](work-orders.md#prr-03) | VERIFIED | Valid low-disk refusal survives override persistence failure; real ENOTDIR/EPERM/corrupt faults, never reported as an unavailable probe ([receipt](../docs/audits/prr-acceptance-2026-10-04.md)) |
+| [PRR-04](work-orders.md#prr-04) | VERIFIED | Serialized durable single-use authority; unique override IDs; concurrent grants preserved, exactly one consumption, no resurrection ([receipt](../docs/audits/prr-acceptance-2026-10-04.md)) |
+| [PRR-05](work-orders.md#prr-05) | VERIFIED | Guardian validates current group ownership before signalling; no bare-PID kill; signed records, atomic publication ([receipt](../docs/audits/prr-acceptance-2026-10-04.md); POSIX real-process cases still unexecuted) |
+| [SEC-01](work-orders.md#sec-01) | GATED — 1.1/1.3 done, 1.2 contradicted (no real fix), 1.4 needs owner | Named owner adjudication or a genuine upstream fix; [2026-10-04 receipt](../docs/audits/sec-01-http-cache-semantics-2026-10-04.md) |
 
 ## Wave R
 
