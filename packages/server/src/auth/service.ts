@@ -14,7 +14,7 @@ import type { UserRow, UsersRepo } from "../db/repos/users.js";
 import { sessionTokenHash } from "../db/repos/auth-sessions.js";
 import type { SessionViaValue, AuthSessionsRepo } from "../db/repos/auth-sessions.js";
 import type { AuthRuntimeState } from "./runtime-state.js";
-import { SCRYPT_COST, hashPassword, verifyPassword } from "./password.js";
+import { SCRYPT_COST, hashPassword, verifyAccountPassword, verifyPassword } from "./password.js";
 
 export const MIN_PASSWORD_LENGTH = 8;
 
@@ -27,6 +27,8 @@ export const ADMIN_USER_ID = "admin";
  * Kept for nonexistent userIds too, so it is not an account-existence oracle. Deliberately NOT
  * covered: a concurrent burst before the first failure lands, and guesses spread across many
  * accounts.
+ * Neither is the time a failure takes, either: a nonexistent userId is checked against a dummy
+ * hash (loginDummyHash), so it costs the same derivation a wrong password does.
  */
 const LOGIN_FREE_ATTEMPTS = 5;
 const LOGIN_BACKOFF_START_MS = 1000;
@@ -171,6 +173,21 @@ export class AuthService {
   /** Consecutive login failures per userId (see the throttling comment on the constants). */
   private readonly loginFailures = new Map<string, { failures: number; lastFailureAt: number }>();
 
+  /** Cache for loginDummyHash. */
+  private dummyHash: string | null = null;
+
+  /**
+   * The hash a sign-in with no account to check is verified against (verifyAccountPassword), so
+   * it costs what a wrong password costs. Hashed at this server's own `hashCost` — the parameter
+   * its real hashes are written with, including a test suite's reduced one — from a random
+   * password nobody holds; computed on the first such sign-in and kept, because paying the
+   * derivation twice on that one request would be its own tell.
+   */
+  private async loginDummyHash(): Promise<string> {
+    this.dummyHash ??= await hashPassword(randomBytes(18).toString("base64url"), this.hashCost);
+    return this.dummyHash;
+  }
+
   /** The wait imposed after `failures` consecutive failures (0 while within the free attempts). */
   private loginDelayMs(failures: number): number {
     const excess = failures - LOGIN_FREE_ATTEMPTS;
@@ -195,7 +212,11 @@ export class AuthService {
       }
     }
     const row = this.deps.users.findById(userId);
-    const ok = row !== null && (await verifyPassword(password, row.passwordHash));
+    // A missing account, or one whose hash cannot be checked, still costs one scrypt
+    // derivation, and fails with the same 401 as a wrong password.
+    const ok = await verifyAccountPassword(password, row?.passwordHash ?? null, () =>
+      this.loginDummyHash(),
+    );
     if (!row || !ok) {
       this.loginFailures.set(userId, {
         failures: (failed?.failures ?? 0) + 1,

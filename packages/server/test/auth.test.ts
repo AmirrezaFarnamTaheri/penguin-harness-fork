@@ -265,6 +265,49 @@ describe("auth", () => {
     }
   });
 
+  it("an unknown username costs the same derivation as a wrong password", async () => {
+    // At the production work factor, one scrypt derivation is ~30ms and the shortcut that
+    // skipped it was ~0ms. The floor below sits inside that two-order-of-magnitude gap rather
+    // than near either end, so it catches the regression without being flaky; the exact
+    // one-derivation contract is asserted deterministically in password.test.ts, which counts
+    // derivations through an injected check instead of reading a clock.
+    const strong = await createTestApp({ passwordHashCost: 16384 });
+    try {
+      const login = (userId: string, password: string) =>
+        strong.app.request("/api/auth/login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId, password }),
+        });
+
+      // Both failures must be indistinguishable in status, headers and body...
+      const unknown = await login("ghost", "whatever-123");
+      const wrong = await login("admin", "not-the-password");
+      expect(unknown.status).toBe(401);
+      expect(unknown.status).toBe(wrong.status);
+      expect(await unknown.text()).toBe(await wrong.text());
+
+      // ...and both must have paid for one derivation. The first unknown sign-in also builds
+      // the dummy hash, so it is the slowest; the second reuses it and is the like-for-like
+      // comparison against the real account's wrong password.
+      await login("ghost-2", "whatever-123"); // warm the cached dummy
+      const timeOf = async (run: () => unknown) => {
+        const startedAt = performance.now();
+        await run();
+        return performance.now() - startedAt;
+      };
+      const unknownMs = await timeOf(() => login("ghost-3", "whatever-123"));
+      const wrongMs = await timeOf(() => login("admin", "not-the-password-2"));
+      const floorMs = 10;
+      expect(unknownMs).toBeGreaterThan(floorMs);
+      expect(wrongMs).toBeGreaterThan(floorMs);
+      // Neither may run away from the other: the oracle is the gap, not the absolute cost.
+      expect(Math.abs(unknownMs - wrongMs)).toBeLessThan(Math.max(unknownMs, wrongMs));
+    } finally {
+      await strong.cleanup();
+    }
+  });
+
   it("adminPasswordIs verifies the pin against the hash, not the config", async () => {
     // Sole consumer is the startup notice gate: a pinned seed normally silences the
     // first-login link, but an offline reset makes the pin stale — the gate must notice.
