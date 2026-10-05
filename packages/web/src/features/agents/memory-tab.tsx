@@ -436,7 +436,7 @@ export function MemoryTab({
       setImporting(null);
       await load();
       // The agent card's memory count changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       toastError(apiErrorText(e));
     } finally {
@@ -467,7 +467,7 @@ export function MemoryTab({
       if (viewing && viewing.file.name === target.file.name) setViewOpen(false);
       await load();
       // The agent card's memory count changed; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
     } catch (e) {
       toastError(apiErrorText(e));
     }

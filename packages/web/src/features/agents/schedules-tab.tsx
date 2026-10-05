@@ -107,7 +107,7 @@ export function SchedulesTab({
   /** After a create, update or delete: the table, and the agent card's schedule count. */
   const changed = () => {
     void load();
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   };
 
   /** Toggle: whole-file-replace semantics — resend original fields, only flip enabled. */

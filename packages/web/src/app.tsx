@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { LocaleProvider, LocaleScope } from "./state/locale";
 import { ThemeProvider } from "./state/theme";
 import { AuthProvider } from "./state/auth";
+import { ConnectivityProvider } from "./state/connectivity";
 import { AppRouter } from "./router";
 import { Toaster } from "./components/ui/toast";
 import { guardWindowDragOver, guardWindowDrop } from "./lib/file-drop";
@@ -33,11 +34,16 @@ export function App() {
     <LocaleProvider>
       <ThemeProvider>
         <AuthProvider>
-          <LocaleScope>
-            <AppRouter />
-            {/* Top toast overlay: portaled to body, z-index above modals, shared site-wide. */}
-            <Toaster />
-          </LocaleScope>
+          {/* Reachability lives above the router: one probe and one posture for every page,
+              including the login screen. Rendered inside the i18n providers because its copy
+              comes from the dictionaries. */}
+          <ConnectivityProvider>
+            <LocaleScope>
+              <AppRouter />
+              {/* Top toast overlay: portaled to body, z-index above modals, shared site-wide. */}
+              <Toaster />
+            </LocaleScope>
+          </ConnectivityProvider>
         </AuthProvider>
       </ThemeProvider>
     </LocaleProvider>

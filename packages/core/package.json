@@ -85,7 +85,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "node ../../scripts/run-with-env.mjs PENGUIN_E2E=1 -- vitest run test/llm.e2e.test.ts test/agent-stream.e2e.test.ts",
-    "build": "tsup"
+    "build": "tsup && node ../../scripts/stamp-workspace-core.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.0.0",
@@ -109,17 +109,17 @@
     "ajv": "8.20.0",
     "arktype": "^2.2.3",
     "smol-toml": "^1.8.0",
-    "yaml": "^2.5.0"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
-    "@types/node": "^24.0.0",
-    "dotenv": "^17.0.0",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
+    "@types/node": "^24.13.3",
+    "dotenv": "^17.4.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.11",
-    "zod": "^4.2.0"
+    "zod": "^4.4.3"
   },
   "files": [
     "dist",

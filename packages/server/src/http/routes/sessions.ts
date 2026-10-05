@@ -11,11 +11,20 @@ import path from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
+  NONESSENTIAL_PRODUCERS,
+  PRESSURE_BLOCK_BELOW_BYTES,
+  PRESSURE_WARN_BELOW_BYTES,
+  RECALL_OUTPUT_PAGE_CHARS,
   THINKING_LEVEL_NAMES,
+  PressureOverrideStore,
   imageUrlMessage,
+  isValidRecallId,
   scratchpadDir,
+  sessionPressureOverridePath,
   sessionScratchpadDir,
+  sliceRecallPage,
   stripLeadingMarkerBlocks,
+  TruncatedToolOutputArchive,
   userText,
 } from "@prismshadow/penguin-core";
 import { catalogEntryFor } from "@prismshadow/penguin-core/model-catalog";
@@ -28,6 +37,7 @@ import type {
   MessagesLiveTail,
   MessagesPageInfo,
   MessagesResponse,
+  RecallPageResponse,
   RecalledMessageResponse,
   ServerEvent,
   SessionCategory,
@@ -50,6 +60,7 @@ import type { SessionRow } from "../../db/repos/sessions.js";
 import { assertWorkspaceAllowed } from "../../services/workspace-guard.js";
 import { isGoalOutcome } from "../../runtime/goal-events.js";
 import { HttpError } from "../errors.js";
+import { abortSwarmTasksForSession } from "../../cockpit/ws.js";
 import { sseEndpoint } from "../sse.js";
 import {
   badRequest,
@@ -697,15 +708,64 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
     // entry and Trace after abort but before the files are deleted, reviving an
     // already-deleted Session. Interrupt cleanup writes the Trace asynchronously, so we
     // wait for it to finish (≤5s cap) before deleting the files and index row; the
-    // being-deleted marker is cleared once deletion finishes (success or failure).
+    // The deleting marker and resources survive a pending/failed cleanup for a later retry.
     const runnings = deps.manager.beginSessionDeletion(row.sessionId);
+    let cleanupComplete = false;
     try {
-      if (runnings.length > 0) {
-        await Promise.race([
-          Promise.allSettled(runnings).then(() => undefined),
-          new Promise<void>((resolve) => setTimeout(resolve, 5000).unref?.()),
-        ]);
+      // Work the Session spawned does not outlive it (E10.3): a swarm task started from this
+      // conversation keeps running on the project coordinator otherwise, invisible and
+      // unstoppable from any UI, until it reaches its round cap. Signalling is not enough before
+      // the files below are removed -- a step handler takes time to stop -- so the abort also
+      // hands back a promise for the task leaving its executor, and it is awaited here with the
+      // same bound as the run wait. A handler that does not stop in time is reported, not
+      // silently raced past.
+      const swarm = abortSwarmTasksForSession(row.sessionId, "session deleted");
+      const waits: Promise<void>[] = [swarm.settled];
+      if (runnings.length > 0) waits.push(Promise.allSettled(runnings).then(() => undefined));
+      if (waits.length > 0) {
+        let timedOut = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            Promise.all(waits).then(() => undefined),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(() => {
+                timedOut = true;
+                resolve();
+              }, 5000);
+              timer.unref?.();
+            }),
+          ]);
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
+        if (timedOut) {
+          throw new HttpError(
+            503,
+            "session_cleanup_pending",
+            "Session work is still stopping. Its resources were retained; retry deletion after cleanup completes.",
+          );
+        }
       }
+      // Cleanup is asynchronous and can throw before it releases the background processes the
+      // deleted conversation started. That failure must not be reported as a plain success: the
+      // Session's files are going away next, so nothing else will ever be able to stop them.
+      const disposeOutcome = await deps.manager.disposeOutcomeWithin(row.sessionId, 5000);
+      if (disposeOutcome === "dispose-failed") {
+        throw new HttpError(
+          503,
+          "session_cleanup_failed",
+          "Session runtime cleanup failed. Its resources were retained; retry deletion to retry cleanup.",
+        );
+      }
+      if (disposeOutcome === undefined && deps.manager.hasPendingSessionCleanup(row.sessionId)) {
+        throw new HttpError(
+          503,
+          "session_cleanup_pending",
+          "Session runtime cleanup is still pending. Its resources were retained; retry deletion after cleanup completes.",
+        );
+      }
+      cleanupComplete = true;
       await deps.traceService.deleteSessionTraces(row.projectId, row.agentId, row.sessionId);
       // The session-level scratchpad (model temp files + input images saved to disk for image-unsupported models) is deleted along with the session.
       await fs.rm(
@@ -721,9 +781,144 @@ export function sessionsRoutes(deps: AppDeps): Hono<AppEnv> {
       // may leave stale entries; session ids are never reused, so they are never matched).
       deps.sessionSources.delete(row.sessionId);
     } finally {
-      deps.manager.endSessionDeletion(row.sessionId);
+      if (cleanupComplete) deps.manager.endSessionDeletion(row.sessionId);
     }
     return c.body(null, 204);
+  });
+
+  // Bounded, path-free retrieval of oversized tool output (F18). The browser and the CLI read a
+  // Session's archived output here by the opaque id the tool result published; the id is validated
+  // to the same 12/32-hex shape the model-facing tool accepts, so it can only ever name a file the
+  // archive wrote inside this Session's scratchpad — a request cannot ask for a path, because a
+  // path cannot spell a valid id. The store is constructed per request rather than shared: it
+  // reads the directory it is given and caches nothing between calls, so the Session's own
+  // lifetime (and its deletion) keeps governing what exists, exactly as it does for the model.
+  app.get("/:sessionId/recall/:recallId", async (c) => {
+    const row = resolveSession(c);
+    const recallId = (c.req.param("recallId") ?? "").trim().toLowerCase();
+    if (!isValidRecallId(recallId)) {
+      throw new HttpError(
+        400,
+        "recall_id_invalid",
+        "A recall id is 12 or 32 hexadecimal characters.",
+      );
+    }
+    const rawOffset = c.req.query("offset");
+    const offset = rawOffset === undefined || rawOffset === "" ? 0 : Number(rawOffset);
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new HttpError(
+        400,
+        "recall_offset_invalid",
+        "Recall offset must be a non-negative whole number.",
+      );
+    }
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(
+        sessionScratchpadDir(deps.config.root, row.projectId, row.agentId, row.sessionId),
+        "truncated-tool-output",
+      ),
+    });
+    const result = await archive.recall(recallId);
+    if (result.status !== "ok") {
+      // Two codes, because the two are different facts to the reader: the entry aged out of a
+      // bounded store, or this Session never held that id / never held it at all.
+      throw new HttpError(
+        404,
+        result.status === "dropped" ? "recall_expired" : "recall_unavailable",
+        result.status === "dropped"
+          ? "This Session's output archive entry has expired."
+          : "This output id is unavailable in this Session.",
+      );
+    }
+    const slice = sliceRecallPage(result.text, offset, RECALL_OUTPUT_PAGE_CHARS);
+    if (slice.status !== "ok") {
+      // Not 404: the id is fine and the text exists — the requested position is not a place in it
+      // (past the end, or inside a surrogate pair). 416 says that without pretending to be an
+      // unknown resource, and the body says how long the text actually is.
+      throw new HttpError(
+        416,
+        "recall_offset_out_of_range",
+        `Recall offset is outside this output (it is ${slice.totalChars} UTF-16 code units long) or splits a Unicode character.`,
+      );
+    }
+    return c.json({
+      recallId,
+      offset,
+      page: slice.page,
+      nextOffset: slice.nextOffset,
+      totalChars: slice.totalChars,
+    } satisfies RecallPageResponse);
+  });
+
+  // The authenticated half of the write-pressure policy (I7.3): the recorded grant a person can
+  // take back a refusal with.
+  //
+  // The policy refuses the harness's own nonessential writes (the tool-output archive and the
+  // recall store) when the volume they write to has very little room left, and the model cannot
+  // lift that refusal — the evaluator has no parameter a tool call's arguments can reach. This
+  // route is where a *person* does, and every part of the grant's scope is derived here rather
+  // than accepted from the caller: the Session comes from the authenticated route resolution, the
+  // volume is that Session's scratchpad directory (where its archive lives), the grant is
+  // single-use and the record is written into the Session's own scratchpad. A request can name
+  // which producer and which tool call it is lifting, and nothing else.
+  app.post("/:sessionId/pressure-overrides", async (c) => {
+    const row = resolveSession(c);
+    const body = (await c.req.json().catch(() => null)) as {
+      producerId?: unknown;
+      toolCallId?: unknown;
+      reason?: unknown;
+    } | null;
+    const producerId = typeof body?.producerId === "string" ? body.producerId : "";
+    if (!(NONESSENTIAL_PRODUCERS as readonly string[]).includes(producerId)) {
+      throw new HttpError(
+        400,
+        "pressure_producer_invalid",
+        `producerId must be one of: ${NONESSENTIAL_PRODUCERS.join(", ")}.`,
+      );
+    }
+    const toolCallId = typeof body?.toolCallId === "string" ? body.toolCallId.trim() : "";
+    if (toolCallId === "" || toolCallId.length > 200) {
+      throw new HttpError(
+        400,
+        "pressure_tool_call_invalid",
+        "toolCallId must be a non-empty string of at most 200 characters.",
+      );
+    }
+    const reason =
+      typeof body?.reason === "string" && body.reason.trim() !== ""
+        ? body.reason.trim().slice(0, 500)
+        : "granted through the Session's pressure-override route";
+    const scratchpad = sessionScratchpadDir(
+      deps.config.root,
+      row.projectId,
+      row.agentId,
+      row.sessionId,
+    );
+    const store = new PressureOverrideStore({
+      persistPath: sessionPressureOverridePath(scratchpad),
+    });
+    const record = await store.grant({
+      sessionId: row.sessionId,
+      producerId,
+      toolCallId,
+      volumePath: scratchpad,
+      grantedBy: "operator",
+      reason,
+    });
+    return c.json(
+      {
+        overrideId: record.overrideId,
+        producerId: record.producerId,
+        toolCallId: record.toolCallId,
+        volumePath: record.volumePath,
+        grantedBy: record.grantedBy,
+        grantedAt: record.grantedAt,
+        reason: record.reason,
+        warnBelowBytes: PRESSURE_WARN_BELOW_BYTES,
+        blockBelowBytes: PRESSURE_BLOCK_BELOW_BYTES,
+      },
+      201,
+    );
   });
 
   // Session scratchpad files (input images saved to disk for image-unsupported models, the

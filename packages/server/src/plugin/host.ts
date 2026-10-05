@@ -6,6 +6,7 @@
  */
 import type { Resources } from "@prismshadow/penguin-core/kernel";
 import type { Disposable, Plugin, PluginEvents } from "@prismshadow/penguin-core/plugin";
+import { serverLogger } from "../runtime/logger.js";
 
 interface ActivatedPlugin {
   handlers: { [E in keyof PluginEvents]?: Array<(payload: PluginEvents[E]) => void> };
@@ -94,9 +95,7 @@ async function runDisposables(disposables: readonly Disposable[]): Promise<void>
       try {
         await disposable.dispose();
       } catch (err) {
-        console.warn(
-          `[plugins] disposer failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        serverLogger.warn("Plugin disposer failed.", { error: err });
       }
     }),
   );

@@ -74,6 +74,7 @@ import { goalOutcomeOf, goalProgressOf } from "./goal-events.js";
 import type { PendingApproval } from "./approvals.js";
 import type { ChannelHub } from "./channel.js";
 import type { ErrorSink } from "./error-recorder.js";
+import { serverLogger } from "./logger.js";
 import { LiveTailTracker } from "./live-tail.js";
 import { asSessionSource } from "./session-sources.js";
 import type { SessionSources } from "./session-sources.js";
@@ -652,6 +653,27 @@ function isPlainText(role: "user" | "assistant") {
   };
 }
 
+/**
+ * How long a removed entry's in-flight drive may take to settle before its environment is
+ * disposed anyway (E10.2). The same 5 s budget the delete route and shutdown already use, so
+ * the three waits agree instead of one of them being effectively infinite.
+ */
+export const RUNTIME_DISPOSE_GRACE_MS = 5_000;
+
+/**
+ * How a removed entry's runtime cleanup ended: settled in time, forced at the bound, or failed.
+ *
+ * `dispose-failed` is distinct from the other two on purpose. `dispose()` throwing means the
+ * process kill it owns did not run, so background processes may still be alive with no Session
+ * control left to reach them — reporting that as a success would hide exactly the leak the
+ * cleanup exists to prevent. The caller (the delete path) surfaces it; the entry is already out
+ * of the active table by then, which is why the outcome has to carry the news.
+ */
+export type DisposeOutcome = "disposed" | "disposed-after-timeout" | "dispose-failed";
+
+/** Bounded history of cleanup outcomes, so a long-lived process does not accumulate them. */
+const DISPOSE_OUTCOME_HISTORY = 32;
+
 export class SessionManager {
   private readonly entries = new Map<string, RuntimeEntry>();
   /** Per-Session mutex (serializes get-or-load and status flips); auto-cleaned once the chain drains. */
@@ -663,6 +685,16 @@ export class SessionManager {
   private readonly deletingAgents = new Set<string>();
   /** Sessions currently being deleted (guards against the entry/Trace file being rebuilt and reviving it inside the deletion race window). */
   private readonly deletingSessions = new Set<string>();
+  /** Removed runtimes retained until deletion cleanup succeeds, including failed disposal retries. */
+  private readonly deletingEntries = new Map<string, RuntimeEntry>();
+  /** Removed entries whose in-flight drive did not settle inside the dispose grace (E10.2). */
+  private disposeTimeouts = 0;
+  /** Removed entries whose dispose() threw, so their environment may not have been released. */
+  private disposeFailures = 0;
+  /** Outcome of the last cleanup per removed Session, newest last (E10.2); bounded. */
+  private readonly disposeOutcomes = new Map<string, DisposeOutcome>();
+  /** Pending cleanup promises per removed Session, so a caller can wait for the outcome. */
+  private readonly disposeSettled = new Map<string, Promise<DisposeOutcome>>();
   /** Per-Agent config generation (key = agentKey), bumped by invalidateAgentRuntimes when a Project's credentials change. */
   private readonly agentGenerations = new Map<string, number>();
   /** Open streaming fragments of running sessions (fed by drive, served to GET /messages; see live-tail.ts). */
@@ -672,7 +704,7 @@ export class SessionManager {
   private readonly now: () => Date;
 
   constructor(private readonly deps: SessionManagerDeps) {
-    this.log = deps.log ?? ((line) => console.error(line));
+    this.log = deps.log ?? ((line) => serverLogger.line(line, "error"));
     this.now = deps.now ?? (() => new Date());
     this.sweepTimer = setInterval(() => this.sweepIdle(), ENTRY_SWEEP_INTERVAL_MS);
     this.sweepTimer.unref?.();
@@ -908,6 +940,13 @@ export class SessionManager {
       toolApprovalTarget: (name, rawArguments) =>
         entry.session.toolApprovalTarget?.(name, rawArguments),
       registry: entry.approvals,
+      // The one cross-cutting approval override: an organization's sessions run with nobody
+      // watching, so a call their approval mode would hand to a person is denied here instead
+      // of waiting for an answer that is never coming (see `unattended` in approvals.ts). The
+      // marker is the row's durable `client = "org"` stamp — desk, ticket and the sub-sessions
+      // that inherit it — read per decision, so a row the reconcile pass stamps later is
+      // covered from its next decision on.
+      unattended: () => this.deps.sessions.findById(entry.sessionId)?.client === "org",
       publishRequest: (pending) =>
         this.publishEvent(entry, {
           type: "approval_request",
@@ -1542,11 +1581,95 @@ export class SessionManager {
    * Agent / Project is the one intent that must also end the background processes the
    * conversation started (a dev server surviving its deleted conversation is
    * unreachable from every UI, running forever).
+   *
+   * The wait is BOUNDED (E10.2). A drive promise that never settles used to mean
+   * `dispose()` was never called at all: the entry left the active table, the route
+   * answered 204, and the Session's background processes kept running with no UI left
+   * that could reach them. After {@link RUNTIME_DISPOSE_GRACE_MS} the cleanup runs
+   * anyway, and the caller is told which happened — `"disposed"` for a settle inside
+   * the grace, `"disposed-after-timeout"` for the forced case — so a timeout is never
+   * reported as an uncomplicated success. The outcome is also counted
+   * ({@link disposeTimeouts}) and logged, because the interesting event is the run that
+   * outlived its own deletion.
    */
-  private disposeRemoved(entry: RuntimeEntry): void {
-    const dispose = (): void => entry.session.dispose?.();
-    if (entry.running) void entry.running.then(dispose, dispose);
-    else dispose();
+  private disposeRemoved(entry: RuntimeEntry): Promise<DisposeOutcome> {
+    let resolveDisposed!: (outcome: DisposeOutcome) => void;
+    const disposed = new Promise<DisposeOutcome>((resolve) => {
+      resolveDisposed = resolve;
+    });
+    this.disposeOutcomes.delete(entry.sessionId);
+    this.disposeSettled.set(entry.sessionId, disposed);
+    let done = false;
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    // Cleanup must never reject the caller's deletion path; the process kill it owns is
+    // best-effort by the same rule as the rest of dispose(). "Best-effort" is not
+    // "successful" though: a throw AND a rejected promise are recorded as their own outcome,
+    // so the deletion path and its metrics can tell a released environment from a leaked one
+    // (and an async rejection can no longer escape as an unhandled rejection).
+    const finish = (outcome: DisposeOutcome): void => {
+      // Recorded before the resolve so a caller woken by the promise always finds it.
+      this.disposeSettled.set(entry.sessionId, disposed);
+      this.disposeOutcomes.set(entry.sessionId, outcome);
+      if (this.disposeOutcomes.size > DISPOSE_OUTCOME_HISTORY) {
+        for (const key of this.disposeOutcomes.keys()) {
+          if (this.disposeOutcomes.size <= DISPOSE_OUTCOME_HISTORY) break;
+          if (this.deletingEntries.has(key)) continue;
+          this.disposeOutcomes.delete(key);
+          this.disposeSettled.delete(key);
+        }
+      }
+      resolveDisposed(outcome);
+    };
+    const fail = (err: unknown): void => {
+      this.disposeFailures += 1;
+      this.log(
+        `[session-manager] dispose failed for ${entry.sessionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      finish("dispose-failed");
+    };
+    const disposeOnce = (): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      let pending: unknown;
+      try {
+        pending = entry.session.dispose?.();
+      } catch (err) {
+        fail(err);
+        return;
+      }
+      if (
+        pending !== null &&
+        pending !== undefined &&
+        typeof (pending as { then?: unknown }).then === "function"
+      ) {
+        // The cleanup returned a promise: the outcome is the promise's, not the call's. A
+        // rejection here is a failure to release, exactly like a synchronous throw.
+        void Promise.resolve(pending).then(
+          () => finish(timedOut ? "disposed-after-timeout" : "disposed"),
+          (err: unknown) => fail(err),
+        );
+        return;
+      }
+      finish(timedOut ? "disposed-after-timeout" : "disposed");
+    };
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      this.disposeTimeouts += 1;
+      this.log(
+        `[session-manager] ${entry.sessionId} did not settle within ${RUNTIME_DISPOSE_GRACE_MS}ms; disposing anyway so its background processes cannot outlive it`,
+      );
+      disposeOnce();
+    }, RUNTIME_DISPOSE_GRACE_MS);
+    timer.unref?.();
+    if (entry.running) void entry.running.then(disposeOnce, disposeOnce);
+    else disposeOnce();
+    return disposed;
   }
 
   /**
@@ -1563,7 +1686,7 @@ export class SessionManager {
       entry.abort?.abort();
       if (entry.running) runnings.push(entry.running);
       this.entries.delete(key);
-      this.disposeRemoved(entry);
+      void this.disposeRemoved(entry);
     }
     return runnings;
   }
@@ -1586,7 +1709,7 @@ export class SessionManager {
       entry.abort?.abort();
       if (entry.running) runnings.push(entry.running);
       this.entries.delete(key);
-      this.disposeRemoved(entry);
+      void this.disposeRemoved(entry);
     }
     return runnings;
   }
@@ -1602,23 +1725,96 @@ export class SessionManager {
    * always rejected with 409 (assertSessionNotDeleting), closing the race window where
    * a new task recreates the entry and Trace file, reviving an already-deleted Session
    * between the abort snapshot and the file removal. The caller must call
-   * endSessionDeletion once deletion finishes (success or failure). Returns the
+   * endSessionDeletion once cleanup is confirmed; failed/pending cleanup retains the guard.
+   * Returns the
    * in-flight drive Promise: the caller should await it before deleting the Trace file,
    * so cleanup writes don't recreate the file.
    */
   beginSessionDeletion(sessionId: string): Promise<void>[] {
     this.deletingSessions.add(sessionId);
-    const entry = this.entries.get(sessionId);
+    const entry = this.entries.get(sessionId) ?? this.deletingEntries.get(sessionId);
     if (!entry) return [];
     entry.approvals.denyAll();
     entry.abort?.abort();
-    this.entries.delete(sessionId);
-    this.disposeRemoved(entry);
+    if (this.entries.delete(sessionId)) {
+      this.deletingEntries.set(sessionId, entry);
+      void this.disposeRemoved(entry);
+    } else if (this.disposeOutcomes.get(sessionId) === "dispose-failed") {
+      void this.disposeRemoved(entry);
+    }
     return entry.running ? [entry.running] : [];
   }
 
   endSessionDeletion(sessionId: string): void {
     this.deletingSessions.delete(sessionId);
+    this.deletingEntries.delete(sessionId);
+  }
+
+  hasPendingSessionCleanup(sessionId: string): boolean {
+    return this.deletingEntries.has(sessionId);
+  }
+
+  /**
+   * Whether this Session's deletion is in flight. Published so a route that is about to attach
+   * work to a Session can ask the same question the Task path asks (`assertSessionNotDeleting`)
+   * instead of re-deriving it: the flag is set synchronously before any file is removed and
+   * cleared when deletion ends, so a caller that checks it immediately before registering work
+   * either sees the deletion or is covered by the coordinator's per-Session cancellation latch.
+   */
+  isSessionDeleting(sessionId: string): boolean {
+    return this.deletingSessions.has(sessionId);
+  }
+
+  /**
+   * How many removed entries needed the forced cleanup in {@link disposeRemoved} (E10.2).
+   * A non-zero count is evidence about a stuck run, not about the delete having failed:
+   * the entry was removed and its environment disposed either way.
+   */
+  get disposeTimeoutCount(): number {
+    return this.disposeTimeouts;
+  }
+
+  /** Removed entries whose dispose() threw — the environments whose release is unproven. */
+  get disposeFailureCount(): number {
+    return this.disposeFailures;
+  }
+
+  /**
+   * How the removed Session's cleanup ended, or undefined when it is not known yet (the
+   * cleanup is asynchronous and may still be inside its grace) or was never scheduled here.
+   * This is the per-call outcome the delete path can report: `disposed` means the drive settled
+   * and the environment was released; `disposed-after-timeout` means the run outlived its
+   * Session and the environment was released anyway; `dispose-failed` means the release itself
+   * threw, so anything dispose() would have killed may still be running.
+   */
+  disposeOutcomeOf(sessionId: string): DisposeOutcome | undefined {
+    return this.disposeOutcomes.get(sessionId);
+  }
+
+  /**
+   * Waits up to `timeoutMs` for the removed Session's cleanup to finish, and returns its outcome
+   * (or undefined when nothing was scheduled, or the cleanup outlasted the wait). The delete path
+   * uses this to tell the caller — and the log — that an environment whose `dispose()` threw may
+   * still hold processes, instead of returning a bare 204 over a leak.
+   */
+  async disposeOutcomeWithin(
+    sessionId: string,
+    timeoutMs: number,
+  ): Promise<DisposeOutcome | undefined> {
+    const pending = this.disposeSettled.get(sessionId);
+    if (pending === undefined) return this.disposeOutcomes.get(sessionId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        pending,
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), timeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   /** Graceful shutdown: reject new tasks (503), interrupt all active runs, and wait for them to finish (default ≤5s). */
@@ -1626,7 +1822,8 @@ export class SessionManager {
     this.closed = true;
     clearInterval(this.sweepTimer);
     const pending: Promise<void>[] = [];
-    for (const entry of this.entries.values()) {
+    const shutdownEntries = new Map([...this.deletingEntries, ...this.entries]);
+    for (const entry of shutdownEntries.values()) {
       entry.approvals.denyAll();
       entry.abort?.abort();
       if (entry.running) pending.push(entry.running);
@@ -1636,9 +1833,12 @@ export class SessionManager {
       // App's freshly resumed Session starts with an empty process list, so the stop
       // control has gone blind. Sequenced after the in-flight drive settles, the same
       // ordering disposeRemoved uses.
-      const dispose = (): void => entry.session.dispose?.();
-      if (entry.running) void entry.running.then(dispose, dispose);
-      else dispose();
+      if (
+        !this.deletingEntries.has(entry.sessionId) ||
+        this.disposeOutcomes.get(entry.sessionId) === "dispose-failed"
+      ) {
+        void this.disposeRemoved(entry);
+      }
     }
     this.entries.clear();
     if (pending.length === 0) return;

@@ -178,7 +178,7 @@ export function SchedulePanel({ session, active, onPrefillComposer }: SchedulePa
   /** After a create or delete: the list, and the agent card's schedule count. */
   const changed = () => {
     void refreshSchedules(projectId, session.agentId);
-    void reloadAgents();
+    void reloadAgents().catch(() => undefined);
   };
 
   /** Toggle: whole-file-replace semantics — resend original fields, only flip enabled. */

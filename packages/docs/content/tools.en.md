@@ -47,13 +47,13 @@ Tools and the Environment never throw into the engine: errors collapse into `too
 
 ### Recovering oversized output
 
-When tool text in an Agent Session exceeds `maxOutputLength`, the model and Web/CLI still receive the same head and tail windows, counting truncation marker, and terminal marker, and the streaming invariant that user-visible output equals model-visible output does not change. Environment also appends a short archive status/path note outside that visible-output cap and saves a Session-owned recovery file. The file is exact within the per-call archive budget and otherwise contains bounded head/tail windows. This is the complete text **received by Environment**: a producer such as a command or subagent session may already have replaced overflow with an `[..., N chars of earlier output dropped ...]` marker in its own bounded unread buffer, and the downstream archive cannot recover text lost before that point.
+When tool text exceeds `maxOutputLength`, or an eligible successful result is compressed, Environment keeps the visible response useful and adds a Session-scoped recall id. A fatal tool result is never compressed; its head/tail windows and terminal failure marker stay inline. This is the complete text **received by Environment**: a producer such as a command or subagent session may already have replaced overflow with an `[..., N chars of earlier output dropped ...]` marker in its own bounded unread buffer, and the downstream archive cannot recover text lost before that point.
 
-The Agent can inspect ordinary multiline archives with the existing `read_file` (`offset` / `limit`). For byte tails or very long lines, it must construct a targeted shell command such as `rg` / `tail`; no dedicated retrieval tool is added. The note carries a plain absolute path, always the last element inside the bracket. On Windows it is written with forward slashes: `exec_command` runs through (Git) Bash and Node's fs APIs accept them, so one spelling works in JSON tool arguments and shell commands alike; POSIX paths pass through unchanged, and Session paths are ordinary absolute paths (never `\\?\`-prefixed), so the separator swap is lossless. As with any path, quote it inside shell commands when it contains spaces. The same spelling rule covers every path core composes for the model — the system prompt's App Data Dir / CWD lines, `[attached image/file: …]` lines and the goal-file line (`modelVisiblePath` in the SDK).
+When a Session has a scratchpad, `recall_output` is added to that Session's tool list. Call it with the id from the result and `offset: 0`; continue with each returned `next_offset` to read bounded pages. The id resolves only in its owning Session, and the tool never returns a filesystem path. New ids are 32 hexadecimal characters; existing 12-character ids remain readable for compatibility. Recall pages contain at most 12,000 UTF-16 code units, so concatenating their text pages reconstructs the archived text without splitting a surrogate pair.
 
-Recovery files live under the Session's `scratchpad/<session-id>/truncated-tool-output/`, are created only after actual truncation, and use private permissions where the platform supports them. One call stores at most 8 MiB (the production byte limit is one byte lower so `read_file` remains below its 8 MiB scan cap); larger output keeps bounded head/tail windows in the file with an explicit middle-gap marker. The limit is per call only: a Session has no aggregate archive byte or file-count quota, and concurrent captures independently retain up to one call's budget. Files remain readable across Tasks, runtime disposal, and Session resume until explicit Session deletion removes the entire scratchpad; no separate archive cleanup lifecycle is added.
+The note's JSON metadata is `{recallId,sizeBytes,tokenCount}`. `tokenCount` is only `ceil(sizeBytes / 4)`, a rough sizing hint rather than a provider token count. Recall returns the persisted UTF-8 text after credential redaction; it does not restore secrets removed at the archive boundary.
 
-Recovery files contain the unredacted tool text received by Environment. Accidentally reading credentials or other sensitive data can therefore increase local at-rest retention from the visible windows to the archive budget. Trace does not duplicate those bytes, but it records the same absolute Session path shown to the model and Web/CLI, exposing the host's data-root layout. Archive-write failure never changes the original tool's `stop_reason`; the visible note and stderr warning carry only a short error code (and stderr's tool name), not the path or raw error message.
+Entries are stored under the Session's `scratchpad/<session-id>/truncated-tool-output/recall/` directory with private file and directory modes where supported. Before storage, recognized credential shapes are redacted. Exact entries fit within the per-call capture limit (just under 8 MiB); larger captures retain bounded head/tail windows with an explicit middle-gap marker. The store allows at most 200 entries and 64 MiB per Session, with a 30-day age limit. Capacity refuses a new save rather than evicting an id already given to the model; expired entries and Session deletion remove files. Entries can be resolved after Environment recreation from the same Session scratchpad. A save failure leaves the bounded inline output intact and reports only a short error code.
 
 ## Configuration fields
 
@@ -120,14 +120,72 @@ prompt cannot forge who reported a claim.
 
 `query` returns ranked findings (status → severity·confidence → recency) filtered by text,
 subject path prefix, kind, tag or status; refuted and superseded claims are hidden unless asked
-for. `confirm` / `refute` / `supersede` move a claim through its lifecycle — nothing is ever
-deleted, and `supersede` links the old claim to its replacement. `events` replays changes since a
-sequence number, and `snapshot` exports the whole graph.
+for. Findings are claims requiring verification. `query` and `snapshot` include `authoredBy`
+(`agent`, `user`, `system`, or `legacy-unknown`), the attested author, status, and evidence tiers.
+Authorship comes from the host-attested actor that first created the finding, separately from
+free-form reporter labels. New findings retain that actor after the bounded event log rotates or
+the finding moves to the bounded archive. Older snapshots use their ingest event when available;
+records with neither source show as `legacy-unknown`.
+Query bodies are not automatically added to briefings.
 
-State lives in one JSON snapshot per Workspace at `.penguin/knowledge/findings-graph.json`
-(atomic temp+rename, 0600), loaded lazily and saved after every mutation; the tool writes nothing
-else. Strength decays at read time (confidence-weighted, exponential, access-reinforced) rather
-than being stored, so history is never rewritten by a reader.
+The lifecycle permits open → confirmed/refuted/superseded and confirmed → refuted/superseded.
+Confirmation requires runtime or implementation evidence. An authenticated HTTP user may
+explicitly override that gate with `override: true` and a non-empty `note`; the agent tool
+cannot override it. Supersession requires a live replacement and rejects cycles or chains
+longer than 64 hops. Refuted re-reports create deterministic contradiction revisions rather
+than changing the falsification. Only a human can reopen a refuted claim through the separate
+HTTP `reopen` action with a reason. Reopening sets the claim back to `open` and keeps its
+recorded evidence, so the next `confirm` still has to satisfy the evidence gate on its own.
+Superseded claims stay terminal. `events` records the host
+actor, method, and reason.
+
+State lives in one authority snapshot per Workspace at `.penguin/knowledge/findings-graph.json`.
+The tool and HTTP routes use the same store implementation with independent scope paths.
+Those two authorities stay separate: a Workspace tool store and an HTTP Project store are
+different scopes and are never merged, including when they share a display name or either side is
+renamed. Unifying them would need an explicit, audited binding that is not enabled. The tool's
+`recovery` action names the scope it answered from.
+Updates run under a cross-process lock and return success only after an atomic write. Optional
+tool `revision` and HTTP `If-Match` prevent stale mutations. A content fingerprint invalidates
+cached reads even after a same-size external replacement; the cache holds at most eight scopes.
+The store's lock/recovery files stay beside its authority. Live findings are capped at 5,000
+and writes at 32 MiB of UTF-8 JSON. At 24 MiB, recovery status reports high water and HTTP reads
+include `X-Findings-High-Water: 1`. Eviction keeps the lowest-ranked and oldest claims first:
+refuted, superseded, open, then confirmed. Full victims and operation ids share the same atomic
+snapshot as live findings. The archive is limited to 1,000 entries, 4 MiB, and 90 days; rotation
+can discard older entries. A failed snapshot write leaves live findings and archive unchanged.
+Live links to evicted records are removed; a superseded replacement retained as a tombstone has
+an explicit archived id. Recovery status reports archive count, bytes, oldest timestamp, and
+limits. The `archive` action pages through retained tombstones and `recall` retrieves a full
+record. The in-memory graph alone makes no filesystem durability claim. Events are capped at
+2,000 and expose the latest sequence so clients can identify gaps. Strength is a read-only display score: confidence-weighted
+decay since the last update plus an additive term based on creation age. It does not track
+accesses or control query order or eviction.
+
+The tool's `recovery` action reports scope, revision, capacity, archive and recovery state; `raw` exports
+base64 pages of the original bytes with `offset`/`nextOffset`. Damaged, unsupported-version,
+or unreadable snapshots refuse normal mutations. Corrupt bytes are preserved in unique
+permission-preserving quarantine copies; a failed quarantine still blocks writes. An absent
+file starts empty, while deleting a file does not resurrect its cached contents.
+
+Read actions `query`, `snapshot`, `events`, and `archive` default to the version-2 JSON page
+envelope. Pages carry the scope revision, latest event sequence, continuation cursor, truncation
+flag, omitted count, and high-water state. The cursor binds to a hashed scope, normalized filters,
+revision, and stable sort key. Reuse the same filters and limit when continuing. A changed revision
+or mismatched cursor returns an explicit restart error; an event gap reports the earliest retained
+sequence. Output limits count UTF-8 bytes. An oversized item becomes a summary with a recall id;
+`recall` returns base64-encoded chunks of the original JSON bytes, which clients join before
+decoding. `outputVersion: 1` explicitly selects the legacy query, snapshot, or events shape when
+the entire result fits; it does not support cursors and returns a clear error when the result is
+too large. Version 2 is the default.
+
+Authenticated HTTP operators can POST to `/api/projects/:projectId/findings/recovery/reset`,
+`/restore`, or `/prune` with `acknowledge: true`, the current `revision`, and a non-empty `reason`.
+Restore also requires a `snapshot` JSON string; pruning requires `ids` of terminal findings.
+These actions preserve a full backup and record the actor, reason, previous revision, and backup
+path in the audit history. Agents cannot reset, restore, or prune through the builtin tool.
+Files already above the byte ceiling remain available through bounded raw export and can be
+replaced by a smaller verified snapshot or explicitly reset after acknowledgement.
 
 This store belongs only to the Workspace supplied in the tool context. Server HTTP findings routes
 use an independent project-ID-scoped file (`.findings_graph.json`); matching names or paths do not

@@ -102,7 +102,7 @@ export function VaultTab({
       setEntries(res.entries);
       toastSuccess(S.agent.savedTakesEffect);
       // Add / delete moves the agent card's vault-key count; refresh the list provider too.
-      void reloadAgents();
+      void reloadAgents().catch(() => undefined);
       return null;
     } catch (e) {
       return apiErrorText(e);

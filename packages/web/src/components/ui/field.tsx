@@ -17,9 +17,9 @@ import { InfoPopover } from "./info-popover";
 export const controlBase =
   "rounded-md border border-gray-300 bg-white text-gray-900 " +
   "transition-[border-color,box-shadow] duration-200 " +
-  "hover:border-gray-400 focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400/30 " +
+  "hover:border-gray-400 focus:border-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-bg)] " +
   "dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 " +
-  "dark:hover:border-gray-600 dark:focus:border-gray-400 dark:focus:ring-gray-500/30";
+  "dark:hover:border-gray-600 dark:focus:border-gray-400 dark:focus-visible:ring-[var(--accent-bg)]";
 
 /** Base padding/alignment/transition for a menu row (Select, OptionMenu, and the chat composer menus); callers add flex/block and the hover/selected colors. */
 export const menuRowClass = "w-full px-3 py-1.5 text-left transition-colors duration-150";

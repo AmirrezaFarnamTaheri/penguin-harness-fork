@@ -5,83 +5,54 @@
  * workspace-local store. ProjectRow has no trusted workspace mapping, so matching names or
  * paths must never cause automatic reads, writes, or migration between the two.
  *
- * Mirrors the wiki routes exactly (same store pattern, same access model): the JSON snapshot
- * is the authority, every request hydrates a FindingsGraph from it, mutates, and writes back
- * through the store's atomic read-modify-write. That keeps concurrent sessions serialized at
- * one place instead of inventing a second persistence mechanism.
+ * The shared FindingsStore owns validation, revision caching, cross-process locking and
+ * acknowledged atomic writes. Corrupt state is preserved for explicit operator recovery;
+ * it must never be decoded as an empty graph and silently overwritten by a report.
  *
  * Provenance rule, enforced here rather than in the engine: `source` is built from the
  * authenticated user (`c.var.user`), never from the request body — the same host-attested
  * attribution the `knowledge_graph` builtin tool takes from ToolExecutionContext.
  */
 import { Hono } from "hono";
+import path from "node:path";
 import type { AppEnv } from "../../auth/middleware.js";
 import { badRequest, notFound, readJson, requireString, requireValidId } from "../validate.js";
 import type { AppDeps } from "../../app.js";
-import { FindingsGraph } from "@prismshadow/penguin-core";
-import type {
-  EvidenceTier,
-  FindingEvidence,
-  FindingKind,
-  FindingSeverity,
-  FindingStatus,
-  FindingsGraphSnapshot,
+import {
+  FindingsGraph,
+  FindingsStore,
+  FindingsRecoveryError,
+  FindingsRevisionError,
+  FindingsCapacityError,
+  FindingValidationError,
+  validateReportInput,
+  projectDir,
+  LifecycleError,
+  UnknownFindingError,
+  FINDING_KINDS as KINDS,
+  FINDING_STATUSES as STATUSES,
 } from "@prismshadow/penguin-core";
-import { ProjectJsonStore } from "../../services/project-json-store.js";
+import { HttpError } from "../errors.js";
+import type { FindingMutationContext, FindingsRead } from "@prismshadow/penguin-core";
 
-const KINDS: readonly FindingKind[] = [
-  "defect",
-  "insight",
-  "decision",
-  "pattern",
-  "metric",
-  "hypothesis",
-];
-const SEVERITIES: readonly FindingSeverity[] = ["info", "low", "medium", "high", "critical"];
-const STATUSES: readonly FindingStatus[] = ["open", "confirmed", "refuted", "superseded"];
-const TIERS = ["runtime", "implementation", "history", "documentation", "anecdote"] as const;
-
-function emptyGraphJson(): string {
-  return JSON.stringify({ version: 1, findings: [] } satisfies FindingsGraphSnapshot);
+async function readGraph(
+  store: FindingsStore,
+  notify?: (read: FindingsRead) => void,
+): Promise<FindingsGraph> {
+  const read = await store.read();
+  if (!read.graph || read.recovery) throw new FindingsRecoveryError(read);
+  notify?.(read);
+  return read.graph;
 }
 
-/**
- * A snapshot that is not a graph (hand edit, truncated write) reads as empty rather than 500ing
- * every route — the next write repairs the file, the same self-healing stance as the wiki store.
- */
-function decodeGraphJson(raw: string): string {
-  try {
-    const graph = new FindingsGraph();
-    const result = graph.importSnapshot(raw);
-    return result.imported > 0 || result.skipped > 0 ? raw : emptyGraphJson();
-  } catch {
-    return emptyGraphJson();
-  }
-}
-
-function hydrate(raw: string): FindingsGraph {
-  const graph = new FindingsGraph();
-  graph.importSnapshot(raw);
-  return graph;
-}
-
-function boundedArray(
-  body: Record<string, unknown>,
-  field: string,
-  maxItems: number,
-  maxItemLength: number,
-): string[] | undefined {
-  const value = body[field];
-  if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value)) throw badRequest(`${field} must be an array.`);
-  if (value.length > maxItems) throw badRequest(`${field} must have at most ${maxItems} entries.`);
-  return value.map((item) => {
-    if (typeof item !== "string") throw badRequest(`${field} entries must be strings.`);
-    if (item.length > maxItemLength) {
-      throw badRequest(`${field} entries must be at most ${maxItemLength} characters.`);
-    }
-    return item.trim();
-  });
+function revisionHeader(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  const revision =
+    trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+  if (!/^[a-f0-9]{64}$/.test(revision))
+    throw badRequest("If-Match must contain one findings revision.");
+  return revision;
 }
 
 function enumField<T extends string>(
@@ -97,109 +68,119 @@ function enumField<T extends string>(
   return value as T;
 }
 
+function findingIdParam(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    if (error instanceof URIError)
+      throw badRequest("findingId contains malformed percent encoding.");
+    throw error;
+  }
+}
+
+function routeContext(userId: string): FindingMutationContext {
+  return { actor: { kind: "user", id: userId }, method: "route" };
+}
+
 export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-  const store = new ProjectJsonStore<string>(
-    deps.config.root,
-    ".findings_graph.json",
-    emptyGraphJson,
-    decodeGraphJson,
-    (value) => value,
-  );
+  const store = (projectId: string) =>
+    new FindingsStore({
+      id: `project:${projectId}`,
+      kind: "project",
+      filePath: path.join(projectDir(deps.config.root, projectId), ".findings_graph.json"),
+    });
+  app.onError((error) => {
+    if (error instanceof FindingValidationError) throw badRequest(error.message);
+    if (error instanceof FindingsRecoveryError)
+      throw new HttpError(409, "findings_recovery_required", error.message);
+    if (error instanceof FindingsRevisionError)
+      throw new HttpError(409, "findings_revision_conflict", error.message);
+    if (error instanceof FindingsCapacityError)
+      throw new HttpError(409, "findings_capacity_exceeded", error.message);
+    throw error;
+  });
 
   app.get("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const graph = hydrate(await store.read(projectId));
     const limitRaw = c.req.query("limit");
-    const limit = limitRaw !== undefined ? Number.parseInt(limitRaw, 10) : undefined;
-    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 200)) {
+    const limit = limitRaw !== undefined ? Number(limitRaw) : undefined;
+    if (
+      limitRaw !== undefined &&
+      (!/^\d+$/.test(limitRaw) || !Number.isSafeInteger(limit) || limit! < 1 || limit! > 200)
+    ) {
       throw badRequest("limit must be an integer between 1 and 200.");
     }
-    const status = c.req.query("status");
+    const filters = { kind: c.req.query("kind"), status: c.req.query("status") };
+    const kind = enumField(filters, "kind", KINDS);
+    const status = enumField(filters, "status", STATUSES);
+    const graph = await readGraph(store(projectId), (read) => {
+      c.header("ETag", `"${read.revision}"`);
+      c.header("X-Findings-High-Water", read.highWater ? "1" : "0");
+    });
     const findings = graph.query({
       text: c.req.query("text"),
       subject: c.req.query("subject"),
       tag: c.req.query("tag"),
-      kind: c.req.query("kind") as FindingKind | undefined,
-      status: status === undefined ? undefined : (status as FindingStatus),
+      kind,
+      status,
       limit,
     });
-    return c.json({ findings });
+    return c.json({ findings: findings.map((finding) => graph.readback(finding.id)) });
   });
 
   app.post("/", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const body = await readJson(c);
-    const title = requireString(body, "title", { minLen: 1, maxLen: 300, label: "title" });
-    const bodyText =
-      body["body"] === undefined || body["body"] === null
-        ? undefined
-        : requireString(body, "body", { minLen: 1, maxLen: 50_000, label: "body" });
-
-    const evidenceRaw = body["evidence"];
-    let evidence: FindingEvidence[] | undefined;
-    if (evidenceRaw !== undefined && evidenceRaw !== null) {
-      if (!Array.isArray(evidenceRaw) || evidenceRaw.length > 100) {
-        throw badRequest("evidence must be an array of at most 100 entries.");
-      }
-      evidence = evidenceRaw.map((entry) => {
-        if (entry === null || typeof entry !== "object") {
-          throw badRequest("evidence entries must be objects.");
-        }
-        const e = entry as Record<string, unknown>;
-        const tier = typeof e["tier"] === "string" ? e["tier"] : "";
-        if (!(TIERS as readonly string[]).includes(tier)) {
-          throw badRequest(`evidence tier must be one of: ${TIERS.join(", ")}.`);
-        }
-        const line = e["line"];
-        if (
-          line !== undefined &&
-          (typeof line !== "number" || !Number.isInteger(line) || line < 0)
-        ) {
-          throw badRequest("evidence line must be a non-negative integer.");
-        }
-        return {
-          path: typeof e["path"] === "string" ? e["path"].slice(0, 500) : undefined,
-          line: typeof line === "number" ? line : undefined,
-          quote: typeof e["quote"] === "string" ? e["quote"].slice(0, 2000) : undefined,
-          tier: tier as EvidenceTier,
-          note: typeof e["note"] === "string" ? e["note"].slice(0, 2000) : undefined,
-        };
-      });
-    }
-
-    const result = await store.update(projectId, (current) => {
-      const graph = hydrate(current);
-      const reported = graph.report({
-        title,
-        body: bodyText,
-        kind: enumField(body, "kind", KINDS),
-        confidence: enumField(body, "confidence", ["low", "medium", "high"] as const),
-        severity: enumField(body, "severity", SEVERITIES),
-        subjects: boundedArray(body, "subjects", 100, 500),
-        evidence,
-        tags: boundedArray(body, "tags", 50, 100),
-        // Host-attested provenance: the authenticated user, never the body.
-        source: { agentId: `user:${c.var.user.userId}`, report: undefined },
-      });
-      return { value: JSON.stringify(graph.exportSnapshot()), result: reported };
-    });
+    const input = validateReportInput(body, { agentId: `user:${c.var.user.userId}` });
+    const result = await store(projectId).update(
+      revisionHeader(c.req.header("If-Match")),
+      (graph) => graph.report(input, routeContext(c.var.user.userId)),
+    );
     return c.json({ finding: result.finding, merged: result.merged }, 201);
   });
 
   app.post("/:findingId/confirm", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const findingId = decodeURIComponent(c.req.param("findingId"));
+    const findingId = findingIdParam(c.req.param("findingId"));
     const body = await readJson(c);
     const note =
       body["note"] === undefined
         ? undefined
         : requireString(body, "note", { maxLen: 2000, label: "note" });
-    const finding = await mutate(c, store, projectId, findingId, (graph) =>
-      graph.confirm(findingId, note),
+    if (body["override"] !== undefined && typeof body["override"] !== "boolean") {
+      throw badRequest("override must be a boolean.");
+    }
+    if (body["override"] === true && !note?.trim()) {
+      throw badRequest("Confirmation override requires a non-empty reason in note.");
+    }
+    const finding = await mutate(
+      store,
+      projectId,
+      revisionHeader(c.req.header("If-Match")),
+      (graph) =>
+        graph.confirm(findingId, note, {
+          ...routeContext(c.var.user.userId),
+          override: body["override"] === true,
+        }),
+    );
+    return c.json({ finding });
+  });
+
+  app.post("/:findingId/reopen", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const findingId = findingIdParam(c.req.param("findingId"));
+    const body = await readJson(c);
+    const note = requireString(body, "note", { minLen: 1, maxLen: 2000, label: "note" });
+    const finding = await mutate(
+      store,
+      projectId,
+      revisionHeader(c.req.header("If-Match")),
+      (graph) => graph.reopen(findingId, note, routeContext(c.var.user.userId)),
     );
     return c.json({ finding });
   });
@@ -207,14 +188,17 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/:findingId/refute", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const findingId = decodeURIComponent(c.req.param("findingId"));
+    const findingId = findingIdParam(c.req.param("findingId"));
     const body = await readJson(c);
     const note =
       body["note"] === undefined
         ? undefined
         : requireString(body, "note", { maxLen: 2000, label: "note" });
-    const finding = await mutate(c, store, projectId, findingId, (graph) =>
-      graph.refute(findingId, note),
+    const finding = await mutate(
+      store,
+      projectId,
+      revisionHeader(c.req.header("If-Match")),
+      (graph) => graph.refute(findingId, note, routeContext(c.var.user.userId)),
     );
     return c.json({ finding });
   });
@@ -222,7 +206,7 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/:findingId/supersede", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const findingId = decodeURIComponent(c.req.param("findingId"));
+    const findingId = findingIdParam(c.req.param("findingId"));
     const body = await readJson(c);
     const replacementId = requireString(body, "replacement_id", {
       minLen: 1,
@@ -233,8 +217,11 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
       body["note"] === undefined
         ? undefined
         : requireString(body, "note", { maxLen: 2000, label: "note" });
-    const finding = await mutate(c, store, projectId, findingId, (graph) =>
-      graph.supersede(findingId, replacementId, note),
+    const finding = await mutate(
+      store,
+      projectId,
+      revisionHeader(c.req.header("If-Match")),
+      (graph) => graph.supersede(findingId, replacementId, note, routeContext(c.var.user.userId)),
     );
     return c.json({ finding });
   });
@@ -242,11 +229,11 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
   app.post("/:findingId/link", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    const findingId = decodeURIComponent(c.req.param("findingId"));
+    const findingId = findingIdParam(c.req.param("findingId"));
     const body = await readJson(c);
     const linkId = requireString(body, "link_id", { minLen: 1, maxLen: 300, label: "link_id" });
-    await mutate(c, store, projectId, findingId, (graph) => {
-      graph.link(findingId, linkId);
+    await mutate(store, projectId, revisionHeader(c.req.header("If-Match")), (graph) => {
+      graph.link(findingId, linkId, routeContext(c.var.user.userId));
       return graph.get(findingId)!;
     });
     return c.json({ linked: [findingId, linkId] });
@@ -256,17 +243,91 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
     const sinceRaw = c.req.query("since");
-    const since = sinceRaw !== undefined ? Number.parseInt(sinceRaw, 10) : 0;
-    if (!Number.isInteger(since) || since < 0)
+    const since = sinceRaw !== undefined ? Number(sinceRaw) : 0;
+    if (
+      (sinceRaw !== undefined && !/^\d+$/.test(sinceRaw)) ||
+      !Number.isSafeInteger(since) ||
+      since < 0
+    )
       throw badRequest("since must be a non-negative integer.");
-    const graph = hydrate(await store.read(projectId));
+    const graph = await readGraph(store(projectId), (read) => {
+      c.header("ETag", `"${read.revision}"`);
+      c.header("X-Findings-High-Water", read.highWater ? "1" : "0");
+    });
     return c.json({ events: graph.since(since) });
   });
 
   app.get("/snapshot", async (c) => {
     const projectId = requireValidId(c, "projectId");
     deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
-    return c.json(hydrate(await store.read(projectId)).exportSnapshot());
+    return c.json(
+      (
+        await readGraph(store(projectId), (read) => {
+          c.header("ETag", `"${read.revision}"`);
+          c.header("X-Findings-High-Water", read.highWater ? "1" : "0");
+        })
+      ).exportReadbackSnapshot(),
+    );
+  });
+
+  app.get("/recovery", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const read = await store(projectId).read();
+    return c.json({
+      scope: read.scope,
+      revision: read.revision,
+      recovery: read.recovery,
+      bytes: read.bytes,
+      highWater: read.highWater,
+      archive: read.graph?.archiveStats() ?? null,
+    });
+  });
+
+  app.get("/raw", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const offsetRaw = c.req.query("offset") ?? "0";
+    if (!/^\d+$/.test(offsetRaw) || !Number.isSafeInteger(Number(offsetRaw)))
+      throw badRequest("offset must be a non-negative safe integer.");
+    return c.json(await store(projectId).rawPage(Number(offsetRaw)));
+  });
+
+  app.post("/recovery/:operation", async (c) => {
+    const projectId = requireValidId(c, "projectId");
+    deps.projectService.requireProjectAccess(c.var.user.userId, projectId);
+    const body = await readJson(c);
+    const reason = requireString(body, "reason", { minLen: 1, maxLen: 2000 });
+    const revision = requireString(body, "revision", { minLen: 1, maxLen: 100 });
+    if (body.acknowledge !== true) throw badRequest("Explicit acknowledgement is required.");
+    const operation = c.req.param("operation");
+    if (operation === "prune") {
+      if (!Array.isArray(body.ids) || !body.ids.every((id) => typeof id === "string"))
+        throw badRequest("ids must be an array of finding IDs.");
+      await store(projectId).prune(
+        body.ids as string[],
+        revision,
+        reason,
+        routeContext(c.var.user.userId),
+      );
+    } else if (operation === "reset" || operation === "restore") {
+      const backup =
+        operation === "restore"
+          ? Buffer.from(
+              requireString(body, "snapshot", { minLen: 1, maxLen: 32 * 1024 * 1024 }),
+              "utf8",
+            )
+          : undefined;
+      await store(projectId).recover(
+        operation,
+        revision,
+        reason,
+        routeContext(c.var.user.userId),
+        backup,
+      );
+    } else throw badRequest("Unknown recovery operation.");
+    const read = await store(projectId).read();
+    return c.json({ revision: read.revision, recovery: read.recovery });
   });
 
   return app;
@@ -277,21 +338,21 @@ export function findingsRoutes(deps: AppDeps): Hono<AppEnv> {
  * ids; the API answers 404 with the engine's message so clients can tell "bad id" from "gone".
  */
 async function mutate<T>(
-  _c: unknown,
-  store: ProjectJsonStore<string>,
+  store: (projectId: string) => FindingsStore,
   projectId: string,
-  findingId: string,
+  expectedRevision: string | undefined,
   action: (graph: FindingsGraph) => T,
 ): Promise<T> {
-  return store.update(projectId, (current) => {
-    const graph = hydrate(current);
-    try {
-      const result = action(graph);
-      return { value: JSON.stringify(graph.exportSnapshot()), result };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith("Unknown finding")) throw notFound(message);
-      throw badRequest(message);
-    }
-  });
+  try {
+    return await store(projectId).update(expectedRevision, action);
+  } catch (err) {
+    if (err instanceof UnknownFindingError) throw notFound(err.message);
+    if (err instanceof LifecycleError)
+      throw new HttpError(
+        err.status,
+        err.status === 409 ? "finding_conflict" : "bad_request",
+        err.message,
+      );
+    throw err;
+  }
 }

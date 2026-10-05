@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -181,12 +182,17 @@ export function divide(a: number, b: number): number { return a / b; }
 
 describe("code-graph-watcher non-recursive fallback", () => {
   let tmpDir: string;
+  let watchers: CodeGraphWatcher[];
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "penguin-codegraph-fallback-"));
+    watchers = [];
   });
 
   afterEach(() => {
+    for (const watcher of watchers) watcher.close();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
@@ -196,11 +202,38 @@ describe("code-graph-watcher non-recursive fallback", () => {
 
   /** A watcher pinned to the per-directory path regardless of the host platform. */
   function makeFallbackWatcher(debounceMs = 20): CodeGraphWatcher {
-    return new (class extends CodeGraphWatcher {
+    const watcher = new (class extends CodeGraphWatcher {
       protected override supportsRecursiveWatch(): boolean {
         return false;
       }
     })(tmpDir, { debounceMs });
+    watchers.push(watcher);
+    return watcher;
+  }
+
+  class DirectoryWatch extends EventEmitter implements fs.FSWatcher {
+    close = vi.fn(() => {
+      this.emit("close");
+    });
+
+    ref(): this {
+      return this;
+    }
+
+    unref(): this {
+      return this;
+    }
+  }
+
+  function mockDirectoryWatches(): Map<string, DirectoryWatch> {
+    const handles = new Map<string, DirectoryWatch>();
+    vi.spyOn(fs, "watch").mockImplementation((directory, listener) => {
+      const handle = new DirectoryWatch();
+      handle.on("change", listener);
+      handles.set(fs.realpathSync.native(directory), handle);
+      return handle;
+    });
+    return handles;
   }
 
   async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void> {
@@ -217,12 +250,32 @@ describe("code-graph-watcher non-recursive fallback", () => {
     fs.mkdirSync(srcDir, { recursive: true });
     fs.writeFileSync(path.join(srcDir, "a.ts"), "export const a = 1;\n");
 
+    const subscriptions = vi.spyOn(fs, "watch");
     const watcher = makeFallbackWatcher();
     const warnings: string[] = [];
     watcher.on("warn", (message: string) => warnings.push(message));
     const changed: string[] = [];
     watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
     await watcher.init();
+
+    const srcSubscription = subscriptions.mock.calls.findIndex(
+      ([directory]) => fs.realpathSync.native(directory) === fs.realpathSync.native(srcDir),
+    );
+    expect(srcSubscription).toBeGreaterThanOrEqual(0);
+    const handle = subscriptions.mock.results[srcSubscription]!.value;
+    expect(handle.listenerCount("change")).toBeGreaterThan(0);
+
+    // fs.watch has no ready event. Observe the native source-directory callback before
+    // the one-shot mutation: a returned handle alone does not prove event delivery.
+    let receivingEvents = false;
+    handle.once("change", () => {
+      receivingEvents = true;
+    });
+    await waitFor(() => {
+      if (receivingEvents) return true;
+      fs.appendFileSync(path.join(srcDir, "a.ts"), "\n");
+      return false;
+    });
 
     // A change one level below the root is the exact case the missing `recursive` option breaks.
     fs.writeFileSync(path.join(srcDir, "b.ts"), "export const b = 2;\n");
@@ -239,6 +292,107 @@ describe("code-graph-watcher non-recursive fallback", () => {
     expect(warnings).toHaveLength(1);
 
     watcher.close();
+  });
+
+  it("reconciles unnamed subdirectory notifications in one debounced pass", async () => {
+    vi.useFakeTimers();
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(srcDir, "seed.ts"), "export const seed = 0;\n");
+    const handles = mockDirectoryWatches();
+    const watcher = makeFallbackWatcher();
+    await watcher.init();
+    const sourceHandle = handles.get(fs.realpathSync.native(srcDir))!;
+    expect(sourceHandle.listenerCount("change")).toBe(1);
+    const processFile = vi.spyOn(watcher, "processFile");
+
+    const nested = path.join(srcDir, "nested");
+    fs.mkdirSync(nested);
+    fs.writeFileSync(path.join(nested, "deep.ts"), "export function first() {}\n");
+    fs.writeFileSync(path.join(srcDir, "new.ts"), "export const added = 1;\n");
+    sourceHandle.emit("change", "rename", null);
+    sourceHandle.emit("change", "rename", null);
+    sourceHandle.emit("change", "change", null);
+    expect(processFile).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(20);
+    expect(watcher.getTrackedFiles()).toEqual(
+      expect.arrayContaining(["src/new.ts", "src/nested/deep.ts"]),
+    );
+    expect(processFile.mock.calls.filter(([file]) => file.endsWith("deep.ts"))).toHaveLength(1);
+
+    const nestedHandle = handles.get(fs.realpathSync.native(nested))!;
+    expect(nestedHandle.listenerCount("change")).toBe(1);
+    fs.writeFileSync(path.join(nested, "deep.ts"), "export function second() {}\n");
+    nestedHandle.emit("change", "change", "deep.ts");
+    await watcher.flush();
+    expect(
+      watcher
+        .getGraph()
+        .getAllNodes()
+        .some((node) => node.name === "second"),
+    ).toBe(true);
+    expect(
+      watcher
+        .getGraph()
+        .getAllNodes()
+        .some((node) => node.name === "first"),
+    ).toBe(false);
+
+    watcher.close();
+    for (const handle of handles.values()) expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes descendant handles on a directory-only removal and watches its replacement", async () => {
+    const srcDir = path.join(tmpDir, "src");
+    const goneDir = path.join(srcDir, "gone");
+    const nestedDir = path.join(goneDir, "nested");
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(path.join(nestedDir, "old.ts"), "export const old = 1;\n");
+    const handles = mockDirectoryWatches();
+    const watcher = makeFallbackWatcher();
+    await watcher.init();
+    const sourceHandle = handles.get(fs.realpathSync.native(srcDir))!;
+    const goneHandle = handles.get(fs.realpathSync.native(goneDir))!;
+    const nestedHandle = handles.get(fs.realpathSync.native(nestedDir))!;
+    expect(sourceHandle.listenerCount("change")).toBe(1);
+
+    fs.rmSync(goneDir, { recursive: true, force: true });
+    sourceHandle.emit("change", "rename", "gone");
+    expect(goneHandle.close).toHaveBeenCalledTimes(1);
+    expect(nestedHandle.close).toHaveBeenCalledTimes(1);
+    expect(watcher.getTrackedFiles()).not.toContain("src/gone/nested/old.ts");
+
+    fs.mkdirSync(nestedDir, { recursive: true });
+    fs.writeFileSync(path.join(nestedDir, "new.ts"), "export const replacement = 2;\n");
+    sourceHandle.emit("change", "rename", "gone");
+    await watcher.flush();
+    expect(handles.get(fs.realpathSync.native(nestedDir))).not.toBe(nestedHandle);
+    expect(watcher.getTrackedFiles()).toContain("src/gone/nested/new.ts");
+
+    watcher.close();
+    for (const handle of handles.values()) expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels pending unnamed reconciliation and ignores events after close", async () => {
+    vi.useFakeTimers();
+    const srcDir = path.join(tmpDir, "src");
+    fs.mkdirSync(srcDir);
+    const handles = mockDirectoryWatches();
+    const watcher = makeFallbackWatcher();
+    await watcher.init();
+    const sourceHandle = handles.get(fs.realpathSync.native(srcDir))!;
+    const processFile = vi.spyOn(watcher, "processFile");
+    fs.writeFileSync(path.join(srcDir, "pending.ts"), "export const pending = 1;\n");
+    sourceHandle.emit("change", "rename", null);
+    watcher.close();
+    sourceHandle.emit("change", "rename", null);
+    await vi.advanceTimersByTimeAsync(40);
+    await watcher.flush();
+
+    expect(processFile).not.toHaveBeenCalled();
+    expect(watcher.getTrackedFiles()).not.toContain("src/pending.ts");
+    for (const handle of handles.values()) expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
   it("picks up directories created after the initial scan", async () => {
@@ -296,7 +450,9 @@ describe("code-graph-watcher non-recursive fallback", () => {
 
     // Removing the directory invalidates its watcher; the rest of the tree must keep working.
     fs.rmSync(goneDir, { recursive: true, force: true });
-    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"));
+    // A macOS CI run exceeded the former four-second wait for directory removal. Keep this
+    // event-driven assertion but allow up to 10 seconds; a missing notification still fails.
+    await waitFor(() => !watcher.getTrackedFiles().includes("src/gone/x.ts"), 10_000);
     await watcher.flush();
 
     // Its files leave the tracked set and the graph, not just the watcher.
@@ -385,6 +541,7 @@ describe("code-graph-watcher non-recursive fallback", () => {
 
     // Constructed with the SHORT path, as os.tmpdir() hands it to us on the runner.
     const watcher = new CodeGraphWatcher(shortParent, { debounceMs: 20 });
+    watchers.push(watcher);
     const changed: string[] = [];
     watcher.on("change", (event: { filePath: string }) => changed.push(event.filePath));
     await watcher.init();

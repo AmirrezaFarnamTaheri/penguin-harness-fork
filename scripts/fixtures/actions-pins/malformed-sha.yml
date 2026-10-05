@@ -1,0 +1,9 @@
+name: Malformed SHA
+on: [push]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f399 # v5.0.0

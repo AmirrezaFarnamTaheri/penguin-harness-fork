@@ -1,0 +1,7 @@
+first:
+- indentless
+- items
+second:
+- indented
+- items
+name: mixed

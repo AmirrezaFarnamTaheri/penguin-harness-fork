@@ -37,6 +37,12 @@ export interface StreamRenderContext {
   /** Origin chain at the current render level (empty array for the main session; subagent cards append one level each). */
   origin: string[];
   /**
+   * The Session this transcript belongs to. It is what a recall id resolves against — the archive
+   * is per-Session — so the recall chip under a tool result needs it; when absent (a stream
+   * rendered outside an owning Session) the chip simply does not render, rather than guessing an id.
+   */
+  sessionId?: string;
+  /**
    * Whether the Task at this level is still running (taskState for the main session, its own
    * running state for a subagent card). The "Reasoning & Tools" group uses this to decide: as
    * long as the model might still call another tool, the trailing group always shows "Running".

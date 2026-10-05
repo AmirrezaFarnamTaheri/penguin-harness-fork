@@ -1,10 +1,23 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { OmniMessage } from "@prismshadow/penguin-core";
+import { redactTraceRecord, type OmniMessage } from "@prismshadow/penguin-core";
+import {
+  auditStoredPayloadHash,
+  auditStoredPayloadSignature,
+  compactAuditDetails,
+} from "./audit-compaction.js";
 import type { UsageContext } from "../runtime/usage-recorder.js";
 
-/** Server-owned recorder; raw arguments/output remain in the existing trace, not this log. */
+/**
+ * Server-owned recorder; raw arguments/output remain in the existing trace, not this log — what is
+ * kept here for a tool call or approval is a redacted, byte-capped structural summary (I6), so a
+ * receipt is evidence of type/scope/correlation without becoming a copy of the payload.
+ *
+ * Compatibility: the payload keeps `version: 1` and every field the reader verifies; the details and
+ * their `detailsMeta` are additive, and the reader's integrity check covers them automatically
+ * because `payloadHash` is taken over the stored JSON.
+ */
 export class AuditRecorder {
   private readonly secret: string;
   private readonly logPath: string;
@@ -36,6 +49,11 @@ export class AuditRecorder {
       payloadType === "tool_call_output" ||
       payloadType === "approval_decision"
     ) {
+      // I6: the compact details are redacted *before* they are bounded, and `eventHash` is taken
+      // over the redacted message rather than the raw one — a hash of unredacted bytes is an
+      // oracle for content the log deliberately does not keep. The line stays bounded because the
+      // details are capped (AUDIT_DETAILS_MAX_BYTES); nothing here changes what the reader accepts.
+      const details = compactAuditDetails(msg.payload);
       const payload = {
         version: 1,
         projectId: ctx.projectId,
@@ -44,10 +62,19 @@ export class AuditRecorder {
         origin: msg.origin ?? [],
         timestamp: Date.now(),
         type: payloadType,
-        eventHash: createHash("sha256").update(JSON.stringify(msg)).digest("hex"),
+        eventHash: createHash("sha256")
+          .update(JSON.stringify(redactTraceRecord(msg)))
+          .digest("hex"),
+        details: details.value,
+        detailsMeta: {
+          bytes: details.bytes,
+          truncated: details.truncated,
+          shortened: details.shortenedPaths.length,
+          omitted: details.omittedPaths.length,
+        },
       };
-      const payloadHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
-      const signature = createHmac("sha256", this.secret).update(payloadHash).digest("hex");
+      const payloadHash = auditStoredPayloadHash(payload);
+      const signature = auditStoredPayloadSignature(payload, this.secret);
       // Synchronous append+fsync keeps same-process writers ordered, including background streams.
       const fd = fs.openSync(
         this.logPath,

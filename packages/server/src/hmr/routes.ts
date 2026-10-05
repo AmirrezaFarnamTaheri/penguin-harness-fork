@@ -20,7 +20,7 @@
 import zlib from "node:zlib";
 import { Hono } from "hono";
 import type { AppDeps } from "../app.js";
-import { authMiddleware } from "../auth/middleware.js";
+import { authMiddleware, configAuthPolicy } from "../auth/middleware.js";
 import type { AppEnv } from "../auth/middleware.js";
 import { HttpError } from "../http/errors.js";
 
@@ -34,7 +34,11 @@ export function hmrRoutes(deps: AppDeps): Hono<AppEnv> {
   // does its own auth (admin cookie only — see the network gate above for the
   // other half) rather than relying on the generic middleware being mounted
   // later.
-  const cookieAuth = authMiddleware(deps.authService, deps.config.trustProxy);
+  const cookieAuth = authMiddleware(
+    deps.authService,
+    deps.config.trustProxy,
+    configAuthPolicy(deps.config),
+  );
 
   routes.use("*", async (c, next) => {
     // Dangerous-network off: hot APIs load and run code, so on a non-loopback

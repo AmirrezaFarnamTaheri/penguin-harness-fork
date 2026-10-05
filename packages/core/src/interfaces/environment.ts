@@ -21,6 +21,7 @@ import type { CommandSessionManager } from "../environment/tools/command/session
 import type { SubagentSessionManager } from "../environment/tools/subagent/session-manager.js";
 import type { ResourcePressureProbe } from "../agent/resource/pressure-probe.js";
 import type { ApiKeyRotator } from "../llm/key-rotator.js";
+import type { WritePressureGate } from "../internal/write-pressure-policy.js";
 
 // ---------------------------------------------------------------------------
 // Tool configuration
@@ -344,11 +345,21 @@ export interface EnvironmentConfig {
   /**
    * This Session's private scratchpad directory (`scratchpad/<sessionId>`), the generic
    * Session-scoped storage root for Environment by-products. Currently it backs
-   * truncated-tool-output recovery: output beyond an entry's `maxOutputLength` is saved under
+   * path-free `recall_output`: output beyond the inline budget is stored under
    * `<sessionScratchpadDir>/truncated-tool-output/`. Agent Sessions always pass it; standalone
    * embedders without a stable Session directory omit it and keep truncation-only behavior.
    */
   sessionScratchpadDir?: string;
+  /** Disable new compression/spill writes while keeping the Session's existing recall ids readable. */
+  outputSpillEnabled?: boolean;
+  /**
+   * Admission gate for this Session's own nonessential writes (I7.2): the truncation archive and
+   * the recall store refuse a write when the gate blocks, warn through the result note when it
+   * warns, and behave exactly as before when this is omitted. The host (which owns the probe, the
+   * Session id and the volume) builds it with `createProbeWritePressureGate`; nothing about the
+   * gate is reachable from a tool call's payload.
+   */
+  writePressure?: WritePressureGate;
   /**
    * Who is running this Session, recorded verbatim into file-edit attribution receipts
    * (`[editor attribution: …]` lines edit_file appends to its output; option A — runtime

@@ -1,0 +1,855 @@
+{
+  "generatedAt": "2026-10-02T22:18:17.569Z",
+  "patches": [
+    {
+      "skill": "adbc",
+      "path": ".agents/skills/adbc/local.patch",
+      "state": "applied",
+      "targets": [
+        "adbc/SKILL.md",
+        "adbc/resources/languages/go.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "adf-framework",
+      "path": ".agents/skills/adf-framework/local.patch",
+      "state": "applied",
+      "targets": [
+        "adf-master/SKILL.md",
+        "adf-master/references/cicd-deployment.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "agent-md-refactor",
+      "path": ".agents/skills/agent-md-refactor/local.patch",
+      "state": "applied",
+      "targets": [
+        "agent-md-refactor/README.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "airbyte-agent",
+      "path": ".agents/skills/airbyte-agent/local.patch",
+      "state": "applied",
+      "targets": [
+        "airbyte-agent/SKILL.md",
+        "airbyte-agent/references/connectors-execute.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-data-factory",
+      "path": ".agents/skills/azure-data-factory/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-data-factory/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-data-share",
+      "path": ".agents/skills/azure-data-share/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-data-share/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-databricks",
+      "path": ".agents/skills/azure-databricks/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-databricks/SKILL.md",
+        "azure-databricks/integrations.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-event-hubs",
+      "path": ".agents/skills/azure-event-hubs/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-event-hubs/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-machine-learning",
+      "path": ".agents/skills/azure-machine-learning/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-machine-learning/SKILL.md",
+        "azure-machine-learning/references/documentation-catalog.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "azure-synapse-analytics",
+      "path": ".agents/skills/azure-synapse-analytics/local.patch",
+      "state": "applied",
+      "targets": [
+        "azure-synapse-analytics/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "bigquery-basics",
+      "path": ".agents/skills/bigquery-basics/local.patch",
+      "state": "applied",
+      "targets": [
+        "bigquery-basics/SKILL.md",
+        "bigquery-basics/references/mcp-usage.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "chdb-datastore",
+      "path": ".agents/skills/chdb-datastore/local.patch",
+      "state": "applied",
+      "targets": [
+        "chdb-datastore/README.md",
+        "chdb-datastore/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "cognito",
+      "path": ".agents/skills/cognito/local.patch",
+      "state": "applied",
+      "targets": [
+        "cognito/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "collibra-chip",
+      "path": ".agents/skills/collibra-chip/local.patch",
+      "state": "applied",
+      "targets": [
+        "collibra-chip/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "content-research-writer",
+      "path": ".agents/skills/content-research-writer/local.patch",
+      "state": "applied",
+      "targets": [
+        "content-research-writer/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "cortex-code",
+      "path": ".agents/skills/cortex-code/local.patch",
+      "state": "applied",
+      "targets": [
+        "cortex-code/SKILL.md",
+        "cortex-code/config.yaml.example",
+        "cortex-code/scripts/route_request.py",
+        "cortex-code/scripts/security_wrapper.py",
+        "cortex-code/security/default_policy.yaml",
+        "cortex-code/security/policies/default_policy.yaml"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "dagster-expert",
+      "path": ".agents/skills/dagster-expert/local.patch",
+      "state": "applied",
+      "targets": [
+        "dagster-expert/SKILL.md",
+        "dagster-expert/references/components/creating-components.md",
+        "dagster-expert/references/deployment/config-files.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "data-distributed-storage",
+      "path": ".agents/skills/data-distributed-storage/local.patch",
+      "state": "applied",
+      "targets": [
+        "data-distributed-storage/SKILL.md",
+        "data-distributed-storage/references/s3-compatible-configs.md",
+        "data-distributed-storage/references/storage-deployment-guide.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "databricks-core",
+      "path": ".agents/skills/databricks-core/local.patch",
+      "state": "applied",
+      "targets": [
+        "databricks-core/SKILL.md",
+        "databricks-core/data-exploration.md",
+        "databricks-core/databricks-cli-auth.md",
+        "databricks-core/databricks-cli-install.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "databricks-jobs",
+      "path": ".agents/skills/databricks-jobs/local.patch",
+      "state": "applied",
+      "targets": [
+        "databricks-jobs/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "datarobot-data-preparation",
+      "path": ".agents/skills/datarobot-data-preparation/local.patch",
+      "state": "applied",
+      "targets": [
+        "datarobot-data-preparation/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "dataset-transformation",
+      "path": ".agents/skills/dataset-transformation/local.patch",
+      "state": "applied",
+      "targets": [
+        "dataset-transformation/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "db2-rhel",
+      "path": ".agents/skills/db2-rhel/local.patch",
+      "state": "pending",
+      "targets": [
+        "db2-rhel/install-admin.md",
+        "db2-rhel/security-backup-recovery.md"
+      ],
+      "references": [
+        "docs/audits/skill-patch-ledger-2026-10-02.md"
+      ],
+      "decision": "retain: live patch, applies to this base"
+    },
+    {
+      "skill": "dbt-migration",
+      "path": ".agents/skills/dbt-migration/local.patch",
+      "state": "applied",
+      "targets": [
+        "dbt-migration/.claude-plugin/plugin.json",
+        "dbt-migration/SKILL.md",
+        "dbt-migration/skills/migrating-dbt-core-to-fusion/SKILL.md",
+        "dbt-migration/skills/migrating-dbt-project-across-platforms/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "delta-sharing",
+      "path": ".agents/skills/delta-sharing/local.patch",
+      "state": "applied",
+      "targets": [
+        "delta-sharing/SKILL.md",
+        "delta-sharing/examples/external_data_sharing.py"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "deploy-to-vercel",
+      "path": ".agents/skills/deploy-to-vercel/local.patch",
+      "state": "applied",
+      "targets": [
+        "deploy-to-vercel/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "deploying-airflow",
+      "path": ".agents/skills/deploying-airflow/local.patch",
+      "state": "applied",
+      "targets": [
+        "deploying-airflow/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "dynamic-tables-tutorial",
+      "path": ".agents/skills/dynamic-tables-tutorial/local.patch",
+      "state": "applied",
+      "targets": [
+        "dynamic-tables-tutorial/SKILL.md",
+        "dynamic-tables-tutorial/references/LESSONS.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "elasticsearch-esql",
+      "path": ".agents/skills/elasticsearch-esql/local.patch",
+      "state": "applied",
+      "targets": [
+        "elasticsearch-esql/SKILL.md",
+        "elasticsearch-esql/references/environment-setup.md",
+        "elasticsearch-esql/scripts/esql.js"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "elasticsearch-file-ingest",
+      "path": ".agents/skills/elasticsearch-file-ingest/local.patch",
+      "state": "applied",
+      "targets": [
+        "elasticsearch-file-ingest/SKILL.md",
+        "elasticsearch-file-ingest/scripts/ingest.js"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "entra-agent-id",
+      "path": ".agents/skills/entra-agent-id/local.patch",
+      "state": "applied",
+      "targets": [
+        "entra-agent-id/SKILL.md",
+        "entra-agent-id/references/sdk-sidecar-deployment.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "etl-integration-nifi",
+      "path": ".agents/skills/etl-integration-nifi/local.patch",
+      "state": "applied",
+      "targets": [
+        "etl-integration-nifi/SKILL.md",
+        "etl-integration-nifi/references/diagnostics.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "flink-best-practices",
+      "path": ".agents/skills/flink-best-practices/local.patch",
+      "state": "applied",
+      "targets": [
+        "flink-best-practices/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "gcs-lifecycle-policy",
+      "path": ".agents/skills/gcs-lifecycle-policy/local.patch",
+      "state": "applied",
+      "targets": [
+        "gcs-lifecycle-policy/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "integrate-anything",
+      "path": ".agents/skills/integrate-anything/local.patch",
+      "state": "applied",
+      "targets": [
+        "integrate-anything/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "internal-comms",
+      "path": ".agents/skills/internal-comms/local.patch",
+      "state": "applied",
+      "targets": [
+        "internal-comms/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "kafka-schema-registry",
+      "path": ".agents/skills/kafka-schema-registry/local.patch",
+      "state": "applied",
+      "targets": [
+        "kafka-schema-registry/references/code-migration.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "kafka-streams-programming",
+      "path": ".agents/skills/kafka-streams-programming/local.patch",
+      "state": "applied",
+      "targets": [
+        "kafka-streams-programming/evals/evals.json",
+        "kafka-streams-programming/scripts/create-topics.sh",
+        "kafka-streams-programming/scripts/teardown.sh"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "knowledge-catalog-discovery",
+      "path": ".agents/skills/knowledge-catalog-discovery/local.patch",
+      "state": "applied",
+      "targets": [
+        "knowledge-catalog-discovery/scripts/lookup_context.js",
+        "knowledge-catalog-discovery/scripts/lookup_entry.js",
+        "knowledge-catalog-discovery/scripts/search_aspect_types.js",
+        "knowledge-catalog-discovery/scripts/search_entries.js"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "langsmith-fetch",
+      "path": ".agents/skills/langsmith-fetch/local.patch",
+      "state": "applied",
+      "targets": [
+        "langsmith-fetch/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "meeting-insights-analyzer",
+      "path": ".agents/skills/meeting-insights-analyzer/local.patch",
+      "state": "applied",
+      "targets": [
+        "meeting-insights-analyzer/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "microsoft-code-reference",
+      "path": ".agents/skills/microsoft-code-reference/local.patch",
+      "state": "applied",
+      "targets": [
+        "microsoft-code-reference/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "microsoft-docs",
+      "path": ".agents/skills/microsoft-docs/local.patch",
+      "state": "applied",
+      "targets": [
+        "microsoft-docs/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "neon-postgres",
+      "path": ".agents/skills/neon-postgres/local.patch",
+      "state": "applied",
+      "targets": [
+        "neon-postgres/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "newrelic-cli-skills",
+      "path": ".agents/skills/newrelic-cli-skills/local.patch",
+      "state": "applied",
+      "targets": [
+        "newrelic-cli-skills/.gitattributes",
+        "newrelic-cli-skills/.gitignore",
+        "newrelic-cli-skills/README.md",
+        "newrelic-cli-skills/SKILL.md",
+        "newrelic-cli-skills/alerts/SKILL.md",
+        "newrelic-cli-skills/apm/SKILL.md",
+        "newrelic-cli-skills/deployments/SKILL.md",
+        "newrelic-cli-skills/diagnostics/SKILL.md",
+        "newrelic-cli-skills/infrastructure/SKILL.md",
+        "newrelic-cli-skills/nrql/SKILL.md",
+        "newrelic-cli-skills/references/nrql-patterns.md",
+        "newrelic-cli-skills/references/performance-triage.md",
+        "newrelic-cli-skills/scripts/check-performance.sh",
+        "newrelic-cli-skills/scripts/deployment-marker.sh",
+        "newrelic-cli-skills/scripts/error-report.sh",
+        "newrelic-cli-skills/scripts/top-slow-transactions.sh"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "oracle-database",
+      "path": ".agents/skills/oracle-database/local.patch",
+      "state": "applied",
+      "targets": [
+        "oracle-database/SKILL.md",
+        "oracle-database/agent/client-identification.md",
+        "oracle-database/containers/adb-free.md",
+        "oracle-database/containers/cman.md",
+        "oracle-database/containers/enterprise.md",
+        "oracle-database/containers/enterprise_ru.md",
+        "oracle-database/containers/free.md",
+        "oracle-database/containers/graph-quickstart.md",
+        "oracle-database/containers/gsm.md",
+        "oracle-database/containers/gsm_ru.md",
+        "oracle-database/containers/instantclient.md",
+        "oracle-database/containers/microtx-ee-console.md",
+        "oracle-database/containers/microtx-ee-coordinator.md",
+        "oracle-database/containers/operator.md",
+        "oracle-database/containers/ords.md",
+        "oracle-database/containers/otmm.md",
+        "oracle-database/containers/private-ai.md",
+        "oracle-database/containers/rac.md",
+        "oracle-database/containers/rac_ru.md",
+        "oracle-database/containers/sqlcl.md",
+        "oracle-database/devops/database-testing.md",
+        "oracle-database/devops/schema-migrations.md",
+        "oracle-database/ords/ords-architecture.md",
+        "oracle-database/ords/ords-metadata-catalog.md",
+        "oracle-database/sqlcl/sqlcl-cicd.md",
+        "oracle-database/sqlcl/sqlcl-liquibase.md",
+        "oracle-database/sqlcl/sqlcl-mcp-server.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "oraclecloud-data-handling",
+      "path": ".agents/skills/oraclecloud-data-handling/local.patch",
+      "state": "applied",
+      "targets": [
+        "oraclecloud-data-handling/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "oracledb",
+      "path": ".agents/skills/oracledb/local.patch",
+      "state": "applied",
+      "targets": [
+        "oracledb/SKILL.md",
+        "oracledb/scripts/execute_sql.js",
+        "oracledb/scripts/get_query_plan.js",
+        "oracledb/scripts/list_active_sessions.js",
+        "oracledb/scripts/list_invalid_objects.js",
+        "oracledb/scripts/list_tables.js",
+        "oracledb/scripts/list_tablespace_usage.js",
+        "oracledb/scripts/list_top_sql_by_resource.js"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "ponytail",
+      "path": ".agents/skills/ponytail/local.patch",
+      "state": "applied",
+      "targets": [
+        "ponytail/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "powerbi-documentation",
+      "path": ".agents/skills/powerbi-documentation/local.patch",
+      "state": "applied",
+      "targets": [
+        "powerbi-documentation/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "powerbi-mcp",
+      "path": ".agents/skills/powerbi-mcp/local.patch",
+      "state": "applied",
+      "targets": [
+        "powerbi-mcp/README.md",
+        "powerbi-mcp/SKILL.md",
+        "powerbi-mcp/confirmation-templates.md",
+        "powerbi-mcp/dax-standards.md",
+        "powerbi-mcp/session-checklist.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "query-tableau-data",
+      "path": ".agents/skills/query-tableau-data/local.patch",
+      "state": "applied",
+      "targets": [
+        "query-tableau-data/README.md",
+        "query-tableau-data/SKILL.md",
+        "query-tableau-data/docs/api/AUTH.md",
+        "query-tableau-data/src/query_tableau_data_py/config.py"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "redshift",
+      "path": ".agents/skills/redshift/local.patch",
+      "state": "applied",
+      "targets": [
+        "redshift/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "scikit-learn",
+      "path": ".agents/skills/scikit-learn/local.patch",
+      "state": "applied",
+      "targets": [
+        "scikit-learn/references/model_evaluation.md",
+        "scikit-learn/references/quick_reference.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "searching-mlflow-docs",
+      "path": ".agents/skills/searching-mlflow-docs/local.patch",
+      "state": "applied",
+      "targets": [
+        "searching-mlflow-docs/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "skill-share",
+      "path": ".agents/skills/skill-share/local.patch",
+      "state": "applied",
+      "targets": [
+        "skill-share/SKILL.md"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    },
+    {
+      "skill": "tableau-dashboard-creator",
+      "path": ".agents/skills/tableau-dashboard-creator/local.patch",
+      "state": "applied",
+      "targets": [
+        "tableau-dashboard-creator/SKILL.md",
+        "tableau-dashboard-creator/examples/top-level-workbook-example.twb",
+        "tableau-dashboard-creator/references/step-a-data-exploration.md",
+        "tableau-dashboard-creator/scripts/query_postgresql.py"
+      ],
+      "references": [],
+      "decision": "retain: stale record, already applied"
+    }
+  ],
+  "supersessions": [
+    {
+      "skill": "animations-emil-design-eng",
+      "sidecar": ".agents/skills/animations-emil-design-eng/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "emil-design-eng",
+      "redirect": "emil-design-eng",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "emil-design-eng",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "animations-review-animations",
+      "sidecar": ".agents/skills/animations-review-animations/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "review-animations",
+      "redirect": "review-animations",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "review-animations",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "codex-linear",
+      "sidecar": ".agents/skills/codex-linear/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "linear",
+      "redirect": "linear",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "linear",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "codex-security-best-practices",
+      "sidecar": ".agents/skills/codex-security-best-practices/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "security-best-practices",
+      "redirect": "security-best-practices",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-best-practices",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "codex-security-ownership-map",
+      "sidecar": ".agents/skills/codex-security-ownership-map/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "security-ownership-map",
+      "redirect": "security-ownership-map",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-ownership-map",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "codex-security-threat-model",
+      "sidecar": ".agents/skills/codex-security-threat-model/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "security-threat-model",
+      "redirect": "security-threat-model",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "security-threat-model",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "codex-vercel-deploy",
+      "sidecar": ".agents/skills/codex-vercel-deploy/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "deploy-to-vercel",
+      "redirect": "deploy-to-vercel",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "deploy-to-vercel",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-android-native-dev",
+      "sidecar": ".agents/skills/minimax-android-native-dev/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "android-native-dev",
+      "redirect": "android-native-dev",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "android-native-dev",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-fullstack-dev",
+      "sidecar": ".agents/skills/minimax-fullstack-dev/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "fullstack-dev",
+      "redirect": "fullstack-dev",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "fullstack-dev",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-gif-sticker-maker",
+      "sidecar": ".agents/skills/minimax-gif-sticker-maker/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "gif-sticker-maker",
+      "redirect": "gif-sticker-maker",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "gif-sticker-maker",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-ios-application-dev",
+      "sidecar": ".agents/skills/minimax-ios-application-dev/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "ios-application-dev",
+      "redirect": "ios-application-dev",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "ios-application-dev",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-pptx-generator",
+      "sidecar": ".agents/skills/minimax-pptx-generator/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "pptx-generator",
+      "redirect": "pptx-generator",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "pptx-generator",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-react-native-dev",
+      "sidecar": ".agents/skills/minimax-react-native-dev/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "react-native-dev",
+      "redirect": "react-native-dev",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "react-native-dev",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    },
+    {
+      "skill": "minimax-shader-dev",
+      "sidecar": ".agents/skills/minimax-shader-dev/SKILL.superseded.md",
+      "sidecarExists": true,
+      "canonical": "shader-dev",
+      "redirect": "shader-dev",
+      "canonicalExists": true,
+      "canonicalRedirect": null,
+      "aliasTarget": "shader-dev",
+      "aliasCycle": null,
+      "aliasRegisters": true,
+      "decision": "retain: deliberate supersession resolves once"
+    }
+  ]
+}

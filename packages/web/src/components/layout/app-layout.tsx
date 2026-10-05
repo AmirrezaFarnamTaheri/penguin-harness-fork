@@ -5,6 +5,7 @@
  * All chrome uses solid backgrounds and avoids stacking contexts (frosted-glass/transform would trap overlay z-index).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ConnectivityBanner } from "./connectivity-banner";
 import { NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
@@ -524,6 +525,10 @@ export function AppLayout() {
             fragment link scrolls to a non-focusable element and drops focus on <body>,
             so the next Tab starts over from the top — the exact thing the link exists to
             avoid. Focusable-but-not-tabbable is the standard pattern. */}
+        {/* Posture banner (F17.1/F17.2): renders nothing while the app has no evidence of a
+            problem, so the common case costs no layout. It sits above the page rather than
+            inside any one of them, because reachability is not a chat-page concern. */}
+        <ConnectivityBanner />
         <main id="main" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden">
           <Outlet />
         </main>

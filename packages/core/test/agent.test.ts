@@ -18,7 +18,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { OmniMessage } from "../src/omnimessage/index.js";
 import type { OpenContextOptions, OpenedContext, SystemConfig } from "../src/index.js";
-import { agentsMdPath, projectConfigPath, systemConfigPath } from "../src/state/paths.js";
+import {
+  agentsMdPath,
+  projectConfigPath,
+  sessionScratchpadDir,
+  systemConfigPath,
+} from "../src/state/paths.js";
 import {
   addModel,
   createAgent,
@@ -47,12 +52,14 @@ import type {
 // request is issued — no network is ever touched. The wrapper is otherwise transparent, so
 // every other test in this file behaves as with the real class.
 const capturedEnvServices = vi.hoisted(() => ({ list: [] as unknown[] }));
+const capturedEnvironmentConfigs = vi.hoisted(() => ({ list: [] as unknown[] }));
 vi.mock("../src/environment/index.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../src/environment/index.js")>();
   class CapturingEnvironment extends mod.Environment {
     constructor(config: EnvironmentConfig) {
       super(config);
       capturedEnvServices.list.push(config.services);
+      capturedEnvironmentConfigs.list.push(config);
     }
   }
   return { ...mod, Environment: CapturingEnvironment };
@@ -84,6 +91,7 @@ let restoreKeys: () => void;
 const MCP_FIXTURE = fileURLToPath(new URL("./fixtures/mcp-stdio-server.mjs", import.meta.url));
 
 beforeEach(async () => {
+  capturedEnvironmentConfigs.list.length = 0;
   prevHome = process.env.PENGUIN_HOME;
   tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "penguin-harness-"));
   process.env.PENGUIN_HOME = tmpRoot;
@@ -188,6 +196,46 @@ describe("Agent.createSession workspace handling", () => {
     const llm = (session as unknown as { engine: { deps: { llm: unknown } } }).engine.deps.llm;
 
     expect((llm as { requestTimeoutMs?: number }).requestTimeoutMs).toBe(3456);
+  });
+});
+
+describe("Agent Session write-pressure production wiring", () => {
+  it("binds the gate to the Session scratchpad and warns when that target is not measurable", async () => {
+    const agent = await createAgent();
+    const workspaceDir = path.join(tmpRoot, "ws-write-pressure");
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const session = await agent.createSession({ workspaceDir });
+
+    try {
+      const config = capturedEnvironmentConfigs.list.at(-1) as EnvironmentConfig | undefined;
+      expect(config).toBeDefined();
+      if (config === undefined) throw new Error("Agent did not construct an Environment");
+      const scratchpadDir = sessionScratchpadDir(
+        tmpRoot,
+        DEFAULT_PROJECT_ID,
+        DEFAULT_AGENT_ID,
+        session.sessionId,
+      );
+      expect(config.sessionScratchpadDir).toBe(scratchpadDir);
+      await expect(fs.stat(scratchpadDir)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(config.writePressure).toBeDefined();
+      if (config.writePressure === undefined) {
+        throw new Error("Agent did not inject the Session write-pressure gate");
+      }
+
+      const decision = await config.writePressure.admit({
+        producerId: "recall-store",
+        toolCallId: "call-without-a-measured-scratchpad",
+      });
+      expect(decision).toMatchObject({
+        action: "warn",
+        signal: "write_pressure_probe_unavailable",
+        volumePath: scratchpadDir,
+        freeBytes: null,
+      });
+    } finally {
+      session.dispose();
+    }
   });
 });
 

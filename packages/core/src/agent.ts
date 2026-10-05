@@ -90,6 +90,7 @@ import type {
 } from "./omnimessage/index.js";
 import { SUBAGENT_NAME } from "./environment/tools/run-subagent.js";
 import { INPUT_SUBAGENT_NAME } from "./environment/tools/input-subagent.js";
+import { createSessionWritePressureGate } from "./internal/write-pressure-policy.js";
 import type {
   CompactionSettings,
   OpenContextOptions,
@@ -1286,17 +1287,23 @@ export class Agent {
     // createSession. Vault environment variables are injected into command subprocesses; a
     // child Agent loads **its own** vault via createAgent rather than inheriting the
     // parent's.
+    const sessionScratchpad = sessionScratchpadDir(
+      this.state.root,
+      this.state.projectId,
+      this.state.agentId,
+      sessionId,
+    );
     const environment = new Environment({
       workspaceDir,
       toolConfig: initial.toolConfig,
       // The Session's generic scratchpad root; Environment derives its truncated-tool-output
-      // recovery directory from it.
-      sessionScratchpadDir: sessionScratchpadDir(
-        this.state.root,
-        this.state.projectId,
-        this.state.agentId,
+      // recovery directory from it. The gate measures this exact target too, so authenticated
+      // override grants and archive writes share one Session-bound volume key.
+      sessionScratchpadDir: sessionScratchpad,
+      writePressure: createSessionWritePressureGate({
         sessionId,
-      ),
+        sessionScratchpadDir: sessionScratchpad,
+      }),
       services: { subagentRunner, ...(visionDescriber ? { visionDescriber } : {}) },
       ...(Object.keys(initial.vault).length > 0 ? { vault: initial.vault } : {}),
       // Editor attribution: this Agent and Session are who edits name in receipts.

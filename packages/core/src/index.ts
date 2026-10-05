@@ -96,6 +96,30 @@ export { modelVisiblePath } from "./internal/model-visible-path.js";
 // both sides of the same file (core's saveProjectConfig, the server's writeRaw) replace it the
 // same way.
 export { atomicWriteFile } from "./internal/atomic-write.js";
+// Write-pressure policy (I7): the inventory, the decision, and the Session-scoped override record
+// the authenticated route grants against. The probe and the resource_pressure tool stay
+// observational; this is the policy a host opts into for its own nonessential writes.
+export {
+  createProbeWritePressureGate,
+  evaluateWritePressure,
+  NONESSENTIAL_PRODUCERS,
+  PRESSURE_BLOCK_BELOW_BYTES,
+  PRESSURE_WARN_BELOW_BYTES,
+  PressureOverrideStore,
+  readVolumePressure,
+  sessionPressureOverridePath,
+  WRITE_PRODUCER_INVENTORY,
+} from "./internal/write-pressure-policy.js";
+export type {
+  NonessentialProducerId,
+  PressureDecision,
+  PressureOverrideRecord,
+  PressureReading,
+  PressureSignal,
+  PressureWriteKey,
+  WritePressureGate,
+} from "./internal/write-pressure-policy.js";
+export { withFileLock } from "./internal/file-lock.js";
 export type { AtomicWriteOptions } from "./internal/atomic-write.js";
 // SSRF-safe HTTP client and URL validator for web fetch and tool execution.
 export {
@@ -106,14 +130,26 @@ export {
   isSafeIpAddress,
 } from "./internal/safe-http.js";
 export type { SafeHttpOptions, SafeHttpResponse } from "./internal/safe-http.js";
+// Credential redaction plus the I1 log-safety helpers (session-header allowlist, e-mail masking,
+// bounded error summaries) shared by every host that writes logs, traces or exports.
 export {
   redactCredentials,
   containsCredentials,
   redactObject,
+  redactTraceRecord,
+  redactTraceContent,
   REDACTED_MARKER,
   CREDENTIAL_RULES,
+  LOGGABLE_SESSION_HEADERS,
+  maskEmail,
+  redactSessionHeaders,
+  sanitizeErrorForLog,
 } from "./internal/credential-redactor.js";
-export type { RedactionRule } from "./internal/credential-redactor.js";
+export type {
+  RedactionRule,
+  SanitizedError,
+  SessionHeaderInput,
+} from "./internal/credential-redactor.js";
 
 export { InferenceProxyPool, parseProxyUrl } from "./llm/proxy-pool.js";
 export type {

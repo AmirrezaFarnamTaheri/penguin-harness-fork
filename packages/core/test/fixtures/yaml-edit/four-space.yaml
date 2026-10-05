@@ -1,0 +1,8 @@
+# four-space document
+model:
+    max_tokens: 4096
+    thinking_level: "low"
+    nested:
+        depth: 2
+tools:
+    - read_file

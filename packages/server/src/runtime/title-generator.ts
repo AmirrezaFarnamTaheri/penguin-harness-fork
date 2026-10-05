@@ -32,6 +32,7 @@ import type { ServerEvent } from "../api/types.js";
 import type { SessionsRepo } from "../db/repos/sessions.js";
 import type { ChannelHub } from "./channel.js";
 import type { ErrorSink } from "./error-recorder.js";
+import { serverLogger } from "./logger.js";
 import type { RuntimeSession } from "./session-manager.js";
 import type { UsageContext, UsageRecorder } from "./usage-recorder.js";
 
@@ -86,7 +87,7 @@ export class TitleGenerator implements TitleNotifier {
   private readonly log: (line: string) => void;
 
   constructor(private readonly deps: TitleGeneratorDeps) {
-    this.log = deps.log ?? ((line) => console.error(line));
+    this.log = deps.log ?? ((line) => serverLogger.line(line, "error"));
   }
 
   /**

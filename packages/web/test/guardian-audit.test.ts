@@ -10,7 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { AuditReceipts } from "../src/features/guardian/audit-receipts";
-import { SignalChainGraph } from "../src/features/cockpit/signal-chain-graph";
+import { SignalChainGraph } from "../src/features/cockpit-widgets/signal-chain-graph";
 import { S, setActiveStrings } from "../src/lib/strings";
 import { en } from "../src/lib/strings-en";
 import { zh } from "../src/lib/strings-zh";

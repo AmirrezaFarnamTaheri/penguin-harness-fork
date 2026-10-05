@@ -698,14 +698,17 @@
   text-indent: 0;
   user-select: none;
   -webkit-user-select: none;
-  @apply bg-white text-gray-400;
+  /* gray-400 on white measures 2.54:1 — below the 4.5:1 text floor (F8.1). gray-500 is 4.83:1
+     and keeps the gutter visually subordinate to the code it numbers. */
+  @apply bg-white text-gray-500;
 }
 /* The dark half is spelled out rather than applied as a `dark:` variant: that variant appends
    its `:where(.dark, .dark *)` to the END of the selector, which for a pseudo-element is
    invalid CSS and is dropped without a word — the same reason the Shiki theme overrides below
    are written this way. */
 html.dark .code-lines .line::before {
-  @apply bg-gray-950 text-gray-600;
+  /* gray-600 on the pure-black dark base measures 2.78:1 (F8.1); gray-400 is 8.27:1. */
+  @apply bg-gray-950 text-gray-400;
 }
 
 /* The editor's two layers, stacked in one grid cell so the taller of them sizes the box and a

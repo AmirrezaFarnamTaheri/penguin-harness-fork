@@ -1,0 +1,396 @@
+  x oxlint v0.16.0
+
+  x eslint(no-unused-vars): Variable 'unused0' is declared but never used.
+    ,-[packages/core/src/lint-0.ts:1:7]
+    |
+1 | const unused0 = compute(0);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused1' is declared but never used.
+    ,-[packages/core/src/lint-1.ts:2:7]
+    |
+2 | const unused1 = compute(1);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused2' is declared but never used.
+    ,-[packages/core/src/lint-2.ts:3:7]
+    |
+3 | const unused2 = compute(2);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused3' is declared but never used.
+    ,-[packages/core/src/lint-3.ts:4:7]
+    |
+4 | const unused3 = compute(3);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused4' is declared but never used.
+    ,-[packages/core/src/lint-4.ts:5:7]
+    |
+5 | const unused4 = compute(4);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused5' is declared but never used.
+    ,-[packages/core/src/lint-5.ts:6:7]
+    |
+6 | const unused5 = compute(5);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused6' is declared but never used.
+    ,-[packages/core/src/lint-6.ts:7:7]
+    |
+7 | const unused6 = compute(6);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused7' is declared but never used.
+    ,-[packages/core/src/lint-7.ts:8:7]
+    |
+8 | const unused7 = compute(7);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused8' is declared but never used.
+    ,-[packages/core/src/lint-8.ts:9:7]
+    |
+9 | const unused8 = compute(8);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused9' is declared but never used.
+    ,-[packages/core/src/lint-9.ts:10:7]
+    |
+10 | const unused9 = compute(9);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused10' is declared but never used.
+    ,-[packages/core/src/lint-10.ts:11:7]
+    |
+11 | const unused10 = compute(10);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused11' is declared but never used.
+    ,-[packages/core/src/lint-11.ts:12:7]
+    |
+12 | const unused11 = compute(11);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused12' is declared but never used.
+    ,-[packages/core/src/lint-12.ts:13:7]
+    |
+13 | const unused12 = compute(12);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused13' is declared but never used.
+    ,-[packages/core/src/lint-13.ts:14:7]
+    |
+14 | const unused13 = compute(13);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused14' is declared but never used.
+    ,-[packages/core/src/lint-14.ts:15:7]
+    |
+15 | const unused14 = compute(14);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused15' is declared but never used.
+    ,-[packages/core/src/lint-15.ts:16:7]
+    |
+16 | const unused15 = compute(15);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused16' is declared but never used.
+    ,-[packages/core/src/lint-16.ts:17:7]
+    |
+17 | const unused16 = compute(16);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused17' is declared but never used.
+    ,-[packages/core/src/lint-17.ts:18:7]
+    |
+18 | const unused17 = compute(17);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused18' is declared but never used.
+    ,-[packages/core/src/lint-18.ts:19:7]
+    |
+19 | const unused18 = compute(18);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused19' is declared but never used.
+    ,-[packages/core/src/lint-19.ts:20:7]
+    |
+20 | const unused19 = compute(19);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused20' is declared but never used.
+    ,-[packages/core/src/lint-20.ts:21:7]
+    |
+21 | const unused20 = compute(20);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused21' is declared but never used.
+    ,-[packages/core/src/lint-21.ts:22:7]
+    |
+22 | const unused21 = compute(21);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused22' is declared but never used.
+    ,-[packages/core/src/lint-22.ts:23:7]
+    |
+23 | const unused22 = compute(22);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused23' is declared but never used.
+    ,-[packages/core/src/lint-23.ts:24:7]
+    |
+24 | const unused23 = compute(23);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused24' is declared but never used.
+    ,-[packages/core/src/lint-24.ts:25:7]
+    |
+25 | const unused24 = compute(24);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused25' is declared but never used.
+    ,-[packages/core/src/lint-25.ts:26:7]
+    |
+26 | const unused25 = compute(25);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused26' is declared but never used.
+    ,-[packages/core/src/lint-26.ts:27:7]
+    |
+27 | const unused26 = compute(26);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused27' is declared but never used.
+    ,-[packages/core/src/lint-27.ts:28:7]
+    |
+28 | const unused27 = compute(27);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused28' is declared but never used.
+    ,-[packages/core/src/lint-28.ts:29:7]
+    |
+29 | const unused28 = compute(28);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused29' is declared but never used.
+    ,-[packages/core/src/lint-29.ts:30:7]
+    |
+30 | const unused29 = compute(29);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused30' is declared but never used.
+    ,-[packages/core/src/lint-30.ts:31:7]
+    |
+31 | const unused30 = compute(30);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused31' is declared but never used.
+    ,-[packages/core/src/lint-31.ts:32:7]
+    |
+32 | const unused31 = compute(31);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused32' is declared but never used.
+    ,-[packages/core/src/lint-32.ts:33:7]
+    |
+33 | const unused32 = compute(32);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused33' is declared but never used.
+    ,-[packages/core/src/lint-33.ts:34:7]
+    |
+34 | const unused33 = compute(33);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused34' is declared but never used.
+    ,-[packages/core/src/lint-34.ts:35:7]
+    |
+35 | const unused34 = compute(34);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused35' is declared but never used.
+    ,-[packages/core/src/lint-35.ts:36:7]
+    |
+36 | const unused35 = compute(35);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused36' is declared but never used.
+    ,-[packages/core/src/lint-36.ts:37:7]
+    |
+37 | const unused36 = compute(36);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused37' is declared but never used.
+    ,-[packages/core/src/lint-37.ts:38:7]
+    |
+38 | const unused37 = compute(37);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused38' is declared but never used.
+    ,-[packages/core/src/lint-38.ts:39:7]
+    |
+39 | const unused38 = compute(38);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused39' is declared but never used.
+    ,-[packages/core/src/lint-39.ts:40:7]
+    |
+40 | const unused39 = compute(39);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused40' is declared but never used.
+    ,-[packages/core/src/lint-40.ts:41:7]
+    |
+41 | const unused40 = compute(40);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused41' is declared but never used.
+    ,-[packages/core/src/lint-41.ts:42:7]
+    |
+42 | const unused41 = compute(41);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused42' is declared but never used.
+    ,-[packages/core/src/lint-42.ts:43:7]
+    |
+43 | const unused42 = compute(42);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused43' is declared but never used.
+    ,-[packages/core/src/lint-43.ts:44:7]
+    |
+44 | const unused43 = compute(43);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused44' is declared but never used.
+    ,-[packages/core/src/lint-44.ts:45:7]
+    |
+45 | const unused44 = compute(44);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused45' is declared but never used.
+    ,-[packages/core/src/lint-45.ts:46:7]
+    |
+46 | const unused45 = compute(45);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused46' is declared but never used.
+    ,-[packages/core/src/lint-46.ts:47:7]
+    |
+47 | const unused46 = compute(46);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused47' is declared but never used.
+    ,-[packages/core/src/lint-47.ts:48:7]
+    |
+48 | const unused47 = compute(47);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused48' is declared but never used.
+    ,-[packages/core/src/lint-48.ts:49:7]
+    |
+49 | const unused48 = compute(48);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused49' is declared but never used.
+    ,-[packages/core/src/lint-49.ts:50:7]
+    |
+50 | const unused49 = compute(49);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused50' is declared but never used.
+    ,-[packages/core/src/lint-50.ts:51:7]
+    |
+51 | const unused50 = compute(50);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused51' is declared but never used.
+    ,-[packages/core/src/lint-51.ts:52:7]
+    |
+52 | const unused51 = compute(51);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused52' is declared but never used.
+    ,-[packages/core/src/lint-52.ts:53:7]
+    |
+53 | const unused52 = compute(52);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused53' is declared but never used.
+    ,-[packages/core/src/lint-53.ts:54:7]
+    |
+54 | const unused53 = compute(53);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused54' is declared but never used.
+    ,-[packages/core/src/lint-54.ts:55:7]
+    |
+55 | const unused54 = compute(54);
+    |       ^^^^^^^
+    `
+
+  x eslint(no-unused-vars): Variable 'unused55' is declared but never used.
+    ,-[packages/core/src/lint-55.ts:56:7]
+    |
+56 | const unused55 = compute(55);
+    |       ^^^^^^^
+    `
+
+Found 168 warnings and 0 errors.
+Finished in 214ms on 168 files with 92 rules using 8 threads.

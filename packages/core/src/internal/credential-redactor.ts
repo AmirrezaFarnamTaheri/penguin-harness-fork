@@ -67,7 +67,7 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
   },
   {
     name: "aws_secret_key",
-    pattern: /((?:aws_secret_access_key|aws_secret_key)\s*[:=]\s*)[A-Za-z0-9/+=]{40}/gi,
+    pattern: /((?:aws_secret_access_key|aws_secret_key)"?\s*[:=]\s*)[A-Za-z0-9/+=]{40}/gi,
     replace: (_match, prefix) => `${prefix}${REDACTED_MARKER}`,
   },
   {
@@ -82,9 +82,29 @@ export const CREDENTIAL_RULES: RedactionRule[] = [
     replace: (_match, scheme, user) => `${scheme}${user}:${REDACTED_MARKER}@`,
   },
   {
+    name: "json_credential_string",
+    // The closing quote is optional only at the end of the input. A torn JSONL tail may
+    // stop inside either the secret or its last escape; neither may escape the text fallback.
+    pattern: /("((?:[^"\\]|\\.)+)"\s*:\s*)("(?:[^"\\]|\\[\s\S])*(?:"|\\?$))/g,
+    replace: (match, prefix, encodedKey) => {
+      let key: string;
+      try {
+        key = JSON.parse(`"${encodedKey}"`) as string;
+      } catch {
+        return match;
+      }
+      return isSensitiveField(key, buildSensitiveFieldSet())
+        ? `${prefix}"${REDACTED_MARKER}"`
+        : match;
+    },
+  },
+  {
     name: "generic_assignment",
     pattern:
-      /((?:api[_-]?key|api[_-]?secret|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)\s*[:=]\s*)("(?:[^"\\]|\\.){8,}"|'(?:[^'\\]|\\.){8,}'|[^\s"';,]{8,})/gi,
+      // `"?` after the name is what makes a JSON-serialized assignment match at all: the field
+      // name is followed by its closing quote (`"apiKey":"..."`), and without it the rules see
+      // `apiKey"` and fail, which is exactly the shape a torn JSONL tail has.
+      /((?:api[_-]?key|api[_-]?secret|client[_-]?secret|password|passwd|pwd|access[_-]?token|secret[_-]?token|refresh[_-]?token|session[_-]?token|private[_-]?key|secret[_-]?key|signing[_-]?secret|webhook[_-]?secret)"?\s*[:=]\s*)("(?:[^"\\]|\\.){8,}"|'(?:[^'\\]|\\.){8,}'|[^\s"';,]{8,})/gi,
     replace: (_match, prefix: string, value: string) => {
       const head = value[0];
       if (head !== '"' && head !== "'") return `${prefix}${REDACTED_MARKER}`;
@@ -237,4 +257,220 @@ export function redactObject<T>(input: T, options: RedactObjectOptions = {}): T 
   };
 
   return visit(input) as T;
+}
+
+/**
+ * I1: deep-copy redaction for recorded diagnostic content — one Trace record, one API response
+ * entry, one export fragment.
+ *
+ * It is deliberately separate from {@link redactObject} in one respect: it also applies
+ * {@link maskEmail}. A Trace is model-authored text, and personal addresses reach it through
+ * tool output, prompts and arguments; those are identity-adjacent even when they are not
+ * credentials. Everything else shares the same rules — credential patterns inside every string,
+ * and whole-value removal for credential-named fields, so `{"apiKey":"..."}` (which the text
+ * rules cannot see, because the JSON quote sits between the name and the colon) is still
+ * redacted.
+ *
+ * The value returned is a copy: callers serialize the copy and keep the live object (a Session's
+ * config, a replay-critical `fidelity` blob) byte-identical. Redaction must never mutate the
+ * object it is protecting.
+ */
+export function redactTraceRecord<T>(record: T): T {
+  const sensitive = buildSensitiveFieldSet();
+  const visit = (value: unknown): unknown => {
+    if (value === null || value === undefined) return value;
+    if (typeof value === "string") return maskEmail(redactCredentials(value));
+    if (typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map(visit);
+    const copy: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      // The key is content too: a Trace record can carry `"Authorization: Bearer …"` as a field
+      // name, and redacting only the value would leave the credential in the exported event.
+      // Redacting a key can collide with another, so a collision keeps both under a suffix
+      // rather than silently dropping one.
+      let safeKey = maskEmail(redactCredentials(key));
+      if (safeKey !== key) {
+        let suffix = 2;
+        while (Object.hasOwn(copy, safeKey))
+          safeKey = `${maskEmail(redactCredentials(key))}#${suffix++}`;
+      }
+      copy[safeKey] = isSensitiveField(key, sensitive) ? redactSensitiveValue(child) : visit(child);
+    }
+    return copy;
+  };
+  return visit(record) as T;
+}
+
+/**
+ * I1: JSONL-level redaction for Trace download/export.
+ *
+ * Line-preserving on purpose. A line that needs no redaction is emitted byte-for-byte as it was
+ * read (whitespace, key order, number formatting), so an export of ordinary content is still the
+ * file's content and re-imports exactly; only a line that actually carries a credential, an
+ * address or a credential-named field is re-serialized from its redacted copy. A line that is
+ * not JSON at all (a torn tail) is still passed through the text rules rather than returned raw.
+ */
+export function redactTraceContent(content: string): string {
+  if (!content || typeof content !== "string") return content;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (line === "") return line;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return maskEmail(redactCredentials(line));
+      }
+      const redacted = redactTraceRecord(parsed);
+      const before = JSON.stringify(parsed);
+      const after = JSON.stringify(redacted);
+      return after === before ? line : after;
+    })
+    .join("\n");
+}
+
+/**
+ * Session/request headers whose values are routine protocol metadata and may be recorded in
+ * logs, traces and exports. This is an allowlist on purpose: every other header value is
+ * replaced in full, so a vendor credential header nobody has named yet still fails closed.
+ * Allowlisted values are themselves passed through credential redaction and email masking.
+ */
+export const LOGGABLE_SESSION_HEADERS: ReadonlySet<string> = new Set([
+  "accept",
+  "accept-encoding",
+  "accept-language",
+  "anthropic-beta",
+  "anthropic-version",
+  "cache-control",
+  "connection",
+  "content-encoding",
+  "content-length",
+  "content-type",
+  "host",
+  "openai-beta",
+  "user-agent",
+  "x-request-id",
+]);
+
+export type SessionHeaderInput =
+  | Iterable<readonly [string, string]>
+  | Readonly<Record<string, string | readonly string[] | number | null | undefined>>;
+
+function isHeaderIterable(
+  headers: SessionHeaderInput,
+): headers is Iterable<readonly [string, string]> {
+  return typeof (headers as { [Symbol.iterator]?: unknown })[Symbol.iterator] === "function";
+}
+
+/**
+ * Header names are lower-cased and repeated names are joined with `, `. The result is built
+ * from own data properties only, so a header named `__proto__` cannot alter its prototype.
+ */
+export function redactSessionHeaders(headers: SessionHeaderInput): Record<string, string> {
+  const entries: Array<[string, string]> = [];
+  if (isHeaderIterable(headers)) {
+    for (const [name, value] of headers) entries.push([String(name), String(value)]);
+  } else {
+    for (const [name, value] of Object.entries(headers)) {
+      if (value === undefined || value === null) continue;
+      entries.push([
+        name,
+        Array.isArray(value) ? value.map(String).join(", ") : String(value as string | number),
+      ]);
+    }
+  }
+  const redacted = new Map<string, string>();
+  for (const [rawName, value] of entries) {
+    const name = rawName.trim().toLowerCase();
+    if (!name) continue;
+    const safe = LOGGABLE_SESSION_HEADERS.has(name)
+      ? maskEmail(redactCredentials(value))
+      : REDACTED_MARKER;
+    const previous = redacted.get(name);
+    redacted.set(name, previous === undefined ? safe : `${previous}, ${safe}`);
+  }
+  return Object.fromEntries(redacted);
+}
+
+// The look-behind anchors a match at the start of an address-character run, so a long run with
+// no `@` is scanned once instead of being retried at every position.
+const EMAIL_PATTERN =
+  /(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
+
+/** Mask e-mail addresses to their first local character and domain: `a***@example.com`. */
+export function maskEmail(text: string): string {
+  if (!text || typeof text !== "string") return text;
+  EMAIL_PATTERN.lastIndex = 0;
+  return text.replace(EMAIL_PATTERN, (_match, first: string, domain: string) => {
+    return `${first}***@${domain}`;
+  });
+}
+
+export interface SanitizedError {
+  name: string;
+  message: string;
+  code?: string;
+  cause?: SanitizedError;
+}
+
+const MAX_SANITIZED_MESSAGE = 2000;
+const MAX_SANITIZED_LABEL = 80;
+const MAX_SANITIZED_CAUSE_DEPTH = 4;
+
+function sanitizeLogText(text: string, limit: number): string {
+  // Redact before truncating so a cut can never leave the visible half of a secret behind.
+  const clean = maskEmail(redactCredentials(text));
+  return clean.length > limit ? `${clean.slice(0, limit)}…[truncated]` : clean;
+}
+
+function describeNonError(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value !== null && typeof value === "object") {
+    try {
+      return JSON.stringify(redactObject(value)) ?? "[unserializable]";
+    } catch {
+      return "[unserializable]";
+    }
+  }
+  return String(value);
+}
+
+function sanitizeErrorAt(error: unknown, depth: number, seen: WeakSet<object>): SanitizedError {
+  try {
+    if (!(error instanceof Error)) {
+      return {
+        name: "NonError",
+        message: sanitizeLogText(describeNonError(error), MAX_SANITIZED_MESSAGE),
+      };
+    }
+    if (seen.has(error)) return { name: "Error", message: "[circular cause]" };
+    seen.add(error);
+    const result: SanitizedError = {
+      name: sanitizeLogText(error.name || "Error", MAX_SANITIZED_LABEL),
+      message: sanitizeLogText(String(error.message ?? ""), MAX_SANITIZED_MESSAGE),
+    };
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" || typeof code === "number")
+      result.code = sanitizeLogText(String(code), MAX_SANITIZED_LABEL);
+    if (error.cause !== undefined) {
+      result.cause =
+        depth + 1 >= MAX_SANITIZED_CAUSE_DEPTH
+          ? { name: "Error", message: "[cause depth limit]" }
+          : sanitizeErrorAt(error.cause, depth + 1, seen);
+    }
+    return result;
+  } catch {
+    return { name: "Error", message: "[unavailable]" };
+  }
+}
+
+/**
+ * Log-safe error summary: name, message, string/number code and a bounded, cycle-safe `cause`
+ * chain. Stacks are never included (they can carry request data). Every string is credential-
+ * redacted and e-mail-masked before truncation; thrown non-Error objects are redacted
+ * structurally before they are serialized.
+ */
+export function sanitizeErrorForLog(error: unknown): SanitizedError {
+  return sanitizeErrorAt(error, 0, new WeakSet());
 }

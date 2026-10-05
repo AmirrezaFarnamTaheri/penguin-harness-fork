@@ -34,9 +34,9 @@ repo and are gitignored here:
 
 Editing `AGENTS.md`, `CLAUDE.md` or anything under `specs/` edits **the design repo's files**.
 Commit them there, on their own branch, in their own PR. They can never appear in an
-implementation-repo PR. A fresh clone has none of the three links; recreate them by hand. A clone
-with no design repo beside it — the normal state for a remote or throwaway environment — has
-nothing to link to, so it carries no `AGENTS.md` at all and these skills are its whole contract.
+implementation-repo PR. A fresh clone has none of the three links; recreate them by hand. Without its design-repo sibling,
+it has no `AGENTS.md`; these skills are its whole contract. Four tracked rules—boundary, evidence,
+incremental landing and provenance—are in `docs/policies/agent-contribution-rules.md` and apply alongside this page.
 
 Both repos take changes through branch + PR against `main`, squash-merged. Do not push to `main`,
 and `gh pr create --base main` — not `dev`, whatever a sibling repo does.

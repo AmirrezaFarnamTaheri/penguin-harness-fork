@@ -1,0 +1,173 @@
+# J4 — the scheduled retry:0 flake lane.
+#
+# Owner: the release owner (the "owner" role named in docs/postmortems/TEMPLATE.md's release
+# checklist). A failing scheduled run notifies the workflow file's last committer; the failing
+# suite is also named in the uploaded first-attempt log. Flake attribution — which failure counts as
+# a flake and who repairs it — follows J4 in tasks/execution-wave-3.md.
+#
+# This lane is additive and deliberately NOT required. It exists to surface first-attempt failures
+# that the required lanes absorb: core's and the server's vitest configs set `retry: 2` on Windows
+# and `retry: 1` on macOS, and ci.yml's Windows job re-runs the whole command once for a
+# pool-teardown crash. The aggregate `ci` job in ci.yml stays the authoritative gate — a red run
+# here is a finding to record and route, not a merge blocker, unless the same failure also appears
+# on a required lane.
+#
+# Policy, enforced by scripts/check-flake-lane.mjs:
+#   * retries are zero at every layer — vitest `--retry=0`, Playwright `--retries=0`;
+#   * no step re-runs a failed command: no shell retry loop, no `continue-on-error`;
+#   * suites run in vitest's default order (shuffle is off), so there is no random seed to lose;
+#     the browser suite runs `--repeat-each=1` and the retry-zero proof below is the deterministic
+#     repetition probe (it fails its first attempt and passes its second, so it must fail here);
+#   * artifacts: first-attempt logs and Playwright traces/screenshots, kept 14 days, uploaded only
+#     when the step failed.
+name: Flake lane (retry 0)
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    # 03:40 UTC daily — outside working hours in the maintainers' timezones, so a red run is
+    # waiting when the release owner next looks. GitHub delays scheduled runs under load; the exact
+    # minute is not a contract.
+    - cron: "40 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: flake-lane-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # The lane's own guarantee, proven by running it: the probe fails its first attempt and passes its
+  # second under a config whose `retry` is 2 — the same value Windows inherits. With `--retry=0` the
+  # probe MUST fail. A passing probe means the flag no longer overrides the config, so this step
+  # fails instead of certifying a lane that would mask flakes.
+  retry-zero-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: ./.github/actions/setup
+      - name: Retry-zero self-check (the probe must fail)
+        shell: bash
+        run: |
+          set -o pipefail
+          if pnpm exec vitest run --config scripts/flake-lane/retry-probe.config.mts --retry=0 \
+            >"$RUNNER_TEMP/retry-probe.log" 2>&1; then
+            echo "::error::the retry probe passed — an inherited retry is active and would mask flakes"
+            cat "$RUNNER_TEMP/retry-probe.log"
+            exit 1
+          fi
+          echo "retry probe failed as required: retries are effectively 0"
+          cat "$RUNNER_TEMP/retry-probe.log"
+      - name: Probe log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flake-lane-retry-probe-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/retry-probe.log
+          if-no-files-found: error
+          retention-days: 14
+
+  unit:
+    name: unit (retry 0, ${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: core
+            build: "@prismshadow/penguin-core..."
+            tests: pnpm --filter @prismshadow/penguin-core exec vitest run --retry=0 --passWithNoTests
+          - shard: server
+            build: "@prismshadow/penguin-core..."
+            tests: pnpm --filter @prismshadow/penguin-server exec vitest run --retry=0 --passWithNoTests
+          - shard: web
+            build: "@prismshadow/penguin-core...,@prismshadow/penguin-web..."
+            tests: pnpm --filter @prismshadow/penguin-web exec vitest run --retry=0 --passWithNoTests
+          - shard: cli
+            build: "@prismshadow/penguin-core..."
+            tests: pnpm --filter @prismshadow/penguin-cli exec vitest run --retry=0 --passWithNoTests
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: ./.github/actions/setup
+        with:
+          build: ${{ matrix.build }}
+      - name: Unit tests (first attempt only)
+        shell: bash
+        run: |
+          set -o pipefail
+          ${{ matrix.tests }} 2>&1 | tee "$RUNNER_TEMP/flake-lane-${{ matrix.shard }}.log"
+      - name: First-attempt log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flake-lane-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flake-lane-${{ matrix.shard }}.log
+          if-no-files-found: error
+          retention-days: 14
+
+  # macOS and Windows only for the core shard: those are the platforms whose configs set a nonzero
+  # `retry`, so they are where an inherited retry would hide a first-attempt failure. The rest of
+  # the matrix already runs retry-free on Linux in `unit`.
+  unit-native:
+    name: unit-native (retry 0, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: ./.github/actions/setup
+        with:
+          build: "@prismshadow/penguin-core..."
+      - name: Unit tests (first attempt only)
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @prismshadow/penguin-core exec vitest run --retry=0 --passWithNoTests \
+            2>&1 | tee "$RUNNER_TEMP/flake-lane-core-${{ matrix.os }}.log"
+      - name: First-attempt log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flake-lane-core-${{ matrix.os }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flake-lane-core-${{ matrix.os }}.log
+          if-no-files-found: error
+          retention-days: 14
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: ./.github/actions/setup
+        with:
+          build: "@prismshadow/penguin-core...,@prismshadow/penguin-server...,@prismshadow/penguin-web"
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/web/package.json') }}
+      - name: Install Chromium
+        run: pnpm --filter @prismshadow/penguin-web exec playwright install --with-deps chromium
+      # SKIP_BUILD=1 like ci.yml: the setup action built core/server/web above. Flags go through
+      # run.sh's forwarded "$@": retries off, no repetition beyond one run per test, and a trace
+      # retained on failure so the artifact carries the reproduction.
+      - name: Browser e2e (first attempt only, trace on failure)
+        shell: bash
+        run: |
+          set -o pipefail
+          SKIP_BUILD=1 pnpm --filter @prismshadow/penguin-web test:e2e -- \
+            --retries=0 --repeat-each=1 --trace=retain-on-failure \
+            2>&1 | tee "$RUNNER_TEMP/flake-lane-browser.log"
+      - name: Traces, screenshots and log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flake-lane-browser-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/flake-lane-browser.log
+            packages/web/test-results
+            packages/web/playwright-report
+          if-no-files-found: warn
+          retention-days: 14

@@ -39,6 +39,8 @@ import {
   type ServerLock,
 } from "./lock.js";
 import { shellPortOf, wireShellUpdatePort } from "./services/desktop-update-port.js";
+import { serverLogger } from "./runtime/logger.js";
+import { installProcessErrorHandlers } from "./runtime/process-errors.js";
 
 /**
  * The startup lifecycle: one line per step, in the order they have to happen.
@@ -113,12 +115,12 @@ class PenguinServer {
 
   private exitAlreadyRunning(existing: ServerLock | null): never {
     if (existing) {
-      console.error(
+      serverLogger.error(
         `Another PenguinHarness server is already running on this data root (pid ${existing.pid}).`,
       );
-      console.error(`Existing instance: http://localhost:${existing.port}/`);
+      serverLogger.error(`Existing instance: http://localhost:${existing.port}/`);
     } else {
-      console.error("Another PenguinHarness server is already starting on this data root.");
+      serverLogger.error("Another PenguinHarness server is already starting on this data root.");
     }
     process.exit(EXIT_ALREADY_RUNNING);
   }
@@ -175,7 +177,7 @@ class PenguinServer {
       }
     }
     for (const [specifier, reason] of result.failed) {
-      console.warn(`[plugins] skipped ${specifier}: ${reason}`);
+      serverLogger.warn("Plugin skipped during startup.", { specifier, reason });
     }
   }
 
@@ -284,45 +286,29 @@ class PenguinServer {
     // generation, Session drive, etc.) throws, the error reaches the process without
     // passing through any catch — persist it first for a record, then handle each case
     // according to its nature.
-    process.on("uncaughtException", (err) => {
-      console.error(`[server] Uncaught exception: ${err.stack ?? err.message}`);
-      this.deps.errors.record({ source: "process", err, code: "uncaught_exception" });
-      // From this point the process state can't be trusted (the error was never converged
-      // by any catch): don't swallow it — wrap up per existing shutdown semantics and exit
-      // with a nonzero code (equivalent to Node's default crash exit, just with an extra
-      // persist and graceful wrap-up).
-      // Must exit even if shutdown itself errors — never let "caught a fatal error" turn
-      // into "the process limps along in a broken state".
-      void this.shutdown("uncaughtException", 1).catch(() => process.exit(1));
-    });
-    process.on("unhandledRejection", (reason) => {
-      const err = reason instanceof Error ? reason : new Error(String(reason));
-      console.error(`[server] Unhandled promise rejection: ${err.stack ?? err.message}`);
-      this.deps.errors.record({ source: "process", err, code: "unhandled_rejection" });
-      // Unlike uncaughtException, this **doesn't** exit: a rejected promise is a localized
-      // failure of some background task, and the process state isn't compromised; dragging
-      // down the entire service for it (Node's default behavior) isn't worth it — persist +
-      // log, then keep serving.
+    installProcessErrorHandlers({
+      record: (err, code) => this.deps.errors.record({ source: "process", err, code }),
+      shutdown: (signal, exitCode) => this.shutdown(signal, exitCode),
     });
   }
 
   /** Everything derived from the actual bound port, run once the listener is up. */
   private onListening(port: number): void {
     const startedAt = new Date().toISOString();
-    console.log(`penguin-server started: http://${this.appHost()}:${port}`);
-    console.log(`Data root: ${this.config.root}`);
-    console.log(`SQLite: ${this.config.dbPath}`);
+    serverLogger.info("penguin-server started", { url: `http://${this.appHost()}:${port}` });
+    serverLogger.info("Server data root configured.", { dataRoot: this.config.root });
+    serverLogger.info("SQLite database configured.", { databasePath: this.config.dbPath });
     // Named for the same reason the data root is: it is the one path the static tail
     // serves from when no pushed web version is restored, and the only trace of a wrong
     // PENGUIN_WEB_DIST or a missing build is otherwise a 404 on every page.
-    console.log(`Web dist: ${this.config.webDist}`);
+    serverLogger.info("Web distribution configured.", { webDist: this.config.webDist });
     if (!fs.existsSync(path.join(this.config.webDist, "index.html"))) {
-      console.warn(
-        `[server] Web dist has no index.html; the Web App answers 404 unless a pushed web ` +
-          `version is restored. Build packages/web or point PENGUIN_WEB_DIST at a build.`,
+      serverLogger.warn(
+        "Web distribution has no index.html; the Web App answers 404 unless a pushed web version is restored.",
+        { webDist: this.config.webDist },
       );
     }
-    if (this.config.desktopToken !== null) console.log("Desktop mode: enabled");
+    if (this.config.desktopToken !== null) serverLogger.info("Desktop mode enabled.");
     // PORT=0 asked for an ephemeral port: record the real one so everything derived from
     // the server's own port is correct — Workspace preview URLs above all, which are built
     // from the bind port on purpose (see resolvePreviewTarget) and would otherwise point at
@@ -352,8 +338,10 @@ class PenguinServer {
       const link = this.deps.authService.mintFirstLogin();
       if (link !== null) {
         const token = encodeURIComponent(link);
-        console.log(
-          renderFirstLoginNotice(`http://${this.appHost()}:${port}/api/auth/claim?token=${token}`),
+        // This is an operator-facing one-time credential, not a diagnostic log record. Keep
+        // it on stdout for first-run sign-in; the structured logger redacts token values.
+        process.stdout.write(
+          `${renderFirstLoginNotice(`http://${this.appHost()}:${port}/api/auth/claim?token=${token}`)}\n`,
         );
       }
     }
@@ -389,8 +377,12 @@ class PenguinServer {
     const loopback = serve({ fetch: this.app.fetch, hostname: "::1", port });
     this.ipv6Loopback = loopback;
     loopback.on("error", (err: NodeJS.ErrnoException) => {
-      console.warn(
-        `[server] IPv6 loopback listener unavailable (${err.code ?? err.message}); previews via localhost may not resolve.`,
+      serverLogger.warn(
+        "IPv6 loopback listener unavailable; previews via localhost may not resolve.",
+        {
+          code: err.code,
+          error: err.message,
+        },
       );
     });
     // The terminal stream is a WebSocket upgrade, which never reaches the Hono fetch
@@ -405,7 +397,7 @@ class PenguinServer {
     return {
       hmr: this.deps.hmr,
       authService: this.deps.authService,
-      log: (line: string) => console.log(line),
+      log: (line: string) => serverLogger.line(line),
     };
   }
 
@@ -416,7 +408,7 @@ class PenguinServer {
       projectService: this.deps.projectService,
       projectConfigService: this.deps.projectConfigService,
       root: this.config.root,
-      log: (line: string) => console.log(line),
+      log: (line: string) => serverLogger.line(line),
     };
   }
 
@@ -428,7 +420,7 @@ class PenguinServer {
   private async shutdown(signal: string, exitCode = 0): Promise<void> {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
-    console.log(`Received ${signal}, shutting down…`);
+    serverLogger.info("Server shutting down.", { signal });
     // The CURRENT App's graceful drain (manager: interrupt runs, deny approvals, wait ≤5s
     // for wrap-up) — through the instance the host holds, which a hot swap keeps current;
     // no registry pointer needed.

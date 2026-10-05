@@ -95,8 +95,10 @@ export function agentTracesRoutes(deps: AppDeps): Hono<AppEnv> {
     return c.json(await deps.traceService.analyze(projectId, agentId, sessionId, index));
   });
 
-  // Raw-file download (any member, like the snapshot export): the file is served verbatim
-  // as an attachment, so what's downloaded can be re-imported byte-compatibly.
+  // File download (any member, like the snapshot export): served as an attachment. I1: the
+  // payload is redacted line-by-line by the service, so a download cannot carry a live
+  // credential out of the install; lines with nothing sensitive are byte-identical to the file,
+  // and a redacted download still re-imports as valid Trace JSONL.
   app.get("/:sessionId/:index/download", async (c) => {
     const projectId = requireValidId(c, "projectId");
     const agentId = requireValidId(c, "agentId");

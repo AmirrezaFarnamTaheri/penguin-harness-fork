@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,10 @@ import { compressOutput } from "../../src/environment/output-compression/strateg
 import type { OutputKind } from "../../src/environment/output-compression/strategies.js";
 import { TruncatedToolOutputArchive } from "../../src/environment/truncated-tool-output-archive.js";
 import { Environment } from "../../src/environment/environment.js";
+import {
+  RECALL_OUTPUT_NAME,
+  RECALL_OUTPUT_PAGE_CHARS,
+} from "../../src/environment/tools/recall-output.js";
 import { BUILTIN_TOOL_FACTORIES } from "../../src/environment/tools/registry.js";
 import { EXEC_COMMAND_NAME } from "../../src/environment/tools/exec-command.js";
 import { partialToolCallOutput, toolCall } from "../../src/omnimessage/index.js";
@@ -286,11 +290,25 @@ describe("deduplication", () => {
     // Every unique line survives, including the last one, and the error that sent anyone here.
     expect(result.text).toContain("entering poll cycle tick=199");
     expect(result.text).toContain("ERROR [pool] upstream timeout after 30000ms");
-    // Deduplication alone must still respect the budget, and admit what it left behind.
-    const crowded = compress("log-dedup", logLines(600, 400));
+    // Deduplication alone must still respect the budget, and admit what it left behind. The
+    // marker sits between the head and the reserved tail (B3.3): a head-only cut used to delete
+    // the trailing ERROR line, which is the one line a log compression must never lose.
+    const crowdedSource = logLines(600, 400);
+    const crowded = compress("log-dedup", crowdedSource);
     if (crowded === null) throw new Error("expected a result");
     expect(crowded.text.length).toBeLessThanOrEqual(BUDGET);
-    expect(crowded.text).toMatch(/more log-dedup lines not shown\]$/);
+    expect(crowded.text).toMatch(/\[\d+ more log-dedup lines not shown\]/);
+    expect(
+      crowded.text.endsWith("ERROR [pool] upstream timeout after 30000ms url=https://svc/q"),
+    ).toBe(true);
+    // The visible halves are the original text in the original order: head, gap marker, tail.
+    const markerIndex = crowded.text.search(/\[\d+ more log-dedup lines not shown\]/);
+    expect(crowded.text.slice(0, markerIndex)).toContain(
+      "connection established peer=10.0.0.4 ×600",
+    );
+    expect(crowdedSource.endsWith(crowded.text.slice(crowded.text.lastIndexOf("\n") + 1))).toBe(
+      true,
+    );
   });
 
   it("handles read_file's `cat -n` gutter, where identical lines are never byte-identical", () => {
@@ -507,11 +525,32 @@ describe("the recall store", () => {
     // Byte-identical: this is the property that makes compression lossless-in-principle.
     expect(recalled.text).toBe(source);
     expect(Buffer.from(recalled.text, "utf8").equals(Buffer.from(source, "utf8"))).toBe(true);
-    // And the file on disk really is the text, at the path the note advertises.
+    // The private archive file stores the same redacted text; its path is not a model-facing handle.
     expect(await readFile(recalled.path, "utf8")).toBe(source);
   });
 
-  it("is content-addressed, so the same output twice costs one entry", async () => {
+  it("preserves text bytes and survives Environment recreation only in the owning Session", async () => {
+    const root = path.join(tmp, "session-a", "output");
+    const source = "binary-like\0bytes\r\n🐧 café\n";
+    const owner = new TruncatedToolOutputArchive({ rootDir: root });
+    const saved = await owner.saveRecallEntry("exec_command", source);
+    expect(saved.status).toBe("saved");
+    if (saved.status !== "saved") throw new Error("expected a saved entry");
+    expect(saved.id).toMatch(/^[a-f0-9]{32}$/);
+
+    const resumedOwner = new TruncatedToolOutputArchive({ rootDir: root });
+    const recalled = await resumedOwner.recall(saved.id);
+    expect(recalled.status).toBe("ok");
+    if (recalled.status !== "ok") throw new Error("expected the entry to survive resume");
+    expect(Buffer.from(recalled.text, "utf8")).toEqual(Buffer.from(source, "utf8"));
+
+    const otherSession = new TruncatedToolOutputArchive({
+      rootDir: path.join(tmp, "session-b", "output"),
+    });
+    expect(await otherSession.recall(saved.id)).toMatchObject({ status: "missing" });
+  });
+
+  it("reuses the same opaque id for repeated identical output", async () => {
     const archive = new TruncatedToolOutputArchive({ rootDir: path.join(tmp, "output") });
     const source = largeFailingRun(2, 12);
     const first = await archive.saveRecallEntry("exec_command", source);
@@ -525,7 +564,7 @@ describe("the recall store", () => {
     }
   });
 
-  it("is bounded by entry count, by bytes, and by age — and reports what it dropped", async () => {
+  it("refuses new entries at capacity and keeps issued ids until age expiry", async () => {
     let clock = 1_000;
     const archive = new TruncatedToolOutputArchive({
       rootDir: path.join(tmp, "output"),
@@ -534,7 +573,7 @@ describe("the recall store", () => {
     });
 
     const ids: string[] = [];
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       const saved = await archive.saveRecallEntry(
         "exec_command",
         `entry number ${i} ${"x".repeat(500)}`,
@@ -543,20 +582,21 @@ describe("the recall store", () => {
       ids.push(saved.id);
       clock += 100;
     }
+    const refused = await archive.saveRecallEntry("exec_command", "new entry while full");
+    expect(refused).toEqual({ status: "failed", code: "LIMIT_REACHED" });
     const stats = archive.recallStats();
     expect(stats.entries).toBe(3);
     expect(stats.entries).toBeLessThanOrEqual(stats.maxEntries);
     expect(stats.bytes).toBeLessThanOrEqual(stats.maxTotalBytes);
-    expect(stats.dropped.length).toBeGreaterThan(0);
-    expect(stats.dropped[0]?.reason).toBe("count");
-    // The oldest went first, and the newest are still recallable.
-    for (const id of ids.slice(3)) {
+    expect(stats.dropped).toEqual([]);
+    // Capacity pressure cannot invalidate any id already shown to the model.
+    for (const id of ids) {
       expect((await archive.recall(id)).status).toBe("ok");
     }
-    expect((await archive.recall(ids[0]!)).status).toBe("dropped");
 
-    // Age bound: after the window passes, even the survivors go.
+    // Age bound: an id expires on the first read/save after its advertised window.
     clock += 10_000;
+    expect((await archive.recall(ids[0]!)).status).toBe("dropped");
     const aged = await archive.saveRecallEntry("exec_command", "a fresh entry after the window");
     expect(aged.status).toBe("saved");
     const after = archive.recallStats();
@@ -572,38 +612,63 @@ describe("the recall store", () => {
     }
   });
 
-  it("bounds its own drop log, so diagnostics cannot become the leak", async () => {
+  it("bounds its expiry log, so diagnostics cannot become the leak", async () => {
+    let clock = 1_000;
     const archive = new TruncatedToolOutputArchive({
       rootDir: path.join(tmp, "output"),
-      recallLimits: { maxEntries: 1, maxTotalBytes: 10_000_000, maxEntryAgeMs: 60_000 },
+      recallLimits: { maxEntries: 1, maxTotalBytes: 10_000_000, maxEntryAgeMs: 10 },
+      now: () => clock,
     });
     for (let i = 0; i < 100; i += 1) {
       await archive.saveRecallEntry("exec_command", `entry ${i} ${"y".repeat(200)}`);
+      clock += 20;
     }
     const stats = archive.recallStats();
     expect(stats.entries).toBe(1);
     expect(stats.dropped.length).toBeLessThanOrEqual(32);
+    expect(stats.dropped.every((entry) => entry.reason === "expired")).toBe(true);
   });
 
-  it("enforces the aggregate byte limit and keeps the newest fitting entry", async () => {
+  it("refuses a new entry when the byte limit is full without deleting an issued id", async () => {
     const archive = new TruncatedToolOutputArchive({
       rootDir: path.join(tmp, "output"),
       recallLimits: { maxEntries: 20, maxTotalBytes: 1_000, maxEntryAgeMs: 60_000 },
     });
     const ids: string[] = [];
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < 1; index += 1) {
       const saved = await archive.saveRecallEntry("exec_command", `${index}:${"x".repeat(699)}`);
       if (saved.status !== "saved") throw new Error("expected a saved entry");
       ids.push(saved.id);
     }
 
+    const refused = await archive.saveRecallEntry("exec_command", `overflow:${"x".repeat(699)}`);
+    expect(refused).toEqual({ status: "failed", code: "LIMIT_REACHED" });
     const stats = archive.recallStats();
     expect(stats.bytes).toBeLessThanOrEqual(1_000);
     expect(stats.entries).toBe(1);
-    expect(stats.dropped.filter((entry) => entry.reason === "bytes").length).toBe(2);
-    expect((await archive.recall(ids[0]!)).status).toBe("dropped");
-    expect((await archive.recall(ids[1]!)).status).toBe("dropped");
-    expect((await archive.recall(ids[2]!)).status).toBe("ok");
+    expect(stats.dropped).toEqual([]);
+    expect((await archive.recall(ids[0]!)).status).toBe("ok");
+  });
+
+  it("serializes concurrent saves against the aggregate Session capacity", async () => {
+    const archive = new TruncatedToolOutputArchive({
+      rootDir: path.join(tmp, "output"),
+      recallLimits: { maxEntries: 1, maxTotalBytes: 1_000, maxEntryAgeMs: 60_000 },
+    });
+
+    const results = await Promise.all([
+      archive.saveRecallEntry("exec_command", "first output"),
+      archive.saveRecallEntry("exec_command", "second output"),
+    ]);
+
+    expect(results.filter((result) => result.status === "saved")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "failed")).toEqual([
+      { status: "failed", code: "LIMIT_REACHED" },
+    ]);
+    expect(archive.recallStats()).toMatchObject({ entries: 1 });
+    const saved = results.find((result) => result.status === "saved");
+    if (saved?.status !== "saved") throw new Error("expected one accepted concurrent save");
+    expect((await archive.recall(saved.id)).status).toBe("ok");
   });
 
   it("reports an unknown id as missing rather than inventing content", async () => {
@@ -650,7 +715,14 @@ describe("Environment: the tool-result path end to end", () => {
     note?: string;
     maxOutputLength?: number;
     withScratchpad: boolean;
-  }): Promise<{ complete: string; streamed: string; stopReason: string | undefined }> {
+    sessionScope?: string;
+    outputSpillEnabled?: boolean;
+  }): Promise<{
+    complete: string;
+    streamed: string;
+    stopReason: string | undefined;
+    env: Environment;
+  }> {
     const original = BUILTIN_TOOL_FACTORIES[EXEC_COMMAND_NAME];
     BUILTIN_TOOL_FACTORIES[EXEC_COMMAND_NAME] = (definition) => ({
       name: EXEC_COMMAND_NAME,
@@ -683,7 +755,12 @@ describe("Environment: the tool-result path end to end", () => {
           ],
           mcpServers: [],
         },
-        ...(opts.withScratchpad ? { sessionScratchpadDir: path.join(tmp, "scratch") } : {}),
+        ...(opts.withScratchpad
+          ? { sessionScratchpadDir: path.join(tmp, opts.sessionScope ?? "scratch") }
+          : {}),
+        ...(opts.outputSpillEnabled === undefined
+          ? {}
+          : { outputSpillEnabled: opts.outputSpillEnabled }),
       });
       const messages: OmniMessage[] = [];
       for await (const message of env.executeTool({
@@ -708,11 +785,42 @@ describe("Environment: the tool-result path end to end", () => {
         })
         .map((m) => (m.payload as { output?: string }).output ?? "")
         .join("");
-      return { complete: last.output, streamed: deltas, stopReason: last.stop_reason };
+      return { complete: last.output, streamed: deltas, stopReason: last.stop_reason, env };
     } finally {
       if (original === undefined) delete BUILTIN_TOOL_FACTORIES[EXEC_COMMAND_NAME];
       else BUILTIN_TOOL_FACTORIES[EXEC_COMMAND_NAME] = original;
     }
+  }
+
+  async function recallPage(env: Environment, id: string, offset = 0): Promise<string> {
+    const messages: OmniMessage[] = [];
+    for await (const message of env.executeTool({
+      toolCall: toolCall({
+        name: RECALL_OUTPUT_NAME,
+        arguments: JSON.stringify({ recall_id: id, offset }),
+        toolCallId: `recall-${offset}`,
+      }),
+    })) {
+      messages.push(message);
+    }
+    return (messages[messages.length - 1]!.payload as { output: string }).output;
+  }
+
+  async function recallEntireText(env: Environment, id: string, source: string): Promise<string> {
+    const pages: string[] = [];
+    for (let offset = 0; offset < source.length;) {
+      let end = Math.min(source.length, offset + RECALL_OUTPUT_PAGE_CHARS);
+      if (end < source.length) {
+        const last = source.charCodeAt(end - 1);
+        if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+      }
+      const expectedPage = source.slice(offset, end);
+      const response = await recallPage(env, id, offset);
+      expect(response.slice(0, expectedPage.length)).toBe(expectedPage);
+      pages.push(expectedPage);
+      offset = end;
+    }
+    return pages.join("");
   }
 
   it("compresses a test run, carries a recall id, and the id recalls the original", async () => {
@@ -726,7 +834,8 @@ describe("Environment: the tool-result path end to end", () => {
     // The model sees a summary, and is told that it is one.
     expect(result.complete).toContain("output compressed");
     expect(result.complete).toContain("a summary, not the full output");
-    expect(result.complete).toMatch(/recall id [0-9a-f]{12}/);
+    expect(result.complete).toMatch(/"recallId":"[0-9a-f]{32}"/);
+    expect(result.complete).toMatch(/"sizeBytes":\d+,"tokenCount":\d+/);
     // …and still sees every failure it needs to act on.
     for (let b = 0; b < 5; b += 1) {
       expect(result.complete).toContain(`FAIL  test/thing-${b}.test.ts`);
@@ -734,22 +843,29 @@ describe("Environment: the tool-result path end to end", () => {
     // Streamed concatenation is still the complete message: the invariant Environment guarantees
     // for every tool call, compressed or not.
     expect(result.streamed).toBe(result.complete);
-    // The advertised path exists and holds the unfiltered original, byte for byte.
-    const handle = result.complete.match(/recall id [0-9a-f]{12}: (\S+)/);
-    if (handle === null) throw new Error("expected a recall path in the note");
-    expect(await readFile(handle[1]!, "utf8")).toBe(source);
+    // The model can retrieve bounded pages without learning a filesystem path.
+    const handle = result.complete.match(/"recallId":"([0-9a-f]{32})"/);
+    if (handle === null) throw new Error("expected a recall id in the note");
+    expect(result.complete).not.toContain(tmp);
+    expect((await result.env.listTools()).some((tool) => tool.name === RECALL_OUTPUT_NAME)).toBe(
+      true,
+    );
+    expect(await recallEntireText(result.env, handle[1]!, source)).toBe(source);
   });
 
   it("keeps the tool's own exit-code note outside the compressed text", async () => {
     const result = await runFakeTool({
       cmd: "vitest run",
-      output: largeFailingRun(3, 20),
+      output: `${largeFailingRun(6, 60)}\n${"stderr-detail ".repeat(2_000)}`,
       note: "[exit code: 1]",
+      maxOutputLength: 1_000,
       withScratchpad: true,
     });
-    // The failure signal survives twice over: in the summary and in the tool's own marker,
-    // which Environment appends outside the compression budget.
+    // A failed command stays as head/tail output, and Environment preserves its exit marker.
     expect(result.complete).toContain("[exit code: 1]");
+    expect(result.complete).not.toContain("output compressed");
+    expect(result.complete).toContain("output truncated");
+    expect(result.complete).toContain("stderr-detail");
     expect(result.stopReason).toBe("fatal");
   });
 
@@ -763,12 +879,76 @@ describe("Environment: the tool-result path end to end", () => {
       maxOutputLength: 500,
       withScratchpad: true,
     });
-    // Truncation, not compression: the existing head/tail contract, with the recovery file.
+    // Truncation, not compression: the existing head/tail contract and an opaque recovery id.
     expect(result.complete).toContain("[output truncated: kept first");
     expect(result.complete).not.toContain("output compressed");
-    const archived = result.complete.match(/\[output archived[^:]*: ([^\]]+)\]/);
-    if (archived === null) throw new Error("expected an archive path in the note");
-    expect(await readFile(archived[1]!, "utf8")).toBe(source);
+    const archived = result.complete.match(/"recallId":"([a-f0-9]{32})"/);
+    if (archived === null) throw new Error("expected a recall id in the note");
+    expect(result.complete).not.toContain(tmp);
+    expect(await recallEntireText(result.env, archived[1]!, source)).toBe(source);
+  });
+
+  it("archives only after the configured output boundary and reports archive failure honestly", async () => {
+    const boundary = 40 * 1024;
+    const belowLimit = await runFakeTool({
+      cmd: "cat output.log",
+      output: "w".repeat(boundary - 1),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+    });
+    expect(belowLimit.complete).not.toContain("recallId");
+
+    const atLimit = await runFakeTool({
+      cmd: "cat output.log",
+      output: "x".repeat(boundary),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+    });
+    expect(atLimit.complete).not.toContain("recallId");
+
+    const over = await runFakeTool({
+      cmd: "cat output.log",
+      output: "x".repeat(boundary + 1),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+    });
+    expect(over.complete).toMatch(/"recallId":"[a-f0-9]{32}"/);
+
+    const ownerId = over.complete.match(/"recallId":"([a-f0-9]{32})"/)![1]!;
+    const original = "x".repeat(boundary + 1);
+    const spillDisabled = await runFakeTool({
+      cmd: "cat output.log",
+      output: "z".repeat(boundary + 1),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+      outputSpillEnabled: false,
+    });
+    expect(spillDisabled.complete).not.toMatch(/"recallId":"[a-f0-9]{32}"/);
+    expect(await recallEntireText(spillDisabled.env, ownerId, original)).toBe(original);
+
+    const anotherSession = await runFakeTool({
+      cmd: "cat output.log",
+      output: "z".repeat(boundary + 1),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+      sessionScope: "session-b",
+      outputSpillEnabled: false,
+    });
+    const foreignId = await recallPage(anotherSession.env, ownerId);
+    expect(foreignId).toContain("unavailable in the current Session");
+
+    const obstructedScratchpad = path.join(tmp, "scratch");
+    await rm(obstructedScratchpad, { recursive: true, force: true });
+    await writeFile(obstructedScratchpad, "not a directory", "utf8");
+    const failed = await runFakeTool({
+      cmd: "cat output.log",
+      output: "y".repeat(boundary + 1),
+      maxOutputLength: boundary,
+      withScratchpad: true,
+    });
+    expect(failed.complete).toContain("output archive failed");
+    expect(failed.complete).not.toMatch(/"recallId":"[a-f0-9]{32}"/);
+    expect(failed.complete).toContain("output truncated");
   });
 
   it("does not compress at all without a scratchpad to recall from", async () => {

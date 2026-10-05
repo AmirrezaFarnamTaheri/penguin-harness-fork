@@ -6,7 +6,7 @@
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SignalChainGraph } from "../src/features/cockpit/signal-chain-graph";
+import { SignalChainGraph } from "../src/features/cockpit-widgets/signal-chain-graph";
 
 const chain = {
   chainId: "chain-1",

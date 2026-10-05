@@ -12,6 +12,8 @@ import type { ModelRefDto } from "@prismshadow/penguin-server/api";
 import * as api from "../../api/endpoints";
 import { S } from "../../lib/strings";
 import { apiErrorText } from "../../lib/api-error";
+import { useUiClock } from "../../lib/use-ui-clock";
+import { sharedUiClock } from "../../lib/ui-clock";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
@@ -55,7 +57,6 @@ export function ModelsKeyPools({
   const [search, setSearch] = useState("");
   const [resettingAll, setResettingAll] = useState(false);
   const [resettingModel, setResettingModel] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
 
   /**
    * Names whose key is no longer configured.
@@ -66,11 +67,9 @@ export function ModelsKeyPools({
    */
   const orphanedNames = useMemo(() => keyNames.filter((entry) => entry.orphaned), [keyNames]);
 
-  // Tick clock every second for live cooldown countdown
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Live cooldown countdown; the tick comes from the shared UI clock (F2), so this page does not
+  // own a second one and a tab restored from sleep repaints the countdown on the wakeup.
+  const now = useUiClock(1000);
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -604,7 +603,10 @@ export function ModelsKeyPools({
                       {report.keys.map((k, idx) => {
                         const isCd = k.status === "cooldown";
                         const isEv = k.status === "evicted";
-                        const remaining = Math.max(0, k.cooldownRemainingMs - (Date.now() - now));
+                        const remaining = Math.max(
+                          0,
+                          k.cooldownRemainingMs - (sharedUiClock().now() - now),
+                        );
                         const cdText = formatCooldown(remaining);
                         const { name, isUnnamed } = keyNameOf(k, S.models.keyUnnamed);
                         const isRenaming =

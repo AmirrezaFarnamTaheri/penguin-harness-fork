@@ -180,7 +180,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
 
   beforeAll(async () => {
     server = createServer();
-    attachCockpitWebSocket(server);
+    attachCockpitWebSocket(server, { workspaceRoot: process.cwd() });
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => {
         port = (server.address() as AddressInfo).port;
@@ -213,7 +213,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
     client.stop();
     await client.closed;
 
-    const runtime = await getOrCreateProjectRuntime(project);
+    const runtime = await getOrCreateProjectRuntime(project, { workspaceRoot: process.cwd() });
     // Publish through the same path the coordinator uses, by running a simulated task.
     const runner = collect(`ws://127.0.0.1:${port}/ws/cockpit?project=${project}`);
     await waitFor(() => runner.messages.some((m) => m.type === "cockpit_init"), "runner init");
@@ -255,7 +255,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
   });
 
   it("answers a cursor outside the bounded window with a gap and a fresh snapshot", async () => {
-    const runtime = await getOrCreateProjectRuntime(project);
+    const runtime = await getOrCreateProjectRuntime(project, { workspaceRoot: process.cwd() });
     // Fill the log past its cap without a client attached: these are published but broadcast
     // to nobody, which is exactly the situation a long-idle project is in.
     for (let i = 0; i < COCKPIT_EVENT_LOG_CAP + 20; i += 1) {
@@ -279,7 +279,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
   });
 
   it("reports a gap when a cursor belongs to a previous stream generation", async () => {
-    const runtime = await getOrCreateProjectRuntime(project);
+    const runtime = await getOrCreateProjectRuntime(project, { workspaceRoot: process.cwd() });
     runtime.eventLog.publish(JSON.stringify({ type: "before_restart" }));
     const client = collect(
       `ws://127.0.0.1:${port}/ws/cockpit?project=${project}&since=1&generation=previous-process`,
@@ -296,7 +296,7 @@ describe("cockpit stream: a reconnecting client resumes instead of restarting bl
   });
 
   it("never replays an unbounded history to a first-time client", async () => {
-    const runtime = await getOrCreateProjectRuntime(project);
+    const runtime = await getOrCreateProjectRuntime(project, { workspaceRoot: process.cwd() });
     const retained = COCKPIT_EVENT_LOG_CAP + 20;
     for (let i = 0; i < retained; i += 1) runtime.eventLog.publish(`noise-${i}`);
     const cursorBeforeConnect = runtime.eventLog.cursor;
