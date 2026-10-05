@@ -12,7 +12,7 @@ Operational repairs supplement each task's wider acceptance criteria.
 | Phase | Total | Verified | Implemented; acceptance remaining | Open | Gated | N/A |
 | --- | --- | --- | --- | --- | --- | --- |
 | Wave R | 21 | 19 | 1 | 0 | 1 | 0 |
-| Wave 1 | 12 | 6 | 5 | 0 | 0 | 1 |
+| Wave 1 | 12 | 10 | 1 | 0 | 0 | 1 |
 | Wave 2 | 29 | 2 | 27 | 0 | 0 | 0 |
 | Wave 3 | 50 | 1 | 13 | 36 | 0 | 0 |
 | Wave 4 | 38 | 0 | 0 | 38 | 0 | 0 |
@@ -23,6 +23,9 @@ I1 has trace/export
 integration evidence but needs incomplete-tail repair acceptance. R2d remains binding-gated.
 R11 keeps its implementation and loses its closure: its two named ledger artifacts are unwritten.
 G7 retains its scoped N/A disposition.
+Wave 1 follows the same method in [its receipt](../docs/audits/wave-1-acceptance-2026-10-05.md):
+F3, F6, G5 and J11 are reconciled, F1 stays open because no CI job can produce the exact-head
+accessibility receipt it is waiting on.
 
 ## State and update rules
 
@@ -87,15 +90,15 @@ Every state change cites a revision, criterion result, limits, and next work.
 | [x] | [**A2** FailureStatusTracker + localized HttpError metadata/error rendering](execution-cards-1.md#a2) | VERIFIED | — | Core tracker + findings suites; server error/findings suites; web API error tests; typechecks/build; `check:i18n`; Prettier |
 | [x] | [**A3** Retry-delay provenance + Retry-After](execution-cards-1.md#a3) | VERIFIED | — | `vitest run test/llm*` |
 | [x] | [**B2** BoundedStreamCapture head+tail](execution-cards-1.md#b2) | VERIFIED | — | `test/trace/bounded-capture.test.ts` — four focused cases passed; core typecheck passed |
-| [ ] | [**F1** Input focus rings (3 sites)](execution-cards-1.md#f1) | IMPLEMENTED | — | local web 2,533/2,533 + R12 pass; exact-commit gate pending |
-| [ ] | [**F3** Comment-lies + `features/canvas` removal + cockpit dir rename](execution-cards-1.md#f3) | IMPLEMENTED | — | web suite + grep (human-reviewed deletion) |
-| [ ] | [**F6** STREAM_BANNER_FRAME dedup across six compact notice modules](execution-cards-1.md#f6) | IMPLEMENTED | — | local rendered classes + web 2,533/2,533; exact-commit gate pending |
-| [ ] | [**G5** TLS verification fix + sweep](execution-cards-1.md#g5) | IMPLEMENTED | — | no active bypass; direct downloader smoke against `https://example.com/` passed with TLS verification enabled |
-| [x] | [**G7** Anti-slop installer path fix](execution-cards-1.md#g7) | N/A | — | source audit recorded locally; exact-commit gate pending |
+| [ ] | [**F1** Input focus rings (3 sites)](execution-cards-1.md#f1) | IMPLEMENTED | — | all three edits verified in source; R12 audit shows 0 axe violations / 0 missing focus across 5 surfaces in both themes. The ring ships solid rather than the card's `/50` (documented strengthening). [Receipt](../docs/audits/wave-1-acceptance-2026-10-05.md). Closes only with an exact-head a11y run, and no workflow job runs one |
+| [x] | [**F3** Comment-lies + `features/canvas` removal + cockpit dir rename](execution-cards-1.md#f3) | VERIFIED | — | 4 sites verified in source, zero stale importers, web 2,598/2,598; [receipt](../docs/audits/wave-1-acceptance-2026-10-05.md) |
+| [x] | [**F6** STREAM_BANNER_FRAME dedup across six compact notice modules](execution-cards-1.md#f6) | VERIFIED | — | one definition, exactly six consumers, prefixes preserved, 3 disclosure surfaces untouched; [receipt](../docs/audits/wave-1-acceptance-2026-10-05.md) |
+| [x] | [**G5** TLS verification fix + sweep](execution-cards-1.md#g5) | VERIFIED | — | zero executable bypasses; invalid cert refused (`DEPTH_ZERO_SELF_SIGNED_CERT`), custom root downloads byte-exact; [receipt](../docs/audits/wave-1-acceptance-2026-10-05.md) |
+| [x] | [**G7** Anti-slop installer path fix](execution-cards-1.md#g7) | N/A | — | applicability re-confirmed at `9472091d6`: no `install.mjs`, `rules-src/`, or `assets/anti-slop/`; active owner is `tools/oxlint/anti-slop/` |
 | [x] | [**J1** `clean` npm script wiring](execution-cards-1.md#j1) | VERIFIED | — | `pnpm clean` report passed; cleaner fixture suite passed |
 | [x] | [**J6** CI/docs drift sweep ("75 specs")](execution-cards-1.md#j6) | VERIFIED | — | docs suite passed; workflow parsed; numeric claim removed |
 | [x] | [**T0.3** Workspace dependency freshness guard](execution-cards-1.md#t0.3) | VERIFIED | — | injected-snapshot fixture: stale fails, supported reinstall + build sync passes |
-| [ ] | [**J11** Docs-claims consistency gate](execution-cards-1.md#j11) | IMPLEMENTED | J6, R7 claim reconciliations | local fixtures/checker/CI step pass; exact-commit gate pending |
+| [x] | [**J11** Docs-claims consistency gate](execution-cards-1.md#j11) | VERIFIED | J6, R7 claim reconciliations | checker + true/false fixtures pass, and `ci.yml:54-55` runs both on every push — green at `9472091d6`; ledger holds 2 `Shipped` + 4 `Experimental/unconsumed`; [receipt](../docs/audits/wave-1-acceptance-2026-10-05.md) |
 
 ## Wave 2
 
